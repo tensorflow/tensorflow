@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
+#include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 

@@ -369,3 +369,42 @@ func.func @missing_device_ordinals() {
   }
   func.return
 }
+
+// -----
+
+// Tests devices are not remapped if device is not in replicate devices.
+// CHECK-LABEL: func @no_override_device_new
+func.func @no_override_device_new() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
+        "tf_device.launch"() ({
+          "tf.opA"() : () -> ()
+          tf_device.return
+        }) {device = "/TPU:0"} : () -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    %1 = tf_executor.island {
+      tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
+        "tf_device.launch"() ({
+          "tf.opA"() : () -> ()
+          tf_device.return
+        }) {device = "/TPU:1"} : () -> ()
+        tf_device.return
+      }
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+// CHECK: "tf.opA"
+// CHECK: _parallel_execution_ids = "r0:0", device = "/TPU:0"
+// CHECK: "tf.opA"
+// CHECK: _parallel_execution_ids = "r0:1", device = "/TPU:0"
+// CHECK: "tf.opA"
+// CHECK: _parallel_execution_ids = "r1:0", device = "/TPU:1"
+// CHECK: "tf.opA"
+// CHECK: _parallel_execution_ids = "r1:1", device = "/TPU:1"

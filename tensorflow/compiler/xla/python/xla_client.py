@@ -44,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 158
+_version = 163
 
 # Version number for MLIR:Python components.
-mlir_api_version = 49
+mlir_api_version = 50
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -68,8 +68,8 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
-                    allowed_devices=None):
+def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
+                    platform_name=None, allowed_devices=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -96,6 +96,7 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id,
+      num_nodes=num_nodes,
       platform_name=platform_name,
       allowed_devices=allowed_devices)
 
@@ -110,7 +111,7 @@ DeviceTopology = _xla.DeviceTopology
 
 
 def make_tfrt_tpu_c_api_device_topology(
-    topology_name: Optional[str] = None, **kwargs
+    topology_name: str = '', **kwargs
 ) -> DeviceTopology:
   """Creates a PJRT C API TopologyDescription."""
 
@@ -118,13 +119,7 @@ def make_tfrt_tpu_c_api_device_topology(
     raise NotImplementedError(
         'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
     )
-  if topology_name is not None or kwargs:
-    raise NotImplementedError(
-        'Unsupported arguments to'
-        ' make_tfrt_tpu_c_api_device_topology(topology_name=%s, %s)'
-        % (repr(topology_name), repr(kwargs))
-    )
-  return _xla.get_default_c_api_topology('tpu')
+  return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
 
 
 def pjrt_plugin_loaded(plugin_name: str) -> bool:
@@ -184,18 +179,6 @@ def make_tpu_client(use_pjrt_c_api: bool = False):
       max_inflight_computations=max_inflight_computations)
 
 
-def make_plugin_device_client():
-  """Returns a plugin device client."""
-  try:
-    return _xla.get_plugin_device_client()
-  except AttributeError as e:
-    raise AttributeError(
-        'xla_extension has no attributes named get_plugin_device_client. '
-        'Compile TensorFlow with '
-        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
-        '(defaults to false) to enable this.') from e
-
-
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
@@ -222,7 +205,12 @@ PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
-float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11
+# TODO(vanderplas): remove this conditional when min ml_dtypes >= 0.2
+float8_e4m3b11fnuz = (
+    ml_dtypes.float8_e4m3b11fnuz
+    if hasattr(ml_dtypes, 'float8_e4m3b11fnuz')
+    else ml_dtypes.float8_e4m3fn
+)
 float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {

@@ -40,6 +40,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -47,7 +48,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_replication
-from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -67,7 +67,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy(enable_spmd=False):
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  topology = tpu_strategy_util.initialize_tpu_system(resolver)
+  topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
   num_replicas = resolver.get_tpu_system_metadata().num_cores // 2
   device_assignment = device_assignment_lib.DeviceAssignment.build(
       topology, num_replicas=num_replicas, computation_shape=[1, 1, 1, 2])
@@ -516,7 +516,8 @@ class TPUStrategyModelParallelismTest(
         self.evaluate(strategy.reduce("SUM", result, axis=None)),
     )
 
-  def test_spmd_with_map_outside_comp(self):
+  # Test mapping of a host-side function onto each shard.
+  def test_spmd_with_map_outside_comp_inc(self):
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
 
     def host_inc(x):
@@ -534,6 +535,29 @@ class TPUStrategyModelParallelismTest(
     )
     result = strategy.run(fn, args=(arg,))
     expected = (arg + 1) * num_replicas
+    self.assertAllEqual(
+        expected, self.evaluate(strategy.reduce("SUM", result, axis=None))
+    )
+
+  # Test mapping of an l2_normalize host-side function onto each shard. This is
+  # not a point-wise function so the result is different from ordinary outside
+  # compilation.
+  def test_spmd_with_map_outside_comp_l2norm(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    def host_norm(x):
+      return nn.l2_normalize(x)
+
+    @def_function.function
+    def fn(a):
+      b = strategy.experimental_split_to_logical_devices(a, [2, 1])
+      c = tpu_replication.experimental_map_outside_compilation(host_norm, b)
+      d = strategy.experimental_split_to_logical_devices(c, [2, 1])
+      return d
+
+    arg = constant_op.constant([[0, 1], [2, 3]], dtype=dtypes.float32)
+    result = strategy.run(fn, args=(arg,))
+    expected = nn.l2_normalize(arg, axis=1) * num_replicas
     self.assertAllEqual(
         expected, self.evaluate(strategy.reduce("SUM", result, axis=None))
     )

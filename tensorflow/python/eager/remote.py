@@ -22,7 +22,6 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
-from tensorflow.python.distribute.cluster_resolver.tpu import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils
@@ -184,8 +183,10 @@ def connect_to_cluster(cluster_spec_or_resolver,
     service_leader = ""
     # Maybe enable coordination service for the communication protocol
     # TODO(b/243839559): Fix UPTC + Coordination service crashing
-    if isinstance(cluster_spec_or_resolver,
-                  tpu_cluster_resolver.TPUClusterResolver):
+    # Check if cluster_spec_or_resolver is an instance of
+    #    tpu_cluster_resolver.TPUClusterResolver
+    if (isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver)
+        and hasattr(cluster_spec_or_resolver, "tpu_hardware_feature")):
       is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
       service_type = remote_utils.coordination_service_type(
           protocol, is_uptc_sess)

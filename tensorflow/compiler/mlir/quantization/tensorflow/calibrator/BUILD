@@ -93,7 +93,7 @@ tf_py_test(
         ":gen_custom_aggregator_op_wrapper",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -1,9 +1,9 @@
 # Description:
 #   Doc generator
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -32,7 +32,7 @@ distribute_module = [
     "distribute.",
 ]
 
-py_library(
+py_strict_library(
     name = "tf_doctest_lib",
     srcs = ["tf_doctest_lib.py"],
     srcs_version = "PY3",
@@ -45,7 +45,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
@@ -61,15 +61,15 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],
 )
 
-tpu_py_test(
+tpu_py_strict_test(
     name = "tf_doctest_tpu",
     srcs = ["tf_doctest.py"],
     args = ["--module=" + ",".join(tpu_module)],
@@ -81,12 +81,16 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         ":tf_doctest_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest_gpu",
     srcs = ["tf_doctest.py"],
     args = [
@@ -106,16 +110,16 @@ py_test(
     ] + tf_gpu_tests_tags(),
     deps = [
         ":tf_doctest_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
@@ -127,7 +131,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "fenced_doctest_lib",
     srcs = ["fenced_doctest_lib.py"],
     deps = [
@@ -136,7 +140,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
     tags = [
@@ -150,7 +154,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     compatible_with = get_compatible_with_portable(),
@@ -158,7 +162,7 @@ py_library(
     visibility = ["//visibility:public"],
 )
 
-py_test(
+py_strict_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
@@ -178,7 +182,7 @@ py_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "generate2",
     srcs = ["generate2.py"],
     python_version = "PY3",
@@ -188,23 +192,25 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     # Opensource only
     name = "base_dir_oss",
     srcs = ["base_dir.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = [
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
 )
 
-py_library(
+py_strict_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -213,7 +219,7 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "build_cc_api_headers",
     srcs = ["build_cc_api_headers.py"],
     deps = [
@@ -222,7 +228,7 @@ py_binary(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "build_java_api_docs",
     srcs = ["build_java_api_docs.py"],
     python_version = "PY3",

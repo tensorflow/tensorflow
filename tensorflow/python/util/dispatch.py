@@ -211,8 +211,6 @@ def _get_required_param_names(sig):
       continue
     if p.kind == p.VAR_KEYWORD:
       continue
-    if p.kind == p.KEYWORD_ONLY:
-      continue
     if p.default is not p.empty:
       continue
     params.append(p.name)

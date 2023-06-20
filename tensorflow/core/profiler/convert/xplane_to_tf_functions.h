@@ -28,7 +28,7 @@ namespace profiler {
 TfFunctionDb ConvertHostThreadsXLineToTfFunctionDb(const XLineVisitor& line);
 
 // Returns a debugging string for the given TfFunctionDb.
-std::string DebugString(const TfFunctionDb tf_function_db);
+std::string DebugString(TfFunctionDb tf_function_db);
 
 // Combines the tf-function statistics from src and dst into dst.
 void CombineTfFunctionDb(const TfFunctionDb& src, TfFunctionDb* dst);

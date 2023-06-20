@@ -17,8 +17,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -80,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -1274,7 +1277,7 @@ class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
     }
     auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
                                               op.getOperand(0));
-    rewriter.replaceOp(op, {shape});
+    rewriter.replaceOp(op, shape);
     return success();
   }
 };
@@ -2855,7 +2858,26 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.getX().getDefiningOp());
   if (!transpose) return {};
 
-  if (transpose->getBlock() != op->getBlock()) return {};
+  // If the transpose ops are on different devices, we don't fold them.
+  if (transpose->getBlock() != op->getBlock()) {
+    tensorflow::DataType dtype;
+    auto status = tensorflow::ConvertToDataType(
+        op.getX().getType().cast<TensorType>().getElementType(), &dtype);
+    if (status.ok()) {
+      // We can only leave the transpose op on host if its dtype is supported on
+      // host.
+      if (dtype == tensorflow::DT_UINT64 || dtype == tensorflow::DT_INT64 ||
+          dtype == tensorflow::DT_UINT32 || dtype == tensorflow::DT_INT32 ||
+          dtype == tensorflow::DT_UINT16 || dtype == tensorflow::DT_INT16 ||
+          dtype == tensorflow::DT_UINT8 || dtype == tensorflow::DT_INT8 ||
+          dtype == tensorflow::DT_HALF || dtype == tensorflow::DT_BFLOAT16 ||
+          dtype == tensorflow::DT_FLOAT || dtype == tensorflow::DT_DOUBLE ||
+          dtype == tensorflow::DT_COMPLEX64 ||
+          dtype == tensorflow::DT_COMPLEX128 || dtype == tensorflow::DT_BOOL) {
+        return {};
+      }
+    }
+  }
 
   // Permutations defined by constant operations.
   DenseIntElementsAttr perm0;
@@ -3019,6 +3041,17 @@ void XlaLaunchOp::getEffects(
                            ResourceEffects::Variable::get());
     }
   }
+}
+
+// For `XlaLaunch` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> XlaLaunchOp::GetResourceInstanceStr() {
+  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
+  // Treat missing device attribute like unspecified (= empty string) attribute.
+  // Note that different op instances with the same string (including empty
+  // string) are seen as dependent (same resource instance).
+  if (!device_attr) return "";
+  return device_attr.str();
 }
 
 //===----------------------------------------------------------------------===//

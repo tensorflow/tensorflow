@@ -820,8 +820,14 @@ def real(input, name=None):
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
-    else:
+    elif input.dtype.is_numeric:
       return input
+    else:
+      raise TypeError(
+          "input must be a numeric tensor, but got tensor with dtype {}".format(
+              input.dtype
+          )
+      )
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
@@ -1048,7 +1054,10 @@ def saturate_cast(value, dtype, name=None):
         # Clamp real and imag components separately, if required.
         real_in_dtype = in_dtype.real_dtype
         real_out_dtype = dtype.real_dtype
-        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+        if (
+            real_in_dtype.min < real_out_dtype.min
+            or real_in_dtype.max > real_out_dtype.max
+        ):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
@@ -2582,15 +2591,23 @@ def count_nonzero_v2(
     keepdims = False
   with ops.name_scope(name, "count_nonzero", [input]):
     input = ops.convert_to_tensor(input, name="input")
-    # A scalar of 'zero' is enough as `not_equal` will broadcast.
-    zero = array_ops.zeros([], dtype=input.dtype)
+    # if the input is already of type bool, then there is no need
+    # to compare to zero.
+    if input.dtype == dtypes.bool:
+      predicate = input
+    else:
+      # A scalar of 'zero' is enough as `not_equal` will broadcast.
+      zero = array_ops.zeros([], dtype=input.dtype)
+      predicate = gen_math_ops.not_equal(input, zero)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
+            cast(predicate, dtypes.int64),
             axis=axis,
-            keepdims=keepdims),
-        dtype=dtype)
+            keepdims=keepdims,
+        ),
+        dtype=dtype,
+    )
 
 
 @tf_export(v1=["math.reduce_mean", "reduce_mean"])

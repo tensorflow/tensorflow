@@ -166,27 +166,8 @@ static bool IsFusedReductionOutputConsistent(
                            inst->shape().layout());
 }
 
-FusionDecision ShapesCompatibleForMultiOutputFusion(
-    const HloInstruction& instr1, const HloInstruction& instr2) {
-  // Multi-output fusion kernels share a common parallel loop. The loop
-  // dimensions are determined by instruction shapes.
-  auto get_loop_shape = [&](const HloInstruction* element_instr) {
-    // Special-case reduction-to-vector ops: The loop dimensions are determined
-    // by the shape of the first operand.
-    if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
-        FindAnyTiledTranspose(*element_instr)) {
-      return FindNonTrivialHero(*element_instr).operand(0)->shape();
-    }
-    return element_instr->shape();
-  };
-
-  // All shapes of the root tuple of multi-output fusions should agree, i.e. all
-  // root ops should have equal output shapes. An exception are
-  // reduction-to-vector ops. Here the input shapes of the reduction (first
-  // operand shape) and the reduction dimensions need to match.
-  const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
-  const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
-
+FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
+                                         const HloInstruction* hero2) {
   auto hero1_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero1);
   auto tiled_transpose_hero1 = FindAnyTiledTranspose(*hero1);
@@ -208,15 +189,40 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
     return "MOF-fusion of a transpose and a reduction";
   }
+  return {};
+}
+
+FusionDecision ShapesCompatibleForMultiOutputFusion(
+    const HloInstruction& instr1, const HloInstruction& instr2) {
+  // Multi-output fusion kernels share a common parallel loop. The loop
+  // dimensions are determined by instruction shapes.
+  auto get_loop_shape = [&](const HloInstruction* element_instr) {
+    // Special-case reduction-to-vector ops: The loop dimensions are determined
+    // by the shape of the first operand.
+    if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
+        FindAnyTiledTranspose(*element_instr)) {
+      return FindNonTrivialHero(*element_instr).operand(0)->shape();
+    }
+    return element_instr->shape();
+  };
+
+  // All shapes of the root tuple of multi-output fusions should agree, i.e. all
+  // root ops should have equal output shapes. An exception are
+  // reduction-to-vector ops. Here the input shapes of the reduction (first
+  // operand shape) and the reduction dimensions need to match.
+  const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
+  const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
+
+  if (NoFusionPossible heroes_are_compatible =
+          !FusionHeroesAreCompatible(hero1, hero2)) {
+    return !heroes_are_compatible;
+  }
 
   const Shape& l1 = get_loop_shape(hero1);
   const Shape& l2 = get_loop_shape(hero2);
 
   // We accept different shapes provided shapes are trivially reshapable.
-  bool accept_unequal_shape =
-      !l1.IsTuple() && !l2.IsTuple() &&
-      (hero1_is_unnested_reduce || hero2_is_unnested_reduce ||
-       hero1_is_unnested_transpose || hero2_is_unnested_transpose);
+  bool accept_unequal_shape = !l1.IsTuple() && !l2.IsTuple();
 
   if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
       (!accept_unequal_shape ||

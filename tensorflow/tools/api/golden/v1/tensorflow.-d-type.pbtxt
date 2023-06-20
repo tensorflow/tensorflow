@@ -32,6 +32,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "is_numeric"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "is_numpy_compatible"
     mtype: "<type \'property\'>"
   }

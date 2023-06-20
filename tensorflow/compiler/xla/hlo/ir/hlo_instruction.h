@@ -687,8 +687,8 @@ class HloInstruction {
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
   static std::unique_ptr<HloInstruction> CreateReducePrecision(
-      const Shape& shape, HloInstruction* operand, const int exponent_bits,
-      const int mantissa_bits);
+      const Shape& shape, HloInstruction* operand, int exponent_bits,
+      int mantissa_bits);
 
   // Creates an all-gather op, which concats the operands of all participants
   // along all_gather_dimension. The replica_groups, channel_id, and
@@ -1459,6 +1459,9 @@ class HloInstruction {
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  Status Visit(ConstDfsHloVisitor* visitor) const {
+    return const_cast<HloInstruction*>(this)->Visit(visitor);
+  }
 
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the

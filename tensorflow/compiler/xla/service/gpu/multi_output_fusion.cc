@@ -40,13 +40,8 @@ namespace gpu {
 namespace {
 
 bool IsProfitableOperand(HloInstruction* instr) {
-  // kConstant instruction will not have memory reads, so it won't be a profit
-  // source. Skip them.
-  if (instr->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsEffectiveScalar(instr->shape())) {
-    return false;
-  }
-  return true;
+  // Effective scalars are not a profitable shared operand. Skip them.
+  return !ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
 FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,

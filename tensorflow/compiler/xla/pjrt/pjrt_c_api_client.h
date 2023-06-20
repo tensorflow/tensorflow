@@ -91,6 +91,8 @@ class PjRtCApiDevice : public PjRtDevice {
     return description_;
   }
 
+  StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
  private:
   PjRtCApiClient* client_ = nullptr;
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`
@@ -511,7 +513,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const;
+      const override;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
@@ -538,7 +540,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
-    absl::string_view device_type);
+    absl::string_view device_type, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 }  // namespace xla
 

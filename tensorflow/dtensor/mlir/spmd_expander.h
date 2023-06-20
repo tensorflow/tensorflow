@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_SPMD_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_SPMD_EXPANDER_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/types/optional.h"
@@ -33,7 +34,7 @@ namespace dtensor {
 // Base class for handling SPMD expansion of a MLIR TF Operation.
 class SPMDExpanderBase {
  public:
-  virtual ~SPMDExpanderBase() {}
+  virtual ~SPMDExpanderBase() = default;
 
   // Converts `op` to a SPMD expanded form. SPMD expansion logic is
   // a function of op type, op output's layout, and layout of op's

@@ -57,8 +57,8 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
 
   EXPECT_GT(fingerprint_def.saved_model_checksum(), 0);
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(), 10127142238652115842U);
-  EXPECT_EQ(fingerprint_def.signature_def_hash(), 5693392539583495303);
-  EXPECT_EQ(fingerprint_def.saved_object_graph_hash(), 3678101440349108924);
+  EXPECT_EQ(fingerprint_def.signature_def_hash(), 15570736222402453744U);
+  EXPECT_EQ(fingerprint_def.saved_object_graph_hash(), 3678101440349108924U);
   // TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
   // check its value here.
   EXPECT_GT(fingerprint_def.checkpoint_hash(), 0);
@@ -82,6 +82,11 @@ TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def2,
                           CreateFingerprintDef(saved_model_pb2, export_dir2));
 
+  // While the saved_model serialization is deterministic, the model saving and
+  // proto construction is not. Therefore, we can't compare the two
+  // fingerprints' saved_model_checksums.
+  EXPECT_GT(fingerprint_def.saved_model_checksum(), 0);
+  EXPECT_GT(fingerprint_def2.saved_model_checksum(), 0);
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(),
             fingerprint_def2.graph_def_program_hash());
   EXPECT_EQ(fingerprint_def.signature_def_hash(),

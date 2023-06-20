@@ -976,9 +976,6 @@ TEST(SavedModelTest, WhileLoopV1) {
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_grappler = true;
 
-  // TODO(chky): Implement while op in MLRT.
-  if (options.graph_execution_options.enable_mlrt) return;
-
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
   TF_ASSERT_OK(saved_model.status());
@@ -1100,9 +1097,12 @@ TEST(SavedModelTest, CustomModelConfig) {
 
   TestConfig1 test_config;
   runtime->AddCreateRuntimeResourceFn(
-      [&test_config](const GraphExecutionOptions& options,
-                     tfrt::ResourceContext*) {
-        test_config = options.runtime_config.Get<TestConfig1>().value();
+      [&test_config](ModelRuntimeContext& model_context) {
+        test_config = model_context.graph_execution_options()
+                          .runtime_config.Get<TestConfig1>()
+                          .value();
+        EXPECT_TRUE(model_context.meta_graph_def());
+        return absl::OkStatus();
       });
 
   auto options = DefaultSavedModelOptions(runtime.get());

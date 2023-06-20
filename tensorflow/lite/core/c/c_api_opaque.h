@@ -353,12 +353,28 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
                                              TfLiteOpaqueTensor* tensor,
                                              TfLiteIntArray* new_size);
 
-// Entry point for C API GetSubgraphContext.
+// Entry point for C API AcquireSubgraphContext.
 //
 // Retrieves the corresponding TfLiteOpaqueContext of a subgraph given a
-// subgraph index. If an invalid subgraph index is given, then returns nullptr.
+// subgraph index and switches to the delegate context for this subgraph. If an
+// invalid subgraph index is given, then returns kTfLiteError.
+// NOTE: This function is expected to be paired with
+// TfLiteOpaqueContextReleaseSubgraphContext() once the delegate preparation is
+// done and/or the delegate context functions are no longer needed.
 TFL_CAPI_EXPORT
-TfLiteOpaqueContext* TfLiteOpaqueContextGetSubgraphContext(
+TfLiteStatus TfLiteOpaqueContextAcquireSubgraphContext(
+    struct TfLiteOpaqueContext* opaque_context, int subgraph_index,
+    TfLiteOpaqueContext** acquired_opaque_context);
+
+// Entry point for C API ReleaseSubgraphContext.
+//
+// Releases the corresponding TfLiteOpaqueContext by switching back to the
+// TFLite kernel context for this specified subgraph.
+// NOTE: This function is expected to be used after
+// TfLiteOpaqueContextAcquireSubgraphContext() once the delegate preparation is
+// done and/or the delegate context functions are no longer needed.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextReleaseSubgraphContext(
     struct TfLiteOpaqueContext* opaque_context, int subgraph_index);
 
 // Entry point for C API MarkSubgraphAsDelegationSkippable

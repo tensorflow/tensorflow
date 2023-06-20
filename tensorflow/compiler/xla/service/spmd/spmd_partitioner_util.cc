@@ -936,14 +936,12 @@ HloInstruction* ExchangeHaloCompact(
     int64_t limit;
     int64_t cp_idx;
     int64_t halo_offset;
+    int64_t halo_at_shard;
   };
 
   // Find a list of halos for each shard. Each halo can be a real collective-
   // permute, a slice of the self tensor, or all padding.
   std::vector<std::vector<Halo>> halos(shard_count);
-  // Element at index i: dst halos for src core i, where each halo is
-  // represented as a pair (shard_ordinal, offset in halos[shard_ordinal]).
-  std::vector<std::vector<std::pair<int64_t, int64_t>>> src_to_dst(shard_count);
   constexpr int64_t kPaddingShard = -2;
   constexpr int64_t kSelfShard = -1;
   int64_t max_window_size = 0;
@@ -963,25 +961,76 @@ HloInstruction* ExchangeHaloCompact(
       if (halo.start < 0) {
         halo.start += input_shard_size;
       }
-      int64_t size =
-          std::min(input_shard_size - halo.start, limit - next_start);
-      halo.limit = halo.start + size;
-      if (next_start < 0 || next_start >= input_shard_size * shard_count) {
+      int64_t size = limit - next_start;
+      if (next_start < 0 || next_start >= base_shape.dimensions(dim)) {
+        if (next_start < 0) {
+          // Left padding bounded by offset zero.
+          size = std::min(size, 0 - next_start);
+        }
         VLOG(3) << "Halo for shard i " << i << ": pad, size " << size;
+        halo.limit = halo.start + size;
         halo.cp_idx = kPaddingShard;
         next_start += size;
         continue;
       }
+      size = std::min(input_shard_size - halo.start, size);
+      halo.limit = halo.start + size;
       int64_t shard = next_start / input_shard_size;
+      halo.halo_at_shard = shard;
       // To be assigned.
       halo.cp_idx = kSelfShard;
-      if (shard != i) {
-        src_to_dst[shard].emplace_back(i, halos[i].size() - 1);
-      }
       next_start += size;
       VLOG(3) << "Halo for shard i " << i << ": shard " << shard << ", size "
               << size << ", start " << halo.start;
     }
+  }
+  // Element at index i: dst halos for src core i, where each halo is
+  // represented as a pair (shard_ordinal, offset in halos[shard_ordinal]).
+  std::vector<std::vector<std::pair<int64_t, int64_t>>> src_to_dst(shard_count);
+  {
+    // At each offset, unless all shards have padding data, we limit the size of
+    // the paddings to input_shard_size so that they don't force to pad the
+    // non-padding buffers too much.
+    std::vector<std::vector<Halo>> halos2(shard_count);
+    std::vector<int64_t> next_halo_idx(halos2.size(), 0);
+    while (true) {
+      bool all_padding = true;
+      bool empty = true;
+      for (int64_t i = 0; i < halos.size(); ++i) {
+        if (next_halo_idx[i] >= halos[i].size()) {
+          continue;
+        }
+        if (halos[i][next_halo_idx[i]].cp_idx != kPaddingShard) {
+          all_padding = false;
+        }
+        empty = false;
+      }
+      if (empty) {
+        break;
+      }
+      for (int64_t i = 0; i < halos.size(); ++i) {
+        if (next_halo_idx[i] >= halos[i].size()) {
+          continue;
+        }
+        Halo& h = halos[i][next_halo_idx[i]];
+        halos2[i].push_back(h);
+        Halo& new_h = halos2[i].back();
+        if (!all_padding && h.cp_idx == kPaddingShard &&
+            h.limit > input_shard_size) {
+          new_h.limit = input_shard_size;
+          h.start = 0;
+          h.limit -= input_shard_size;
+          VLOG(3) << "Split padding halo for shard i " << i << ": size "
+                  << new_h.limit - new_h.start;
+        } else {
+          next_halo_idx[i] += 1;
+        }
+        if (h.cp_idx != kPaddingShard && h.halo_at_shard != i) {
+          src_to_dst[h.halo_at_shard].emplace_back(i, halos2[i].size() - 1);
+        }
+      }
+    }
+    halos = std::move(halos2);
   }
   // Sort halos that are from the same src according to halo_offset, so that
   // they are more likely to have similar characteristics.
@@ -1110,7 +1159,7 @@ HloInstruction* ExchangeHaloCompact(
         all_padding = false;
         piece = cps[cp_index[i]].first;
       } else if (cp_index[i] == kSelfShard) {
-        if (piece_shape.dimensions(dim) == max_size) {
+        if (hlo->shape().dimensions(dim) == max_size) {
           piece = hlo;
         } else {
           std::vector<int64_t> starts(piece_shape.rank(), 0);
@@ -1343,6 +1392,10 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     // max_shard_size != shard_size_with_halo.
     if (max_shard_size == shard_size_with_halo &&
         max_halo > 2 * shard_size_with_halo) {
+      if (max_shard_size * 2 >= shard_count * hlo->shape().dimensions(dim)) {
+        // Easier to fallback to replication.
+        return std::nullopt;
+      }
       return ExchangeHaloCompact(
           hlo, base_shape, left_halo_size_function, right_halo_size_function,
           mask_invalid_region || force_mask_in_compact ? pad_value : nullptr,

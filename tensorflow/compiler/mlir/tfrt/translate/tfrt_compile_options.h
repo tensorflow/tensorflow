@@ -38,6 +38,7 @@ enum class TfrtDeviceInfraTarget {
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
+  std::string saved_model_dir;
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
   std::string variable_device = "/job:localhost/replica:0/task:0/device:CPU:0";

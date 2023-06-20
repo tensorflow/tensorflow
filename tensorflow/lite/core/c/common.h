@@ -891,6 +891,27 @@ typedef struct TfLiteContext {
   TfLiteStatus (*GetModelMetadata)(const struct TfLiteContext* context,
                                    const char* name, const char** ptr,
                                    size_t* bytes);
+
+  // Retrieves the corresponding TfLiteContext of a subgraph that the given
+  // subgraph_index points to and switches to the delegate context for that
+  // subgraph. If an invalid subgraph index is given, returns kTfLiteError.
+  // NOTE: This function is expected to be paired with ReleaseSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*AcquireSubgraphContext)(
+      struct TfLiteContext* context, int subgraph_index,
+      struct TfLiteContext** acquired_context);
+  // Releases the subgraph context by switching back to the TFLite kernel
+  // context for the subgraph that the given subgraph_index points to.
+  // NOTE: This function is expected to be used after AcquireSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*ReleaseSubgraphContext)(struct TfLiteContext* context,
+                                         int subgraph_index);
 } TfLiteContext;
 
 // `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
@@ -1171,6 +1192,7 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Creates an opaque delegate and returns its address.  The opaque delegate will
 // behave according to the provided 'opaque_delegate_builder'.  The lifetime of
 // the objects pointed to by any of the fields within the
@@ -1187,6 +1209,7 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Returns a pointer to the data associated with the provided opaque 'delegate'.
 //
@@ -1207,39 +1230,97 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #include <utility>
 
-// `kTfLiteVariant` type tensors encode arbitrary C++ objects behind their
-// `data.data : void*` member. This is the type-erased interface for interacting
-// with such objects at runtime. Deleting or Cloning any `VariantData`
-// will call the destructor and copy constructor of the erased type
-// automatically. For example usage, see `common_test.cc`.
+// --- TFLITE VARIANT TENSORS ----
+// Programming languges usually define "variant" as a type that can hold an
+// unbounded set of types. See std::any
+// (https://en.cppreference.com/w/cpp/utility/any) for a related standard
+// library construct. In tensorflow, variant tensors have a data member which is
+// an Object that is destructible and copy constructible.
+//   Variant tensors are commonly used to represent non trivial data
+// semantics that don't fit into simple primitives, such as lists of tensors and
+// datasets. Additionally, they can facilitate containers for optimizing
+// memory movement of tensor data.
+//
+// The following set of classes define the variant tensor member for tflite.
+// They implement a type-erased container intended to be used behind the
+// `data.data : void*` member of `TfLiteTensor`s. Runtime functions interact
+// the variant member at the level of a `VariantData`, whereas kernels
+// operate with the full knowledge of the un-erased type. The `VariantData`
+// class provides abstract methods for destroying and copying `VariantData`.
+// Invoking these methods will dispatch to the erased type opaquely.
+//    The contents of any object of type derived from `AbstractVariant` can be
+// written to `TfLiteTensor::data::data : void*` from kernels. If the runtime
+// were to copy such a tensor through `TfLiteTensorCopy`, the destination data
+// member will contain the result of invoking the erased type's copy
+// constructor. Similar for the runtime releasing tensors from memory, the
+// erased type's destructor will be invoked. There are a few caveats to consider
+// to use these safely, which we discuss below.
+//
+// EXAMPLE: READING VARIANT TENSORS
+//   ```
+//   // retrieve input with `type == kTfLiteVariant`
+//   TfLiteTensor* input = ...
+//   // must first static cast to `VariantData`, more on this below.
+//   VariantData* vd_input = static_cast<VariantData*>(t->data.data);
+//   CustomType* typed_input =
+//   static_cast<CustomType*>(vd_input);
+//   // do custom work on `typed_input`...
+//   ```
+//
+// EXAMPLE: WRITING VARIANT TENSORS
+//   ```
+//   TfLiteTensor* output = ...
+//   // construct a new variant object behind the target tensor
+//   TfLiteVariantRealloc<DerivedType, DerivedArgs...>(output, args...);
+//   // again must static cast to `VariantData*` before writing to `void*`.
+//   output->data.data = static_cast<VariantData*>(typed_output);
+//   ```
+//
+// WHY STATIC CAST TO `VariantData*`
+//    The Standard defines a `reinterpret_cast` from a derived type to its
+// parents as undefined behavior when the parent is a non-standard layout.
+// https://en.cppreference.com/w/cpp/language/reinterpret_cast (see bullet 5).
+// Due to the `VariantData` having virtual members it is indeed non-standard
+// layout, and any type derived from `VariantData` fails to be
+// "transparently-replaceable". I.e. implicit cast from derived to base in this
+// case may adjust the pointer and by definition `reinterpret_cast` will not
+// the adjust the pointer.
+//    Thus, dereferencing a pointer of type `VariantData` which addresses
+// the first byte of an object of said derived type is UB unless it was first
+// implicitly or statically casted to a `VariantData`. Writing the object of
+// derived type directly to `void*` which is dereferenced as a `VariantData` is
+// then UB, and so the intermediate cast through `VariantData` must be enforced.
+//    A good example of this issue is ellucidate in the bottom code snippet
+// here: https://en.cppreference.com/w/cpp/utility/launder.
 class VariantData {
  public:
   // All variant objects must be able to be destroyed and copied.
   virtual ~VariantData() = default;
-  // This allows for a "virtual copy-constructor" like pattern.
-  // In most cases, we will be copying from an input to an output tensor.
-  // Often, the output tensor is already allocated so we can pass
-  // a pointer to its buffer for reuse.
-  virtual VariantData* Clone(char* maybe_alloc) const = 0;
+  // A "virtual copy-constructor". Often the destination tensor of a variant
+  // copy may have been previously allocated in a prior call to inference. We
+  // allow the copy to target the destinations buffer (`maybe_alloc`),
+  // for potential reuse and optimizations. `maybe_alloc` must be of the same
+  // underlying derived type. References to whatever object is at
+  // `maybe_alloc` may be invalidated.
+  virtual VariantData* CloneTo(VariantData* maybe_alloc) const = 0;
 };
 
-// An abstract base class for variant objects. The template parameter
-// is the type we are erasing.
+// Concrete implementations extend `AbstractVariantData` with CRPT.
 template <typename ErasedDerived>
 class AbstractVariantData : public VariantData {
  public:
-  VariantData* Clone(char* maybe_alloc) const override {
-    if (maybe_alloc) {
-      // We assume that the output tensor is already a variant of the same
-      // derived type. If the output is still allocated, then it still may have
-      // state that was not destroyed, so we must call the destructor before
-      // using the buffer.
+  VariantData* CloneTo(VariantData* maybe_alloc) const override {
+    if (maybe_alloc != nullptr) {
+      // If the output is still allocated, then its object may still be
+      // in its life time and the destructor must be called before re-using the
+      // buffer.
       //     This may actual have a non-negligle effect on perfomance if the
-      // destructor is complex. In a future optimization we would want to
-      // introduce something like "move to" semantics, allowing for the
+      // destructor is complex. A future iteration may
+      // introduce copy or move asignment semantics, allowing for the
       // underlying implementation to optimize for this case.
-      reinterpret_cast<VariantData*>(maybe_alloc)->~VariantData();
-      return new (maybe_alloc)
+      auto* derived = static_cast<ErasedDerived*>(maybe_alloc);
+      derived->~ErasedDerived();
+      return new (derived)
           ErasedDerived(static_cast<ErasedDerived const&>(*this));
     }
     return new ErasedDerived(static_cast<ErasedDerived const&>(*this));
@@ -1254,21 +1335,23 @@ class AbstractVariantData : public VariantData {
 // Analogous to `TfLiteTensorRealloc` for allocation of tensors whose
 // data member points to an arbitrary C++ object. `VariantType` refers
 // to the erased type of said object and `VariantArgs` refers to
-// a list of argument types with which to construct a new `VariantType`
-// `VariantArgs` must match constructor in `VariantType`.
+// a list of argument types with which to construct a new `VariantType`.
+// `VariantArgs` must match a constructor of `VariantType`.
 template <class VariantType, class... VariantArgs>
 TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
                                         VariantArgs&&... args) {
   if (t->type != kTfLiteVariant) return kTfLiteError;
-  if (t->data.raw) {
-    reinterpret_cast<VariantData*>(t->data.data)->~VariantData();
-    // For now we assume if `t` is already allocated then it was allocated
+  VariantType* new_vd;
+  if (t->data.raw != nullptr) {
+    auto* target_vd = static_cast<VariantData*>(t->data.data);
+    target_vd->~VariantData();
+    // As above, we assume if `t` is already allocated then it was allocated
     // with the same `VariantType` as templated.
-    t->data.data =
-        new (t->data.raw) VariantType(std::forward<VariantArgs...>(args...));
+    new_vd = new (t->data.raw) VariantType(std::forward<VariantArgs>(args)...);
   } else {
-    t->data.data = new VariantType(std::forward<VariantArgs...>(args...));
+    new_vd = new VariantType(std::forward<VariantArgs>(args)...);
   }
+  t->data.data = static_cast<VariantData*>(new_vd);
   t->allocation_type = kTfLiteVariantObject;
   return kTfLiteOk;
 }

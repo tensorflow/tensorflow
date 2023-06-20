@@ -109,6 +109,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@ml_dtypes//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
@@ -229,6 +230,14 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -1020,6 +1029,7 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
+        "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",

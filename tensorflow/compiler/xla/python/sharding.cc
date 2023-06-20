@@ -169,7 +169,7 @@ void RegisterSharding(py::module& m) {
       .def(py::init<py::tuple, xla::HloSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
       .def_property_readonly("_devices", &GSPMDSharding::devices)
-      .def_property_readonly("_op_sharding", &GSPMDSharding::op_sharding);
+      .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding);
 }
 
 }  // namespace jax

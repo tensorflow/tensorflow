@@ -306,4 +306,62 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    MHLO_DotDimensionNumbers:$bmm1_dot_dimension_numbers,
+    MHLO_DotDimensionNumbers:$bmm2_dot_dimension_numbers,
+    I64ArrayAttr:$intermediate_tensor_dimensions,
+    I64ArrayAttr:$intermediate_tensor_layout,
+    OptionalAttr<F64Attr>:$dropout_rate,
+    FusedMhaDagSignatureAttr:$fused_mha_dag,
+    FusedMHAAlgorithmConfigAttr:$algorithm_config,
+    OptionalAttr<I64Attr>:$seed);
+}
+
+def LHLOGPU_fusedMHAWithScaledMaskOp : LHLOGPU_Op<"fMHAWithScaledMask"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
+    Arg<LHLO_Buffer, "", [MemRead]>:$mask,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    MHLO_DotDimensionNumbers:$bmm1_dot_dimension_numbers,
+    MHLO_DotDimensionNumbers:$bmm2_dot_dimension_numbers,
+    I64ArrayAttr:$intermediate_tensor_dimensions,
+    I64ArrayAttr:$intermediate_tensor_layout,
+    F64Attr:$fmha_scale,
+    OptionalAttr<F64Attr>:$dropout_rate,
+    FusedMhaDagSignatureAttr:$fused_mha_dag,
+    FusedMHAAlgorithmConfigAttr:$algorithm_config,
+    OptionalAttr<I64Attr>:$seed
+    );
+}
+
+def LHLOGPU_fusedMHAWithScaledBiasOp : LHLOGPU_Op<"fMHAWithScaledBias"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
+    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
+    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    MHLO_DotDimensionNumbers:$bmm1_dot_dimension_numbers,
+    MHLO_DotDimensionNumbers:$bmm2_dot_dimension_numbers,
+    I64ArrayAttr:$intermediate_tensor_dimensions,
+    I64ArrayAttr:$intermediate_tensor_layout,
+    F64Attr:$fmha_scale,
+    OptionalAttr<F64Attr>:$dropout_rate,
+    FusedMhaDagSignatureAttr:$fused_mha_dag,
+    FusedMHAAlgorithmConfigAttr:$algorithm_config,
+    OptionalAttr<I64Attr>:$seed
+    );
+}
+
 #endif // LHLO_GPU_OPS

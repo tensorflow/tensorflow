@@ -485,11 +485,17 @@ def tf_opts_nortti():
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ]
 
+def tf_opts_force_rtti():
+    return select({
+        clean_dep("//tensorflow:force_rtti"): ["-frtti"],
+        "//conditions:default": [],
+    })
+
 def tf_opts_nortti_if_android():
-    return if_android(tf_opts_nortti())
+    return if_android(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_opts_nortti_if_mobile():
-    return if_mobile(tf_opts_nortti())
+    return if_mobile(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_defines_nortti():
     return [
@@ -519,7 +525,7 @@ def tf_opts_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
         full = [],
         lite = tf_opts_nortti(),
-    )
+    ) + tf_opts_force_rtti()
 
 def tf_defines_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
@@ -1444,7 +1450,7 @@ def tf_gen_op_wrapper_py(
         srcs_version = "PY3",
         visibility = visibility,
         deps = [
-            clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
+            clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2"),
         ],
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
@@ -2241,26 +2247,6 @@ def tf_custom_op_library(
         }),
         **kwargs
     )
-
-# Placeholder to use until bazel supports py_strict_binary.
-def py_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_library.
-def py_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_binary.
-def pytype_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_library.
-def pytype_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_test.
-def py_strict_test(name, **kwargs):
-    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -3359,10 +3345,10 @@ def if_mlir(if_true, if_false = []):
 def tf_enable_mlir_bridge():
     return select({
         str(Label("//tensorflow:enable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_true",
+            "//tensorflow/python/framework:is_mlir_bridge_test_true",
         ],
         str(Label("//tensorflow:disable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_false",
+            "//tensorflow/python/framework:is_mlir_bridge_test_false",
         ],
         "//conditions:default": [],
     })

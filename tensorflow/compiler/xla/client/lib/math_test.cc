@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include <cmath>
+#include <complex>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"

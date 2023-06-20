@@ -21,7 +21,6 @@ import re
 import itertools as it
 import os
 from typing import Dict, Sequence, Union
-import sys
 import unittest
 import warnings
 import zlib
@@ -31,7 +30,6 @@ from absl.testing import parameterized
 
 import numpy as onp
 import numpy.random as npr
-import scipy
 
 from tensorflow.python.util import nest
 from tensorflow.python.framework import ops
@@ -305,14 +303,6 @@ def skip_on_flag(flag_name, skip_value):
       return test_method(self, *args, **kwargs)
     return test_method_wrapper
   return skip
-
-# TODO(phawkins): workaround for bug https://github.com/google/jax/issues/432
-# Delete this code after the minimum jaxlib version is 0.1.46 or greater.
-skip_on_mac_linalg_bug = partial(
-  unittest.skipIf,
-  (sys.platform == "darwin" and scipy.version.version > "1.1.0" and
-   lib.version < (0, 1, 46)),
-  "Test fails on Mac with new scipy (issue #432)")
 
 
 def format_test_name_suffix(opname, shapes, dt):

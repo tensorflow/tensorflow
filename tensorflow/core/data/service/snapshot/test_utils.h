@@ -74,7 +74,8 @@ class PartialSnapshotWriter {
   static tsl::StatusOr<PartialSnapshotWriter> Create(
       const DatasetDef& dataset, const std::string& snapshot_path,
       int64_t stream_index, const std::string& compression,
-      int64_t max_chunk_size_bytes = 1);
+      int64_t max_chunk_size_bytes = 1,
+      absl::Duration checkpoint_interval = absl::Microseconds(1));
   virtual ~PartialSnapshotWriter() = default;
   PartialSnapshotWriter(const PartialSnapshotWriter&) = delete;
   PartialSnapshotWriter& operator=(const PartialSnapshotWriter&) = delete;
@@ -97,7 +98,8 @@ class PartialSnapshotWriter {
   PartialSnapshotWriter(const DatasetDef& dataset,
                         const std::string& snapshot_path, int64_t stream_index,
                         const std::string& compression,
-                        int64_t max_chunk_size_bytes);
+                        int64_t max_chunk_size_bytes,
+                        absl::Duration checkpoint_interval);
 
   tsl::Status Initialize();
 
@@ -106,6 +108,7 @@ class PartialSnapshotWriter {
   const int64_t stream_index_;
   const std::string compression_;
   const int64_t max_chunk_size_bytes_;
+  const absl::Duration checkpoint_interval_;
 
   std::string tmp_snapshot_path_;
 };

@@ -238,6 +238,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_layout",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -245,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:executable",
@@ -255,6 +257,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
@@ -268,7 +271,11 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

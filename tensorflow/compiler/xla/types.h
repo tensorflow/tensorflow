@@ -19,7 +19,6 @@ limitations under the License.
 #include <complex>
 #include <istream>
 #include <limits>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -35,6 +34,19 @@ using ::Eigen::half;      // NOLINT(misc-unused-using-decls)
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
+template <class T>
+struct is_complex : std::false_type {};
+template <class T>
+struct is_complex<std::complex<T>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_complex_v = is_complex<T>::value;
+
+template <typename T>
+constexpr bool is_specialized_floating_point_v =
+    std::numeric_limits<T>::is_specialized &&
+    !std::numeric_limits<T>::is_integer;
+
 // LINT.IfChange
 template <typename UnderlyingTy>
 struct i4 {
@@ -48,46 +60,35 @@ struct i4 {
   constexpr explicit i4(T t) : i4(static_cast<UnderlyingTy>(t)) {}
   constexpr i4(const i4& other) = default;
 
-  template <typename T, std::enable_if_t<std::numeric_limits<T>::is_specialized,
-                                         bool> = true>
-  constexpr explicit operator T() const {
-    return static_cast<T>(v);
-  }
   // NOLINTNEXTLINE(google-explicit-constructor)
-  operator std::optional<int64_t>() const { return static_cast<int64_t>(v); }
-  explicit operator complex64() const { return complex64(v); }
-  explicit operator complex128() const { return complex128(v); }
+  constexpr operator UnderlyingTy() const {
+    return static_cast<UnderlyingTy>(v);
+  }
 
-  i4 operator+(const i4& other) const { return i4((v + other.v)); }
-  i4 operator-(const i4& other) const { return i4((v - other.v)); }
-  i4 operator*(const i4& other) const { return i4((v * other.v)); }
-  i4 operator/(const i4& other) const { return i4((v / other.v)); }
+  template <typename T>
+  i4 operator>>(const T amount) const {
+    return i4(v >> amount);
+  }
+  template <typename T>
+  i4 operator<<(const T amount) const {
+    return i4(v << amount);
+  }
 
-  i4 operator>>(const int amount) const { return i4((v >> amount)); }
-  i4 operator<<(const int amount) const { return i4((v << amount)); }
+  constexpr bool operator==(const i4 other) const { return v == other.v; }
+  constexpr bool operator!=(const i4 other) const { return v != other.v; }
+  constexpr bool operator<(const i4 other) const { return v < other.v; }
+  constexpr bool operator>(const i4 other) const { return v > other.v; }
+  constexpr bool operator<=(const i4 other) const { return v <= other.v; }
+  constexpr bool operator>=(const i4 other) const { return v >= other.v; }
 
-  bool operator==(const i4& other) const { return v == other.v; }
-  bool operator!=(const i4& other) const { return v != other.v; }
-  bool operator<(const i4& other) const { return v < other.v; }
-  bool operator>(const i4& other) const { return v > other.v; }
-  bool operator<=(const i4& other) const { return v <= other.v; }
-  bool operator>=(const i4& other) const { return v >= other.v; }
-
-  bool operator==(const int64_t other) const { return v == other; }
-  bool operator!=(const int64_t other) const { return v != other; }
-  bool operator<(const int64_t other) const { return v < other; }
-  bool operator>(const int64_t other) const { return v > other; }
-  bool operator<=(const int64_t other) const { return v <= other; }
-  bool operator>=(const int64_t other) const { return v >= other; }
-
-  i4 operator-() const { return i4(-v); }
-  i4 operator~() const { return i4(~v); }
-  i4 operator++(int) {
+  constexpr i4 operator-() const { return i4(-v); }
+  constexpr i4 operator~() const { return i4(~v); }
+  constexpr i4 operator++(int) {
     i4 tmp(*this);
     v = (v + 1) & 0x0F;
     return tmp;
   }
-  i4& operator++() {
+  constexpr i4& operator++() {
     v = (v + 1) & 0x0F;
     return *this;
   }
@@ -188,18 +189,6 @@ class numeric_limits<xla::s4> : public numeric_limits_int4t<xla::s4> {
 }  // namespace std
 
 namespace xla {
-template <class T>
-struct is_complex : std::false_type {};
-template <class T>
-struct is_complex<std::complex<T>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_complex_v = is_complex<T>::value;
-
-template <typename T>
-constexpr bool is_specialized_floating_point_v =
-    std::numeric_limits<T>::is_specialized &&
-    !std::numeric_limits<T>::is_integer;
 
 // std::make_signed_t is “behavior undefined” for custom types, so provide a
 // general util to make signed/unsigned for both primitive and custom types.

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1707,6 +1709,127 @@ TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
   ASSERT_EQ(tree.GetRoot(), nullptr);
 }
 
+class SlicedBufferIntervalTest : public ::testing::Test {
+ public:
+  using HeapTy = GlobalDecreasingSizeBestFitHeap<HloValue>;
+  using ColocationTy = absl::InlinedVector<const HloValue*, 2>;
+
+  static std::tuple<const HloValue*, int64_t, int64_t, int64_t,
+                    const ColocationTy&, bool>
+  BufferIntervalToTuple(const HeapTy::BufferInterval& buffer_interval) {
+    return std::make_tuple(buffer_interval.buffer, buffer_interval.size,
+                           buffer_interval.start, buffer_interval.end,
+                           std::ref(buffer_interval.colocations),
+                           buffer_interval.need_allocation);
+  }
+
+  SlicedBufferIntervalTest() {
+    HloModuleConfig config;
+    module_ = std::make_unique<HloModule>("TestModule", config);
+
+    Shape f32vec4 = ShapeUtil::MakeShape(F32, {4});
+
+    auto builder = HloComputation::Builder("TestComputation");
+    auto p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, f32vec4, "p0"));
+    auto p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, f32vec4, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(f32vec4, HloOpcode::kAdd, p0, p1));
+
+    module_->AddEntryComputation(builder.Build());
+
+    p0_value_ = std::make_unique<HloValue>(0, p0, ShapeIndex{});
+    p1_value_ = std::make_unique<HloValue>(0, p1, ShapeIndex{});
+
+    full_buffer_interval_ = HeapTy::BufferInterval({
+        p0_value_.get(),
+        /*size=*/20,
+        /*start=*/100,
+        /*end=*/200,
+        /*colocations=*/{p1_value_.get()},
+        /*need_allocation=*/true,
+    });
+    sliced_buffer_interval_ = std::make_unique<HeapTy::SlicedBufferInterval>(
+        HeapTy::SlicedBufferInterval::CreateConstInterval(
+            full_buffer_interval_));
+    mutable_sliced_buffer_interval_ =
+        std::make_unique<HeapTy::SlicedBufferInterval>(
+            HeapTy::SlicedBufferInterval::CreateMutableInterval(
+                full_buffer_interval_));
+  }
+
+ protected:
+  std::unique_ptr<HloModule> module_;
+  std::unique_ptr<HloValue> p0_value_;
+  std::unique_ptr<HloValue> p1_value_;
+  HeapTy::BufferInterval full_buffer_interval_;
+  std::unique_ptr<const HeapTy::SlicedBufferInterval> sliced_buffer_interval_;
+  std::unique_ptr<HeapTy::SlicedBufferInterval> mutable_sliced_buffer_interval_;
+};
+
+TEST_F(SlicedBufferIntervalTest, NoSlices) {
+  EXPECT_EQ(
+      BufferIntervalToTuple(sliced_buffer_interval_->full_buffer_interval()),
+      BufferIntervalToTuple(full_buffer_interval_));
+  EXPECT_EQ(sliced_buffer_interval_->num_slices(), 1);
+  EXPECT_THAT(sliced_buffer_interval_->SliceSizesSortedByOffset(),
+              ::testing::ElementsAre(20));
+  EXPECT_EQ(BufferIntervalToTuple(
+                sliced_buffer_interval_->IntervalForMakeFreeChunks(0)),
+            BufferIntervalToTuple(full_buffer_interval_));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->full_buffer_interval()),
+            BufferIntervalToTuple(full_buffer_interval_));
+}
+
+TEST_F(SlicedBufferIntervalTest, Sliced) {
+  std::vector<int64_t> slice_sizes = {4, 5, 5, 6};
+  mutable_sliced_buffer_interval_->Slice(absl::Span<int64_t>(slice_sizes));
+
+  EXPECT_EQ(mutable_sliced_buffer_interval_->num_slices(), 4);
+  EXPECT_THAT(mutable_sliced_buffer_interval_->SliceSizesSortedByOffset(),
+              ::testing::ElementsAre(4, 5, 5, 6));
+
+  mutable_sliced_buffer_interval_->UpdateSliceStartTimes({100, 125, 150, 175});
+
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(0)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 100, 125, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(1)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 125, 150, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(2)),
+            BufferIntervalToTuple(
+                {p0_value_.get(), 4, 150, 175, ColocationTy(), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(3)),
+            BufferIntervalToTuple({p0_value_.get(), 20, 175, 200,
+                                   ColocationTy({p1_value_.get()}), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->full_buffer_interval()),
+            BufferIntervalToTuple({p0_value_.get(), 20, 100, 200,
+                                   ColocationTy({p1_value_.get()}), true}));
+
+  mutable_sliced_buffer_interval_->UpdateEndTime(300);
+
+  // Only the BufferInterval for the last slice time should have changed end
+  // times.
+  EXPECT_EQ(mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(2).end,
+            175);
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->IntervalForMakeFreeChunks(3)),
+            BufferIntervalToTuple({p0_value_.get(), 20, 175, 300,
+                                   ColocationTy({p1_value_.get()}), true}));
+  EXPECT_EQ(BufferIntervalToTuple(
+                mutable_sliced_buffer_interval_->full_buffer_interval()),
+            BufferIntervalToTuple({p0_value_.get(), 20, 100, 300,
+                                   ColocationTy({p1_value_.get()}), true}));
+}
+
 class SlicedAllocationFinderTest : public ::testing::Test {
  public:
   using HeapTy = GlobalDecreasingSizeBestFitHeap<HloValue>;
@@ -2161,6 +2284,55 @@ t0 |xxxxx  xxx00000                         xxxxxx   xxxxxxxxxxx          x
               ::testing::ElementsAre(
                   Chunk::FromOffsetSize(10, 5), Chunk::FromOffsetSize(15, 3),
                   Chunk::FromOffsetSize(18, 4), Chunk::FromOffsetSize(22, 0)));
+}
+
+TEST_F(SlicedAllocationFinderTest, ZeroSizeFreeChunk) {
+  /*
+Slice time vs allocation space (x = previously allocated, <number> = index of
+                                the slice that will be allocated at the
+                                specified position and time):
+   ^
+t2 |xxxxxxxxxx                              xxxxx         xxxxxx000111222 x
+t1 |xxxxxxxxxx                              xxxxx      xxxxxxxxx000111    x
+t0 |xxxxxxxxxx                              xxxxxxxxxxxxxxxxxxxx000       x
+   +!----|----!----|----!----|----!----|----!----|----!----|----!----|----!>
+         space
+*/
+  std::vector<FreeChunks> free_chunks_per_slice_time = {
+      // Slice time 0
+      {
+          {5, 5},
+          {10, 40},
+          {45, 48},
+          {60, 70},
+      },
+      // Slice time 1
+      {
+          {5, 7},
+          {10, 40},
+          {45, 51},
+          {60, 70},
+      },
+      // Slice time 2
+      {
+          {5, 7},
+          {10, 40},
+          {45, 45},
+          {60, 70},
+      },
+  };
+  std::vector<int64_t> sorted_slice_sizes = {3, 3, 3};
+  int64_t max_colocation_size = -1;
+  int64_t preferred_offset = -1;
+  int64_t alignment = 1;
+
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment);
+
+  EXPECT_THAT(finder.Find(),
+              ::testing::ElementsAre(
+                  Chunk::FromOffsetSize(60, 3), Chunk::FromOffsetSize(63, 3),
+                  Chunk::FromOffsetSize(66, 3), Chunk::FromOffsetSize(69, 0)));
 }
 
 TEST_F(SlicedAllocationFinderTest, LargerMaxColloc) {

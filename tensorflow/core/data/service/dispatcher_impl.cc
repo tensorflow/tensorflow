@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/validate_utils.h"
@@ -241,8 +242,9 @@ Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
 
   for (const auto& path : state_.ListSnapshotPaths()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                        SnapshotManager::Resume(path, env_));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SnapshotManager> snapshot_manager,
+        SnapshotManager::Resume(path, snapshot_assignment_manager_, env_));
     snapshots_.insert({path, std::move(snapshot_manager)});
   }
 
@@ -1048,8 +1050,9 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                  " is already started or completed");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                      SnapshotManager::Start(*request, env_));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(*request, snapshot_assignment_manager_, env_));
   snapshots_.insert({request->path(), std::move(snapshot_manager)});
 
   Update update;

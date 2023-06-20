@@ -44,14 +44,22 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
 
 PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
     PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
-  StatusOr<void*> awaited_dst = dst.Await();
-  if (!awaited_dst.ok()) {
-    return PjRtFuture<Status>(std::move(awaited_dst).status());
-  }
-  return CopyRawToHost(*awaited_dst, offset, transfer_size);
+  auto promise = PjRtFuture<Status>::CreatePromise();
+  dst.OnReady(
+      [this, promise, offset, transfer_size](StatusOr<void*> dst) mutable {
+        if (dst.ok()) {
+          CopyRawToHost(*dst, offset, transfer_size)
+              .OnReady([promise = std::move(promise)](Status status) mutable {
+                promise.Set(status);
+              });
+        } else {
+          promise.Set(dst.status());
+        }
+      });
+  return PjRtFuture<Status>(std::move(promise));
 }
 
-MultiSliceConfig::~MultiSliceConfig() {}
+MultiSliceConfig::~MultiSliceConfig() = default;
 
 std::string CompiledMemoryStats::DebugString() const {
   return absl::Substitute(

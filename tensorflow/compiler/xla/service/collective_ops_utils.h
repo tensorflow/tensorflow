@@ -416,6 +416,9 @@ class Rendezvous {
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
+constexpr char kSendRecvSourceTargetPairsAttr[] =
+    "_xla_send_recv_source_target_pairs";
+
 }  // end namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_

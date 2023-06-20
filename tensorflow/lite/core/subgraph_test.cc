@@ -86,34 +86,17 @@ TEST(RemoveUnusedInputs, BypassInputsWithoutOp) {
 TEST(GetSubgraphContext, NonConstGetSubgraphContext) {
   Interpreter interpreter;
   auto& subgraph = interpreter.primary_subgraph();
-  TfLiteContext* context;
+  TfLiteContext* context = nullptr;
 
-  context = subgraph.GetSubgraphContext(0);
+  EXPECT_EQ(kTfLiteError, subgraph.AcquireSubgraphContext(-1, &context));
+  ASSERT_EQ(context, nullptr);
+
+  EXPECT_EQ(kTfLiteError, subgraph.AcquireSubgraphContext(1, &context));
+  ASSERT_EQ(context, nullptr);
+
+  EXPECT_EQ(kTfLiteOk, subgraph.AcquireSubgraphContext(0, &context));
   ASSERT_NE(context, nullptr);
-
-  context = subgraph.GetSubgraphContext(-1);
-  ASSERT_EQ(context, nullptr);
-
-  context = subgraph.GetSubgraphContext(1);
-  ASSERT_EQ(context, nullptr);
-
-  const auto& const_subgraph = interpreter.primary_subgraph();
-  const_subgraph.GetSubgraphContext(1);
-}
-
-TEST(GetSubgraphContext, ConstGetSubgraphContext) {
-  Interpreter interpreter;
-  const auto& subgraph = interpreter.primary_subgraph();
-  const TfLiteContext* context;
-
-  context = subgraph.GetSubgraphContext(0);
-  ASSERT_NE(context, nullptr);
-
-  context = subgraph.GetSubgraphContext(-1);
-  ASSERT_EQ(context, nullptr);
-
-  context = subgraph.GetSubgraphContext(1);
-  ASSERT_EQ(context, nullptr);
+  EXPECT_EQ(kTfLiteOk, subgraph.ReleaseSubgraphContext(0));
 }
 
 TEST(MarkSubgraphAsDelegationSkippable, MarkSubgraphAsDelegationSkippable) {

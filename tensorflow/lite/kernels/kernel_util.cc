@@ -21,10 +21,12 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -422,8 +424,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
     return kTfLiteError;
   }
   const int output_dims = SizeOfDimension(input, 0);
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(output_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(output_dims));
   for (int i = 0; i < output_dims; i++) {
     shape->data[i] = input->data.i32[i];
   }
@@ -462,8 +463,7 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   const int dims2 = NumDimensions(input2);
   const int out_dims = std::max(dims1, dims2);
 
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(out_dims));
   for (int i = 0; i < out_dims; ++i) {
     const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
@@ -494,8 +494,7 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   const int dims2 = NumDimensions(input2);
   const int dims3 = NumDimensions(input3);
   const int out_dims = std::max(std::max(dims1, dims2), dims3);
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(out_dims));
   for (int i = 0; i < out_dims; ++i) {
     const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);

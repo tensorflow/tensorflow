@@ -42,6 +42,7 @@ struct GpuPipelineOpts {
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
   int32_t cuda_graph_level = 0;
+  bool enable_concurrent_region = false;
 };
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and

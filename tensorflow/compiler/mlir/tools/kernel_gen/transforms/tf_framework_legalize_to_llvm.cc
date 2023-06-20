@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

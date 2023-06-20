@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"

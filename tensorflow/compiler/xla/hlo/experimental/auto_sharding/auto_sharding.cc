@@ -1695,6 +1695,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
 
         if (strategies->leaf_vector.empty()) {
+          strategies->following = nullptr;
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategies, 0);
         }
@@ -2959,16 +2960,6 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
             }
           }
         }
-      }
-    }
-  }
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (inst->opcode() == HloOpcode::kIota) {
-      if (inst->sharding().IsReplicated()) {
-        // For fully replicated iota, leave its sharding annotation to the
-        // ShardingPropagation pass, which can typically do a better job.
-        inst->clear_sharding();
       }
     }
   }
@@ -4315,10 +4306,14 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
           !option_.try_multiple_mesh_shapes, option_.solver_timeout_in_seconds);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
+      } else if (!solver_result.status.ok()) {
+        return AutoShardingResult::kModuleUnchanged;
       } else {
         TF_ASSIGN_OR_RETURN(auto solution, solver_result.status);
         std::tie(s_val, e_val, objective) = solution;
-        this->solver_optimal_objective_value_ = objective;
+        if (mesh_idx == partial_mesh_shapes.size() - 1) {
+          this->solver_optimal_objective_value_ = objective;
+        }
       }
     } else {
       s_val = option_.strategy_vector;
@@ -4452,6 +4447,9 @@ StatusOr<bool> AutoSharding::Run(
     objective_values[i] = pass->GetSolverOptimalObjectiveValue();
     modules[i] = std::move(module_clone);
     delete pass;
+    if (!pass_result.ok()) {
+      continue;
+    }
     VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
             << " has objective value " << objective_values[i];
     if (objective_values[i] >= 0 && min_objective_value > objective_values[i]) {

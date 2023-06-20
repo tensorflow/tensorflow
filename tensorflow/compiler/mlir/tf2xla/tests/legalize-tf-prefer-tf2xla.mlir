@@ -1,5 +1,5 @@
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion device-type=XLA_CPU_JIT legalize-chlo=false use-tf2xla-fallback=true prefer-tf2xla=true use-tf2xla-hlo-importer=false" %s | FileCheck %s
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion device-type=XLA_CPU_JIT legalize-chlo=false prefer-tf2xla=true use-tf2xla-hlo-importer=false" %s | FileCheck --check-prefix NOFALLBACK %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT legalize-chlo=false use-tf2xla-fallback=true prefer-tf2xla=true use-tf2xla-hlo-importer=false" %s | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT legalize-chlo=false prefer-tf2xla=true use-tf2xla-hlo-importer=false" %s | FileCheck --check-prefix NOFALLBACK %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -104,33 +104,32 @@ func.func @fused_conv2d(%input: tensor<1x300x300x40xi8>,
 
   // CHECK:       %[[v0:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-NEXT:  %[[v1:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %[[v2:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %[[v3:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %[[v4:.*]] = mhlo.convert %arg0 : (tensor<1x300x300x40xi8>) -> tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v5:.*]] = mhlo.convert %arg1 : (tensor<3x3x40x40xi8>) -> tensor<3x3x40x40xf32>
-  // CHECK:       %[[v6:.*]] = mhlo.convolution(%[[v4]], %[[v5]])
+  // CHECK-NEXT:  %[[v2:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK-NEXT:  %[[v3:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
+  // CHECK-NEXT:  %[[v4:.*]] = "mhlo.broadcast_in_dim"(%3) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %[[v5:.*]] = mhlo.convert %arg0 : (tensor<1x300x300x40xi8>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %[[v6:.*]] = mhlo.convert %arg1 : (tensor<3x3x40x40xi8>) -> tensor<3x3x40x40xf32>
+  // CHECK:       %[[v7:.*]] = mhlo.convolution(%[[v5]], %[[v6]])
   // CHECK-SAME{LITERAL}:  dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-  // CHECK-SAME{LITERAL}:  window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+  // CHECK-SAME{LITERAL}:  window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]}
   // CHECK-SAME:  batch_group_count = 1
   // CHECK-SAME:  feature_group_count = 1
-  // CHECK-NEXT:  %[[v7:.*]] = mhlo.convert %[[v6]] : tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v8:.*]] = "mhlo.broadcast_in_dim"(%[[v2]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v9:.*]] = mhlo.multiply %[[v7]], %[[v8]] : tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v10:.*]] = mhlo.convert %arg2 : tensor<40xf32>
-  // CHECK-NEXT:  %[[v11:.*]] = "mhlo.broadcast_in_dim"(%[[v10]]) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<40xf32>) -> tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v12:.*]] = mhlo.add %[[v9]], %[[v11]] : tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v13:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK-NEXT:  %[[v14:.*]] = "mhlo.broadcast_in_dim"(%[[v13]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v15:.*]] = mhlo.maximum %[[v12]], %[[v14]] : tensor<1x300x300x40xf32>
-  // CHECK-DAG:   %[[v16:.*]] = mhlo.constant dense<-1.280000e+02> : tensor<f32>
-  // CHECK-DAG:   %[[v17:.*]] = mhlo.constant dense<1.270000e+02> : tensor<f32>
-  // CHECK-DAG:   %[[v18:.*]] = "mhlo.broadcast_in_dim"(%[[v16]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
-  // CHECK-DAG:   %[[v19:.*]] = "mhlo.broadcast_in_dim"(%[[v17]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
-  // CHECK:       %[[v20:.*]] = mhlo.clamp %[[v18]], %[[v15]], %[[v19]] : tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v21:.*]] = mhlo.round_nearest_even %[[v20]] : tensor<1x300x300x40xf32>
-  // CHECK-NEXT:  %[[v22:.*]] = mhlo.convert %[[v21]] : (tensor<1x300x300x40xf32>) -> tensor<1x300x300x40xi8>
-  // CHECK-NEXT:  return %[[v22]] : tensor<1x300x300x40xi8>
-
+  // CHECK-NEXT:  %[[v8:.*]] = mhlo.convert %7 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %[[v9:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-NEXT:  %[[v10:.*]] = "mhlo.broadcast_in_dim"(%9) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %11 = mhlo.multiply %8, %10 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %12 = mhlo.convert %arg2 : tensor<40xf32>
+  // CHECK-NEXT:  %13 = "mhlo.broadcast_in_dim"(%12) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<40xf32>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %14 = mhlo.add %11, %13 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %15 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT:  %16 = "mhlo.broadcast_in_dim"(%15) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %17 = mhlo.maximum %14, %16 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %18 = mhlo.constant dense<1.270000e+02> : tensor<f32>
+  // CHECK-NEXT:  %19 = "mhlo.broadcast_in_dim"(%18) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %20 = mhlo.clamp %4, %17, %19 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %21 = mhlo.round_nearest_even %20 : tensor<1x300x300x40xf32>
+  // CHECK-NEXT:  %22 = mhlo.convert %21 : (tensor<1x300x300x40xf32>) -> tensor<1x300x300x40xi8>
+  // CHECK-NEXT:  return %22 : tensor<1x300x300x40xi8>
   %input_scale = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %side_input_scale = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
   %conv2d = "tf._FusedConv2D"(%input, %filter, %bias, %act, %input_scale, %side_input_scale) {

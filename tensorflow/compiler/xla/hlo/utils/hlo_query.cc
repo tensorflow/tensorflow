@@ -126,6 +126,15 @@ bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
 }
 
+HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
+                                              const HloOpcode opcode) {
+  auto instructions = computation.instructions();
+  auto it = absl::c_find_if(instructions, [&](HloInstruction* instr) {
+    return instr->opcode() == opcode;
+  });
+  return it == instructions.end() ? nullptr : *it;
+}
+
 bool ContainsInstrWithOpcode(const HloComputation* comp,
                              const absl::flat_hash_set<HloOpcode>& opcodes) {
   for (const auto* instr : comp->instructions()) {

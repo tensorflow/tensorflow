@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_UTILS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_UTILS_UTILS_H_
 
+#include <string>
+
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project

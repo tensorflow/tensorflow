@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>

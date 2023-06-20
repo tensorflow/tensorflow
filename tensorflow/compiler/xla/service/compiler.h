@@ -290,6 +290,30 @@ class Compiler {
                       CompileOptions{device_allocator});
   }
 
+  // The following two interfaces are same as the above two, except they
+  // facilitate the loading of buffer assignment from proto if available.
+
+  // Note: The default implementation of the API here does not utilize the given
+  // buffer assignment. Different backends are a expected to override the
+  // following method to achieve this functionality.
+  virtual StatusOr<std::unique_ptr<Executable>> RunBackendWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* /*buffer_assignment_proto*/,
+      se::StreamExecutor* executor, const CompileOptions& options) {
+    LOG(WARNING) << "Ignoring the buffer assignment proto provided.";
+    return RunBackend(std::move(module), executor, options);
+  }
+
+  StatusOr<std::unique_ptr<Executable>> RunBackendWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      se::StreamExecutor* executor,
+      se::DeviceMemoryAllocator* device_allocator) {
+    return RunBackendWithBufferAssignment(std::move(module),
+                                          buffer_assignment_proto, executor,
+                                          CompileOptions{device_allocator});
+  }
+
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
   virtual StatusOr<std::unique_ptr<AotCompilationResult>>

@@ -92,11 +92,12 @@ class FingerprintingTest(test.TestCase):
     fingerprint_def = self._read_fingerprint(
         file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
 
-    # We cannot check this value due to non-determinism in serialization.
+    # We cannot check this value due to non-determinism in saving.
     self.assertGreater(fingerprint_def.saved_model_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      14830488309055091319)
-    self.assertEqual(fingerprint_def.signature_def_hash, 1050878586713189074)
+    self.assertEqual(fingerprint_def.signature_def_hash, 12089566276354592893)
+    self.assertEqual(fingerprint_def.saved_object_graph_hash, 0)
     # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
     # check its value here.
     self.assertGreater(fingerprint_def.checkpoint_hash, 0)
@@ -149,22 +150,6 @@ class FingerprintingTest(test.TestCase):
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")
 
-  def test_write_fingerprint(self):
-    save_dir = os.path.join(self.get_temp_dir(), "model_and_fingerprint")
-    save.save_and_return_nodes(
-        self._create_model_with_data(), save_dir,
-        experimental_skip_checkpoint=True)  # checkpoint data won't be loaded*
-
-    new_dir = os.path.join(self.get_temp_dir(), "fingerprint_dir")
-    os.mkdir(new_dir)
-    serialized_model = self._read_saved_model(  # *here
-        os.path.join(save_dir, "saved_model.pb")).SerializeToString()
-    fingerprinting_utils.write_fingerprint(new_dir, serialized_model)
-
-    model_fingerprint = fingerprinting.read_fingerprint(save_dir)
-    solo_fingerprint = fingerprinting.read_fingerprint(new_dir)
-    self.assertEqual(model_fingerprint, solo_fingerprint)
-
   def test_valid_singleprint(self):
     save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")
     save.save(self._create_model_with_data(), save_dir)
@@ -174,7 +159,7 @@ class FingerprintingTest(test.TestCase):
     # checkpoint_hash is non-deterministic and not included
     self.assertRegex(singleprint,
                      "/".join(["8947653168630125217",  # graph_def_program_hash
-                               "13520770727385282311",  # signature_def_hash
+                               "15354238402988963670",  # signature_def_hash
                                "1613952301283913051"  # saved_object_graph_hash
                                ]))
 

@@ -603,7 +603,6 @@ cc_library(
     ],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 
+#include <memory>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"

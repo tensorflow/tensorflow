@@ -2367,7 +2367,7 @@ struct SelectAndScatterNoOverlapConverter
   using OpConversionPattern<mhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SelectAndScatterOp op, OpAdaptor adaptor,
+      mhlo::SelectAndScatterOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     Location loc = op.getLoc();
     ImplicitLocOpBuilder b(loc, rewriter);

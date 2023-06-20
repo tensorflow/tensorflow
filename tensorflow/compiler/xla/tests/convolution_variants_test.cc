@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -50,16 +49,16 @@ class ConvolutionVariantsTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-2);
 #endif
 
-  void SetUp() override {
-    init_tf32_status_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
+  XlaOp ConvWithHighestPrecision(const XlaOp lhs, const XlaOp rhs,
+                                 absl::Span<const int64_t> window_strides,
+                                 Padding padding) {
+    PrecisionConfig precision_config;
+    // Set the 2 operands to have the HIGHEST precision.
+    precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
+    precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
+    return Conv(lhs, rhs, window_strides, padding, /*feature_group_count=*/1,
+                /*batch_group_count=*/1, &precision_config);
   }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(init_tf32_status_);
-  }
-
- private:
-  bool init_tf32_status_;
 };
 
 XLA_TEST_F(ConvolutionVariantsTest, Minimal) {
@@ -626,7 +625,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter16x16x1x1Input16x16x1x1) {
 
   auto input = ConstantR4FromArray4D<float>(&builder, input_array);
   auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
-  Conv(input, filter, {1, 1}, Padding::kValid);
+  ConvWithHighestPrecision(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(16, 16, 1, 1);
   for (int i0 = 0; i0 < 16; ++i0) {

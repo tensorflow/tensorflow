@@ -504,6 +504,31 @@ TEST_F(XlaBuilderTest, AllToAllTuple) {
                                    .WithPredicate(is_replica_group_pred)));
 }
 
+TEST_F(XlaBuilderTest, AllReduceTuple) {
+  XlaBuilder b(TestName());
+  auto shape0 = ShapeUtil::MakeShape(F32, {});
+  auto shape1 = ShapeUtil::MakeShape(F32, {1, 2});
+  auto p0 = Parameter(&b, 0, shape0, "p0");
+  auto p1 = Parameter(&b, 1, shape1, "p1");
+
+  XlaBuilder bsum(TestName());
+  auto f32Scalar = ShapeUtil::MakeShape(F32, {});
+  Add(Parameter(&bsum, 0, f32Scalar, "x"), Parameter(&bsum, 1, f32Scalar, "y"));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+
+  AllReduceTuple({p0, p1}, sum);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // Check shape and replica groups.
+  auto tuple_shape = ShapeUtil::MakeTupleShape({shape0, shape1});
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_THAT(root, GmockMatch(m::Op()
+                                   .WithOpcode(HloOpcode::kAllReduce)
+                                   .WithShapeEqualTo(&tuple_shape)));
+}
+
 TEST_F(XlaBuilderTest, CollectivePermute) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
@@ -527,7 +552,7 @@ TEST_F(XlaBuilderTest, GetDimensionSizeConstant) {
   XlaBuilder b(TestName());
   auto x =
       Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}, {false, true}), "x");
-  // Get dimension size from a contant dimension gives us a constant.
+  // Get dimension size from a constant dimension gives us a constant.
   GetDimensionSize(x, 0);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();

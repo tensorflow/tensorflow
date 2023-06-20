@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"

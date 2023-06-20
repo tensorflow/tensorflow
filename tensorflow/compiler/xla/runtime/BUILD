@@ -19,15 +19,11 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":async_runtime",
-        ":errors",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -37,11 +33,8 @@ xla_cc_test(
     srcs = ["arguments_test.cc"],
     deps = [
         ":arguments",
-        ":types",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -54,7 +47,6 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
         "@tf_runtime//:ref_count",
     ],
@@ -67,7 +59,6 @@ xla_cc_test(
         ":async_runtime",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
     ],
 )
@@ -90,7 +81,6 @@ cc_library(
     hdrs = ["constraints.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -164,7 +154,6 @@ xla_cc_test(
         ":custom_call",
         ":custom_call_registry",
         ":diagnostics",
-        ":executable",
         ":jit_executable",
         ":module",
         ":state",
@@ -219,7 +208,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -268,11 +256,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_options",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@llvm-project//mlir:Support",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -333,10 +322,7 @@ xla_cc_test(
     deps = [
         ":arguments",
         ":async_runtime",
-        ":custom_call",
         ":custom_call_registry",
-        ":diagnostics",
-        ":executable",
         ":ffi",
         ":jit_executable",
         ":results",
@@ -344,7 +330,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -357,7 +342,6 @@ cc_library(
     hdrs = ["jit_executable.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":arguments",
         ":async_values_cache",
         ":constraints",
         ":errors",
@@ -430,7 +414,6 @@ cc_library(
     hdrs = ["module.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":custom_call",
         ":custom_call_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -579,9 +562,6 @@ cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
 )
 
 cc_library(

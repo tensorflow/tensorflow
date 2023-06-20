@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
@@ -90,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
+#include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/dot_dimension_sorter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -342,8 +344,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
-      debug_options.xla_gpu_enable_dot_strength_reduction());
 
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
@@ -601,10 +601,21 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     collectives_pipeline.AddPass<AllReduceReassociate>(
         debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
+    const DebugOptions& debug_options = hlo_module->config().debug_options();
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
-        /*enable_reduce_scatter=*/hlo_module->config()
-            .debug_options()
+        /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
+    if (debug_options.xla_gpu_enable_data_parallel_collective_optimizer()) {
+      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+          /*level_to_operate_on=*/0,
+          /*max_pipelining_per_loop=*/INT64_MAX,
+          /*last_run=*/true,
+          /*process_different_sized_ops=*/true,
+          /*pipelining_direction=*/
+          DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
+      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+    }
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
@@ -681,6 +692,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                          gpu_device_info);
     fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
+    // Running CSE affects how many users an op has. This plays a role in what
+    // we detect as a tiled transpose fusion.
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                          ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -729,7 +744,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     {
       // Convert all collectives to their async form, and then annotate the ones
-      // that actually need to run asynchronously with an GPU specific backend
+      // that actually need to run asynchronously with a GPU specific backend
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
@@ -763,8 +778,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         }
       };
       pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
-      // Try to constant fold fusions that have only const parameters.
-      pipeline.AddPass<HloConstantFolding>();
     }
 
     if (!hlo_module->config().use_spmd_partitioning()) {
@@ -819,6 +832,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   auto& sub_pipeline =
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
+  sub_pipeline.AddPass<CopyFusion>();
   sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
   sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<GpuSanitizeConstantNames>();
@@ -839,8 +853,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -867,9 +879,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
-          !cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
@@ -980,8 +990,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -1177,6 +1185,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
     return result;
   };
+
+  // Disable multi-threading during deviceless AOT compilation.
+  // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
+  // enabled.
+  if (!stream_exec) {
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                                 /*shard_number=*/std::nullopt);
+  }
 
   tsl::thread::ThreadPool* thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
@@ -1706,13 +1722,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   }
 
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be two fusion
-  // outputs that consume the fusion parameter, because we do not want to share
-  // the same fusion operand with two different fusion outputs. To make sure
+  // iteration order as the fusion output. Also, there should not be any other
+  // fusion output that accesses it in a different iteration order. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
-  // bitcast or a dynamic update slice with the first operand being on this
-  // path.
+  // bitcast or an elementwise dynamic update slice (i.e. with the first operand
+  // being on this path).
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
@@ -1729,23 +1744,17 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // The output should have at most 1 user: the tuple op (in case of a
-      // multi-output fusion)
-      if (hlo_operand->user_count() > 1) {
-        return false;
-      }
-      continue;
+      // We still need to process the users of 'hlo_operand'. There can be other
+      // users in addition to the tuple user.
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
       if (visited.contains(hlo)) {
         continue;
       }
-      // This check also catches the case that we reach a different fusion
-      // output, as that fusion output would have a tuple op as user, which we
-      // do not allow here.
       if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
            hlo->opcode() == HloOpcode::kCopy) &&
-          hlo->opcode() != HloOpcode::kBitcast) {
+          hlo->opcode() != HloOpcode::kBitcast &&
+          hlo->opcode() != HloOpcode::kTuple) {
         return false;
       }
       visited.insert(hlo);

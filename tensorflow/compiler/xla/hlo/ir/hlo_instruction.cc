@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -3230,9 +3231,18 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    printer->Append(", backend_config=\"");
-    printer->Append(CEscape(backend_config_.GetRawString()));
-    printer->Append("\"");
+    absl::string_view config = backend_config_.GetRawString();
+    printer->Append(", backend_config=");
+    // In the common case that the backend-config is valid-ish JSON, the parser
+    // doesn't need it delimited by quotes, so we can print it without
+    // CEsape'ing.  This is much easier to read.
+    if (LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(CEscape(config));
+      printer->Append("\"");
+    }
   }
 }
 
@@ -4591,6 +4601,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   }
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
+  }
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->mutable_precision_config();
   }
   LOG(FATAL) << "Unimplemented method.";
 }

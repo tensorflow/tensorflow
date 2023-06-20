@@ -18,6 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
@@ -304,7 +308,7 @@ RuntimeFallbackOpHandler::RuntimeFallbackOpHandler(
       device_(std::move(device)),
       tf_device_name_(tf_device_name) {}
 
-RuntimeFallbackOpHandler::~RuntimeFallbackOpHandler() {}
+RuntimeFallbackOpHandler::~RuntimeFallbackOpHandler() = default;
 
 llvm::Error RuntimeFallbackOpHandler::Initialize() {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -265,7 +265,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
                   delegated_nodes.size(), partition_helper.num_total_nodes(),
                   partition_helper.num_partitions());
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(), delegate);
+      context, GetCoreMlKernelRegistration(), BuildTfLiteArray(delegated_nodes).get(), delegate);
 }
 
 TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options) {

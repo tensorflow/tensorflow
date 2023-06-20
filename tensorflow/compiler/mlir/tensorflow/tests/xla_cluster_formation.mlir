@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics  -tf-xla-cluster-formation | FileCheck %s
 
-// Check that we outline the partitioned call to a device cluster (since it has
-// `_xla_compile_device_type`).
+// Check that we outline the partitioned call with `_xla_compile_device_type`
+// to a device cluster.
 // CHECK-LABEL: func.func @xla_must_compile_true
 // CHECK: tf_device.cluster
 // CHECK-NEXT: tf.StatefulPartitionedCall
@@ -21,8 +21,8 @@ func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
 }
 // -----
 
-// Check that we don't outline the partitioned call to a device cluster (since
-// it does not has `_xla_compile_device_type`).
+// Check that we don't outline the partitioned call without
+// `_xla_compile_device_type` to a device cluster.
 // CHECK-LABEL: func.func @xla_must_compile_false
 // CHECK-NOT: tf_device.cluster
 func.func @xla_must_compile_false(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
@@ -38,6 +38,11 @@ func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
 
 // -----
 
+// Check that we only outline the outermost partitioned call with
+// `_xla_compile_device_type` in nested calls to a device cluster. The callee
+// of any partitioned call outside of a device cluster is marked with
+// `tf._noinline = true` to prevent it getting inlined to perseve runtime
+// performance.
 // CHECK-LABEL: func.func @nested_calls
 func.func @nested_calls(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
     %0 = "tf.While"(%arg0) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
@@ -58,6 +63,7 @@ func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
 }
 
 // CHECK-LABEL: func.func @outer_stateful_pcall_func
+// CHECK-SAME: attributes {tf._noinline = true}
 func.func @outer_stateful_pcall_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: tf_device.cluster
   // CHECK-NEXT: tf.StatefulPartitionedCall
@@ -68,8 +74,8 @@ func.func @outer_stateful_pcall_func(%arg0: tensor<i32>) -> (tensor<i32>) {
 }
 
 // CHECK-LABEL: func.func @inner_stateful_pcall_func
+// CHECK-NOT: tf._noinline
 func.func @inner_stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK-NOT: tf_device.cluster
   %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @func} : (tensor<i32>) -> (tensor<i32>)
   func.return %0 : tensor<i32>
 }

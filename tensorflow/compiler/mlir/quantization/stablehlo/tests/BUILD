@@ -8,6 +8,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir/quantization/stablehlo:run_lit.sh",
     size_override = {
@@ -22,10 +23,10 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo-quant-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
         "@llvm-project//mlir:run_lit.sh",
-        # TODO(b/254144841): Add tests in this directory with the proper stablehlo-opt.
     ],
 )
 

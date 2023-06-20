@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_OUTFEED_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_OUTFEED_OPS_H_
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

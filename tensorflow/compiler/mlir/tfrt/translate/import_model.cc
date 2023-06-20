@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -196,6 +198,10 @@ Status ConvertTfMlirToRuntimeExecutable(
     tensorflow::DumpMlirOpToFile("tf_dialect", module);
   }
 
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
+
   // Lower MLIR TF Dialect to MLIR TFRT CoreRT dialect.
   mlir::PassManager pm(module.getContext());
 
@@ -249,6 +255,9 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options) {
   auto pipeline_options = std::make_unique<tensorflow::TfrtPipelineOptions>();
+
+  pipeline_options->saved_model_dir = options.saved_model_dir;
+
   if (!options.default_device.empty()) {
     pipeline_options->default_device = options.default_device;
   }

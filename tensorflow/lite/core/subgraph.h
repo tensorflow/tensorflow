@@ -340,7 +340,9 @@ class Subgraph {
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
-  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() const {
+    return subgraphs_;
+  }
 
   // Returns the location of this object within subgraphs_, or
   // kInvalidSubgraphIndex if subgraphs_ is nullptr or *this is not
@@ -459,13 +461,29 @@ class Subgraph {
   }
 
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
-  // index. If an invalid subgraph index is given, then returns nullptr.
-  TfLiteContext* GetSubgraphContext(int subgraph_index);
+  // index and switches to the delegate context for this subgraph. If an invalid
+  // subgraph index is given, returns kTfLiteError.
+  // NOTE: This function is expected to be paired with ReleaseSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  TfLiteStatus AcquireSubgraphContext(int subgraph_index,
+                                      TfLiteContext** acquired_context);
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to acquire the subgraph context.
+  static TfLiteStatus AcquireSubgraphContext(struct TfLiteContext* context,
+                                             int subgraph_index,
+                                             TfLiteContext** acquired_context);
 
-  // Retrieves a const pointer to the corresponding TfLiteContext of a subgraph
-  // given a subgraph index. If an invalid subgraph index is given, then returns
-  // nullptr.
-  const TfLiteContext* GetSubgraphContext(int subgraph_index) const;
+  // Releases the subgraph context by switching back to the TFLite kernel
+  // context for this specified subgraph.
+  // NOTE: This function is expected to be used after AcquireSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  TfLiteStatus ReleaseSubgraphContext(int subgraph_index);
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to release the subgraph context.
+  static TfLiteStatus ReleaseSubgraphContext(struct TfLiteContext* context,
+                                             int subgraph_index);
 
   // Marks the subgraph with the given index as "delegation-skippable". Returns
   // kTfLiteOk if the given subgraph index is valid and is successfully marked
@@ -575,11 +593,16 @@ class Subgraph {
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Prevent 'context_' from accessing functions that are only available to
-  // delegated kernels.
-  void SwitchToKernelContext();
+  // delegated kernels. Returns kTfLiteError if the counter violation happens,
+  // i.e. if trying to switch to kernel context when it's already at kernel
+  // context.
+  TfLiteStatus SwitchToKernelContext();
 
-  // Add delegate-only functions to 'context_'.
-  void SwitchToDelegateContext();
+  // Add delegate-only functions to 'context_'. Also increment the
+  // `delegate_context_switch_count_` for each call. Returns kTfLiteError if the
+  // count violation happens, i.e. if the counter goes below 0. This is not
+  // expected to happen unless another function arbitrarily modify the counter.
+  TfLiteStatus SwitchToDelegateContext();
 
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'. If registration_external is valid, use the 'init' callback from
@@ -976,7 +999,7 @@ class Subgraph {
 
   // In the future, we'd like a TfLiteIntArray compatible representation.
   // TODO(aselle): replace execution_plan_ with this.
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
+  IntArrayUniquePtr plan_cache_;
 
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
@@ -1065,6 +1088,12 @@ class Subgraph {
   // therefore, TfLiteInterpreter can skip invoking `ModifyGraphWithDelegate` on
   // this subgraph.
   bool is_delegation_skippable_ = false;
+
+  // Count how many times the context has been switched to the delegate context.
+  // Incremented during Acquire(), and decremented during Release().
+  // Initialized to 1 initially because SwitchToKernelContext() is called once
+  // during the Subgraph initialization.
+  int delegate_context_switch_count_ = 1;
 };
 
 }  // namespace tflite

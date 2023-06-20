@@ -41,6 +41,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using tensorflow::AutotuneResult;
+
 struct AutotuneConfig {
   bool should_init_buffers() const { return autotune_level >= 2; }
   bool should_reinit_output_buffer() const { return autotune_level >= 3; }
@@ -63,7 +65,7 @@ se::RedzoneAllocator CreateRedzoneAllocator(
 
 // Select the best algorithm using information from a Blas instruction.
 // Returns the index (into `algorithms`) of the fastest algorithm.
-StatusOr<std::optional<size_t>> GetBestBlasAlgorithm(
+StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
     const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,

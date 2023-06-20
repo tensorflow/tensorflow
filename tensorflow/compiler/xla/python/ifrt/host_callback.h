@@ -63,7 +63,7 @@ class LoadedHostCallback
   // preserved within this `LoadedHostCallback`.
   //
   // TODO(hyeontaek): Change `Serialize()` to return `HostCallback` instead of a
-  // string.
+  // serialized host callback directly.
   virtual StatusOr<std::string> Serialize() const = 0;
 
   static char ID;  // NOLINT

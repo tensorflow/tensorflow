@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_SUPPORT_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_SUPPORT_H_
 
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -53,8 +57,8 @@ struct MlirToHloArgs {
 };
 
 // Variant of guaranteed constant tensors types.
-using GuaranteedConsts = absl::variant<absl::Span<const TensorProto* const>,
-                                       const OpInputList* const>;
+using GuaranteedConsts = std::variant<absl::Span<const TensorProto* const>,
+                                      const OpInputList* const>;
 
 // List of parameters for lowering function library definition to HLO IR.
 struct FunctionToHloArgs {
@@ -95,8 +99,8 @@ xla::Shape GetPerDeviceShape(const xla::Shape& shape,
 tsl::StatusOr<std::unique_ptr<xla::HloModuleConfig>> CreateModuleConfig(
     const xla::ProgramShape& program_shape,
     absl::Span<const xla::Shape> argument_shapes,
-    absl::optional<const xla::Shape> result_layout,
-    absl::optional<const xla::DeviceAssignment> device_assignment,
+    std::optional<const xla::Shape> result_layout,
+    std::optional<const xla::DeviceAssignment> device_assignment,
     int replica_count, int num_partitions,
     const xla::DebugOptions* debug_options, const int* seed,
     const int* launch_id, const bool* alias_passthrough_params,
@@ -106,8 +110,8 @@ tsl::StatusOr<std::unique_ptr<xla::HloModuleConfig>> CreateModuleConfig(
 tsl::StatusOr<std::unique_ptr<xla::HloModuleConfig>> CreateModuleConfig(
     const xla::ProgramShape& program_shape,
     absl::Span<const xla::Shape> argument_shapes,
-    absl::optional<const xla::Shape> result_layout,
-    absl::optional<const xla::DeviceAssignment> device_assignment,
+    std::optional<const xla::Shape> result_layout,
+    std::optional<const xla::DeviceAssignment> device_assignment,
     int replica_count, int num_partitions,
     const xla::DebugOptions* debug_options);
 

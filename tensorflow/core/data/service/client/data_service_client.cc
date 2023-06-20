@@ -381,7 +381,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(WARNING)
+    LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
         << default_protocol << "'; falling back to grpc. "
         << "Original error: " << transfer_server.status();

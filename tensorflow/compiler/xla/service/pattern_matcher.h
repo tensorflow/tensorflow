@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -80,6 +81,7 @@ namespace xla {
 //     - WithOneUser: Instruction is used by exactly one other instruction, but
 //       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //     - WithComparisonDirection: instr has the given direction
+//     - WithConvDnums(string or proto): checks convolution_dimension_numbers().
 //     - WithPredicate: Instruction matches an arbitrary function you pass.
 //       Function must have signature `bool(const HloInstruction*)`.
 //
@@ -1852,6 +1854,54 @@ class HloInstructionPatternComparisonDirectionImpl {
   ComparisonDirection direction_;
 };
 
+class HloInstructionPatternConvDnumsImpl {
+ public:
+  explicit HloInstructionPatternConvDnumsImpl(absl::string_view dnums)
+      : HloInstructionPatternConvDnumsImpl(
+            ParseConvolutionDimensionNumbers(dnums).value()) {}
+
+  explicit HloInstructionPatternConvDnumsImpl(ConvolutionDimensionNumbers dnums)
+      : dnums_(std::move(dnums)) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has convolution dimension numbers "
+        << ConvolutionDimensionNumbersToString(dnums_);
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kConvolution &&
+        inst->opcode() != HloOpcode::kCustomCall) {
+      EXPLAIN << "HloInstruction is not convolution or custom-call and so "
+                 "can't have convolution_dimension_numbers";
+      return false;
+    }
+
+    const ConvolutionDimensionNumbers& actual_dnums =
+        inst->convolution_dimension_numbers();
+    if (!tsl::protobuf::util::MessageDifferencer::Equals(dnums_,
+                                                         actual_dnums)) {
+      EXPLAIN << "convolution_dimension_numbers "
+              << ConvolutionDimensionNumbersToString(actual_dnums)
+              << " don't match expected "
+              << ConvolutionDimensionNumbersToString(dnums_);
+      return false;
+    }
+    return true;
+  }
+
+  ConvolutionDimensionNumbers dnums_;
+};
+
 class HloInstructionPredicateImpl {
  public:
   explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
@@ -2151,6 +2201,13 @@ class HloInstructionPattern {
   // comparison direction.
   auto WithComparisonDirection(ComparisonDirection direction) const {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
+  }
+
+  auto WithConvDnums(absl::string_view dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
+  }
+  auto WithConvDnums(ConvolutionDimensionNumbers dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
   }
 
   auto WithPredicate(HloPredicate fn) const {

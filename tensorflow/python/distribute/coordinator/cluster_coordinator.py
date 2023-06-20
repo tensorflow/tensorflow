@@ -314,7 +314,7 @@ class _CoordinatedClosureQueue(object):
     # that are "in generation". Once an error occurs, error generation is
     # incremented and all subsequent arriving closures (from inflight) are
     # considered "out of generation".
-    self._inflight_closure_count = 0
+    self.inflight_closure_count = 0
 
     self._queue_lock = threading.Lock()
 
@@ -343,6 +343,7 @@ class _CoordinatedClosureQueue(object):
           "In a `ClusterCoordinator`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
+    metric_utils.monitor_int("queued_closures", self._queue.qsize())
     self._tagged_queue = collections.defaultdict(queue.Queue)
     self._error = None
 
@@ -364,6 +365,15 @@ class _CoordinatedClosureQueue(object):
   def _on_watchdog_timeout(self):
     logging.info("inflight_closure_count is %d", self._inflight_closure_count)
     logging.info("current error is %s:%r", self._error, self._error)
+
+  @property
+  def inflight_closure_count(self):
+    return self._inflight_closure_count
+
+  @inflight_closure_count.setter
+  def inflight_closure_count(self, value):
+    self._inflight_closure_count = value
+    metric_utils.monitor_int("inflight_closures", self._inflight_closure_count)
 
   def stop(self):
     with self._queue_lock:
@@ -387,6 +397,7 @@ class _CoordinatedClosureQueue(object):
     while True:
       try:
         closure = self._queue.get(block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._queue_free_slot_condition.notify()
         closure.mark_cancelled()
       except queue.Empty:
@@ -436,6 +447,7 @@ class _CoordinatedClosureQueue(object):
       with self._put_wait_lock, self._queue_lock:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
         self._queue.put(closure, block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._raise_if_error()
         self._closures_queued_condition.notify()
 
@@ -464,10 +476,11 @@ class _CoordinatedClosureQueue(object):
         closure = self._tagged_queue[tag].get(block=False)
         return closure
       closure = self._queue.get(block=False)
+      metric_utils.monitor_int("queued_closures", self._queue.qsize())
       assert closure.tag is None
       assert tag is None or self._tagged_queue[tag].empty()
       self._queue_free_slot_condition.notify()
-      self._inflight_closure_count += 1
+      self.inflight_closure_count += 1
       return closure
 
   def mark_finished(self):
@@ -475,7 +488,7 @@ class _CoordinatedClosureQueue(object):
     with self._queue_lock:
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to mark_finished.")
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
       if self._queue.empty() and self._inflight_closure_count == 0:
@@ -493,8 +506,9 @@ class _CoordinatedClosureQueue(object):
       else:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
         self._queue.put(closure, block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._closures_queued_condition.notify()
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
 
@@ -528,7 +542,7 @@ class _CoordinatedClosureQueue(object):
         raise AssertionError("There is no inflight closures to mark_failed.")
       if self._error is None:
         self._error = e
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
       self._stop_waiting_condition.notify_all()
@@ -836,6 +850,7 @@ class WorkerPreemptionHandler(object):
     # manager did not attempt to cancel the blocking operations.
     if _is_worker_failure(e) and (
         not self._cluster.closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
+      metric_utils.monitor_increment_counter("worker_failures")
       return
     raise e
 

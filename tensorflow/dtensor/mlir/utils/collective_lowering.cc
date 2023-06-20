@@ -589,6 +589,35 @@ mlir::LogicalResult LowerAllReduceOpImpl(
   return mlir::success();
 }
 
+mlir::LogicalResult WrapOpWithCasts(const mlir::RankedTensorType& input_type,
+                                    const mlir::RankedTensorType& output_type,
+                                    mlir::Operation* reduce_op) {
+  mlir::OpBuilder builder(reduce_op);
+  auto intermediate_type = mlir::RankedTensorType::get(
+      output_type.getShape(), input_type.getElementType());
+
+  const mlir::Location loc = reduce_op->getLoc();
+  mlir::TF::CastOp cast_to_long = builder.create<mlir::TF::CastOp>(
+      loc, input_type, reduce_op->getOperand(0));
+  reduce_op->setOperand(0, cast_to_long.getY());
+  reduce_op->getResult(0).setType(intermediate_type);
+
+  mlir::Value result = reduce_op->getResult(0);
+  builder.setInsertionPointAfter(reduce_op);
+  mlir::TF::CastOp cast_to_original =
+      builder.create<mlir::TF::CastOp>(loc, output_type, result);
+  StatusOr<Layout> result_layout =
+      ExtractRequiredSingleLayoutFromOp(result.getDefiningOp());
+
+  if (!result_layout.ok()) {
+    return reduce_op->emitOpError(result_layout.status().message());
+  }
+  SetSingleLayoutOnOp(cast_to_original, *result_layout);
+  reduce_op->getResult(0).replaceAllUsesExcept(cast_to_original.getY(),
+                                               cast_to_original);
+  return mlir::success();
+}
+
 template <class ReduceOpType>
 mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
   mlir::OpBuilder builder(reduce_op);
@@ -596,7 +625,6 @@ mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
   if (!output_layout.ok()) {
     return reduce_op.emitOpError(output_layout.status().message());
   }
-  const mlir::Location loc = reduce_op.getLoc();
   const mlir::Type output_type = reduce_op.getResult().getType();
   const mlir::Type input_type = reduce_op.getOperand(0).getType();
 
@@ -623,36 +651,35 @@ mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
              << "Received '" << reduce_op.getReduceOpAttr().getValue().str()
              << "'";
   }
-  int32_t min_width = 64;
-  if (output_layout->mesh().is_tpu_mesh()) {
-    min_width = 32;
-  }
-  if (mlir::isa<mlir::IntegerType>(tensor_input_type.getElementType()) &&
-      tensor_input_type.getElementType().getIntOrFloatBitWidth() < min_width) {
-    const mlir::Type integer_input_type = mlir::RankedTensorType::get(
-        tensor_input_type.getShape(), builder.getIntegerType(min_width));
-    mlir::TF::CastOp cast_to_long = builder.create<mlir::TF::CastOp>(
-        loc, integer_input_type, reduce_op.getInput());
-    reduce_op.setOperand(0, cast_to_long.getY());
-    auto integer_output_type = mlir::RankedTensorType::get(
-        tensor_output_type.getShape(), builder.getIntegerType(min_width));
-    reduce_op.getOutput().setType(integer_output_type);
-
-    // Add cast back to boolean after reduction.
-    mlir::Value result = reduce_op.getOutput();
-    builder.setInsertionPointAfter(reduce_op);
-    mlir::TF::CastOp cast_to_original =
-        builder.create<mlir::TF::CastOp>(loc, output_type, result);
-    StatusOr<Layout> result_layout =
-        ExtractRequiredSingleLayoutFromOp(result.getDefiningOp());
-    if (!result_layout.ok()) {
-      return reduce_op.emitOpError(result_layout.status().message());
+  if (mlir::isa<mlir::IntegerType>(tensor_input_type.getElementType())) {
+    int32_t min_width = 64;
+    if (output_layout->mesh().is_tpu_mesh()) {
+      min_width = 32;
     }
-    SetSingleLayoutOnOp(cast_to_original, *result_layout);
-    reduce_op.getOutput().replaceAllUsesExcept(cast_to_original.getY(),
-                                               cast_to_original);
-  }
 
+    if (tensor_input_type.getElementType().getIntOrFloatBitWidth() >=
+        min_width) {
+      return mlir::success();
+    }
+    auto input_type = mlir::RankedTensorType::get(
+        tensor_input_type.getShape(), builder.getIntegerType(min_width));
+
+    auto output_type = mlir::RankedTensorType::get(
+        tensor_output_type.getShape(), tensor_input_type.getElementType());
+    return WrapOpWithCasts(input_type, output_type, reduce_op);
+  }
+  if (mlir::isa<mlir::BFloat16Type>(tensor_input_type.getElementType())) {
+    if (output_layout->mesh().is_tpu_mesh()) {
+      return mlir::success();
+    }
+    auto input_type = mlir::RankedTensorType::get(tensor_input_type.getShape(),
+                                                  builder.getF32Type());
+
+    auto output_type = mlir::RankedTensorType::get(
+        tensor_output_type.getShape(), tensor_input_type.getElementType());
+
+    return WrapOpWithCasts(input_type, output_type, reduce_op);
+  }
   return mlir::success();
 }
 

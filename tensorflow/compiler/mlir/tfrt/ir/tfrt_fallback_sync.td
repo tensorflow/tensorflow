@@ -240,4 +240,47 @@ def ConvertFallbackTensorToDhtOp : FallbackSync_Op<"convert_fallback_tensor_to_d
   let assemblyFormat = "operands attr-dict `:` type($dht)";
 }
 
+// TODO(rohitju): This is Ads specific, need to find an appropriate home for it.
+def SetSparseMatrixResourceOp : FallbackSync_Op<"set_sparse_matrix_resource", [CoreRT_TypedAttributeTrait]> {
+  let summary = "Set a Sparse matrix in resource array";
+
+  let description = [{
+    Set a sparse matrix in resource array.
+
+    arg: the matrix to be set in the resource array.
+    index: the index in the resource array
+  }];
+
+  let arguments = (ins
+    TFTensorType:$arg,
+    I64Attr:$index
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
+def GetSparseMatrixResourceOp : FallbackSync_Op<"get_sparse_matrix_resource",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "get a sparse matrix from resource array";
+
+  let description = [{
+    Get a sparse matrix from resource array.
+
+    indices: the indices in the resource array.
+    results: the tensor values for the corresponding indices.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TFTensorType>:$results
+  );
+
+  let assemblyFormat = "attr-dict `:` type($results)";
+}
+
 #endif

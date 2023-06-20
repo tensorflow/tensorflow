@@ -459,6 +459,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall with backend_config in curly braces rather than double quotes.
+{
+"CustomCallWithBackendConfigInCurlyBraces",
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config={key: "value"}
+}
+
+)"
+},
 
 // CustomCall with literal.
 {
@@ -3450,15 +3462,9 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const std::string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
-  Array<int64_t> group_tiling({2});
-  group_tiling(0) = 0;
-  group_tiling(1) = 1;
-  std::vector<int64_t> group0_members({0, 1});
-  std::vector<int64_t> group1_members({2, 3});
-  EXPECT_EQ(
-      HloSharding::PartialTile(group_tiling, {group0_members, group1_members})
-          .ToString(),
-      original);
+  Array<int64_t> tiling_last_dim_replicated({{0, 1}, {2, 3}});
+  EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
+            original);
 }
 
 TEST_F(HloParserTest, ParseShardingSubGroup) {
@@ -4500,6 +4506,23 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, LexesAsJsonDict) {
+  EXPECT_TRUE(LexesAsJsonDict("{}"));
+  EXPECT_TRUE(LexesAsJsonDict("{abc: 123}"));
+  EXPECT_TRUE(LexesAsJsonDict("{{abc: 123}, {{{d}}}}"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"{"})"));
+  EXPECT_FALSE(LexesAsJsonDict(""));
+  EXPECT_FALSE(LexesAsJsonDict("{"));
+  EXPECT_FALSE(LexesAsJsonDict("}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}a"));
+  EXPECT_FALSE(LexesAsJsonDict("a{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{{{}}}"));
 }
 
 }  // namespace

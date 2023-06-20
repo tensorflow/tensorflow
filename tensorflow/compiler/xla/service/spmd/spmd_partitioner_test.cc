@@ -8934,7 +8934,7 @@ ENTRY entry {
       AllOf(op::Shape("f32[2,3]"),
             op::Select(_, op::Pad(op::CollectivePermute(op::Slice(input)), _),
                        input));
-  auto piece2 = AllOf(op::Shape("f32[1,3]"), op::Pad(input, _));
+  auto piece2 = AllOf(op::Shape("f32[1,3]"), op::Slice(input));
   auto concat = op::Concatenate(piece1, piece2);
   auto partially_replicated =
       AllOf(op::Shape("f32[4,3]"),
@@ -12719,7 +12719,7 @@ ENTRY entry {
   %input = f32[16] parameter(0),
     sharding={devices=[16]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
   %pv = f32[] constant(-1)
-  ROOT %slice = f32[32] pad(input, pv), padding=0_16,
+  ROOT %pad = f32[32] pad(input, pv), padding=0_16,
     sharding={devices=[16]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
 })";
 
@@ -12752,6 +12752,46 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Broadcast(op::Constant()), op::Shape("f32[1]")));
+}
+
+TEST_F(SpmdPartitioningTest, PadFrom1To24) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[1] parameter(0), sharding={devices=[8]0,1,2,3,4,5,6,7}
+  %pv = f32[] constant(-1)
+  ROOT %pad = f32[24] pad(input, pv), padding=3_20,
+    sharding={devices=[8]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto cp = op::CollectivePermute(op::Parameter(0));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Shape("f32[3]"),
+            op::Select(_, op::Concatenate(cp, op::Broadcast(op::Constant())),
+                       op::Broadcast(op::Constant()))));
+}
+
+TEST_F(SpmdPartitioningTest, SliceToLessThanHalf) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[100,2] parameter(0), sharding={devices=[2,1]0,1}
+  ROOT slice.20 = f32[6,2] slice(input), slice={[0:6], [0:2]}, sharding={devices=[2,1]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  auto cp = op::CollectivePermute(op::Slice(op::Parameter(0)));
+  auto self = op::Slice(op::Parameter(0));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Select(_, cp, self)));
 }
 
 TEST_F(SpmdPartitioningTest, PartialDusReplicate) {
@@ -13327,6 +13367,26 @@ ENTRY %main.21 {
   EXPECT_NE(scatter, nullptr);
   auto* updates = scatter->operand(2);
   EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmerge) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,8,8,8]{3,2,1,0} parameter(0), sharding={devices=[1,1,2,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  tuple.2 = (f32[8,8,8,8]{3,2,1,0}) tuple(Arg_0.1), sharding={{devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
+  ROOT get-tuple-element.3 = f32[8,8,8,8]{3,2,1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
 }
 
 TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {

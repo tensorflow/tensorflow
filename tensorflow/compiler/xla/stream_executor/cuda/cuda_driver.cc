@@ -470,11 +470,13 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
-  RETURN_IF_CUDA_RES_ERROR(
-      cuFuncSetAttribute(function,
-                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                         shared_mem_bytes),
-      "Failed to set shared memory size");
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_CUDA_RES_ERROR(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
   RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
@@ -853,6 +855,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return false;
   }
   return true;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  if (stream_priority == stream_executor::StreamPriority::Default) {
+    return 0;
+  }
+  int lowest, highest;
+  CUresult res = cuCtxGetStreamPriorityRange(&lowest, &highest);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR)
+        << "Could not query stream priority range. Returning default priority.";
+    return 0;
+  }
+  return stream_priority == stream_executor::StreamPriority::Highest ? highest
+                                                                     : lowest;
 }
 
 #if CUDA_VERSION >= 10020

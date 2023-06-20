@@ -19,6 +19,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #if GOOGLE_CUDA
@@ -117,10 +118,10 @@ class DeviceTracerTest : public ::testing::Test {
 
  protected:
   void ExpectFailure(const Status& status, error::Code code) {
-    EXPECT_FALSE(status.ok()) << status.ToString();
+    EXPECT_FALSE(status.ok()) << status;
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.message();
-      EXPECT_EQ(code, status.code()) << status.ToString();
+      EXPECT_EQ(code, status.code()) << status;
     }
   }
 
