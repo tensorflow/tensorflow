@@ -4451,6 +4451,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       ctx.graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
 
   const int num_nodes = item.graph.node_size();
+  const int intra_op_parallelism_threads =
+      item.optimization_options().intra_op_parallelism_threads;
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd
   // and Activation nodes that were fused into a Conv2D node.
   std::vector<bool> invalidated_nodes(num_nodes);

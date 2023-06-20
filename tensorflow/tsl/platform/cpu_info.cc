@@ -28,7 +28,7 @@ limitations under the License.
 #define HWCAP_CPUID (1 << 11)
 #endif
 #include <fstream>
-#endif
+#endif  // defined(PLATFORM_IS_ARM64)
 
 // SIMD extension querying is only available on x86.
 #ifdef PLATFORM_IS_X86
@@ -359,19 +359,22 @@ void InitCPUIDInfo();
 
 CPUIDInfo *cpuid = nullptr;
 
-// Structure for basic CPUID info.
+// Structure for basic CPUID info
 class CPUIDInfo {
  public:
-  CPUIDInfo() : implementer_(0), variant_(0), cpunum_(0) {}
+  CPUIDInfo()
+      : implementer_(0),
+        variant_(0),
+        cpunum_(0),
+        is_arm_neoverse_v1_(0),
+        is_arm_neoverse_n1_(0) {}
 
   static void Initialize() {
-    // Initialize cpuid struct.
-    if (cpuid != nullptr) {
-      return;
-    }
+    // Initialize CPUIDInfo pointer.
+    if (cpuid != nullptr) return;
 
     cpuid = new CPUIDInfo;
-
+    // Make sure CPUID registers are available before reading them.
     if (!(getauxval(AT_HWCAP) & HWCAP_CPUID)) {
       return;
     }
@@ -414,10 +417,22 @@ class CPUIDInfo {
       if (static_cast<bool>(getline(midr_el1_file, line))) {
         uint32 midr_el1 = std::stoul(line, nullptr, 16);
 
-        // Unpack variant and CPU ID.
+        // Unpack variant and CPU ID
+        // Reference:
+        // https://developer.arm.com/documentation/101427/0101/Register-descriptions/AArch64-system-registers/MIDR-EL1--Main-ID-Register--EL1.
         cpuid->implementer_ = (midr_el1 >> 24) & 0xFF;
         cpuid->variant_ = (midr_el1 >> 20) & 0xF;
         cpuid->cpunum_ = (midr_el1 >> 4) & 0xFFF;
+        if (cpuid->implementer_ == 0x41) {
+          switch (cpuid->cpunum_) {
+            case 0xd40:  // ARM NEOVERSE V1
+              cpuid->is_arm_neoverse_v1_ = 1;
+            case 0xd0c:  // ARM NEOVERSE N1
+              cpuid->is_arm_neoverse_n1_ = 1;
+            default:
+              break;
+          }
+        }
       }
     }
 #endif
@@ -426,10 +441,22 @@ class CPUIDInfo {
   int implementer() const { return implementer_; }
   int cpunum() const { return cpunum_; }
 
+  static bool TestAarch64CPU(Aarch64CPU cpu) {
+    InitCPUIDInfo();
+    switch (cpu) {
+      case ARM_NEOVERSE_V1:
+        return cpuid->is_arm_neoverse_v1_;
+      default:
+        return 0;
+    }
+  }
+
  private:
   int implementer_;
   int variant_;
   int cpunum_;
+  int is_arm_neoverse_v1_;  // ARM NEOVERSE V1
+  int is_arm_neoverse_n1_;  // ARM NEOVERSE N1
 };
 
 absl::once_flag cpuid_once_flag;
@@ -438,12 +465,20 @@ void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
-#endif
+#endif  // PLATFORM_IS_ARM64
 }  // namespace
 
 bool TestCPUFeature(CPUFeature feature) {
 #ifdef PLATFORM_IS_X86
   return CPUIDInfo::TestFeature(feature);
+#else
+  return false;
+#endif
+}
+
+bool TestAarch64CPU(Aarch64CPU cpu) {
+#ifdef PLATFORM_IS_ARM64
+  return CPUIDInfo::TestAarch64CPU(cpu);
 #else
   return false;
 #endif
