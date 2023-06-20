@@ -231,11 +231,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status FinishVisit(HloInstruction*) override { return OkStatus(); }
 
  protected:
-  // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false,
-                  bool ignore_memory_space = false, bool ignore_tiles = false);
-
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
@@ -253,6 +248,26 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
+  // Helpers that switch on layout_sensitive_.
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false, bool ignore_tiles = false) {
+    if (!opts_.layout_sensitive) {
+      return ShapeUtil::Compatible(a, b);
+    }
+    Shape::Equal equal;
+    if (ignore_memory_space) {
+      equal.IgnoreMemorySpaceInLayout();
+    }
+    if (minor_to_major_only) {
+      equal.MinorToMajorOnlyInLayout();
+    }
+    if (ignore_tiles) {
+      equal.IgnoreTilesInLayout();
+    }
+    return equal(a, b);
+  }
+
   bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
                                      bool minor_to_major_only = false) {
     if (!opts_.layout_sensitive) {
@@ -288,11 +303,6 @@ class ShapeVerifier : public DfsHloVisitor {
                                   int64_t operand_number,
                                   const HloComputation* computation,
                                   int64_t parameter_number);
-
-  // Checks that the shape of async op operands and results match the called
-  // computation parameters and root.
-  Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                       const Shape& async_shape);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes

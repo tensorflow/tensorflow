@@ -317,25 +317,6 @@ Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
   return CheckShape(hlo, hlo->operand(0)->shape());
 }
 
-bool ShapeVerifier::ShapesSame(const Shape& a, const Shape& b,
-                               bool minor_to_major_only,
-                               bool ignore_memory_space, bool ignore_tiles) {
-  if (!opts_.layout_sensitive) {
-    return ShapeUtil::Compatible(a, b);
-  }
-  Shape::Equal equal;
-  if (ignore_memory_space) {
-    equal.IgnoreMemorySpaceInLayout();
-  }
-  if (minor_to_major_only) {
-    equal.MinorToMajorOnlyInLayout();
-  }
-  if (ignore_tiles) {
-    equal.IgnoreTilesInLayout();
-  }
-  return equal(a, b);
-}
-
 // Checks that `hlo`'s set of ReplicaGroups:
 //
 //  - names each replica 0 through n-1 exactly once (where n is either number of
@@ -1534,6 +1515,36 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
   return OkStatus();
 }
 
+Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
+                                     const Shape& async_shape) {
+  if (!async_shape.IsTuple() || async_shape.tuple_shapes_size() < 2) {
+    return InternalError(
+        "The %s expects the async shape to be a tuple of at least two "
+        "elements, found %s.",
+        HloOpcodeString(async_op->opcode()), async_shape.ToString());
+  }
+  ProgramShape computation_shape =
+      async_op->async_wrapped_computation()->ComputeProgramShape();
+  Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
+  if (async_shape.tuple_shapes(0) != param_shape) {
+    return InternalError(
+        "The %s expects the async shape at index {0} to match async "
+        "computation parameter shape (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_shape.tuple_shapes(0).ToString(/*print_layout=*/true),
+        param_shape.ToString(/*print_layout=*/true));
+  }
+  if (async_shape.tuple_shapes(1) != computation_shape.result()) {
+    return InternalError(
+        "The %s expects the async shape at index {1} to match the async "
+        "computation root shape (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_shape.tuple_shapes(1).ToString(/*print_layout=*/true),
+        computation_shape.result().ToString(/*print_layout=*/true));
+  }
+  return OkStatus();
+}
+
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
   absl::string_view async_execution_thread = async_op->async_execution_thread();
   if (async_execution_thread !=
@@ -1568,36 +1579,6 @@ Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
   return OkStatus();
 }
 }  // namespace
-
-Status ShapeVerifier::CheckAsyncOpComputationShapes(
-    const HloInstruction* async_op, const Shape& async_shape) {
-  if (!async_shape.IsTuple() || async_shape.tuple_shapes_size() < 2) {
-    return InternalError(
-        "The %s expects the async shape to be a tuple of at least two "
-        "elements, found %s.",
-        HloOpcodeString(async_op->opcode()), async_shape.ToString());
-  }
-  ProgramShape computation_shape =
-      async_op->async_wrapped_computation()->ComputeProgramShape();
-  Shape param_shape = ShapeUtil::MakeTupleShape(computation_shape.parameters());
-  if (!ShapesSame(async_shape.tuple_shapes(0), param_shape)) {
-    return InternalError(
-        "The %s expects the async shape at index {0} to match async "
-        "computation parameter shape (%s vs %s).",
-        HloOpcodeString(async_op->opcode()),
-        async_shape.tuple_shapes(0).ToString(/*print_layout=*/true),
-        param_shape.ToString(/*print_layout=*/true));
-  }
-  if (!ShapesSame(async_shape.tuple_shapes(1), computation_shape.result())) {
-    return InternalError(
-        "The %s expects the async shape at index {1} to match the async "
-        "computation root shape (%s vs %s).",
-        HloOpcodeString(async_op->opcode()),
-        async_shape.tuple_shapes(1).ToString(/*print_layout=*/true),
-        computation_shape.result().ToString(/*print_layout=*/true));
-  }
-  return OkStatus();
-}
 
 Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(
