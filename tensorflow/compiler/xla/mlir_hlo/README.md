@@ -93,7 +93,7 @@ well-proven HLO IR and introducing more pieces from upstream MLIR
 ([Linalg](https://mlir.llvm.org/docs/Dialects/Linalg/),
 [Vector](https://mlir.llvm.org/docs/Dialects/Vector/),
 [GPU](https://mlir.llvm.org/docs/Dialects/GPU/) dialect, ...).
-[This document](https://www.tensorflow.org/mlir/xla_gpu_codegen) provides more
+[This document](https://www.tensorflow.org/mlir/xla_gpu_codegen?hl=zh-cn) provides more
 information on the current migration of the XLA GPU codegen.
 
 ## MLIR Dialects for XLA-style compilation
