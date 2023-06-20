@@ -648,6 +648,7 @@ class TFLiteConverterBase:
 
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
+    self._experimental_use_buffer_offset = False
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -790,6 +791,7 @@ class TFLiteConverterBase:
         "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
         "mlir_dump_func_regex": self.mlir_dump_func_regex,
         "mlir_enable_timing": self.mlir_enable_timing,
+        "use_buffer_offset": self._experimental_use_buffer_offset,
     }
 
     if self.saved_model_dir:
@@ -1035,15 +1037,17 @@ class TFLiteConverterBase:
     if self._sparsify_model():
       model = _mlir_sparsify(model)
 
-    try:
-      model = _deduplicate_readonly_buffers(model)
-    except Exception:  # pylint: disable=broad-except
-      # Skip buffer deduplication when flatbuffer library is not ready to be
-      # utilized.
-      logging.warning(
-          "Buffer deduplication procedure will be skipped when flatbuffer "
-          "library is not properly loaded"
-      )
+    if not self._experimental_use_buffer_offset:
+      # TODO(b/287476027): move this logic into c++
+      try:
+        model = _deduplicate_readonly_buffers(model)
+      except Exception:  # pylint: disable=broad-except
+        # Skip buffer deduplication when flatbuffer library is not ready to be
+        # utilized.
+        logging.warning(
+            "Buffer deduplication procedure will be skipped when flatbuffer "
+            "library is not properly loaded"
+        )
 
     return model
 
@@ -1067,15 +1071,38 @@ class TFLiteConverterBase:
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
-    if self.exclude_conversion_metadata:
+    if self.exclude_conversion_metadata or self._experimental_use_buffer_offset:
       return result
+    # TODO(b/286886803): add support for adding user metadata with
+    # use_buffer_offset flags
     model_object = flatbuffer_utils.convert_bytearray_to_object(result)
+    if _check_model_use_buffer_offset(model_object):
+      return result
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
+
+
+def _check_model_use_buffer_offset(model_object):
+  """Checks if a model object uses buffer offsets to store constant buffers.
+
+  Args:
+    model_object: tflite model, a python object
+
+  Returns:
+    True of the model_object has the metadata entry "buffer_location"
+    False otherwise
+  """
+  if not model_object.metadata:
+    return False
+  for meta in model_object.metadata:
+    if meta.name.decode("utf-8") == "buffer_location":
+      return True
+
+  return False
 
 
 def _export_metrics(convert_func):
@@ -1166,6 +1193,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     Args:
       graph_def: The TensorFlow GraphDef.
       input_tensors: List of input tensors.
+
     Raise:
       ValueError: Input shape is not specified. Invalid quantization parameters.
     """

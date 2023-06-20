@@ -302,6 +302,7 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   toco_flags.set_post_training_quantize(post_training_quantization);
+  toco_flags.set_use_buffer_offset(use_buffer_offset);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))

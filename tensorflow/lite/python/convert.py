@@ -205,7 +205,6 @@ class OpsSet(enum.Enum):
   # The feature is in early development.
   # The code to execute StableHLO ops in the runtime is to be implemented
   # and the serialization format is not stabilized yet.
-
   EXPERIMENTAL_STABLEHLO_OPS = "EXPERIMENTAL_STABLEHLO_OPS"
 
   def __str__(self):
@@ -582,6 +581,7 @@ def build_conversion_flags(
     mlir_dump_pass_regex=None,
     mlir_dump_func_regex=None,
     mlir_enable_timing=None,
+    use_buffer_offset=False,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -692,6 +692,9 @@ def build_conversion_flags(
       populated.
     mlir_enable_timing: A boolean, if set to true reports the execution time of
       each MLIR pass.
+    use_buffer_offset: Force the model use buffer_offset & buffer_size fields
+      instead of data. i.e. store the constant tensor and custom op binaries
+      outside of Flatbuffers
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -788,6 +791,8 @@ def build_conversion_flags(
   if mlir_enable_timing is not None:
     conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
 
+  if use_buffer_offset is not None:
+    conversion_flags.use_buffer_offset = use_buffer_offset
   return conversion_flags
 
 

@@ -4727,5 +4727,99 @@ class SparsityTest(lite_v2_test_util.ModelTest):
         actual_value.flatten(),
         err=1)
 
+
+class BufferOffsetTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testCOncreteFunctionFloat(self):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1.0, shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter._experimental_use_buffer_offset = True
+    tflite_model = converter.convert()
+
+    # Check output value from converted model.
+    expected_value = root.f(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testConcreteFunctionStringInput(self):
+    class Model(tf.Module):
+
+      @tf.function
+      def __call__(self, x):
+        return x
+
+    root = Model()
+    concrete_func = root.__call__.get_concrete_function(
+        tf.constant([str(x) for x in range(11)])
+    )
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter._experimental_use_buffer_offset = True
+    tflite_model = converter.convert()
+    input_data = tf.constant(
+        [str(x) for x in range(11)], shape=(11,), dtype=tf.dtypes.string
+    )
+    # Check values from converted model.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    my_signature = interpreter.get_signature_runner()
+
+    with self.assertRaises(ValueError) as error:
+      _ = my_signature(x=input_data)
+    self.assertIn(
+        'Passed in value type is not a numpy array, got type ',
+        str(error.exception),
+    )
+
+  @test_util.run_v2_only
+  def testSavedModelSignatureDefs(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    root = self._getMultiFunctionModel()
+    input_data_0 = tf.constant(1.0, shape=[1])
+    input_data_1 = tf.constant(3.0, shape=[1])
+    mul_add_func = root.mul_add.get_concrete_function(
+        input_data_1, input_data_0
+    )
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'mul_add': mul_add_func})
+
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        save_dir, signature_keys=['mul_add']
+    )
+    converter._experimental_use_buffer_offset = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.mul_add(input_data_1, input_data_0)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'mul_add', {'y': input_data_0, 'x': input_data_1}
+    )
+    self.assertEqual(list(results.keys()), ['output_0'])
+    self.assertEqual(expected_value.numpy(), results['output_0'])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['mul_add'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['mul_add'].keys()), ['inputs', 'outputs']
+    )
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
+    self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
+
+
 if __name__ == '__main__':
   test.main()
