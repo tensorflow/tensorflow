@@ -2640,30 +2640,33 @@ void TF_ExtendSession(TF_Session* session, TF_Status* status) {
   session->extend_before_run = false;
 }
 
-const char* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
-  Node* node = &output.oper->node;
+TF_Buffer* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+  Node *node = &output.oper->node;
   tensorflow::CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
   {
     mutex_lock l(graph->mu);
-    tensorflow::shape_inference::InferenceContext* ic =
+    tensorflow::shape_inference::InferenceContext *ic =
         graph->refiner.GetContext(node);
     CHECK(ic != nullptr);
     CHECK_LT(output.index, ic->num_outputs());
-    const auto* shapes_and_types =
+    const auto *shapes_and_types =
         ic->output_handle_shapes_and_types(output.index);
-    if (shapes_and_types == nullptr) return "";
+    if (shapes_and_types == nullptr)
+      return nullptr;
 
-    for (const auto& p : *shapes_and_types) {
-      auto* out_shape_and_type = handle_data.add_shape_and_type();
+    for (const auto &p : *shapes_and_types) {
+      auto *out_shape_and_type = handle_data.add_shape_and_type();
       ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
       out_shape_and_type->set_dtype(p.dtype);
       *out_shape_and_type->mutable_type() = p.type;
     }
   }
-  string result;
-  handle_data.SerializeToString(&result);
-  return result.c_str();
+  string str_data;
+  handle_data.SerializeToString(&str_data);
+
+  TF_Buffer *result = TF_NewBufferFromString(str_data.c_str(), str_data.size());
+  return result;
 }
 
 void TF_SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,

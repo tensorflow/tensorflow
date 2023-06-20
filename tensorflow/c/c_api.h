@@ -1624,7 +1624,7 @@ TF_CAPI_EXPORT extern void TF_ExtendSession(TF_Session* session, TF_Status* stat
 // Returns the serialized CppShapeInferenceResult::HandleData proto for
 // `output` if its a resource or variant tensor, or otherwise returns the empty
 // string.
-TF_CAPI_EXPORT extern const char* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output);
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output);
 
 // Sets `output` based on `proto`, which should be a serialized
 // CppShapeInferenceResult::HandleData proto. `output` should be a resource
