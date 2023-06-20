@@ -197,11 +197,13 @@ class GraphExecutor {
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
       Options options, const FallbackState& fallback_state,
+      std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
       std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Ctor. Public for `Create()`. Do not use directly.
   GraphExecutor(Options options, const FallbackState& fallback_state,
+                std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
                 std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
@@ -241,7 +243,7 @@ class GraphExecutor {
     return *options_.runtime;
   }
 
-  tfrt::ResourceContext& resource_context() { return resource_context_; }
+  tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const Options& options() const { return options_; }
 
@@ -252,6 +254,10 @@ class GraphExecutor {
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_tensor_names);
+
+  const mlrt::KernelRegistry& kernel_registry() const {
+    return *kernel_registry_;
+  }
 
  private:
   // A set of methods to load a client graph.
@@ -287,11 +293,6 @@ class GraphExecutor {
   Options options_;
   std::reference_wrapper<const FallbackState> fallback_state_;
 
-  // TODO(juanlishen): Maybe remove this per-model resource context and delegate
-  // to the one in each `LoadedClientGraph` instead. Ideally, only one resource
-  // context should be passed to the op kernels.
-  tfrt::ResourceContext resource_context_;
-
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;
 
@@ -306,6 +307,8 @@ class GraphExecutor {
       loaded_client_graphs_ TF_GUARDED_BY(loaded_client_graphs_mu_);
 
   std::unique_ptr<mlrt::KernelRegistry> kernel_registry_;
+
+  std::unique_ptr<tfrt::ResourceContext> resource_context_;
 };
 
 void RegisterMlirDialect(mlir::DialectRegistry& registry);

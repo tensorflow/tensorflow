@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -650,6 +649,38 @@ SavedModelImpl::LoadSavedModel(Options options,
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
+
+  auto runner_table = std::make_unique<OpKernelRunnerTable>();
+  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
+
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  // Register infra and standard math kernels
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
+
+  // Creates a ResourceContext and populate it with per model resource from
+  // Runtime.
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  ModelRuntimeContext model_context(&options.graph_execution_options,
+                                    std::string(saved_model_dir),
+                                    resource_context.get());
+
+  {
+    model_context.set_meta_graph_def(&meta_graph_def);
+    TF_RETURN_IF_ERROR(
+        options.graph_execution_options.runtime->CreateRuntimeResources(
+            model_context));
+
+    model_context.set_meta_graph_def(nullptr);
+  }
+
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO(
+      "graph_executor creation", auto graph_executor,
+      GraphExecutor::Create(options.graph_execution_options, *fallback_state,
+                            std::move(resource_context),
+                            std::move(*meta_graph_def.mutable_graph_def()),
+                            std::move(kernel_registry)));
+
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
   if (options.graph_execution_options.enable_mlrt) {
@@ -672,32 +703,17 @@ SavedModelImpl::LoadSavedModel(Options options,
   // Step 3: Initialize runtime states using special BEF functions.
   const auto init_start_time = absl::Now();
 
-  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
-  // Register infra and standard math kernels
-  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
-  tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
-  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
-
   std::optional<mlrt::LoadedExecutable> loaded_executable;
   tfrt::RCReference<tfrt::BEFFile> bef_file;
   if (!bytecode.empty()) {
     loaded_executable.emplace(mlrt::bc::Executable(bytecode.data()),
-                              *kernel_registry);
+                              graph_executor->kernel_registry());
   } else {
     DCHECK(!bef.empty());
     ASSIGN_OR_RETURN_IN_INIT(
         bef_file, tfrt::CreateBefFileFromBefBuffer(
                       *options.graph_execution_options.runtime, bef));
   }
-
-  auto runner_table = std::make_unique<OpKernelRunnerTable>();
-  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
-
-  ASSIGN_OR_RETURN_WITH_STAGE_INFO(
-      "graph_executor creation", auto graph_executor,
-      GraphExecutor::Create(options.graph_execution_options, *fallback_state,
-                            std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
 
   if (loaded_executable) {
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
