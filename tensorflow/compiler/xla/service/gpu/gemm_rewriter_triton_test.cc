@@ -41,6 +41,9 @@ class GemmRewriterTritonTest : public HloTestBase {
   GemmRewriterTritonTest()
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+
+  GpuVersion gpu_version_{
+      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
 
 TEST_F(GemmRewriterTritonTest, TransposeSubdimensionGroup) {
@@ -61,9 +64,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })")
                     .value();
-  GpuVersion gpu_version{
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
-  EXPECT_TRUE(GemmRewriterTriton(gpu_version).Run(module.get()).value());
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -86,11 +87,27 @@ ENTRY e {
     lhs_batch_dims={0}, rhs_batch_dims={0}
 })")
                     .value();
-  GpuVersion gpu_version{
-      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
-  EXPECT_TRUE(GemmRewriterTriton(gpu_version).Run(module.get()).value());
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest, DoNotFuseConstant) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = s8[60,5] parameter(0)
+  c0 = f16[60,5] convert(p0)
+  cst1 = f16[600] constant({...})
+  r1 = f16[5,120] reshape(cst1)
+  ROOT d = f16[60,120] dot(c0, r1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
 }
 
 using TritonDotAnalysisTest = HloTestBase;
