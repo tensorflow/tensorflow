@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/time/time.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+
 namespace tensorflow {
 namespace data {
 
@@ -57,6 +65,18 @@ namespace data {
 class AutoScaler {
  public:
   AutoScaler() = default;
+  // Reports the latest observed processing time from the worker with
+  // `worker_address`. Returns an error if `processing_time` is ZeroDuration or
+  // negative.
+  tsl::Status ReportProcessingTime(const std::string &worker_address,
+                                   absl::Duration processing_time)
+      TF_LOCKS_EXCLUDED(mu_);
+
+ private:
+  mutable tsl::mutex mu_;
+  // Map from worker address to worker throughput.
+  absl::flat_hash_map<std::string, double> worker_throughputs_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data
