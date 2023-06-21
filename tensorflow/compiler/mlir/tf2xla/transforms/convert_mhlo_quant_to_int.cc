@@ -66,6 +66,67 @@ FailureOr<TensorType> GetSameShapeTensorType(Operation *op,
   llvm_unreachable("unhandled type");
 }
 
+// This helper function create ops to requantize `input` tensor and output to
+// `res_int32` tensor. Clamping is omitted because for some ops clamping can be
+// done later to avoid duplicate.
+LogicalResult RequantizeWithoutClamping(
+    mlir::OpState op, Value input, TensorType input_int32_tensor_type,
+    quant::UniformQuantizedType input_quantized_type,
+    quant::UniformQuantizedType result_quantized_type, Value &res_int32,
+    ConversionPatternRewriter &rewriter) {
+  // Convert input to int32 tensor.
+  res_int32 = rewriter.create<mhlo::ConvertOp>(op->getLoc(),
+                                               input_int32_tensor_type, input);
+  // Undo the input zero point.
+  Value input_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                        input_quantized_type.getZeroPoint())));
+  res_int32 = rewriter.create<chlo::BroadcastSubOp>(
+      op->getLoc(), input_int32_tensor_type, res_int32, input_zero_point,
+      nullptr);
+
+  // Adjust the scale.
+  const double effective_scale =
+      input_quantized_type.getScale() / result_quantized_type.getScale();
+  int32_t effective_quantized_fraction;
+  int32_t effective_shift;
+  if (failed(stablehlo::QuantizeMultiplier(
+          effective_scale, effective_quantized_fraction, effective_shift))) {
+    op->emitError("Invalid effective quantization scale.");
+    return failure();
+  }
+  Value multiplier = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(
+                        static_cast<int32_t>(effective_quantized_fraction)));
+  // The effective_quantized_fraction value has been quantized by multiplying
+  // (1 << 15).  So, we have to shift it back by (15 - effective_shift) to get
+  // the desired outcome.
+  Value total_shift = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(15 - effective_shift)));
+
+  // Apply the effective scale with rounding.
+  Value half = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(
+                        static_cast<int32_t>(1 << (14 - effective_shift))));
+  res_int32 = rewriter.create<chlo::BroadcastMulOp>(
+      op->getLoc(), input_int32_tensor_type, res_int32, multiplier, nullptr);
+  res_int32 = rewriter.create<chlo::BroadcastAddOp>(
+      op->getLoc(), input_int32_tensor_type, res_int32, half, nullptr);
+  res_int32 = rewriter.create<chlo::BroadcastShiftRightArithmeticOp>(
+      op->getLoc(), input_int32_tensor_type, res_int32, total_shift, nullptr);
+
+  // Apply the output zero point.
+  Value output_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                        result_quantized_type.getZeroPoint())));
+  res_int32 = rewriter.create<chlo::BroadcastAddOp>(
+      op->getLoc(), input_int32_tensor_type, res_int32, output_zero_point,
+      nullptr);
+
+  return success();
+}
+
 class ConvertMHLOQuantToInt
     : public impl::ConvertMHLOQuantToIntBase<ConvertMHLOQuantToInt> {
  public:
@@ -171,66 +232,27 @@ class ConvertUniformQuantizeOp
       mhlo::UniformQuantizeOp op, UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter,
       const quant::UniformQuantizedType &output_quantized_type) const {
-    // Create an int32 tensor for computation purposes.
+    auto input_quantized_type = getElementTypeOrSelf(op.getOperand().getType())
+                                    .cast<quant::UniformQuantizedType>();
+    auto result_quantized_type = getElementTypeOrSelf(op.getResult().getType())
+                                     .cast<quant::UniformQuantizedType>();
+
     Value input = adaptor.getOperand();
+    Value res_int32;
     auto res_int32_tensor_type_or =
         GetSameShapeTensorType(op, input.getType().cast<TensorType>(),
                                rewriter.getI32Type(), rewriter);
     if (failed(res_int32_tensor_type_or)) {
       return failure();
     }
-    Value res_int32 = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_int32_tensor_type_or, input);
-    // Undo the input zero point.
-    auto input_quantized_type = getElementTypeOrSelf(op.getOperand().getType())
-                                    .cast<quant::UniformQuantizedType>();
-    Value input_zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          input_quantized_type.getZeroPoint())));
-    res_int32 = rewriter.create<chlo::BroadcastSubOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_int32, input_zero_point,
-        nullptr);
 
-    // Adjust the scale.
-    const double effective_scale =
-        input_quantized_type.getScale() / output_quantized_type.getScale();
-    int32_t effective_quantized_fraction;
-    int32_t effective_shift;
-    if (failed(stablehlo::QuantizeMultiplier(
-            effective_scale, effective_quantized_fraction, effective_shift))) {
-      op->emitError("Invalid effective quantization scale.");
+    // Requantize input tensor to have be the same scale/zp as the result.
+    auto res = RequantizeWithoutClamping(
+        op, input, *res_int32_tensor_type_or, input_quantized_type,
+        result_quantized_type, res_int32, rewriter);
+    if (failed(res)) {
       return failure();
     }
-    Value multiplier = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(
-                          static_cast<int32_t>(effective_quantized_fraction)));
-    // The effective_quantized_fraction value has been quantized by multiplying
-    // (1 << 15).  So, we have to shift it back by (15 - effective_shift) to get
-    // the desired outcome.
-    Value total_shift = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getI32IntegerAttr(static_cast<int32_t>(15 - effective_shift)));
-
-    // Apply the effective scale with rounding.
-    Value half = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(
-                          static_cast<int32_t>(1 << (14 - effective_shift))));
-    res_int32 = rewriter.create<chlo::BroadcastMulOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_int32, multiplier,
-        nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_int32, half, nullptr);
-    res_int32 = rewriter.create<chlo::BroadcastShiftRightArithmeticOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_int32, total_shift,
-        nullptr);
-
-    // Apply the output zero point.
-    Value output_zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          output_quantized_type.getZeroPoint())));
-    res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_int32, output_zero_point,
-        nullptr);
 
     Value quantization_min = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
