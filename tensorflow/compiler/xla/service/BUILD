@@ -388,6 +388,43 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_permute_decomposer",
+    srcs = ["collective_permute_decomposer.cc"],
+    hdrs = ["collective_permute_decomposer.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
+        "//tensorflow/compiler/xla/service/graphcycles",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_permute_decomposer_test",
+    srcs = ["collective_permute_decomposer_test.cc"],
+    deps = [
+        ":collective_permute_decomposer",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "constant_value",
     srcs = ["constant_value.cc"],
     hdrs = ["constant_value.h"],
