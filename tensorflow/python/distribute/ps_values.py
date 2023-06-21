@@ -606,6 +606,7 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
       self._handle_name = "Variable:0"
     else:
       self._handle_name = kwargs["handle_name"] + ":0"
+    self._validate_shape = kwargs.get("validate_shape", True)
 
   @classmethod
   def _variable_call(cls, *args, **kwargs):
