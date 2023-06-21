@@ -2234,13 +2234,14 @@ class AlternateMemoryBestFitHeap
   // to avoid unnecessarily adding the chunk to the chunk map.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
-  // Returns true if the addition of an asynchronous copy in the given time
-  // interval would violate the maximum number of asynchronous copies. An extra
-  // async copy limit can be provided to increase the limit of asynchronous
-  // copies for this instance.
+  // Returns true if the addition of num_additional_copies asynchronous copies
+  // in the given time interval would violate the maximum number of asynchronous
+  // copies. An extra  async copy limit can be provided to increase the limit of
+  // asynchronous copies for this instance.
   bool ViolatesMaximumOutstandingAsyncCopies(
       int64_t start_time, int64_t end_time, bool is_prefetch,
-      int64_t extra_async_copy_limit = 0) const;
+      int64_t extra_async_copy_limit = 0,
+      int64_t num_additional_copies = 1) const;
 
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
