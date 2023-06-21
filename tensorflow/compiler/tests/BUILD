@@ -2388,12 +2388,12 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
         "//tensorflow/python/platform:client_testlib",

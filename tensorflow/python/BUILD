@@ -489,15 +489,6 @@ py_strict_library(
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
-py_strict_library(
-    name = "gradients",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:custom_gradient",
-        "//tensorflow/python/ops:gradients",
-    ],
-)
-
 # TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "image_ops",
