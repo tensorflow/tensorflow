@@ -832,7 +832,7 @@ a tf_device.cluster with communication ops to send data to/from device/host:
 func @outside_compilation() -> tensor<f32> {
   %0 = "tf_device.parallel_execute"() ( {
     "tf_device.launch"() ( {
-      %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+      %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
       %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
       %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
       "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
