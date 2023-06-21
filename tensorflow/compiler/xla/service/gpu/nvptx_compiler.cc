@@ -133,6 +133,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_scalar_multiply_reduction(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -196,6 +197,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
     AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
+    algebraic_simplifier_options.set_enable_scalar_multiply_reduction(true);
     mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
         algebraic_simplifier_options);
     mha_fusion_pipeline.AddPass<HloDCE>();

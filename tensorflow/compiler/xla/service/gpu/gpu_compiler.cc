@@ -345,6 +345,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
 
+  // On GPU we deem it safe to convert mul(conv(input, filter), c) to
+  // conv(input, mul(filter, c)).  (This is not 100% true if you are running a
+  // conv with tf32 precision, because the first multiply works in fp32 mode,
+  // and the second effectively gets truncated to tf32.  But it's close enough,
+  // and tf32 is, for the most part, invisible to users.)
+  layout_insensitive_algsimp_opts.set_enable_scalar_multiply_reduction(true);
+
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
@@ -856,6 +863,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
+    options.set_enable_scalar_multiply_reduction(true);
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !debug_options.xla_gpu_enable_fast_min_max());
@@ -993,6 +1001,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
+    options.set_enable_scalar_multiply_reduction(true);
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
