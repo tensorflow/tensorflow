@@ -537,7 +537,19 @@ message DebugOptions {
 
   bool xla_gpu_enable_priority_fusion = 221;
 
-  // Next id: 222
+  // File to write autotune results to. It will be a binary file unless the name
+  // ends with .txt or .textproto. Warning: The results are written at every
+  // compilation, possibly multiple times per process. This only works on CUDA.
+  string xla_gpu_dump_autotune_results_to = 222;
+
+  // File to load autotune results from. It will be considered a binary file
+  // unless the name ends with .txt or .textproto. At most one loading will
+  // happen during the lifetime of one process, even if the first one is
+  // unsuccessful or different file paths are passed here. This only works on
+  // CUDA.
+  string xla_gpu_load_autotune_results_from = 223;
+
+  // Next id: 224
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -62,8 +63,28 @@ namespace xla {
 // padding heuristics it uses, and we don't want that to mean that all users of
 // ahead-of-time autotuning are broken.
 //
-StatusOr<std::string> SerializeAutotuneResults();
-Status LoadAutotuneResults(absl::string_view data);
+StatusOr<std::string> SerializeAutotuneResults(bool as_textproto = false);
+Status LoadAutotuneResults(absl::string_view data, bool as_textproto = false);
+
+// Serializes autotune results into a file.
+//
+// If `file_path` ends with ".txt" or ".textproto", then the textproto format is
+// used, otherwise the binary protobuf format.
+Status SerializeAutotuneResultsToFile(absl::string_view file_path);
+
+// Loads autotune results from a file.
+//
+// If `file_path` ends with ".txt" or ".textproto", then the file is considered
+// to be in the textproto format, otherwise the binary protobuf format.
+Status LoadAutotuneResultsFromFile(absl::string_view file_path);
+
+// Loads autotune results from a file on the first call to this function
+// and simply returns OkStatus on subsequent calls (even if the supplied
+// file_path is different or the first call failed).
+//
+// If `file_path` ends with ".txt" or ".textproto", then the file is considered
+// to be in the textproto format, otherwise the binary protobuf format.
+Status LoadAutotuneResultsFromFileOnce(absl::string_view file_path);
 
 }  // namespace xla
 

@@ -1062,6 +1062,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_priority_fusion),
       debug_options->xla_gpu_enable_priority_fusion(),
       "Enable priority queue for fusion order."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotune_results_to",
+      string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
+      debug_options->xla_gpu_dump_autotune_results_to(),
+      "File to write autotune results to. It will be a binary file unless the "
+      "name ends with .txt or .textproto. Warning: The results are written at "
+      "every compilation, possibly multiple times per process. This only works "
+      "on CUDA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_load_autotune_results_from",
+      string_setter_for(&DebugOptions::set_xla_gpu_load_autotune_results_from),
+      debug_options->xla_gpu_load_autotune_results_from(),
+      "File to load autotune results from. It will be considered a binary file "
+      "unless the name ends with .txt or .textproto. It will be loaded at most "
+      "once per process. This only works on CUDA."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

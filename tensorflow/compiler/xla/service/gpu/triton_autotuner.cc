@@ -603,6 +603,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     options.set_xla_gpu_enable_triton_gemm(false);
     // Avoid dumping compilation steps.
     options.set_xla_dump_to("");
+    options.set_xla_gpu_dump_autotune_results_to("");
+    options.set_xla_gpu_load_autotune_results_from("");
     options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     options.set_xla_gpu_force_compilation_parallelism(1);
@@ -746,6 +748,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     options.set_xla_gpu_enable_xla_runtime_executable(false);
     // Avoid dumping compilation steps of every autotuning variant.
     options.set_xla_dump_to("");
+    options.set_xla_gpu_dump_autotune_results_to("");
+    options.set_xla_gpu_load_autotune_results_from("");
     options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool for PTX compilation - there are maximum
     // two functions to compile here.

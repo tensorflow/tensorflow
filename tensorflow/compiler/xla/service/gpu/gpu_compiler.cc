@@ -197,6 +197,7 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/autotune_serialize.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #elif TENSORFLOW_USE_ROCM
@@ -1034,6 +1035,17 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+#if GOOGLE_CUDA
+  const DebugOptions& debug_options = module->config().debug_options();
+
+  // We are doing this before the timer is started.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_load_autotune_results_from();
+      !file_path.empty()) {
+    TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFileOnce(file_path));
+  }
+#endif  // GOOGLE_CUDA
+
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrCat("GpuCompiler::RunHloPasses for ", module->name()));
@@ -1054,6 +1066,17 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
+
+#if GOOGLE_CUDA
+  // We are doing this after the timer is finished.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_dump_autotune_results_to();
+      !file_path.empty()) {
+    // Warning: This writes the autotune results at every compilation, possibly
+    // multiple times per process.
+    TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(file_path));
+  }
+#endif  // GOOGLE_CUDA
 
   return std::move(module);
 }
