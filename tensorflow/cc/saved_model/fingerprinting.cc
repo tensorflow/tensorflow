@@ -15,21 +15,17 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/path.h"
@@ -39,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
@@ -94,11 +89,11 @@ StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
   // SavedConcreteFunction, using the suffix UID of the function name. Assumes
   // that the trackable children are listed in a deterministic order during
   // serialization.
-  absl::btree_map<int, std::string> uid_to_function_names;
+  absl::btree_map<int64_t, std::string> uid_to_function_names;
   for (const auto& [name, concrete_function] :
        object_graph_def.concrete_functions()) {
     // All valid function names should end in an UID.
-    TF_ASSIGN_OR_RETURN(int uid, graph_regularization::GetSuffixUID(name));
+    TF_ASSIGN_OR_RETURN(int64_t uid, graph_regularization::GetSuffixUID(name));
     uid_to_function_names.insert({uid, name});
   }
   uint64 result_hash = 0;
