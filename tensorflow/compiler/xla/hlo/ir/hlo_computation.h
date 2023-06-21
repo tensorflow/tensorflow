@@ -383,11 +383,13 @@ class HloComputation {
   // present, `async_execution_thread` will be attached to the
   // async-start/update/done instructions as well as wrapped computations.
   // If `replace` is true, replace instruction with the async done instruction.
+  // If `override_names` is true, the clone on `instruction` and the async op
+  // created will get non-default names.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
       absl::string_view async_execution_thread =
           HloInstruction::kMainExecutionThread,
-      bool replace = true);
+      bool replace = true, bool override_names = false);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
