@@ -154,13 +154,15 @@ TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
       /*graph_executor=*/nullptr,
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
-      /*executable_context=*/nullptr);
+      /*executable_context=*/nullptr,
+      /*enable_online_cost_analysis=*/true);
   GraphExecutor::LoadedClientGraph loaded_client_graph_1(
       "name1", /*symbol_uids=*/{},
       /*graph_executor=*/nullptr,
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
-      /*executable_context=*/nullptr);
+      /*executable_context=*/nullptr,
+      /*enable_online_cost_analysis=*/true);
 
   // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a
   // cost recorder for once.

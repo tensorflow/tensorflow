@@ -130,14 +130,18 @@ class GraphExecutor {
                       std::unique_ptr<mlir::MLIRContext> mlir_context,
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
-                      std::shared_ptr<ExecutableContext> executable_context)
+                      std::shared_ptr<ExecutableContext> executable_context,
+                      bool enable_online_cost_analysis)
         : name_(std::move(name)),
           symbol_uids_(std::move(symbol_uids)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
-          tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
-          tfrt_mlir_(std::move(tfrt_mlir)),
-          executable_context_(std::move(executable_context)) {}
+          executable_context_(std::move(executable_context)) {
+      if (enable_online_cost_analysis) {
+        tf_mlir_with_op_keys_ = std::move(tf_mlir_with_op_keys);
+        tfrt_mlir_ = std::move(tfrt_mlir);
+      }
+    }
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
@@ -169,6 +173,7 @@ class GraphExecutor {
     tfd::FallbackResourceArray resource_array_;
     std::unique_ptr<mlir::MLIRContext> mlir_context_;
     // Thread-safety resulted from `create_cost_recorder_once_`.
+    // These OwningOpRefs are temporary storage for recompilation.
     mlir::OwningOpRef<mlir::ModuleOp>
         tf_mlir_with_op_keys_;                     // For recompilation in MLRT.
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;  // For recompilation in TFRT.

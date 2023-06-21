@@ -645,7 +645,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context));
+      std::move(executable_context), options_.enable_online_cost_analysis);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
