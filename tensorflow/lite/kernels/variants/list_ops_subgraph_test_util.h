@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 
-#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -33,6 +32,8 @@ class ListOpsSubgraphBuilder {
   void AddConstSubgraph(Subgraph* subgraph);
 
   void AddReserveSubgraph(Subgraph* subgraph, TensorType element_type);
+
+  void AddReserveStackSubgraph(Subgraph* subgraph);
 
  private:
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,

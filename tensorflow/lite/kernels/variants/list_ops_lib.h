@@ -28,7 +28,10 @@ struct ListReserveOptions {
 
 }  // namespace detail
 namespace ops {
+
 TfLiteRegistration* Register_LIST_RESERVE();
+
+TfLiteRegistration* Register_LIST_STACK();
 
 }  // namespace ops
 }  // namespace variants
