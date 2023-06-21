@@ -5673,6 +5673,21 @@ std::optional<AlternateMemoryBestFitHeap::Chunk>
 AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     const AllocationRequest& request, const AliasedOffset* preferred_offset,
     BufferInterval* alternate_mem_interval) const {
+  SlicedBufferInterval sliced_buffer_interval =
+      SlicedBufferInterval::CreateMutableInterval(*alternate_mem_interval);
+  std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
+                                                      &sliced_buffer_interval);
+  CHECK_LE(chunks.size(), 1);
+  if (chunks.empty()) {
+    return std::nullopt;
+  }
+  return chunks[0];
+}
+
+std::vector<AlternateMemoryBestFitHeap::Chunk>
+AlternateMemoryBestFitHeap::FindBestChunkCandidates(
+    const AllocationRequest& request, const AliasedOffset* preferred_offset,
+    SlicedBufferInterval* alternate_mem_interval) const {
   int64_t end_time = request.end_time;
   if (!preferred_offset) {
     // First find the earliest use that is the same or later than the end time.
@@ -5694,40 +5709,58 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     CHECK(use_time_it != use_times.end());
     int64_t latest_contiguous_use_time = *use_time_it;
 
-    // Find a chunk that's as long living as possible.
-    std::optional<Chunk> last_chunk_candidate;
+    // Find chunks that are as long living as possible.
+    std::vector<Chunk> last_chunk_candidates;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
     (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
-          alternate_mem_interval->end = use;
-          Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);
-          if (chunk_candidate.chunk_end() <= available_heap_size()) {
+          alternate_mem_interval->UpdateEndTime(use);
+          std::vector<Chunk> chunk_candidates =
+              FindChunkCandidates(*alternate_mem_interval);
+          int64_t candidates_end =
+              absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                                       const Chunk& c2) {
+                return c1.chunk_end() < c2.chunk_end();
+              })->chunk_end();
+          if (candidates_end <= available_heap_size()) {
             if (use > latest_matching_use) {
-              last_chunk_candidate = chunk_candidate;
+              last_chunk_candidates = std::move(chunk_candidates);
               latest_matching_use = use;
             }
             return true;
           }
           return false;
         });
-    if (last_chunk_candidate.has_value()) {
-      VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
+    if (!last_chunk_candidates.empty()) {
+      VLOG(3) << "FindBestChunkCandidates earliest use = " << earliest_use
               << ", latest contiguous use = " << latest_contiguous_use_time
               << ", use with available mem = " << latest_matching_use
-              << ", offset = " << last_chunk_candidate->offset;
+              << ", offsets = { "
+              << absl::StrJoin(last_chunk_candidates, ", ",
+                               [](std::string* out, const Chunk& c) {
+                                 absl::StrAppend(out, c.offset);
+                               })
+              << " }";
     }
-    alternate_mem_interval->end = end_time;
-    return last_chunk_candidate;
+    alternate_mem_interval->UpdateEndTime(end_time);
+    return last_chunk_candidates;
   }
   // If a preferred offset is given, try to find an allocation at that offset
   // only.
-  alternate_mem_interval->end = end_time;
-  Chunk chunk_candidate =
-      FindChunkCandidate(*alternate_mem_interval, preferred_offset->offset);
-  if (chunk_candidate.offset == preferred_offset->offset) {
-    return chunk_candidate;
+  alternate_mem_interval->UpdateEndTime(end_time);
+  std::vector<Chunk> chunk_candidates =
+      FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+  int64_t candidates_start =
+      absl::c_min_element(chunk_candidates, [](const Chunk& c1,
+                                               const Chunk& c2) {
+        return c1.offset < c2.offset;
+      })->offset;
+
+  if (candidates_start == preferred_offset->offset) {
+    return chunk_candidates;
   }
-  return std::nullopt;
+
+  return {};
 }
 
 StatusOr<MemorySpaceAssignment::AsyncCopyStats>
