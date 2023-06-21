@@ -120,6 +120,24 @@ struct SparseBroadcastInDimCallRewriter {
   }
 };
 
+template <mhlo::ComparisonDirection CmpDir, mhlo::ComparisonType CmpType>
+struct SparseCmpNoEqualCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two arguments");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    Value lhs = op.getInputs().front();
+    Value rhs = op.getInputs().back();
+    // Uses the explicit type in case this is a sparse tensor.
+    Type ret_tp = op.getResultTypes().front();
+    auto cmp_attr = mhlo::ComparisonTypeAttr::get(op.getContext(), CmpType);
+    // Replaces the call with the compare operation.
+    rewriter.replaceOpWithNewOp<mhlo::CompareOp>(op, ret_tp, lhs, rhs, CmpDir,
+                                                 cmp_attr);
+    return success();
+  }
+};
+
 struct SparseConcatenateCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getResults().size() == 1 && "Need one output tensor");
@@ -412,8 +430,44 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_dot_general", SparseDotCallRewriter()),
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
+      std::make_pair(
+          "sparse_tensor_gt_SIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::GT,
+                                       mhlo::ComparisonType::SIGNED>()),
+      std::make_pair(
+          "sparse_tensor_gt_FLOAT",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::GT,
+                                       mhlo::ComparisonType::FLOAT>()),
+      std::make_pair(
+          "sparse_tensor_gt_UNSIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::GT,
+                                       mhlo::ComparisonType::UNSIGNED>()),
+      std::make_pair(
+          "sparse_tensor_lt_SIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::LT,
+                                       mhlo::ComparisonType::SIGNED>()),
+      std::make_pair(
+          "sparse_tensor_lt_FLOAT",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::LT,
+                                       mhlo::ComparisonType::FLOAT>()),
+      std::make_pair(
+          "sparse_tensor_lt_UNSIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::LT,
+                                       mhlo::ComparisonType::UNSIGNED>()),
       std::make_pair("sparse_tensor_mul",
                      SparseBinaryCallRewriter<mhlo::MulOp>()),
+      std::make_pair(
+          "sparse_tensor_ne_SIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::NE,
+                                       mhlo::ComparisonType::SIGNED>()),
+      std::make_pair(
+          "sparse_tensor_ne_FLOAT",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::NE,
+                                       mhlo::ComparisonType::FLOAT>()),
+      std::make_pair(
+          "sparse_tensor_ne_UNSIGNED",
+          SparseCmpNoEqualCallRewriter<mhlo::ComparisonDirection::NE,
+                                       mhlo::ComparisonType::UNSIGNED>()),
       std::make_pair("sparse_tensor_reduce_and",
                      SparseReduceCallRewriter<mhlo::AndOp>()),
       std::make_pair("sparse_tensor_reduce_max",
