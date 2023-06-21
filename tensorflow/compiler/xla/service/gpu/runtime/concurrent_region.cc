@@ -58,10 +58,13 @@ absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
   se::StreamExecutor* executor = run_options_->stream()->parent();
 
   // Stream borrowing should only happen in the first call to this function.
-  for (int i = borrowed_streams_.size(); i < num_borrowed_streams_; i++) {
-    TF_ASSIGN_OR_RETURN(StreamPool::Ptr ptr,
-                        run_options_->BorrowStream(executor->device_ordinal()));
-    borrowed_streams_.push_back(std::move(ptr));
+  if (borrowed_streams_.empty()) {
+    TF_ASSIGN_OR_RETURN(std::vector<StreamPool::Ptr> borrowed_streams,
+                        run_options_->BorrowStreams(executor->device_ordinal(),
+                                                    num_borrowed_streams_));
+    for (StreamPool::Ptr& stream : borrowed_streams) {
+      borrowed_streams_.push_back(std::move(stream));
+    }
   }
 
   // Switch borrowed streams into capture mode
