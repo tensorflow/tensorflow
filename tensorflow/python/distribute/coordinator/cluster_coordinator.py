@@ -72,6 +72,7 @@ _JOB_WORKER_STRING_IDENTIFIER = "/job:worker"
 RemoteValueStatus = remote_value.RemoteValueStatus
 RemoteValue = remote_value.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
+RemoteVariable = values_lib.RemoteVariable
 PerWorkerValues = values_lib.PerWorkerValues
 
 
@@ -292,15 +293,30 @@ class Closure(object):
 
 
 class ResourceClosure(Closure):
+  """A closure that builds a resource on a worker.
+
+  ResourceClosures keep a reference to the closure object, which is used to
+  rerun the closure upon recovery to ensure  workers have access to the
+  resources they need.
+  """
+
+  def _init_remote_value(self):
+    return RemoteValueImpl(self, self._output_type_spec)
 
   def build_output_remote_value(self):
     if self._output_remote_value_ref is None:
       # We need to remember the Closure object in the `RemoteValue` here.
-      ret = RemoteValueImpl(self, self._output_type_spec)
+      ret = self._init_remote_value()
       self._output_remote_value_ref = weakref.ref(ret)
       return ret
     else:
       return self._output_remote_value_ref()
+
+
+class PerWorkerVariableClosure(ResourceClosure):
+
+  def _init_remote_value(self):
+    return RemoteVariable(self, self._output_type_spec)
 
 
 class _CoordinatedClosureQueue(object):
@@ -1171,7 +1187,7 @@ class Worker(object):
       del closure
 
   def create_resource(self, function, args=None, kwargs=None):
-    """Synchronously creates a per-worker resource represented by a `RemoteValue`.
+    """Asynchronously creates a per-worker resource represented by a `RemoteValue`.
 
     Args:
       function: the resource function to be run remotely. It should be a
@@ -1183,16 +1199,29 @@ class Worker(object):
       one or several RemoteValue objects depending on the function return
       values.
     """
-    # Some notes about the concurrency: currently all the activities related to
-    # the same worker such as creating resources, setting resources' aborted
-    # status, and executing closures happen on the same thread. This allows us
-    # to have simpler logic of concurrency.
-
     closure = ResourceClosure(
         function,
         self._cluster.resource_cancellation_mgr,
         args=args,
         kwargs=kwargs)
+    return self._register_and_schedule_resource_closure(closure)
+
+  def create_variable_resource(self, function, args=None, kwargs=None):
+    """Create a per-worker variable."""
+    closure = PerWorkerVariableClosure(
+        function,
+        self._cluster.resource_cancellation_mgr,
+        args=args,
+        kwargs=kwargs)
+    return self._register_and_schedule_resource_closure(closure)
+
+  def _register_and_schedule_resource_closure(self, closure):
+    """Build remote value for, register for reconstruction, and schedule."""
+    # Some notes about the concurrency: currently all the activities related to
+    # the same worker such as creating resources, setting resources' aborted
+    # status, and executing closures happen on the same thread. This allows us
+    # to have simpler logic of concurrency.
+
     resource_remote_value = closure.build_output_remote_value()
     with self._resource_tracking_lock:
       self._register_resource(resource_remote_value)
@@ -1649,6 +1678,13 @@ class ClusterCoordinator(object):
     results = []
     for w in self._cluster.workers:
       results.append(w.create_resource(fn, args=args, kwargs=kwargs))
+    return PerWorkerValues(tuple(results))
+
+  def _create_per_worker_variables(self, fn, args=None, kwargs=None):
+    """Asynchronously create variables on workers."""
+    results = []
+    for w in self._cluster.workers:
+      results.append(w.create_variable_resource(fn, args=args, kwargs=kwargs))
     return PerWorkerValues(tuple(results))
 
   def fetch(self, val):
