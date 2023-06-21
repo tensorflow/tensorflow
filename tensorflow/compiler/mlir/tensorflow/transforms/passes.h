@@ -224,7 +224,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
