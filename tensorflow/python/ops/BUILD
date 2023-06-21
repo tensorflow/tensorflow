@@ -4379,3 +4379,31 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
     ],
 )
+
+py_strict_library(
+    name = "weak_tensor_ops",
+    srcs = ["weak_tensor_ops.py"],
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/util:dispatch",
+    ],
+)
+
+py_strict_test(
+    name = "weak_tensor_ops_test",
+    srcs = ["weak_tensor_ops_test.py"],
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        ":weak_tensor_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/platform:test",
+    ],
+)
