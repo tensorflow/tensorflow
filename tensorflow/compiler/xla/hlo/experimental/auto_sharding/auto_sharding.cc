@@ -2818,11 +2818,12 @@ void SetHloSharding(const HloInstructionSequence& sequence,
   }
 }
 
-void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
-                                  const StrategyMap& strategy_map,
-                                  const CostGraph& cost_graph,
-                                  absl::Span<const int64_t> s_val,
-                                  const ClusterEnvironment& cluster_env) {
+void SetHloShardingPostProcessing(
+    const HloInstructionSequence& sequence, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
+    const ClusterEnvironment& cluster_env,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   // Post process: fix some corner cases.
@@ -2950,8 +2951,8 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
           continue;
         }
         if (inst->opcode() == HloOpcode::kGetTupleElement) {
-          FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
-                                                     device_mesh);
+          FixMixedMeshShapeReshardingGetTupleElement(
+              inst, inst->sharding(), device_mesh, preserve_shardings);
         } else {
           for (size_t i = 0; i < inst->operand_count(); ++i) {
             if (stra.input_shardings.size() > i) {
@@ -4335,7 +4336,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                    (mesh_idx == partial_mesh_shapes.size() - 1));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       SetHloShardingPostProcessing(sequence, strategy_map, cost_graph, s_val,
-                                   cluster_env);
+                                   cluster_env, &preserve_shardings);
     } else {
       spmd::RecoverShardingsFromPartialMesh(sequence, preserve_shardings);
     }
