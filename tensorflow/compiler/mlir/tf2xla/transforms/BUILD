@@ -222,6 +222,7 @@ tf_cc_test(
         ":test_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/core:test",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -229,6 +230,7 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

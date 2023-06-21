@@ -431,7 +431,7 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
 
   // These passes are grouped together as they have to run in specific order.
-  // Passes before this can run relativley in any order, as long as they happen
+  // Passes before this can run relatively in any order, as long as they happen
   // before legalization.
   AddLegalizationPasses(pm, legalize_chlo, device_type, enable_op_fallback);
 
