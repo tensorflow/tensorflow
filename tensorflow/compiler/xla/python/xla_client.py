@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 163
+_version = 164
 
 # Version number for MLIR:Python components.
 mlir_api_version = 50
@@ -163,8 +163,9 @@ def _use_pjrt_c_api() -> bool:
 def make_tpu_client(use_pjrt_c_api: bool = False):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if use_pjrt_c_api or _use_pjrt_c_api():
-    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-    load_pjrt_plugin_dynamically('tpu', library_path)
+    if not pjrt_plugin_loaded('tpu'):
+      library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+      load_pjrt_plugin_dynamically('tpu', library_path)
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(
