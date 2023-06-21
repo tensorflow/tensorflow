@@ -335,6 +335,9 @@ proto::StableDelegateLoaderSettings ConvertStableDelegateLoaderSettings(
   if (settings.delegate_path() != nullptr) {
     proto_settings.set_delegate_path(settings.delegate_path()->str());
   }
+  if (settings.delegate_name() != nullptr) {
+    proto_settings.set_delegate_name(settings.delegate_name()->str());
+  }
 
   return proto_settings;
 }
