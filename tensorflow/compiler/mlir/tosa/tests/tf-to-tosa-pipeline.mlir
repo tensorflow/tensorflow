@@ -630,6 +630,35 @@ func.func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
 
 // -----
 
+// CHECK-LABEL:   func.func @test_strided_slice_new_axis_mask(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x14x8xf32>) -> tensor<1x14x8x1xf32> {
+// CHECK:           %[[VAL_1:.*]] = "tosa.reshape"(%[[VAL_0]]) <{new_shape = array<i64: 1, 14, 8, 1>}> : (tensor<1x14x8xf32>) -> tensor<1x14x8x1xf32>
+// CHECK:           return %[[VAL_1]] : tensor<1x14x8x1xf32>
+// CHECK:         }
+func.func @test_strided_slice_new_axis_mask(%arg0: tensor<1x14x8xf32>) -> tensor<1x14x8x1xf32> {
+  %strides = "tf.Const"() {device = "", value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+  %begin_end = "tf.Const"() {device = "", value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
+  %res = "tf.StridedSlice"(%arg0, %begin_end, %begin_end, %strides) {begin_mask = 7 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 7 : i64, new_axis_mask = 8 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x14x8xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x14x8x1xf32>
+  func.return %res : tensor<1x14x8x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @test_strided_slice_shrink_axis_mask(
+// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x14x8x1xf32>) -> tensor<1x14x8xf32> {
+// CHECK:           %[[VAL_1:.*]] = "tosa.reshape"(%[[VAL_0]]) <{new_shape = array<i64: 1, 14, 8>}> : (tensor<1x14x8x1xf32>) -> tensor<1x14x8xf32>
+// CHECK:           return %[[VAL_1]] : tensor<1x14x8xf32>
+// CHECK:         }
+func.func @test_strided_slice_shrink_axis_mask(%arg0: tensor<1x14x8x1xf32>) -> tensor<1x14x8xf32> {
+  %strides = "tf.Const"() {device = "", value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+  %begin = "tf.Const"() {device = "", value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
+  %end = "tf.Const"() {device = "", value = dense<[0, 0, 0, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %res = "tf.StridedSlice"(%arg0, %begin, %end, %strides) {begin_mask = 7 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 7 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 8 : i64} : (tensor<1x14x8x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x14x8xf32>
+  func.return %res : tensor<1x14x8xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_select
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg2) <{new_shape = array<i64: 1, 1, 1>}> : (tensor<1xi1>) -> tensor<1x1x1xi1>
 // CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR1]], %arg0, %arg1)

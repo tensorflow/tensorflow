@@ -38,11 +38,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"   // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"   // from @llvm-project
+#include "mlir/IR/Matchers.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
@@ -2310,27 +2310,28 @@ std::optional<Value> convertStridedSliceOp(
   int32_t input_rank = input_type.getRank();
   Type element_type = input_type.getElementType();
 
-  // Conditionally extract begin/end values if requied.
+  // Conditionally extract begin/end values if required.
   SmallVector<int32_t> begin, end, strides;
   if (failed(getVectorFromValue32(strides_value, strides))) {
     (void)rewriter.notifyMatchFailure(op, "strides isn't a constant");
     return std::nullopt;
   }
 
-  // Current configuration does not support negative strides greater than 1.
   // Bail out for now (fix if this proves to be legal).
-  for (auto stride : strides)
-    if (stride < -1) return std::nullopt;
+  if (llvm::any_of(strides, [](auto i) { return i < -1; })) {
+    (void)rewriter.notifyMatchFailure(op, "stride < -1 unsupported");
+    return std::nullopt;
+  }
 
-  bool all_strides_one = true;
-  int32_t strides_size = strides.size();
-  for (auto stride : strides) all_strides_one &= abs(stride) == 1;
+  bool all_strides_one =
+      llvm::all_of(strides, [](auto i) { return abs(i) == 1; });
 
   // If all of the masks are set we can just bypass the entire thing.
+  int32_t strides_size = strides.size();
   const int32_t all_masks_one = (1 << strides_size) - 1;
 
-  if (failed(getVectorFromValue32(begin_value, begin)) &&
-      begin_mask != all_masks_one) {
+  if (begin_mask != all_masks_one &&
+      failed(getVectorFromValue32(begin_value, begin))) {
     (void)rewriter.notifyMatchFailure(op, "begin isn't a constant");
     return std::nullopt;
   }
@@ -2341,11 +2342,6 @@ std::optional<Value> convertStridedSliceOp(
     return std::nullopt;
   }
 
-  if (llvm::any_of(strides, [](auto i) { return i < -1; })) {
-    (void)rewriter.notifyMatchFailure(op, "stride < -1 unsupported");
-    return std::nullopt;
-  }
-
   // Set begin mask values if possible.
   for (const auto& val : llvm::enumerate(begin))
     begin_mask |= (val.value() == 0) << val.index();
@@ -2353,14 +2349,15 @@ std::optional<Value> convertStridedSliceOp(
   // If all begin/end masks are set and striding is one we can just return
   // the matrix with reversed dims (for negative strides).
   if (all_strides_one && begin_mask == all_masks_one &&
-      end_mask == all_masks_one) {
+      end_mask == all_masks_one && new_axis_mask == 0 &&
+      shrink_axis_mask == 0) {
     return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
   // Set the bits true for the remaining dimensions.
   int32_t new_mask_bits = (1 << input_rank) - all_masks_one - 1;
-  begin_mask |= new_mask_bits;
-  end_mask |= new_mask_bits;
+  begin_mask |= (new_mask_bits | new_axis_mask);
+  end_mask |= (new_mask_bits | new_axis_mask);
 
   // Negative values are exclusive from the opposite end while TOSA is
   // inclusive, we offset to adjust for this.
@@ -2441,11 +2438,19 @@ std::optional<Value> convertStridedSliceOp(
         reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
     auto shape = reversed.getType().cast<RankedTensorType>().getShape();
 
+    int new_axis_mask_rank = 0;
+    for (int i = 0; i < 32; ++i) {
+      if ((new_axis_mask & 1 << i)) new_axis_mask_rank = i + 1;
+    }
+    int n_iterations =
+        new_axis_mask_rank > input_rank ? new_axis_mask_rank : input_rank;
+
     SmallVector<int64_t> new_shape;
-    for (int i = 0; i < input_rank; ++i) {
+    for (int i = 0; i < n_iterations; ++i) {
+      if (new_axis_mask & (1 << i)) new_shape.push_back(1);
+
       if (!(shrink_axis_mask & (1 << i))) {
-        if (new_axis_mask & (1 << i)) new_shape.push_back(1);
-        new_shape.push_back((shape[i]));
+        if (i < input_rank) new_shape.push_back((shape[i]));
       }
     }
 
