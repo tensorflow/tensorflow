@@ -97,11 +97,12 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   if (!status.ok()) {
     done(status);
   }
-  std::shared_ptr<xla::PjRtBuffer> device_buffer =
-      tensorflow::AsyncValueTensor::FromTensor(device_tensor)->GetBuffer();
+  xla::PjRtBuffer* device_buffer =
+      tensorflow::AsyncValueTensor::FromTensor(device_tensor)
+          ->GetBuffer()
+          .get();
   xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
-  future.OnReady([literal = std::move(literal), done = std::move(done),
-                  device_buffer = std::move(device_buffer)](
+  future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });
 }
 
