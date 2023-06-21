@@ -264,11 +264,11 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
 // _XlaSendFromHost but the _TPUCompileMlir has not yet been created for device
 // cluster that contains the outside compiled ops. This placeholder should be
 // replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
-TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
+TF::_XlaCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
       RankedTensorType::get({3}, builder.getType<TF::StringType>());
-  return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+  return builder.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
 
@@ -1448,7 +1448,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
       compilation_key_op =
           CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
       compilation_key =
-          llvm::dyn_cast<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+          llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
               compilation_key_op)
               .getProgram();
       device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
