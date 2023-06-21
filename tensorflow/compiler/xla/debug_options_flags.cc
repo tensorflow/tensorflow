@@ -145,6 +145,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_experimental_block_size(false);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
+  opts.set_xla_gpu_enable_priority_fusion(false);
+
   return opts;
 }
 
@@ -1055,6 +1057,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),
       debug_options->xla_gpu_exhaustive_tiling_search(),
       "Enable (slow) search for the Triton GEMM fusion tilings."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_priority_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_priority_fusion),
+      debug_options->xla_gpu_enable_priority_fusion(),
+      "Enable priority queue for fusion order."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
