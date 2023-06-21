@@ -184,6 +184,7 @@ tf_gen_op_wrapper_private_py(
     name = "audio_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/examples/speech_commands:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
 )
