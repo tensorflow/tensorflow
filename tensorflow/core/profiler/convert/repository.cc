@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -47,13 +48,28 @@ StatusOr<SessionSnapshot> SessionSnapshot::Create(
     return errors::InvalidArgument("Can not find XSpace path.");
   }
 
-  if (xspaces.has_value() && xspaces->size() != xspace_paths.size()) {
-    return errors::InvalidArgument(
-        "The size of the XSpace paths: ", xspace_paths.size(), " is not equal ",
-        "to the size of the XSpace proto: ", xspaces->size());
+  if (xspaces.has_value()) {
+    if (xspaces->size() != xspace_paths.size()) {
+      return errors::InvalidArgument(
+          "The size of the XSpace paths: ", xspace_paths.size(),
+          " is not equal ",
+          "to the size of the XSpace proto: ", xspaces->size());
+    }
+    for (size_t i = 0; i < xspace_paths.size(); ++i) {
+      auto host_name = GetHostnameByPath(xspace_paths.at(i));
+      if (xspaces->at(i)->hostnames_size() > 0 && !host_name.empty()) {
+        if (!absl::StrContains(host_name, xspaces->at(i)->hostnames(0))) {
+          return errors::InvalidArgument(
+              "The hostname of xspace path and preloaded xpace don't match at "
+              "index: ",
+              i, ". \nThe host name of xpace path is ", host_name,
+              " but the host name of preloaded xpace is ",
+              xspaces->at(i)->hostnames(0), ".");
+        }
+      }
+    }
   }
 
-  // TODO(profiler): How to validate xspace_paths for pre-loaded XSpaces.
   return SessionSnapshot(std::move(xspace_paths), std::move(xspaces));
 }
 

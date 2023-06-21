@@ -850,6 +850,7 @@ tf_cc_test(
     srcs = ["repository_test.cc"],
     deps = [
         ":repository",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],

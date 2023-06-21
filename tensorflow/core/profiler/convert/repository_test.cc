@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -96,6 +97,30 @@ TEST(Repository, GetSSTableFileWithXSpace) {
       session_snapshot_or.value().GetFilePath("trace_viewer@", "hostname0");
   // The file path should be disabled in this mode.
   EXPECT_THAT(file_path_init_by_xspace, Eq(std::nullopt));
+}
+
+TEST(Repository, MismatchedXSpaceAndPath) {
+  std::vector<std::unique_ptr<XSpace>> xspaces;
+  // prepare host 1.
+  auto space1 = std::make_unique<XSpace>();
+  *(space1->add_hostnames()) = "hostname1";
+  // with index 0 which shouldn't impact the space finding by name.
+  xspaces.push_back(std::move(space1));
+
+  // prepare host 0.
+  auto space0 = std::make_unique<XSpace>();
+  *(space0->add_hostnames()) = "hostname0";
+  // with index 1 which shouldn't impact the space finding by name.
+  xspaces.push_back(std::move(space0));
+
+  auto session_snapshot_or =
+      SessionSnapshot::Create({"log/plugins/profile/hostname0.xplane.pb",
+                               "log/plugins/profile/hostname1.xplane.pb"},
+                              std::move(xspaces));
+  auto error =
+      R"(The hostname of xspace path and preloaded xpace don't match at index: 0. 
+The host name of xpace path is hostname0 but the host name of preloaded xpace is hostname1.)";
+  EXPECT_THAT(session_snapshot_or.status(), Eq(errors::InvalidArgument(error)));
 }
 
 }  // namespace
