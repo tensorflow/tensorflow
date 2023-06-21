@@ -189,6 +189,44 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
     return "MOF-fusion of a transpose and a reduction";
   }
+  // If we are dealing with unnested transpose, make sure that we can still
+  // treat them as unnested transpose after the sibling fusion.
+  if (hero1_is_unnested_transpose || hero2_is_unnested_transpose) {
+    auto check_path_of_intermediate_ops = [](HloInstruction* param) {
+      // Check that there is a path from 'param' to the root consisting of only
+      // Intermediate ops.
+      if (param->user_count() != 1) {
+        return false;
+      }
+      // Start at the user of the parameter.
+      HloInstruction* hlo = param->users()[0];
+      while (hlo->user_count() > 0) {
+        if (!IsIntermediate(hlo)) {
+          return false;
+        }
+        // IsIntermediate checks that the op has at most one user.
+        hlo = hlo->users()[0];
+      }
+      return true;
+    };
+    HloInstruction* fusion1 = hero1->parent()->FusionInstruction();
+    HloInstruction* fusion2 = hero2->parent()->FusionInstruction();
+    if (fusion1 != nullptr && fusion2 != nullptr) {
+      if (hero1_is_unnested_transpose && fusion2->IsUserOf(fusion1)) {
+        int64_t operand_idx = fusion2->operand_index(fusion1);
+        auto hlo = fusion2->fused_parameter(operand_idx);
+        if (!check_path_of_intermediate_ops(hlo)) {
+          return "tiled transpose would become untiled";
+        }
+      } else if (hero2_is_unnested_transpose && fusion1->IsUserOf(fusion2)) {
+        int64_t operand_idx = fusion1->operand_index(fusion2);
+        auto hlo = fusion1->fused_parameter(operand_idx);
+        if (!check_path_of_intermediate_ops(hlo)) {
+          return "tiled transpose would become untiled";
+        }
+      }
+    }
+  }
   return {};
 }
 

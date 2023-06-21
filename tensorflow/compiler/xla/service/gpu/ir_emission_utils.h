@@ -255,6 +255,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 std::optional<TransposeDescription> FindAnyTiledTranspose(
     const HloInstruction& instr);
 
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);
 
