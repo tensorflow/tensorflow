@@ -502,16 +502,6 @@ py_strict_library(
 
 # TODO(b/285020435): Update usages and then remove.
 py_strict_library(
-    name = "nn",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:nn",
-        "//tensorflow/python/ops:nn_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
     name = "metrics",
     tags = ["avoid_dep"],
     deps = [

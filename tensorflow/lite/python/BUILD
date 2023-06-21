@@ -477,7 +477,6 @@ py_test(
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
-        "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/layers",
