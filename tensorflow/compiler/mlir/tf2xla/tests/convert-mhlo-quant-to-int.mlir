@@ -80,66 +80,69 @@ func.func @uniform_quantize_and_dequantize_sparse_tensor_encoding(%arg0: tensor<
 
 // -----
 
-// CHECK-LABEL: func @uniform_quantize_add_dequantize
-func.func @uniform_quantize_add_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL3:.*]] = mhlo.convert %[[VAL2:.*]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL1:.*]], %[[VAL3:.*]] : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[VAL5:.*]], %[[VAL4:.*]], %[[VAL6:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
-  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7:.*]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
-  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32,1.000000e+00:3>>
+// CHECK-LABEL: func @uniform_quantize_add
+func.func @uniform_quantize_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL3:.*]] = mhlo.convert %[[VAL2:.*]] : (tensor<?x?xi8>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL1:.*]], %[[VAL3:.*]] : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL4:.*]], %[[VAL5:.*]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL9:.*]] = mhlo.clamp %[[VAL7:.*]], %[[VAL6:.*]], %[[VAL8:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9:.*]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
-  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  return
 }
 
 // -----
 
-func.func @uniform_quantize_add_dequantize_different_operand_type1(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+// CHECK-LABEL: func @uniform_quantize_add_int4
+func.func @uniform_quantize_add_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  // CHECK-DAG: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi4>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL3:.*]] = mhlo.convert %[[VAL2:.*]] : (tensor<?x?xi4>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[VAL4:.*]] = chlo.broadcast_add %[[VAL1:.*]], %[[VAL3:.*]] : (tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_subtract %[[VAL4:.*]], %[[VAL5:.*]] : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL9:.*]] = mhlo.clamp %[[VAL7:.*]], %[[VAL6:.*]], %[[VAL8:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL10:.*]] = mhlo.convert %[[VAL9:.*]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  return
+}
+
+// -----
+
+func.func @uniform_quantize_add_different_lhs_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
   %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   // expected-error@+2 {{AddOp requires the same quantized element type for all operands and results}}
   // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
   %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
-  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  return
 }
 
 // -----
 
-func.func @uniform_quantize_add_dequantize_different_operand_type2(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @uniform_quantize_add_different_rhs_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
   // expected-error@+2 {{AddOp requires the same quantized element type for all operands and results}}
   // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
   %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
-  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  return
 }
 
 // -----
 
-func.func @uniform_quantize_add_dequantize_different_result_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @uniform_quantize_add_result_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   // expected-error@+2 {{AddOp requires the same quantized element type for all operands and results}}
   // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
   %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
-  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
-}
-
-// -----
-
-func.func @uniform_quantize_add_dequantize_result_storage_type_not_int8(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  // expected-error@+2 {{AddOp result storage type must be int8}}
-  // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
-  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  return
 }
 
 // -----
