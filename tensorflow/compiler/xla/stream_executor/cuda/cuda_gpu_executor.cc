@@ -76,16 +76,6 @@ bool FLAGS_prefer_cubin_to_ptx = true;
 namespace stream_executor {
 namespace gpu {
 
-// Hook that can be used to CUBIN-ate PTX before it is loaded into the driver.
-// It has been observed that loading both PTX and cubins into the driver library
-// can cause it to crash, but loading only CUBINs avoids those crashes;
-// therefore, it's useful to have this hook to hack in uniform CUBIN-ation of
-// PTX code.
-//
-// As this is an implementation-detail workaround, the usage is to declare this
-// variable with extern linkage and populate it from another translation unit.
-std::function<std::string(const std::string&)> g_cubinate;
-
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event->implementation());
@@ -124,58 +114,15 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
                               DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
-  auto status = GpuDriver::Init();
-  if (!status.ok()) {
-    return status;
-  }
-
-  status = GpuDriver::GetDevice(device_ordinal_, &device_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  status = GpuDriver::CreateContext(device_ordinal_, device_, device_options,
-                                    &context_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  return GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_);
+  TF_RETURN_IF_ERROR(GpuDriver::Init());
+  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
+  TF_RETURN_IF_ERROR(GpuDriver::CreateContext(device_ordinal_, device_,
+                                              device_options, &context_));
+  TF_RETURN_IF_ERROR(
+      GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
+  return tsl::OkStatus();
 }
 
-bool GpuExecutor::FindOnDiskForComputeCapability(
-    absl::string_view filename, absl::string_view canonical_suffix,
-    std::string* found_filename) const {
-  if (cc_major_ == 0 && cc_minor_ == 0) {
-    return false;
-  }
-
-  std::string cc_specific =
-      absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
-  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
-    VLOG(2) << "found compute-capability-specific file, using that: "
-            << cc_specific;
-    *found_filename = cc_specific;
-    return true;
-  }
-
-  VLOG(2) << "could not find compute-capability specific file at: "
-          << cc_specific;
-  if (tsl::Env::Default()->FileExists(std::string(filename)).ok()) {
-    *found_filename = std::string(filename);
-    return true;
-  }
-
-  return false;
-}
-
-bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
-                                          absl::string_view canonical_suffix,
-                                          std::string* found_filename) const {
-  LOG(ERROR)
-      << "Feature not supported on CUDA platform (FindOnDiskForISAVersion)";
-  return false;
-}
 // Returns the path to the running executable.
 // N.B. Derived from //knowledge/smalltalk/background_kb.cc
 // Arg: strip_exe: if true, remove the name of the executable itself from the

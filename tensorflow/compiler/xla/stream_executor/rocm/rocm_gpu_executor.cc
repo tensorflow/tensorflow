@@ -171,40 +171,6 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
   return GpuDriver::GetGpuISAVersion(&version_, device_);
 }
 
-bool GpuExecutor::FindOnDiskForComputeCapability(
-    absl::string_view filename, absl::string_view canonical_suffix,
-    string* found_filename) const {
-  LOG(FATAL) << "Feature not supported on ROCM platform "
-                "(FindOnDiskForComputeCapability)";
-  return false;
-}
-
-bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
-                                          absl::string_view canonical_suffix,
-                                          string* found_filename) const {
-  if (version_ == 0) {
-    return false;
-  }
-
-  string cc_specific =
-      absl::StrCat(filename, ".cc", version_, canonical_suffix);
-  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
-    VLOG(2) << "found AMDGPU ISA version-specific file, using that: "
-            << cc_specific;
-    *found_filename = cc_specific;
-    return true;
-  }
-
-  VLOG(2) << "could not find AMDGPU ISA version-specific file at: "
-          << cc_specific;
-  if (tsl::Env::Default()->FileExists(string(filename)).ok()) {
-    *found_filename = string(filename);
-    return true;
-  }
-
-  return false;
-}
-
 // Returns the path to the running executable.
 // N.B. Derived from //knowledge/smalltalk/background_kb.cc
 // Arg: strip_exe: if true, remove the name of the executable itself from the
