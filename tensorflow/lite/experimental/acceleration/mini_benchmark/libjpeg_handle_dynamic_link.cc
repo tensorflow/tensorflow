@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg_handle.h"
 
-#ifdef TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
 #include <dlfcn.h>
-#endif  // TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
-
 #include <stddef.h>
 #include <stdio.h>
 
@@ -32,20 +29,6 @@ namespace decode_jpeg_kernel {
 
 std::unique_ptr<LibjpegHandle> LibjpegHandle::Create(Status &status) {
   std::unique_ptr<LibjpegHandle> handle(new LibjpegHandle());
-
-#ifndef TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
-  // Use statically linked implementation unless otherwise configured.
-  handle->jpeg_std_error_ = jpeg_std_error;
-  handle->jpeg_destroy_decompress_ = jpeg_destroy_decompress;
-  handle->jpeg_create_decompress_ = jpeg_CreateDecompress;
-  handle->jpeg_stdio_src_ = jpeg_stdio_src;
-  handle->jpeg_read_header_ = jpeg_read_header;
-  handle->jpeg_start_decompress_ = jpeg_start_decompress;
-  handle->jpeg_read_scanlines_ = jpeg_read_scanlines;
-  handle->jpeg_finish_decompress_ = jpeg_finish_decompress;
-  status = {kTfLiteOk, ""};
-  return handle;
-#else  // TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
 
   if (!(handle->libjpeg_ = dlopen("libjpeg.so", RTLD_NOW | RTLD_LOCAL))) {
     status = {kTfLiteError, "Failed to load dynamic library."};
@@ -82,15 +65,12 @@ std::unique_ptr<LibjpegHandle> LibjpegHandle::Create(Status &status) {
 #undef LOAD
   status = {kTfLiteOk, ""};
   return handle;
-#endif  // !TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
 }
 
 LibjpegHandle::~LibjpegHandle() {
-#ifdef TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
   if (libjpeg_) {
     dlclose(libjpeg_);
   }
-#endif  // TFLITE_ACCELERATION_USE_SYSTEM_LIBJPEG
 }
 
 }  // namespace decode_jpeg_kernel
