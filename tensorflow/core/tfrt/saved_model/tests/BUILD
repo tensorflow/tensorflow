@@ -603,6 +603,7 @@ cc_library(
     ],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/compiler/mlir/tfrt:backend_compiler",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
@@ -614,6 +615,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "//testing/base/public:gunit_for_library_testonly",
+        "@llvm-project//mlir:FuncDialect",
         "@tf_runtime//:core_runtime_alwayslink",
     ],
     alwayslink = 1,

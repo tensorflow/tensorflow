@@ -540,6 +540,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
     deps = [
+        ":backend_compiler",
         ":function",
         ":tf_to_tfrt",
         ":tfrt_compile_options",
@@ -554,6 +555,7 @@ cc_library(
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:errors",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
@@ -908,4 +910,13 @@ cc_library(
     srcs = ["test_opkernels.cc"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = True,
+)
+
+cc_library(
+    name = "backend_compiler",
+    hdrs = ["backend_compiler.h"],
+    deps = [
+        "//tensorflow/core/tfrt/runtime",
+        "@llvm-project//mlir:IR",
+    ],
 )

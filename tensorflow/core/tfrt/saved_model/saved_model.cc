@@ -687,11 +687,11 @@ SavedModelImpl::LoadSavedModel(Options options,
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
-                      *fallback_state, mlir_module.get()));
+                      *fallback_state, mlir_module.get(), model_context));
   } else {
     RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
         options.graph_execution_options.compile_options, mlir_module.get(),
-        &bef, fallback_state.get()));
+        &bef, model_context, fallback_state.get()));
   }
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;
@@ -1083,9 +1083,14 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   loading_result->resource_array =
       std::make_unique<tfd::FallbackResourceArray>();
 
+  ModelRuntimeContext model_context(
+      &options_.graph_execution_options,
+      options_.graph_execution_options.compile_options.saved_model_dir,
+      &graph_executor_->resource_context());
+
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef, fallback_state_.get()));
+      &loading_result->bef, model_context, fallback_state_.get()));
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
   loading_result->symbol_uids = std::move(symbol_uids);
 

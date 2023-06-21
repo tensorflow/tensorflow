@@ -605,6 +605,11 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto compile_start_time = absl::Now();
   mlir::OwningOpRef<mlir::ModuleOp> module_with_op_keys;
   std::shared_ptr<ExecutableContext> executable_context = nullptr;
+
+  ModelRuntimeContext model_context(&options_,
+                                    options_.compile_options.saved_model_dir,
+                                    resource_context_.get());
+
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
@@ -622,14 +627,16 @@ GraphExecutor::ImportAndCompileClientGraph(
         auto bytecode_buffer,
         tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
             options_.compile_options, fallback_state_, module.get(),
-            &module_with_op_keys));
+            model_context, &module_with_op_keys));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bytecode_buffer), std::move(bytecode_executable));
   } else {
-    ASSIGN_OR_RETURN_IN_COMPILE(auto bef, CompileMlirModuleToBef(module.get()));
+    tfrt::BefBuffer bef;
+    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+        options_.compile_options, module.get(), &bef, model_context));
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(runtime(), bef));
     executable_context = std::make_shared<ExecutableContext>(
@@ -703,14 +710,6 @@ GraphExecutor::ImportClientGraphToMlirModule(
   return tensorflow::ConvertGraphToMlir(
       *optimized_graph.graph, /*debug_info=*/{},
       optimized_graph.graph->flib_def(), graph_import_config, context);
-}
-
-StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
-    mlir::ModuleOp module) const {
-  tfrt::BefBuffer bef;
-  TF_RETURN_IF_ERROR(
-      tensorflow::ConvertTfMlirToBef(options_.compile_options, module, &bef));
-  return bef;
 }
 
 tensorflow::Status GraphExecutor::InitBef(

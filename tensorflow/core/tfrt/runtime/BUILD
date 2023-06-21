@@ -12,6 +12,7 @@ package_group(
     packages = [
         # Authorized users go here.
         "//tensorflow/compiler/xla/service/gpu/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
         # copybara:uncomment "//tensorflow_serving/...",
