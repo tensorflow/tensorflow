@@ -41,5 +41,22 @@ tsl::Status AutoScaler::ReportProcessingTime(const std::string& worker_address,
   return tsl::OkStatus();
 }
 
+tsl::Status AutoScaler::ReportTargetProcessingTime(
+    int64_t consumer_id, absl::Duration target_processing_time)
+    TF_LOCKS_EXCLUDED(mu_) {
+  if (target_processing_time <= absl::ZeroDuration()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot update target_processing_time with a ZeroDuration "
+                     "or negative value: ",
+                     absl::FormatDuration(target_processing_time)));
+  }
+
+  double consumption_rate = 1.0 / absl::ToDoubleSeconds(target_processing_time);
+  tsl::mutex_lock l(mu_);
+  consumption_rates_[consumer_id] = consumption_rate;
+
+  return tsl::OkStatus();
+}
+
 }  // namespace data
 }  // namespace tensorflow

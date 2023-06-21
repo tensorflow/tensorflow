@@ -69,6 +69,49 @@ TEST(AutoScalerTest, ReportProcessingTimeNegativeDuration) {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(AutoScalerTest, ReportTargetProcessingTimeNewConsumer) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(10)));
+}
+
+TEST(AutoScalerTest, ReportTargetProcessingTimeExistingConsumer) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(20)));
+}
+
+TEST(AutoScalerTest, ReportTargetProcessingTimeNewAndExisting) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, absl::Microseconds(20)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(2, absl::Microseconds(30)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(30)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, absl::Microseconds(20)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(2, absl::Microseconds(10)));
+}
+
+TEST(AutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
+  AutoScaler auto_scaler;
+  auto result = auto_scaler.ReportTargetProcessingTime(0, absl::ZeroDuration());
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(AutoScalerTest, ReportTargetProcessingTimeNegativeDuration) {
+  AutoScaler auto_scaler;
+  auto result =
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(-10));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 
 }  // namespace data
