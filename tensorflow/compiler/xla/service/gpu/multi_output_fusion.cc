@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
-#include <stdint.h>
-
 #include <algorithm>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -28,10 +25,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -337,6 +336,9 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     // constants, that should be handled by the regular fusion pass.
     if (producer->opcode() == HloOpcode::kConstant) {
       VLOG(3) << producer->name() << " is a constant.";
+      continue;
+    }
+    if (producer->IsCustomFusion()) {
       continue;
     }
     // First, fuse the consumer ops of the current op, which are siblings.

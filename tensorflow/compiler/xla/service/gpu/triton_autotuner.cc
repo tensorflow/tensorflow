@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -45,9 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/float_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/bitcast_remover.h"
@@ -68,7 +65,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -497,7 +493,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
             bool outputs_match,
             comparator.CompareEqual(stream, output_buffer, reference_buffer));
         if (!outputs_match) {
-          LOG(ERROR) << "Results mismatch between different tilings. "
+          LOG(ERROR) << "Results do not match the reference. "
                      << "This is likely a bug/unexpected loss of precision.";
           CHECK(!autotune_cfg.should_crash_on_check_failure);
           // WRONG_RESULT is not taken seriously by PickBestResult(), so

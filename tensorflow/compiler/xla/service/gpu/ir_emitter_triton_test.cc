@@ -202,7 +202,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p1, %p0)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
   )");
@@ -223,11 +226,15 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p1, %p0)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
-; CHECK-NOT: pad(
-; CHECK-NOT: slice(
+; CHECK-NOT: pad
+; CHECK-NOT: slice
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -246,7 +253,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p1, %p0)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -270,7 +280,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p1, %p0)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -348,7 +361,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%transpose{{[^)]*}}, %p0)
+; CHECK: ENTRY
+; CHECK: transpose
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -371,7 +386,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p1, %transpose)
+; CHECK: ENTRY
+; CHECK: transpose
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -393,7 +410,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%y, %x)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -415,7 +435,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%y, %x)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -438,7 +461,10 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%y, %x)
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -461,8 +487,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
+; CHECK: ENTRY
 ; CHECK: f32[5,3,4]{2,1,0} bitcast(%p1)
-; CHECK: fusion(%p0, %bitcast
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
@@ -485,12 +512,8 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kLoop
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: ROOT
-; CHECK-SAME: bitcast
+; CHECK: kLoop
+; CHECK: kCustom
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
@@ -509,7 +532,8 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK-NOT: __triton
+; CHECK: cublas
+; CHECK-NOT: triton
 )");
 }
 
@@ -525,7 +549,8 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK-NOT: __triton
+; CHECK: cublas
+; CHECK-NOT: triton
 )");
 }
 

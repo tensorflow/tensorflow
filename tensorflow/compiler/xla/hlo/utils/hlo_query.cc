@@ -128,6 +128,13 @@ bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
 }
 
+bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
+  return instr.IsConstant() || ShapeUtil::IsScalar(instr.shape()) ||
+         (HloOpcode::kBroadcast == instr.opcode() &&
+          (instr.operand(0)->IsConstant() ||
+           ShapeUtil::IsScalar(instr.operand(0)->shape())));
+}
+
 bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kBroadcast &&
          IsScalarConstant(instr.operand(0));
