@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -2400,8 +2401,11 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
     bool disable_crash_analysis) {
   LoadImporterDialects(*context);
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(
+      mlir::UnknownLoc::get(context),
+      specs.graph_func_name.empty()
+          ? std::nullopt
+          : std::optional<llvm::StringRef>(specs.graph_func_name));
   NameUniquifier function_name_uniquifier(flib_def);
 
   // importer.PrepareConvert below will attemp to clone the original `graph`
