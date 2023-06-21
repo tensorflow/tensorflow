@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -49,7 +51,8 @@ class GpuHloScheduleTest : public HloTestBase {
   }
 
   HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler,
-                                  bool enable_gpu_async_tracker = false) {
+                                  bool enable_gpu_async_tracker = false,
+                                  absl::string_view fdo_profile = "") {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
@@ -57,6 +60,7 @@ class GpuHloScheduleTest : public HloTestBase {
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(
         enable_gpu_async_tracker);
     config.set_debug_options(debug_options);
+    *config.mutable_fdo_profile() = fdo_profile;
     return config;
   }
 
@@ -318,6 +322,97 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_GT(count_between_pairs[0], 0);
   EXPECT_GT(count_between_pairs[1], 0);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    // Independent compute
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    // 2 Independent collectives.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+
+  struct SubTest {
+    std::string profile;
+    std::string target_start, target_done;
+  };
+  std::vector<SubTest> subtests;
+
+  // Subtest 1: execute with text profile. ar-start/done having long latency,
+  // whereas ar-start1/ar-done1 having short latency. So we expect all compute
+  // to be scheduled between ar-start/ar-done
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+    costs { name: "ar-start1" cost_us: 10.0 }
+  )pb";
+  subtests.push_back({ar_long_latency_proto_text, "ar-start", "ar-done"});
+
+  // Subtest 1: execute with binary profile. ar-start1/done having long latency,
+  // whereas ar-start/ar-done having short latency. So we expect all compute
+  // to be scheduled between ar-start1/ar-done1
+  const std::string ar1_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 10.0 }
+    costs { name: "ar-start1" cost_us: 1000.0 }
+  )pb";
+  xla::ProfiledInstructionsProto profile;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      ar1_long_latency_proto_text, &profile));
+  std::string ar1_long_latency_proto_binary = profile.SerializeAsString();
+  subtests.push_back({profile.SerializeAsString(), "ar-start1", "ar-done1"});
+
+  for (const SubTest& subtest : subtests) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(
+            hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                      /*enable_gpu_async_tracker=*/true,
+                                      /*fdo_profile=*/subtest.profile)));
+    SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+    HloComputation* entry = module->entry_computation();
+
+    // We expect all the math instructions between ar-start/ar-done
+    bool between_target_collective_pair = false;
+    for (const HloInstruction* inst :
+         order.SequentialOrder(*entry)->instructions()) {
+      if (inst->name() == subtest.target_start) {
+        between_target_collective_pair = true;
+      } else if (inst->name() == subtest.target_done) {
+        between_target_collective_pair = false;
+      } else if (inst->opcode() == HloOpcode::kDot ||
+                 inst->opcode() == HloOpcode::kAdd) {
+        EXPECT_TRUE(between_target_collective_pair);
+      }
+    }
+  }
 }
 
 class GpuHloScheduleParameterizedTest

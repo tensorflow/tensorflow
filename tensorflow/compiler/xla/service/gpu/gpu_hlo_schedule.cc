@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 #include "tensorflow/compiler/xla/service/profile_guided_latency_estimator.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -345,6 +347,26 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
 
 std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
     const HloModule* module, const std::string& fingerprint) {
+  ProfiledInstructionsProto profile;
+
+  absl::string_view fdo_profile = module->config().fdo_profile();
+  // First attempt to read the profile from `fdo_profile` in ModuleConfig
+  if (!fdo_profile.empty()) {
+    // Attempt to parse it as a binary proto.
+    if (tsl::ParseProtoUnlimited(&profile, fdo_profile.data(),
+                                 fdo_profile.size())) {
+      return profile;
+    }
+    // If not a binary proto, attempt to parse it as a text proto.
+    profile.Clear();
+    if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
+                                                   &profile)) {
+      return profile;
+    }
+    LOG(ERROR) << "Unable to prase FDO profile: not a valid text or binary "
+                  "ProfiledInstructionsProto";
+  }
+
   const std::string& pgle_profile_file_or_dir_path =
       module->config()
           .debug_options()
@@ -353,7 +375,6 @@ std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
     return std::nullopt;
   }
   tsl::Env* env = tsl::Env::Default();
-  ProfiledInstructionsProto profile;
   // If its a directory, use fingerprint to look for the profile for this
   // specific module.
   if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {

@@ -2670,6 +2670,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:latency_hiding_scheduler",
         "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2683,6 +2685,7 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_hlo_schedule",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:gpu_plugin",
