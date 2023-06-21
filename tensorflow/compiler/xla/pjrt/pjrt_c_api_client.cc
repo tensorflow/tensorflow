@@ -656,6 +656,23 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
   return args.size_in_bytes;
 }
 
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtCApiExecutable::GetCostAnalysis() const {
+  // Initialize function call args
+  PJRT_Executable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  // Make PJRT C API call
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+
+  // Copy returned properties to output map
+  return pjrt::ConvertFromPjRtNamedValueList(args.properties,
+                                             args.num_properties);
+}
+
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PjRtCApiExecutable::GetHloModules() const {
   auto* c_api = pjrt_c_api();
@@ -1210,24 +1227,6 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
   pjrt::LogFatalIfPjrtError(c_api->PJRT_LoadedExecutable_IsDeleted(&args),
                             c_api);
   return args.is_deleted;
-}
-
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-PjRtCApiLoadedExecutable::GetCostAnalysis() const {
-  // Initialize function call args
-  PJRT_LoadedExecutable_GetCostAnalysis_Args args;
-  args.struct_size = PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = c_loaded_executable();
-
-  // Make PJRT C API call
-  const PJRT_Api* c_api = pjrt_c_api();
-  RETURN_STATUS_IF_ERROR(c_api->PJRT_LoadedExecutable_GetCostAnalysis(&args),
-                         c_api);
-
-  // Copy returned properties to output map
-  return pjrt::ConvertFromPjRtNamedValueList(args.properties,
-                                             args.num_properties);
 }
 
 // ---------------------------------- Buffers ----------------------------------

@@ -65,7 +65,7 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
 // populates its cost analysis properties. After this returns successfully,
 // cost analysis properties of the executable can be accessed without mutex.
 static xla::Status PopulateExecutableCostAnalysisIfNeeded(
-    PJRT_LoadedExecutable* executable) {
+    PJRT_Executable* executable) {
   absl::MutexLock lock(&executable->mutex);
   if (!executable->cost_analysis_ran) {
     // Call GetCostAnalysis in the underlying PjRtExecutable
@@ -732,12 +732,11 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   }
 }
 
-PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args) {
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_LoadedExecutable_GetCostAnalysis_Args",
-      PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE,
-      args->struct_size));
+      "PJRT_Executable_GetCostAnalysis_Args",
+      PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
 
   PJRT_RETURN_IF_ERROR(
       PopulateExecutableCostAnalysisIfNeeded(args->executable));

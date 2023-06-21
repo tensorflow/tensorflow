@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 1
+#define PJRT_API_MINOR 2
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1011,24 +1011,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_SizeOfGeneratedCodeInBytes_Args,
 typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 
-struct PJRT_LoadedExecutable_GetCostAnalysis_Args {
+struct PJRT_Executable_GetCostAnalysis_Args {
   size_t struct_size;
   void* priv;
-  PJRT_LoadedExecutable* executable;
+  PJRT_Executable* executable;
   size_t num_properties;  // out
   // `properties` and any embedded data are owned by and have the same lifetime
   // as `executable`.
   PJRT_NamedValue* properties;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_GetCostAnalysis_Args,
-                          properties);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCostAnalysis_Args, properties);
 
 // Get the cost properties for the executable. Different platforms may return
 // different properties; for example, some platforms may return the number of
 // operations, or memory size of the input/output of the executable, based on
 // program analysis.
-typedef PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args);
+typedef PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args);
 
 typedef struct PJRT_SerializedExecutable PJRT_SerializedExecutable;
 
@@ -1528,13 +1527,13 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCostAnalysis);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Serialize);
 
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetExecutable);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDevices);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetCostAnalysis);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Execute);
