@@ -38,8 +38,6 @@ from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
-# Bring in subpackages.
-from tensorflow.python import distribute
 # from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 # from tensorflow.python.layers import layers
