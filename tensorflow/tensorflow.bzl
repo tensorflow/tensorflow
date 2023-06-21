@@ -2485,7 +2485,6 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         exec_properties = tf_exec_properties(kwargs)
 
     test_rule(
-        # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
