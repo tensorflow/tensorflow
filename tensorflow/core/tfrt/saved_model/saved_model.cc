@@ -213,7 +213,7 @@ tensorflow::Status RunBytecodeInitializers(
     const auto& initializer_name = p.name;
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, /*symbol_uid=*/{},
+        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{},
         nullptr, &loaded_executable, /*inputs=*/{}, &outputs, resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
         *options.runtime, fallback_state,
@@ -260,7 +260,7 @@ tensorflow::Status RunBefInitializers(
     DCHECK(func);
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, /*symbol_uid=*/{}, func,
+        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{}, func,
         /*loaded_executable=*/nullptr, /*inputs=*/{}, &outputs,
         resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
