@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <queue>
 #include <stack>
 #include <string>
@@ -172,6 +173,13 @@ class DimensionOrder {
     VLOG(7) << hlo->ToString();
     if (hlo->opcode() == HloOpcode::kParameter) {
       return OkStatus();
+    } else if (hlo->opcode() == HloOpcode::kTranspose ||
+               hlo->opcode() == HloOpcode::kCopy) {
+      return HandleCopyOrTranspose(hlo);
+    } else if (hlo->operand_count() > 0 &&
+               IsTritonSupportedElementwise(
+                   hlo->opcode(), hlo->operand(0)->shape().element_type())) {
+      return OkStatus();
     } else if (hlo->opcode() == HloOpcode::kBitcast) {
       return HandleBitcast(hlo);
     } else if (hlo->opcode() == HloOpcode::kReshape) {
@@ -180,10 +188,10 @@ class DimensionOrder {
         return Unimplemented("Non-bitcast reshape.");
       }
       return HandleBitcast(hlo);
-    } else if (hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy) {
-      return HandleCopyOrTranspose(hlo);
-    } else if (hlo->opcode() == HloOpcode::kConvert) {
+    } else if (hlo_query::IsScalarConstant(hlo) ||
+               hlo_query::IsBroadcastOfScalarConstant(*hlo)) {
+      // Dimension order collapses on a scalar, for simplicity leave it equal
+      // to the output one for now.
       return OkStatus();
     } else {
       return Unimplemented("Instruction: %s", hlo->ToString());
@@ -453,6 +461,10 @@ Status CanFuse(const HloInstruction* hlo, DimensionOrder& dim_order,
                const GpuVersion gpu_version) {
   if (hlo->opcode() == HloOpcode::kConvert) {
     return RequireTritonFusibleConvert(hlo, gpu_version);
+  } else if (hlo->IsElementwise() && hlo->opcode() != HloOpcode::kCopy) {
+    // Temporarily forbid fusing elementwise operations
+    // other than copy and convert.
+    return Unimplemented("Unsupported elementwise operation");
   }
   TF_RETURN_IF_ERROR(dim_order.HandleInstruction(hlo));
   return RequireTritonGemmSupportedDimOrder(dim_order);
@@ -712,6 +724,67 @@ Status MakeDotComputationSplitKBatch(
 }
 
 }  // anonymous namespace
+
+// BF16 is supported in a sense that all operations on it are implemented
+// through F32 and converts have to be inserted into the HLO graph, but
+// they can be missing during fusion.
+
+std::vector<HloOpcode> TritonSupportedUnaryElementwise(
+    PrimitiveType element_type) {
+  std::vector<HloOpcode> ret = {HloOpcode::kConvert};
+  if (element_type == PrimitiveType::PRED) {
+    ret.push_back(HloOpcode::kNot);
+    return ret;
+  }
+  ret.push_back(HloOpcode::kAbs);
+  ret.push_back(HloOpcode::kNegate);
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F64) {
+    absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
+                                        HloOpcode::kExpm1, HloOpcode::kLog,
+                                        HloOpcode::kLog1p, HloOpcode::kRsqrt,
+                                        HloOpcode::kSin, HloOpcode::kSqrt,
+                                        HloOpcode::kCbrt, HloOpcode::kTan,
+                                        HloOpcode::kTanh},
+                 std::back_inserter(ret));
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedBinaryElementwise(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
+            HloOpcode::kCompare};
+  }
+  std::vector<HloOpcode> ret = {HloOpcode::kAdd,      HloOpcode::kCompare,
+                                HloOpcode::kMaximum,  HloOpcode::kMinimum,
+                                HloOpcode::kMultiply, HloOpcode::kSubtract};
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F64) {
+    ret.push_back(HloOpcode::kAtan2);
+    ret.push_back(HloOpcode::kDivide);
+    ret.push_back(HloOpcode::kPower);
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedTernaryElementwise(
+    PrimitiveType element_type) {
+  return {HloOpcode::kSelect};
+}
+
+bool IsTritonSupportedElementwise(HloOpcode opcode,
+                                  PrimitiveType element_type) {
+  return absl::c_linear_search(TritonSupportedUnaryElementwise(element_type),
+                               opcode) ||
+         absl::c_linear_search(TritonSupportedBinaryElementwise(element_type),
+                               opcode) ||
+         absl::c_linear_search(TritonSupportedTernaryElementwise(element_type),
+                               opcode);
+}
 
 Status MakeDotSplitKBatch(
     HloInstruction* dot_fusion,

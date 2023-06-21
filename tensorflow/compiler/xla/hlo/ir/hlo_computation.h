@@ -340,6 +340,10 @@ class HloComputation {
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+  // Same as MakeInstructionPostOrder but starting at any instruction in the
+  // computation, not just the root. Describes the corresponding subgraph.
+  std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
+      HloInstruction&) const;
   std::vector<HloInstruction*> MakeInstructionPostOrder(
       const ChannelDependencies& channel_dependencies) const;
 

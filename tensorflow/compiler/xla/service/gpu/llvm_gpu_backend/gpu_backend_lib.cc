@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
@@ -258,30 +259,13 @@ Status LinkWithBitcodeVector(
   return OkStatus();
 }
 
-// Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path) {
-  if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
-  }
-
-  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
-  }
-
-  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  return LinkWithBitcodeVector(module, {libdevice_path});
-}
-
 Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                const HloModuleConfig& hlo_module_config,
                                const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  TF_RETURN_IF_ERROR(
+      nvptx::LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -564,6 +548,24 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
   // older CUDAs.
   return tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+}
+
+// Links libdevice into the given module if the module needs libdevice.
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                const std::string& libdevice_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return OkStatus();
+  }
+
+  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
+    LOG(WARNING)
+        << "libdevice is required by this HLO module but was not found at "
+        << libdevice_path;
+    return xla::InternalError("libdevice not found at %s", libdevice_path);
+  }
+
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
+  return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
 StatusOr<std::string> CompileToPtx(

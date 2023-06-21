@@ -546,6 +546,15 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
   return dependencies;
 }
 
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
+    HloInstruction& postorder_root) const {
+  std::vector<HloInstruction*> post_order;
+  absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  ComputeInstructionPostOrder(&postorder_root, ComputeChannelDependencies(),
+                              visited, post_order);
+  return post_order;
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   return MakeInstructionPostOrder(ComputeChannelDependencies());
 }

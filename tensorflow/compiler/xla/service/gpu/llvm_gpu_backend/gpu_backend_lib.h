@@ -39,6 +39,10 @@ std::string CantFindCudaMessage(absl::string_view msg,
 // Get path to NVVM libdevice file.
 std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir);
 
+// Link libdevice if functions using it are detected in the module.
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                const std::string& libdevice_path);
+
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
 // be changed.

@@ -697,8 +697,9 @@ HloModule t
 
 triton_dot {
   p0 = s8[101,202] parameter(0)
+  p0c = f32[101,202] convert(p0)
   p1 = f32[202,303] parameter(1)
-  ROOT dot = f32[101,303] dot(p0, p1),
+  ROOT dot = f32[101,303] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -714,8 +715,9 @@ HloModule t
 
 triton_dot {
   p0 = s8[101,202] parameter(0)
+  p0c = f32[101,202] convert(p0)
   p1 = f32[202,303] parameter(1)
-  ROOT dot = f32[101,303] dot(p0, p1),
+  ROOT dot = f32[101,303] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -860,8 +862,9 @@ HloModule t
 
 triton_dot {
   param_0.1 = s8[332,441]{1,0} parameter(0)
+  p0c = f16[332,441]{1,0} convert(param_0.1)
   param_1.1 = f16[441,39]{1,0} parameter(1)
-  ROOT dot = f16[332,39]{1,0} dot(param_0.1, param_1.1),
+  ROOT dot = f16[332,39]{1,0} dot(p0c, param_1.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -905,8 +908,9 @@ HloModule t
 
 triton_dot {
   param_0.1 = s8[332,441]{1,0} parameter(0)
+  p0c = f16[332,441]{1,0} convert(param_0.1)
   param_1.1 = f16[441,39]{1,0} parameter(1)
-  ROOT dot = f16[332,39]{1,0} dot(param_0.1, param_1.1),
+  ROOT dot = f16[332,39]{1,0} dot(p0c, param_1.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -1022,8 +1026,9 @@ HloModule t
 
 triton_dot {
   param_0.1 = s8[144,256]{1,0} parameter(0)
+  p0c = bf16[144,256]{1,0} convert(param_0.1)
   param_1.1 = bf16[256,122]{1,0} parameter(1)
-  ROOT dot = bf16[144,122]{1,0} dot(param_0.1, param_1.1),
+  ROOT dot = bf16[144,122]{1,0} dot(p0c, param_1.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 

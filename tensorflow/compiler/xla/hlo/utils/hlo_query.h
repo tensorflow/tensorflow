@@ -51,6 +51,10 @@ bool AllOperandsAreConstants(const HloInstruction& instruction);
 // Returns whether the instruction is a scalar constant.
 bool IsScalarConstant(const HloInstruction* instruction);
 
+// Returns whether the `instr` is a broadcast and its input is a
+// scalar constant.
+bool IsBroadcastOfScalarConstant(const HloInstruction& instr);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);

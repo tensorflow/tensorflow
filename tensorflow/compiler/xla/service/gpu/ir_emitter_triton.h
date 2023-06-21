@@ -36,6 +36,7 @@ using tensorflow::AutotuneResult;
 // computation centered around a dot instruction.
 // Use tiling and execution parameters from 'config'.
 StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
+                                  absl::string_view libdevice_path,
                                   const HloComputation* computation,
                                   mlir::triton::FuncOp fn,
                                   const AutotuneResult::TritonGemmKey& config,
@@ -44,14 +45,15 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
 // Generate Softmax in Triton IR inside 'fn'.
 // Use execution parameters from 'config'.
 StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder b,
+                                   absl::string_view libdevice_path,
                                    const HloComputation* computation,
                                    mlir::triton::FuncOp fn,
                                    const AutotuneResult::TritonGemmKey& config,
                                    int shmem_budget);
 
 using LaunchDimensionsGenerator = std::function<StatusOr<LaunchDimensions>(
-    mlir::OpBuilder, const HloComputation*, mlir::triton::FuncOp,
-    const AutotuneResult::TritonGemmKey&, int)>;
+    mlir::OpBuilder, absl::string_view, const HloComputation*,
+    mlir::triton::FuncOp, const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
 // and return launch dimensions.
