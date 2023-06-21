@@ -32,8 +32,8 @@ namespace gpu {
 
 using tensorflow::AutotuneResult;
 
-// Generate matrix multiplication in Triton IR inside 'fn'
-// for 'dot_instr' which is described by an HLO custom call computation.
+// Generate matrix multiplication in Triton IR inside 'fn' for a fusion
+// computation centered around a dot instruction.
 // Use tiling and execution parameters from 'config'.
 StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
                                   const HloComputation* computation,
@@ -41,19 +41,27 @@ StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
                                   const AutotuneResult::TritonGemmKey& config,
                                   int shmem_budget);
 
+// Generate Softmax in Triton IR inside 'fn'.
+// Use execution parameters from 'config'.
+StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder b,
+                                   const HloComputation* computation,
+                                   mlir::triton::FuncOp fn,
+                                   const AutotuneResult::TritonGemmKey& config,
+                                   int shmem_budget);
+
 using LaunchDimensionsGenerator = std::function<StatusOr<LaunchDimensions>(
     mlir::OpBuilder, const HloComputation*, mlir::triton::FuncOp,
     const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
 // and return launch dimensions.
-// The MatMul() above is one of such possible IR generators.
+// MatMul and SoftMax above are some such IR generators.
 StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
+    const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context);
-
 }  // namespace gpu
 }  // namespace xla
 

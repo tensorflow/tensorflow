@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -54,6 +56,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
@@ -849,44 +852,200 @@ StatusOr<LaunchDimensions> MatMul(
   }
 }
 
+StatusOr<LaunchDimensions> SoftMax(
+    mlir::OpBuilder builder, const HloComputation* computation,
+    mlir::triton::FuncOp fn,
+    const tensorflow::AutotuneResult::TritonGemmKey& config, int) {
+  const HloInstruction* root = computation->root_instruction();
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
+  mlir::ImplicitLocOpBuilder b(loc, builder);
+
+  // Assumptions we make about the matcher:
+  //   * matches *exactly* softmax on the last axis, not just something
+  //     softmax-like
+  //   * the implementation of softmax is like in jax.nn.softmax
+  //   * all the shapes have canonical layout (logical layout = physical layout)
+
+  // TODO(bchetioui): generalise to Softmax-like patterns involving elementwise
+  // ops.
+  // TODO(bchetioui): allow doing several rows per block (e.g. for when rows
+  // are smaller than the minimum transaction size)
+
+  CHECK_EQ(root->opcode(), HloOpcode::kDivide);
+  CHECK_EQ(root->operand(1)->opcode(), HloOpcode::kBroadcast);
+
+  const HloInstruction* reduce = root->operand(1)->operand(0);
+  Shape root_shape = root->shape();
+
+  CHECK_EQ(reduce->opcode(), HloOpcode::kReduce);
+  CHECK_EQ(reduce->dimensions().size(), 1);
+  CHECK_EQ(reduce->dimensions()[0], root_shape.rank() - 1);
+
+  int row_len = root_shape.dimensions_minor(0);
+  int block_row = 1;
+
+  // block_row must be a power of two.
+  while (block_row < row_len) {
+    block_row *= 2;
+  }
+
+  int num_rows = 1;
+  for (int minor_axis = 1; minor_axis < root_shape.rank(); ++minor_axis)
+    num_rows *= root_shape.dimensions_minor(minor_axis);
+
+  const LaunchDimensions launch_dimensions{
+      {num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
+
+  // In the vanilla softmax case, the output type is the same as the input type.
+  PrimitiveType root_element_type = root->shape().element_type();
+  PrimitiveType producer_element_type =
+      computation->parameter_instruction(0)->shape().element_type();
+
+  CHECK_EQ(root_element_type, producer_element_type);
+
+  // We assume that both the input and the result use a floating point data
+  // type.
+  auto root_ty = TritonType(b, root_element_type).cast<mlir::FloatType>();
+
+  // softmax_kernel(input_ptr, output_ptr, num_rows, row_len, block_row) {
+  //   row_index = tl.program_id(0)
+  //   row_stride = row_len
+  //   offset = row_index * row_stride
+  Value row_index = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X);
+  Value row_stride = b.create<ma::ConstantIntOp>(row_len, /*width=*/32);
+  Value offset = b.create<ma::MulIOp>(row_index, row_stride);
+
+  //   input_ptr += offset
+  //   output_ptr += offset
+  Value input_ptr = AddPtr(b, fn.getArgument(0), offset);
+  Value output_ptr = AddPtr(b, fn.getArgument(1), offset);
+
+  //   row_tile = tl.arange(0, block_row)
+  Value row_tile = b.create<mt::MakeRangeOp>(
+      mlir::RankedTensorType::get(block_row, b.getI32Type()), 0, block_row);
+
+  //   mask = row_tile < row_stride
+  Value splat_row_stride = Splat(b, row_stride, block_row);
+  Value mask =
+      b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, row_tile, splat_row_stride);
+
+  //   row = tl.load(input_ptr + row_tile, mask=row_tile < row_len,
+  //                 other=float('-inf'))
+  Value splat_input_ptr = Splat(b, input_ptr, block_row);
+  Value load_ptrs = AddPtr(b, splat_input_ptr, row_tile);
+  llvm::APFloat minus_inf =
+      llvm::APFloat::getInf(root_ty.getFloatSemantics(), /*Negative=*/true);
+
+  Value other = Splat(b, b.create<ma::ConstantFloatOp>(minus_inf, root_ty),
+                      row_tile.getType().cast<mlir::ShapedType>().getShape());
+  Value row =
+      b.create<mt::LoadOp>(load_ptrs, mask, other, mt::CacheModifier::NONE,
+                           mt::EvictionPolicy::NORMAL, /*isVolatile=*/false);
+
+  //   row_max = tl.max(row, axis=0)
+  // Triton actually only performs reductions on float32 inputs, and we must
+  // thus upcast/downcast our input if its data type is different.
+  Value casted_row = Cast(b, row, b.getF32Type());
+
+  mt::ReduceOp row_max =
+      b.create<mt::ReduceOp>(SmallVector<Value>({casted_row}), 0);
+
+  {
+    mlir::Block* max_reducer =
+        b.createBlock(&row_max->getRegion(0), {},
+                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+
+    b.setInsertionPointToStart(max_reducer);
+    // Lowering for MaxFOp from TritonGPU to LLVM is not implemented, so we use
+    // select and compare instead.
+    Value cmpOp = b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE,
+                                       max_reducer->getArgument(0),
+                                       max_reducer->getArgument(1));
+    Value selectOp = b.create<ma::SelectOp>(cmpOp, max_reducer->getArgument(0),
+                                            max_reducer->getArgument(1));
+
+    b.create<mt::ReduceReturnOp>(SmallVector<Value>({selectOp}));
+    b.setInsertionPointAfter(row_max);
+  }
+
+  //   numerator = tl.exp(row - row_max)
+  Value splat_row_max = Splat(b, row_max->getResult(0), block_row);
+  Value bounded_row = b.create<ma::SubFOp>(casted_row, splat_row_max);
+  Value numerator = b.create<mlir::math::ExpOp>(bounded_row);
+
+  //   denominator = tl.sum(numerator, axis=0)
+  mt::ReduceOp denominator =
+      b.create<mt::ReduceOp>(SmallVector<Value>({numerator}), 0);
+
+  {
+    mlir::Block* sum_reducer =
+        b.createBlock(&denominator->getRegion(0), {},
+                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+
+    b.setInsertionPointToStart(sum_reducer);
+    Value addOp = b.create<ma::AddFOp>(sum_reducer->getArgument(0),
+                                       sum_reducer->getArgument(1));
+    b.create<mt::ReduceReturnOp>(SmallVector<Value>({addOp}));
+    b.setInsertionPointAfter(denominator);
+  }
+
+  //   result = (numerator / denominator).to(output_ptr.dtype.element_ty)
+  Value splat_denominator = Splat(b, denominator->getResult(0), block_row);
+  Value division = b.create<ma::DivFOp>(numerator, splat_denominator);
+  Value result = Cast(b, division, root_ty);
+
+  //   tl.store(output_ptr + row_tile, result, mask=mask)
+  Value splat_output_ptr = Splat(b, output_ptr, block_row);
+  Value store_ptrs = AddPtr(b, splat_output_ptr, row_tile);
+
+  b.create<mt::StoreOp>(store_ptrs, result, mask, mt::CacheModifier::NONE,
+                        mt::EvictionPolicy::NORMAL);
+  // }
+
+  return launch_dimensions;
+}
+
 StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    absl::string_view fusion_kind, const se::CudaComputeCapability& cc,
+    const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context) {
-  // This is a heuristic that serves as a proxy for register usage and code
-  // size.
-  //
-  // We have noticed that tilings with very long LLVM IR code are both slow to
-  // compile and slow to run. This can be for example due to register spills.
-  // So we should skip these tilings to save time. But it's better to skip them
-  // before the LLVM IR is generated. To do that, we came up with a formula that
-  // strongly correlates with the LLVM IR size.
-  // The formula is the size of the
-  // two input and the output thread block tiles divided by the number of warps.
-  // We read https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ as a
-  // reference, and found the formula by trial and error.
-  //
-  // To regenerate the limit, we have to run an exhaustive search on all
-  // tilings for a few different HLOs, printing the runtimes and the heuristic
-  // values.
-  // From that, we can find a limit, such that all tilings within alpha *
-  // optimal_runtime have a heuristic value less than or equal to the limit.
-  //
-  // In our measurements, all tilings which were within 1.13 * optimal_runtime
-  // had a complexity_heuristic_value <= kComplexityHeuristicLimit.
-  //
-  // See go/tiling-heuristic for more details.
-  constexpr int64_t kComplexityHeuristicLimit = 9000;
-  int64_t complexity_heuristic_value =
-      (config.block_m() * config.block_n() +
-       (config.block_m() + config.block_n()) * config.block_k()) /
-      config.num_warps();
-  VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
-  if (complexity_heuristic_value > kComplexityHeuristicLimit) {
-    return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
-                             complexity_heuristic_value,
-                             kComplexityHeuristicLimit);
+  if (fusion_kind == kTritonGemmFusionKind) {
+    // This is a heuristic that serves as a proxy for register usage and code
+    // size.
+    //
+    // We have noticed that tilings with very long LLVM IR code are both slow to
+    // compile and slow to run. This can be for example due to register spills.
+    // So we should skip these tilings to save time. But it's better to skip
+    // them before the LLVM IR is generated. To do that, we came up with a
+    // formula that strongly correlates with the LLVM IR size. The formula is
+    // the size of the two input and the output thread block tiles divided by
+    // the number of warps. We read
+    // https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ as a
+    // reference, and found the formula by trial and error.
+    //
+    // To regenerate the limit, we have to run an exhaustive search on all
+    // tilings for a few different HLOs, printing the runtimes and the heuristic
+    // values.
+    // From that, we can find a limit, such that all tilings within alpha *
+    // optimal_runtime have a heuristic value less than or equal to the limit.
+    //
+    // In our measurements, all tilings which were within 1.13 * optimal_runtime
+    // had a complexity_heuristic_value <= kComplexityHeuristicLimit.
+    //
+    // See go/tiling-heuristic for more details.
+    constexpr int64_t kComplexityHeuristicLimit = 9000;
+    int64_t complexity_heuristic_value =
+        (config.block_m() * config.block_n() +
+         (config.block_m() + config.block_n()) * config.block_k()) /
+        config.num_warps();
+    VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
+    if (complexity_heuristic_value > kComplexityHeuristicLimit) {
+      return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
+                               complexity_heuristic_value,
+                               kComplexityHeuristicLimit);
+    }
   }
 
   mlir_context.loadDialect<mt::TritonDialect>();

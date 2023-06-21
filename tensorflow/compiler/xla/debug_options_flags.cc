@@ -134,6 +134,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
+  opts.set_xla_gpu_enable_triton_softmax_fusion(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.

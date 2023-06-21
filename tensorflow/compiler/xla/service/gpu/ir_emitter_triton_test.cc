@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -164,7 +165,7 @@ ENTRY entry {
   config.set_num_stages(4);
   config.set_num_warps(8);
   EXPECT_THAT(
-      TritonWrapper("test_fn", triton_dot_computation,
+      TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context),
@@ -179,7 +180,7 @@ ENTRY entry {
   config.set_num_stages(1);
   TF_ASSERT_OK_AND_ASSIGN(
       const LaunchDimensions launch_dimensions,
-      TritonWrapper("test_fn", triton_dot_computation,
+      TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context));
@@ -567,7 +568,7 @@ ENTRY entry {
   config.set_num_stages(1);
   config.set_num_warps(2);
   EXPECT_THAT(
-      TritonWrapper("test_fn", triton_dot_computation,
+      TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context),
@@ -580,7 +581,7 @@ ENTRY entry {
   config.set_block_n(32);
   config.set_block_k(32);
   TF_CHECK_OK(
-      TritonWrapper("test_fn", triton_dot_computation,
+      TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context)
@@ -885,11 +886,12 @@ ENTRY e {
                           hlo_module->entry_computation()
                               ->root_instruction()
                               ->backend_config<FusionBackendConfig>());
-  TF_ASSERT_OK_AND_ASSIGN(const LaunchDimensions launch_dimensions,
-                          TritonWrapper("test_fn", triton_dot_computation,
-                                        GetCudaComputeCapability(), dev_info,
-                                        config.triton_gemm_config(),
-                                        &llvm_module, &MatMul, mlir_context));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LaunchDimensions launch_dimensions,
+      TritonWrapper("test_fn", triton_dot_computation, kTritonGemmFusionKind,
+                    GetCudaComputeCapability(), dev_info,
+                    config.triton_gemm_config(), &llvm_module, &MatMul,
+                    mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.
@@ -1293,6 +1295,151 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
+}
+
+class TritonSoftmaxTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  exponential = f32[127,125]{1,0} exponential(subtract)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%[[P0:[^,]*]])
+; CHECK-SAME: kind=kCustom
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32WithShortRows) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,5]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,5]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,5]{1,0} subtract(param_0, broadcast)
+  exponential = f32[127,5]{1,0} exponential(subtract)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,5]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,5]{1,0} divide(exponential, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%[[P0:[^,]*]])
+; CHECK-SAME: kind=kCustom
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF16) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f16[] parameter(0)
+  arg_1.1 = f16[] parameter(1)
+  ROOT add = f16[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f16[127,125]{1,0} parameter(0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f16[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
+  exponential = f16[127,125]{1,0} exponential(subtract)
+  constant_zero = f16[] constant(0)
+  second_reduce = f16[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f16[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f16[127,125]{1,0} divide(exponential, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%[[P0:[^,]*]])
+; CHECK-SAME: kind=kCustom
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(2e-3, 1e-5)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF64) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f64[] parameter(0)
+  arg_1 = f64[] parameter(1)
+  ROOT maximum = f64[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f64[] parameter(0)
+  arg_1.1 = f64[] parameter(1)
+  ROOT add = f64[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f64[127,125]{1,0} parameter(0)
+  constant_neg_inf = f64[] constant(-inf)
+  reduce = f64[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f64[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f64[127,125]{1,0} subtract(param_0, broadcast)
+  exponential = f64[127,125]{1,0} exponential(subtract)
+  constant_zero = f64[] constant(0)
+  second_reduce = f64[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f64[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f64[127,125]{1,0} divide(exponential, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%[[P0:[^,]*]])
+; CHECK-SAME: kind=kCustom
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
 }  // namespace

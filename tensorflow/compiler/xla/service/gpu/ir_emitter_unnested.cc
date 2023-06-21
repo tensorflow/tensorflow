@@ -1994,12 +1994,35 @@ Status IrEmitterUnnested::EmitTritonFusion(
       ir_emitter_context_->name_uniquer()->GetUniqueName(
           llvm_ir::SanitizeFunctionName(
               absl::StrCat(suggested_kernel_name, "_impl")));
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      TritonWrapper(impl_fn_name, hlo_computation,
-                    ir_emitter_context_->cuda_compute_capability(),
-                    ir_emitter_context_->gpu_device_info(), config, module_,
-                    &MatMul, *ir_emitter_context_->mlir_context()));
+
+  FusionBackendConfig backend_config;
+  auto backend_config_str = fusion_op.getBackendConfig()
+                                .value_or(mlir::Attribute())
+                                .dyn_cast_or_null<mlir::StringAttr>();
+  CHECK(backend_config_str);
+  TF_RETURN_IF_ERROR(
+      tsl::HumanReadableJsonToProto(backend_config_str.str(), &backend_config));
+  absl::string_view fusion_kind = backend_config.kind();
+
+  LaunchDimensions launch_dimensions;
+
+  if (fusion_kind == kTritonSoftmaxFusionKind) {
+    TF_ASSIGN_OR_RETURN(
+        launch_dimensions,
+        TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
+                      ir_emitter_context_->cuda_compute_capability(),
+                      ir_emitter_context_->gpu_device_info(), config, module_,
+                      &SoftMax, *ir_emitter_context_->mlir_context()));
+  } else {  // Must be a MatMul
+    CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
+    TF_ASSIGN_OR_RETURN(
+        launch_dimensions,
+        TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
+                      ir_emitter_context_->cuda_compute_capability(),
+                      ir_emitter_context_->gpu_device_info(), config, module_,
+                      &MatMul, *ir_emitter_context_->mlir_context()));
+  }
+
   llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
   TF_RET_CHECK(impl_fn);
 
@@ -2277,6 +2300,11 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       triton_config.set_num_stages(1);
       triton_config.set_num_warps(2);
     }
+    return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
+  } else if (backend_config.kind() == kTritonSoftmaxFusionKind) {
+    auto& triton_config = *backend_config.mutable_triton_gemm_config();
+    triton_config.set_num_stages(1);
+    triton_config.set_num_warps(4);
     return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
   }
 #endif  // GOOGLE_CUDA

@@ -440,6 +440,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:IndexToLLVM",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
@@ -470,6 +471,7 @@ xla_test(
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
+        ":ir_emission_utils",
         ":ir_emitter_triton",
         ":launch_dimensions",
         "//tensorflow/compiler/xla:error_spec",
@@ -1166,6 +1168,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "softmax_rewriter_triton",
+    srcs = ["softmax_rewriter_triton.cc"],
+    hdrs = ["softmax_rewriter_triton.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_types",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "gemm_rewriter_triton_test",
     srcs = ["gemm_rewriter_triton_test.cc"],
@@ -1726,6 +1749,17 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "softmax_rewriter_triton_test",
+    srcs = ["softmax_rewriter_triton_test.cc"],
+    deps = [
+        ":softmax_rewriter_triton",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
 cc_library(
     name = "gpu_sanitize_constant_names",
     srcs = ["gpu_sanitize_constant_names.cc"],
@@ -2200,6 +2234,7 @@ cc_library(
         ":reduction_splitter",
         ":runtime_intrinsics",
         ":scatter_slice_simplifier",
+        ":softmax_rewriter_triton",
         ":topk_specializer",
         ":topk_splitter",
         ":tree_reduction_rewriter",
