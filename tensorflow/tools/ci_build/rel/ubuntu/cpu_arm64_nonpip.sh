@@ -137,7 +137,7 @@ bazel build \
     //tensorflow/tools/pip_package:build_pip_package \
     || die "Error: Bazel build failed for target: //tensorflow/tools/pip_package:build_pip_package"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${WHL_DIR} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
+PYTHONWARNINGS=ignore:::setuptools.command.build_py ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${WHL_DIR} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
 if [[ $PY_DOTLESS_MAJOR_MINOR_VER == "2" ]]; then
