@@ -597,6 +597,8 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const PyLoadedExecutable& self) {
              return ValueOrThrow(self.pjrt_executable()->GetCompileOptions());
            })
+      .def("cost_analysis",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {

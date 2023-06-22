@@ -17,7 +17,9 @@ import enum
 import inspect
 import types
 import typing
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing import (
+    Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
+    TypeVar, Union, overload)
 
 import numpy as np
 
@@ -541,6 +543,7 @@ class LoadedExecutable:
   def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def keep_alive(self) -> None: ...
   def compile_options(self) -> CompileOptions: ...
+  def cost_analysis(self) -> Dict[str, Any]: ...
   traceback: Traceback
   fingerprint: Optional[bytes]
 
