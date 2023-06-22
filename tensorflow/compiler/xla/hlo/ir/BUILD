@@ -53,6 +53,7 @@ cc_library(
         "hlo_sharding_metadata.h",
     ],
     deps = [
+        ":tile_assignment",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",

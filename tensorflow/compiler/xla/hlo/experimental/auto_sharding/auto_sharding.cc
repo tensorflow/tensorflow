@@ -3969,8 +3969,8 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
       return Undefined();
     }
 
-    Array<int64_t> tile_assignment = strategy.output_sharding.tile_assignment();
-    tile_assignment.Reshape({cluster_env.total_devices_});
+    auto tile_assignment = strategy.output_sharding.tile_assignment().Reshape(
+        {cluster_env.total_devices_});
     return HloSharding::Tile(std::move(tile_assignment));
 
   } else {

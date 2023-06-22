@@ -292,6 +292,8 @@ class OpSharding:
   last_tile_dims: Sequence[Type]
   tile_assignment_dimensions: Sequence[int]
   tile_assignment_devices: Sequence[int]
+  iota_reshape_dims: Sequence[int]
+  iota_transpose_perm: Sequence[int]
   tuple_shardings: Sequence[OpSharding]
   def ParseFromString(self, s: bytes) -> None: ...
   def SerializeToString(self) -> bytes: ...
