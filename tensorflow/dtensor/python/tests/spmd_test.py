@@ -2128,27 +2128,18 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
                             Layout.replicated(self.mesh, len(new_shape)),
                             dtensor_result)
 
-  @parameterized.named_parameters(
-      test_util_ops.expand_test_config(
-          [
-              {
-                  'testcase_name': 'FullyReplicatedInputs',
-                  'op': array_ops.where_v2
-              },
-              {
-                  'testcase_name': 'BatchShardedInputs',
-                  'op': array_ops.where_v2
-              },
-          ],
-          [
-              {
-                  'shard_type': 'replicated',
-              },
-              {
-                  'shard_type': 'batch_sharded',
-              },
-          ],
-      ))
+  @parameterized.named_parameters([
+      {
+          'testcase_name': 'FullyReplicatedInputs',
+          'op': array_ops.where_v2,
+          'shard_type': 'replicated',
+      },
+      {
+          'testcase_name': 'BatchShardedInputs',
+          'op': array_ops.where_v2,
+          'shard_type': 'batch_sharded',
+      },
+  ])
   def testWhere(self, op, shard_type):
     layout = (
         self.replicated_layout_2d
@@ -2159,14 +2150,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     c = constant_op.constant([[50., 60.], [70., 80.]])
     expected_result = op(a, b, c)
 
-    if shard_type == 'replicated':
-      a = api.copy_to_mesh(a, layout)
-      b = api.copy_to_mesh(b, layout)
-      c = api.copy_to_mesh(c, layout)
-    else:
-      a = api.relayout(a, layout)
-      b = api.relayout(b, layout)
-      c = api.relayout(c, layout)
+    a = api.relayout(a, layout)
+    b = api.relayout(b, layout)
+    c = api.relayout(c, layout)
     dtensor_result = op(a, b, c)
 
     self.assertDTensorEqual(expected_result, layout, dtensor_result)
