@@ -81,6 +81,12 @@ constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
 
+// To reduce memory usage, defaults to restricting workers from processing more
+// than two snapshots at a time across all ongoing snapshots. Allowing two
+// concurrent streams, rather than one, helps minimize a worker's inactivity
+// between completing a stream and getting assigned a new one.
+constexpr int kDefaultWorkerMaxConcurrentSnapshots = 2;
+
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
 constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
@@ -160,6 +166,10 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
     new_config.set_worker_timeout_ms(
         absl::ToInt64Milliseconds(kDefaultWorkerTimeout));
   }
+  if (new_config.worker_max_concurrent_snapshots() == 0) {
+    new_config.set_worker_max_concurrent_snapshots(
+        kDefaultWorkerMaxConcurrentSnapshots);
+  }
   return new_config;
 }
 }  // namespace
@@ -168,6 +178,7 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const DispatcherConfig& config)
     : config_(ApplyConfigDefaults(config)),
       env_(Env::Default()),
+      snapshot_assignment_manager_(config_.worker_max_concurrent_snapshots()),
       state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = std::make_unique<MemoryDatasetStore>();

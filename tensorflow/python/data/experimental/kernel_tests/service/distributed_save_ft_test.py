@@ -31,8 +31,6 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
-_MAX_STREAMS_PER_WORKER = 2
-
 # Enum value for `SnapshotStreamInfo` states.
 _ORPHAN = 2
 _DONE = 4
@@ -267,19 +265,25 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       streams = get_streams()
     self.assertCountEqual([stream.index for stream in streams], range(n))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testWorkersDontExceedMaxStreamAssignments(self):
-    # TODO(b/250921378): Fix flaky test.
-    num_workers = 3
-    num_snapshots = 12
-    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              worker_max_concurrent_snapshots=[1, 2])))
+  def testWorkersDontExceedMaxStreamAssignments(
+      self, worker_max_concurrent_snapshots):
+    num_workers = 2
+    num_snapshots = 10
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers,
+        worker_max_concurrent_snapshots=worker_max_concurrent_snapshots)
 
     paths = []
     for i in range(num_snapshots):
       paths.append(f"{self._path}_{i}")
       self.evaluate(
           distributed_save_op.distributed_save(
-              dataset_ops.Dataset.range(2**i),
+              dataset_ops.Dataset.range(5000),
               paths[i],
               cluster.dispatcher_address()))
 
@@ -299,7 +303,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       assignments = get_assignments_and_update_max_assignments()
       all_workers_have_assignments = len(assignments) == num_workers
       each_worker_has_enough_assignments = all([
-          len(per_worker_assignments) >= _MAX_STREAMS_PER_WORKER
+          len(per_worker_assignments) >= worker_max_concurrent_snapshots
           for per_worker_assignments in assignments.values()])
       if all_workers_have_assignments and each_worker_has_enough_assignments:
         break
@@ -308,7 +312,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster.restart_dispatcher()
     wait_for_snapshots(paths, get_assignments_and_update_max_assignments)
     self.assertValuesEqual(list(max_assignments.values()),
-                           [_MAX_STREAMS_PER_WORKER] * num_workers)
+                           [worker_max_concurrent_snapshots] * num_workers)
 
   @combinations.generate(test_base.default_test_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
