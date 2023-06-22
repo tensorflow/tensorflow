@@ -70,5 +70,17 @@ tsl::Status AutoScaler::RemoveWorker(const std::string& worker_address)
   return tsl::OkStatus();
 }
 
+tsl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (!consumption_rates_.contains(consumer_id))
+    return absl::NotFoundError(
+        absl::StrCat("Consumer with ID ", consumer_id, " not found"));
+
+  consumption_rates_.erase(consumer_id);
+
+  return tsl::OkStatus();
+}
+
 }  // namespace data
 }  // namespace tensorflow

@@ -82,6 +82,10 @@ class AutoScaler {
   // Returns an error if the specified worker does not exist.
   tsl::Status RemoveWorker(const std::string &worker_address)
       TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters the consumer identified by `consumer_id`, removing its reported
+  // target processing time from consideration of the current workload
+  // estimation. Returns an error if the specified consumer does not exist.
+  tsl::Status RemoveConsumer(int64_t consumer_id) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;

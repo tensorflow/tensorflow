@@ -137,6 +137,31 @@ TEST(AutoScalerTest, RemoveWorkerAfterNewPTReported) {
   TF_ASSERT_OK(auto_scaler.RemoveWorker("/worker/task/0:20000"));
 }
 
+TEST(AutoScalerTest, RemoveConsumerSuccessful) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(30)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, absl::Microseconds(30)));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(0));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(1));
+}
+
+TEST(AutoScalerTest, RemoveNonexistentConsumer) {
+  AutoScaler auto_scaler;
+  EXPECT_THAT(auto_scaler.RemoveConsumer(0),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(AutoScalerTest, RemoveConsumerAfterNewTPTReported) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(30)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(0));
+}
+
 }  // namespace
 
 }  // namespace data
