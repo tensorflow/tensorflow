@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -33,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -55,10 +53,13 @@ bool ElementIsF32OrF16(const Shape& shape) {
 // max-benefit producer to fuse, and update the estimated benefits of the fused
 // nodes and their operands.
 class GpuPriorityFusionQueue : public FusionQueue {
+  using Priority = std::pair<double, int64_t>;
+  using CanFuseCallback = std::function<bool(
+      HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
+
  public:
-  GpuPriorityFusionQueue(
-      HloComputation* computation,
-      const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
+  GpuPriorityFusionQueue(HloComputation* computation,
+                         const CanFuseCallback& can_fuse)
       : can_fuse_(can_fuse) {
     // Initializes the priority queue.
     for (auto instruction : computation->MakeInstructionPostOrder()) {
@@ -68,12 +69,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
           instruction->opcode() == HloOpcode::kGetTupleElement) {
         continue;
       }
-      const std::pair<double, double> priority =
-          CalculateProducerPriority(instruction);
+      Priority priority = CalculateProducerPriority(instruction);
       auto emplace_result = producer_priority_queue_.emplace(
-          std::make_tuple(priority.first, priority.second,
-                          instruction->unique_id()),
-          instruction);
+          std::make_pair(priority, instruction->unique_id()), instruction);
       CHECK(emplace_result.second);
       reverse_map_.emplace(instruction, emplace_result.first);
     }
@@ -83,10 +81,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
   DequeueNextInstructionAndOperandsToFuseInOrder() override {
     while (current_consumers_.empty()) {
       if (producer_priority_queue_.empty()) {
-        return std::pair<HloInstruction*, std::vector<int64_t>>(nullptr, {});
+        return {};
       }
-      auto next_it = producer_priority_queue_.end();
-      --next_it;
+      auto next_it = std::prev(producer_priority_queue_.end());
 
       current_producer_ = next_it->second;
       producer_priority_queue_.erase(next_it);
@@ -101,8 +98,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
             << ") + " << current_producer_->name() << "(" << current_producer_
             << ")";
     auto indices = next_consumer->OperandIndices(current_producer_);
-    return std::make_pair(next_consumer,
-                          std::vector<int64_t>(indices.begin(), indices.end()));
+    return {next_consumer, {indices.begin(), indices.end()}};
   }
 
   // Calculates the compute cost and free computation of the new fusion in the
@@ -129,14 +125,13 @@ class GpuPriorityFusionQueue : public FusionQueue {
  private:
   // Returns the priority of the producer based on its current operands and
   // users.
-  std::pair<double, int64_t> CalculateProducerPriority(
-      HloInstruction* producer) {
+  Priority CalculateProducerPriority(HloInstruction* producer) {
     // TODO(shyshkov): Use cost model.
     return {1., 1};
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
-    auto fusible = [&](HloInstruction* user) {
+    auto is_fusible = [&](HloInstruction* user) {
       for (int64_t i = 0; i < user->operand_count(); ++i) {
         if (user->operand(i) == producer && can_fuse_(user, i)) {
           return true;
@@ -147,7 +142,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
     std::vector<HloInstruction*> fusible_users;
     std::vector<HloInstruction*> prod_users(producer->users());
     for (auto user : prod_users) {
-      if (fusible(user)) {
+      if (is_fusible(user)) {
         fusible_users.push_back(user);
       }
     }
@@ -156,11 +151,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
   }
 
   // The priority queue of producers, implemented as an ordered map, where a
-  // key is a tuple: the first two elements are the primary and secondary
-  // priorities, and the last one is the unique ID of the instruction to break
-  // ties.
-  using PriorityQueue =
-      std::map<std::tuple<double, double, int>, HloInstruction*>;
+  // key is a pair: the first element is the priority, the second one is the
+  // unique ID of the instruction to break ties.
+  using PriorityQueue = std::map<std::pair<Priority, int>, HloInstruction*>;
   PriorityQueue producer_priority_queue_;
 
   // A reverse map that helps find an instruction in the priority queue.
@@ -175,7 +168,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Callbacks passed from the caller to check if we can fuse a pair of
   // producer and consumer, where the consumer is given as a HloInstruction*
   // and the producer is given as the consumer's operand index.
-  std::function<bool(HloInstruction*, int64_t)> can_fuse_;
+  CanFuseCallback can_fuse_;
 };
 
 }  // namespace
