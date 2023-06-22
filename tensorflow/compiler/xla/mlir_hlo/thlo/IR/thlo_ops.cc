@@ -175,7 +175,7 @@ SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
 SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
                                                Value tensor,
                                                int64_t dimCount = -1) {
-  auto dimValues = tensor::createDimValues(b, loc, tensor);
+  auto dimValues = tensor::getMixedSizes(b, loc, tensor);
   if (dimCount >= 0) dimValues.resize(dimCount);
   return llvm::to_vector(llvm::map_range(dimValues, [&](OpFoldResult d) {
     return Range{b.getIndexAttr(0), d, b.getIndexAttr(1)};
@@ -861,7 +861,7 @@ LogicalResult ScatterOp::getResultTilePosition(
   auto init = scatterOp.getInit();
   resultOffsets =
       SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
-  resultSizes = tensor::createDimValues(b, scatterOp.getLoc(), init);
+  resultSizes = tensor::getMixedSizes(b, scatterOp.getLoc(), init);
   return success();
 }
 
@@ -962,7 +962,7 @@ LogicalResult GatherOp::getResultTilePosition(
   resultOffsets =
       SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
   resultOffsets.front() = offsets.front();
-  resultSizes = tensor::createDimValues(b, gatherOp.getLoc(), init);
+  resultSizes = tensor::getMixedSizes(b, gatherOp.getLoc(), init);
   resultSizes.front() = sizes.front();
   return success();
 }
