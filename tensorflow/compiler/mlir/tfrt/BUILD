@@ -563,6 +563,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
+        "@tf_runtime//:support",
     ],
 )
 
