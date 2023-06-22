@@ -301,7 +301,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TritonAutotuner::ClearAutotuneResults();
+  AutotunerUtil::ClearAutotuneResults();
 
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
     MatchOptimizedHlo(kHloText, R"(

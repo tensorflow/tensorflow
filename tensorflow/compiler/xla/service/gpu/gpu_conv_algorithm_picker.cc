@@ -310,43 +310,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
 }
 #endif
 
-struct ConvCacheStats {
-  int64_t cache_hits = 0;
-  int64_t cache_misses = 0;
-
-  void LogStats() {
-    VLOG(3) << "Cache hits: " << cache_hits;
-    VLOG(3) << "Cache misses: " << cache_misses;
-  }
-};
-
-absl::Mutex autotune_cache_mu(absl::kConstInit);
-auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new absl::flat_hash_map<AutotuneCacheKey, AutotuneResult>();
-auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new ConvCacheStats();
-
 }  // anonymous namespace
-
-void GpuConvAlgorithmPicker::ClearAutotuneResults() {
-  absl::MutexLock lock(&autotune_cache_mu);
-  autotune_cache.clear();
-}
-
-Status GpuConvAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  return SerializeAutotuneResults(autotune_cache, results);
-}
-
-Status GpuConvAlgorithmPicker::LoadAutotuneResults(
-    const AutotuneResults& results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
-#else
-  return OkStatus();
-#endif
-}
 
 bool ShouldInitConvData(const HloModuleConfig& hlo_module_config) {
   const int32_t conv_autotune_level =
@@ -362,15 +326,14 @@ bool ShouldCheckConv(const HloModuleConfig& hlo_module_config) {
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
-  // If in deviceless mode, return the result from the autotune_cache.
+  return AutotunerUtil::Autotune(
+      instr, config_, [&] { return PickBestAlgorithmNoCache(instr); });
+}
+
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
+    const HloCustomCallInstruction* instr) {
   AutotuneCacheKey key(config_.GetModelStr(), *instr);
   if (config_.IsDeviceless()) {
-    absl::MutexLock autotune_lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      return it->second;
-    }
-
     // Return an autotune result with algo id -1, which means that we autotune
     // at runtime.
     AutotuneResult result;
@@ -389,20 +352,6 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // avoid ever doing duplicate work.  If we have a cache miss, only one thread
   // will run PickBestAlgorithmImpl for a particular device.
   absl::MutexLock lock(&GetGpuMutex(stream_exec));
-
-  // We cache the autotuning results to avoid doing the duplicate work,
-  // which can greatly improve both stability (deterministic numeric results
-  // within a process for a given input) and performance (2x speedup on some
-  // models).
-  {
-    absl::MutexLock autotune_lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      autotune_cache_stats.cache_hits++;
-      return it->second;
-    }
-    autotune_cache_stats.cache_misses++;
-  }
 
   // Make sure any previous activity on this executor is done. We don't want
   // other work still running on the GPU to interfere with autotuning.
@@ -453,16 +402,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 #endif
   }
 
-  if (!result_or.ok()) {
-    return result_or;
-  }
-
-  // Insert our result into the cache.  After we released the lock on
-  // autotune_cache_mu, another autotuning job may have run for this same key on
-  // another GPU on the machine.  If so, use its result.
-  absl::MutexLock autotune_lock(&autotune_cache_mu);
-  auto [it, inserted] = autotune_cache.insert({key, result_or.value()});
-  return it->second;
+  return result_or;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -1171,12 +1111,6 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
-
-  {
-    absl::MutexLock lock(&autotune_cache_mu);
-    autotune_cache_stats.LogStats();
-  }
-
   return changed;
 }
 

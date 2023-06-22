@@ -31,9 +31,7 @@ namespace m = ::xla::match;
 
 class GpuConvAlgorithmPickerTest : public HloTestBase {
  public:
-  GpuConvAlgorithmPickerTest() {
-    GpuConvAlgorithmPicker::ClearAutotuneResults();
-  }
+  GpuConvAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
 };
 
 TEST_F(GpuConvAlgorithmPickerTest, SetAlgorithm) {
@@ -63,15 +61,15 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
-  TF_ASSERT_OK(GpuConvAlgorithmPicker::WriteAutotuneResults(&results));
+  TF_ASSERT_OK(AutotunerUtil::SerializeAutotuneResults(&results));
   ASSERT_EQ(results.results_size(), 1);
   auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_scratch_bytes = result.scratch_bytes();
   int64_t new_scratch_bytes = old_scratch_bytes + 1;
   result.set_scratch_bytes(new_scratch_bytes);
 
-  GpuConvAlgorithmPicker::ClearAutotuneResults();
-  TF_ASSERT_OK(GpuConvAlgorithmPicker::LoadAutotuneResults(results));
+  AutotunerUtil::ClearAutotuneResults();
+  TF_ASSERT_OK(AutotunerUtil::LoadAutotuneResults(results));
 
   // Now send the same module through GpuConvAlgorithmPicker again.  The conv
   // should have the new scratch bytes.

@@ -117,10 +117,6 @@ static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
 // some matmul configurations benchmarked so far and can be increased further.
 constexpr int kMaxSplitK = 16;
 
-static absl::Mutex autotune_cache_mu(absl::kConstInit);
-static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new AutotuneCacheMap();
-
 struct TritonTilingWrapper {
   const AutotuneResult::TritonGemmKey key;
 
@@ -259,7 +255,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     VLOG(1) << "Tuning " << hlo->ToString();
-    TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, AutotuneMatmul(hlo));
+    TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
+                        AutotunerUtil::Autotune(hlo, config_, [&] {
+                          return AutotuneMatmulNoCache(
+                              hlo,
+                              AutotuneCacheKey(config_.GetModelStr(), *hlo));
+                        }));
     VLOG(1) << "Result: " << autotune_result.ShortDebugString();
 
     TF_RET_CHECK(autotune_result.has_triton());
@@ -276,42 +277,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  // Autotune a tiling for a given matmul fusion.
-  StatusOr<AutotuneResult> AutotuneMatmul(HloInstruction* instr) {
-    AutotuneCacheKey key(config_.GetModelStr(), *instr);
-    AutotuneResult* res = TryFindInCache(key);
-    if (res) {
-      return *res;
-    }
-    if (config_.IsDeviceless()) {
-      return InternalError("Not found");
-    }
-
-    HloComputation* fusion = instr->called_computations()[0];
-    TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
-                        AutotuneMatmulNoCache(*fusion, key));
-
-    absl::MutexLock lock(&autotune_cache_mu);
-    auto [it, inserted] = autotune_cache.emplace(key, autotune_result);
-    return it->second;
-  }
-
-  AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
-    absl::MutexLock lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      VLOG(1) << "Autotune cache hit";
-      return &it->second;
-    }
-    return nullptr;
-  }
-
   // Autotunes a matmul without using the autotuning cache.
   //
   // `cache_key`: The cache key corresponding to the code of the fusion and the
   // device type. Passing it to avoid recalculating it everywhere it's needed.
   StatusOr<AutotuneResult> AutotuneMatmulNoCache(
-      const HloComputation& fusion, const AutotuneCacheKey& cache_key) {
+      const HloInstruction* instr, const AutotuneCacheKey& cache_key) {
+    const HloComputation& fusion = *instr->called_computations()[0];
     se::StreamExecutor* stream_exec = config_.GetExecutor();
     if (!stream_exec->SynchronizeAllActivity()) {
       return InternalError("Failed to synchronize GPU for autotuning.");
@@ -909,22 +881,6 @@ StatusOr<bool> TritonAutotuner::Run(
   }
   return TritonAutotunerVisitor{config_, thread_pool_}.RunOnModule(
       module, execution_threads);
-}
-
-// TODO(cheshire): Can I haz a unified compilation cache?
-Status TritonAutotuner::WriteAutotuneResults(AutotuneResults* results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  return SerializeAutotuneResults(autotune_cache, results);
-}
-
-Status TritonAutotuner::LoadAutotuneResults(const AutotuneResults& results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
-}
-
-void TritonAutotuner::ClearAutotuneResults() {
-  absl::MutexLock lock(&autotune_cache_mu);
-  autotune_cache.clear();
 }
 
 void TritonAutotuner::ClearCompilationCache() {

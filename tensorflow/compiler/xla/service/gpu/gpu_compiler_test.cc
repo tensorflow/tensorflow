@@ -153,28 +153,6 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   }
 }
 
-TEST_F(PersistedAutotuningTest, LoadResultsOnlyOnce) {
-  // ScopedMockLog cannot catch the logs in the open source version.
-  if (tsl::testing::kIsOpenSource) {
-    return;
-  }
-
-  std::string file_path = GetUniqueTempFilePath(".txt");
-  xla_gpu_dump_autotune_results_to_ = file_path;
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  ExpectToReadNonEmptyFile(file_path);
-  xla_gpu_load_autotune_results_from_ = file_path;
-  xla_gpu_dump_autotune_results_to_ = "";
-
-  ScopedMockLog log;
-  EXPECT_CALL(log, Log(LogSeverity::kInfo, EndsWith("/autotune_serialize.cc"),
-                       StartsWith("Autotune results loaded from file:")))
-      .Times(1);
-  log.StartCapturingLogs();
-
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-}
 
 }  // namespace
 }  // namespace gpu

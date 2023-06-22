@@ -61,10 +61,6 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
 // autotune result is not stored, then algorithm is set to kRuntimeAutotuning.
 class GemmAlgorithmPicker : public HloModulePass {
  public:
-  static void ClearAutotuneResults();
-  static Status WriteAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(const AutotuneResults& results);
-
   explicit GemmAlgorithmPicker(AutotuneConfig config) : config_(config) {}
 
   absl::string_view name() const override { return "gemm-algorithm-picker"; }

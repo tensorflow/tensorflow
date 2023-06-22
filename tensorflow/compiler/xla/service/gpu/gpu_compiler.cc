@@ -195,7 +195,6 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/autotune_serialize.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
@@ -1008,14 +1007,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                 DevicelessConfig{gpu_target_config.device_description_str},
                 debug_options};
   if (autotune_config.IsDeviceless()) {
-    GpuConvAlgorithmPicker::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(
-        GpuConvAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-    GemmAlgorithmPicker::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(
-        GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-    TritonAutotuner::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(TritonAutotuner::LoadAutotuneResults(*autotune_results));
+    AutotunerUtil::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
   }
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline.AddPass<GpuConvAlgorithmPicker>(autotune_config);
@@ -1089,7 +1082,12 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (absl::string_view file_path =
           debug_options.xla_gpu_load_autotune_results_from();
       !file_path.empty()) {
-    TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFileOnce(file_path));
+    static absl::once_flag once;
+    Status status = OkStatus();
+    absl::call_once(once, [&file_path, &status] {
+      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
+    });
+    TF_RETURN_IF_ERROR(status);
   }
 #endif  // GOOGLE_CUDA
 
@@ -1121,7 +1119,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       !file_path.empty()) {
     // Warning: This writes the autotune results at every compilation, possibly
     // multiple times per process.
-    TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(file_path));
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
   }
 #endif  // GOOGLE_CUDA
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/autotune_serialize.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 
 #include <memory>
 #include <string>
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
+namespace gpu {
 namespace {
 
 using ::absl::LogSeverity;
@@ -38,7 +39,7 @@ using ::testing::Not;
 using ::testing::StartsWith;
 using ::testing::TempDir;
 
-class AutotuneSerializeTest : public HloTestBase {
+class AutotunerUtilTest : public HloTestBase {
  protected:
   static constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -67,11 +68,11 @@ ENTRY e {
   }
 };
 
-TEST_F(AutotuneSerializeTest, SerializeAutotuneResultsToFile_TextProto1) {
+TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
   std::string kFilePath = GetUniqueTempFilePath(".txt");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
 
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
@@ -79,11 +80,11 @@ TEST_F(AutotuneSerializeTest, SerializeAutotuneResultsToFile_TextProto1) {
                                                          &results));
 }
 
-TEST_F(AutotuneSerializeTest, SerializeAutotuneResultsToFile_TextProto2) {
+TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
 
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
@@ -91,60 +92,41 @@ TEST_F(AutotuneSerializeTest, SerializeAutotuneResultsToFile_TextProto2) {
                                                          &results));
 }
 
-TEST_F(AutotuneSerializeTest, SerializeAutotuneResultsToFile_Protobuf) {
+TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
   std::string kFilePath = GetUniqueTempFilePath(".pb");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
 
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
   EXPECT_TRUE(results.ParseFromString(autotune_results_str));
 }
 
-TEST_F(AutotuneSerializeTest, LoadAutotuneResultsFromFile_TextProto1) {
+TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   std::string kFilePath = GetUniqueTempFilePath(".txt");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
-  TF_EXPECT_OK(LoadAutotuneResultsFromFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
 }
 
-TEST_F(AutotuneSerializeTest, LoadAutotuneResultsFromFile_TextProto2) {
+TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
-  TF_EXPECT_OK(LoadAutotuneResultsFromFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
 }
 
-TEST_F(AutotuneSerializeTest, LoadAutotuneResultsFromFile_Protobuf) {
+TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_Protobuf) {
   std::string kFilePath = GetUniqueTempFilePath(".pb");
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
-  TF_EXPECT_OK(LoadAutotuneResultsFromFile(kFilePath));
-}
-
-TEST_F(AutotuneSerializeTest, LoadAutotuneResultsFromFileOnce) {
-  // ScopedMockLog cannot catch the logs in the open source version.
-  if (tsl::testing::kIsOpenSource) {
-    return;
-  }
-
-  std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
-  TF_EXPECT_OK(SerializeAutotuneResultsToFile(kFilePath));
-
-  ScopedMockLog log;
-  EXPECT_CALL(log, Log(LogSeverity::kInfo, EndsWith("/autotune_serialize.cc"),
-                       StartsWith("Autotune results loaded from file:")))
-      .Times(1);
-  log.StartCapturingLogs();
-
-  TF_EXPECT_OK(LoadAutotuneResultsFromFileOnce(kFilePath));
-  TF_EXPECT_OK(LoadAutotuneResultsFromFileOnce(kFilePath));
+  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
 }
 
 }  // namespace
+}  // namespace gpu
 }  // namespace xla

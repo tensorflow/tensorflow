@@ -34,7 +34,7 @@ namespace m = ::xla::match;
 
 class GemmAlgorithmPickerTest : public HloTestBase {
  public:
-  GemmAlgorithmPickerTest() { GemmAlgorithmPicker::ClearAutotuneResults(); }
+  GemmAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
 };
 
 TEST_F(GemmAlgorithmPickerTest, SetAlgorithm) {
@@ -66,15 +66,15 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
-  TF_ASSERT_OK(GemmAlgorithmPicker::WriteAutotuneResults(&results));
+  TF_ASSERT_OK(AutotunerUtil::SerializeAutotuneResults(&results));
   ASSERT_EQ(results.results_size(), 1);
   auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_algo_id = result.algorithm().algo_id();
   int64_t new_algo_id = old_algo_id + 1;
   result.mutable_gemm()->set_algorithm(new_algo_id);
 
-  GemmAlgorithmPicker::ClearAutotuneResults();
-  TF_ASSERT_OK(GemmAlgorithmPicker::LoadAutotuneResults(results));
+  AutotunerUtil::ClearAutotuneResults();
+  TF_ASSERT_OK(AutotunerUtil::LoadAutotuneResults(results));
 
   // Now send the same module through GemmAlgorithmPicker again.  The dot should
   // have the new algorithm.
@@ -131,15 +131,15 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
-  TF_ASSERT_OK(GemmAlgorithmPicker::WriteAutotuneResults(&results));
+  TF_ASSERT_OK(AutotunerUtil::SerializeAutotuneResults(&results));
   ASSERT_EQ(results.results_size(), 1);
   auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_algo_id = result.algorithm().algo_id();
   int64_t new_algo_id = old_algo_id + 1;
   result.mutable_gemm()->set_algorithm(new_algo_id);
 
-  GemmAlgorithmPicker::ClearAutotuneResults();
-  TF_ASSERT_OK(GemmAlgorithmPicker::LoadAutotuneResults(results));
+  AutotunerUtil::ClearAutotuneResults();
+  TF_ASSERT_OK(AutotunerUtil::LoadAutotuneResults(results));
 
   // Now send the same module through GemmAlgorithmPicker again.  The dot should
   // have the new algorithm.

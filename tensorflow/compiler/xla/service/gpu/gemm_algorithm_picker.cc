@@ -233,15 +233,16 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   }
 }
 
-static absl::Mutex autotune_cache_mu(absl::kConstInit);
-static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new AutotuneCacheMap();
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
-StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
-                                        const AutotuneCacheKey& key,
-                                        const AutotuneConfig& autotune_config) {
+StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
+    const HloInstruction* gemm, const AutotuneCacheKey& key,
+    const AutotuneConfig& autotune_config) {
+  if (autotune_config.IsDeviceless()) {
+    // Return empty result, will tune at runtime.
+    return AutotuneResult{};
+  }
+
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
   se::StreamExecutor* executor = autotune_config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = autotune_config.GetAllocator();
@@ -370,13 +371,7 @@ StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
       best_algorithm.mutable_gemm()->set_algorithm(algorithms[alg_idx]);
     }
   }
-
-  // Insert our result into the cache.  After we released the lock on
-  // autotune_cache_mu, another autotuning job may have run for this same key on
-  // another GPU on the machine.  If so, use its result.
-  absl::MutexLock lock(&autotune_cache_mu);
-  auto [it, inserted] = autotune_cache.emplace(key, best_algorithm);
-  return it->second;
+  return best_algorithm;
 }
 
 #endif
@@ -389,18 +384,10 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   AutotuneCacheKey key(config.GetModelStr(), *gemm);
 
-  // Load selected algorithm from the autotune cache.
-  AutotuneResult algorithm;
-  {
-    absl::MutexLock lock(&autotune_cache_mu);
-    if (auto it = autotune_cache.find(key); it != autotune_cache.end()) {
-      algorithm = it->second;
-    }
-  }
-
-  if (!algorithm.has_gemm() && !config.IsDeviceless()) {
-    TF_ASSIGN_OR_RETURN(algorithm, DoGemmAutotune(gemm, key, config));
-  }
+  TF_ASSIGN_OR_RETURN(AutotuneResult algorithm,
+                      AutotunerUtil::Autotune(gemm, config, [&] {
+                        return DoGemmAutotuneNoCache(gemm, key, config);
+                      }));
 
   se::CudaComputeCapability capability = config.GetCudaComputeCapability();
   GemmBackendConfig gemm_config =
@@ -433,22 +420,6 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 
 }  // namespace
-
-void GemmAlgorithmPicker::ClearAutotuneResults() {
-  absl::MutexLock lock(&autotune_cache_mu);
-  autotune_cache.clear();
-}
-
-Status GemmAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  return SerializeAutotuneResults(autotune_cache, results);
-}
-
-Status GemmAlgorithmPicker::LoadAutotuneResults(
-    const AutotuneResults& results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
-}
 
 StatusOr<bool> GemmAlgorithmPicker::Run(
     HloModule* module,

@@ -75,10 +75,6 @@ namespace gpu {
 // result is not stored, then the performance of convolution will be suboptimal.
 class GpuConvAlgorithmPicker : public HloModulePass {
  public:
-  static void ClearAutotuneResults();
-  static Status WriteAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(const AutotuneResults& results);
-
   explicit GpuConvAlgorithmPicker(AutotuneConfig config) : config_(config) {}
 
   absl::string_view name() const override {
@@ -108,7 +104,10 @@ class GpuConvAlgorithmPicker : public HloModulePass {
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
+
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)

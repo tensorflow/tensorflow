@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
 
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -32,6 +33,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using tensorflow::AutotuneResult;
 
 struct DeviceConfig {
   se::StreamExecutor* stream_exec;  // never null
@@ -73,6 +76,11 @@ class AutotuneCacheKey {
 
   bool operator==(const AutotuneCacheKey& w) const {
     return model_str_ == w.model_str_ && hlo_canonical_ == w.hlo_canonical_;
+  }
+
+  std::string ToString() const {
+    return absl::StrFormat("<key model='%s', hlo='%s'>", model_str_,
+                           hlo_canonical_);
   }
 
  private:
@@ -137,14 +145,7 @@ class AutotuneConfig {
   bool exhaustive_tiling_search_;
 };
 
-using AutotuneCacheMap =
-    absl::flat_hash_map<AutotuneCacheKey, tensorflow::AutotuneResult>;
-
-Status SerializeAutotuneResults(const AutotuneCacheMap& autotune_cache,
-                                AutotuneResults* results);
-
-Status LoadAutotuneResults(AutotuneCacheMap& autotune_cache,
-                           const AutotuneResults& results);
+using AutotuneNoCacheFn = std::function<StatusOr<AutotuneResult>()>;
 
 struct AutotunerUtil {
   // Create a buffer for a given operation using redzone checker, initialize
@@ -152,6 +153,73 @@ struct AutotunerUtil {
   static StatusOr<se::DeviceMemoryBase> CreateBuffer(
       se::RedzoneAllocator& allocator, const Shape& shape,
       const AutotuneConfig& config, int64_t& rng_state);
+
+  static StatusOr<AutotuneResult> Autotune(
+      const HloInstruction* instr, const AutotuneConfig& config,
+      const AutotuneNoCacheFn& autotune_fn);
+
+  // Functions to save/load XLA's autotuning results.
+  //
+  // This is used for ahead-of-time autotuning.  Specifically:
+  //
+  // When XLA calls cublas (for matmuls, aka "gemm" or "dot") or cudnn (for
+  // convolutions), it usually has to choose an "algorithm" for the particular
+  // dot/conv.  XLA queries cublas/cudnn for a list of candidate algorithms.
+  // Then it runs all of them and picks the fastest one.  This is what we call
+  // "autotuning". It happens in GemmAlgorithmPicker and GpuConvAlgorithmPicker.
+  //
+  // Autotuning is necessary to get good performance for dot/conv.  But it also
+  // has some disadvantages.
+  //
+  //  - Because it relies on timing data, it is fundamentally nondeterministic.
+  //    But even if two algorithms have similar runtimes, our choice of
+  //    algorithm may be visible to the user: Different algorithms can have
+  //    different numerics, and sometimes they can even have different bugs!
+  //
+  //  - Trying all the candidate algorithms can be slow, especially if when some
+  //    of the candidates are "very bad" and run especially slowly compared to
+  //    the optimal candidate.  This slows down compilation.
+  //
+  // To address the disadvantages above, we allow users to save/restore the
+  // autotuning choices that XLA has made, using the functions below.
+  //
+  // Loading autotuning results does not erase existing autotuning choices, but
+  // in the event of a disagreement between the existing data and the new data,
+  // the new algorithm is chosen.
+  //
+  // Note that even if you call LoadAutotuneResults(), if XLA encounters a
+  // dot/conv that is *not* covered by the loaded data, it will go ahead and
+  // autotune it like normal.  In other words, the behavior of XLA should be
+  // identical with or without ahead-of-time autotuning, modulo nondeterminism.
+  //
+  // This is important if you want to be able to use the same autotuning file
+  // with different versions of XLA, because as XLA changes, exactly which
+  // dots/convs it wants to run can also change.  For example, XLA might change
+  // the conv padding heuristics it uses, and we don't want that to mean that
+  // all users of ahead-of-time autotuning are broken.
+  static StatusOr<std::string> SerializeAutotuneResults(
+      bool as_textproto = false);
+
+  static Status SerializeAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(absl::string_view data,
+                                    bool as_textproto = false);
+
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
+  // Serializes autotune results into a file.
+  //
+  // If `file_path` ends with ".txt" or ".textproto", then the textproto format
+  // is used, otherwise the binary protobuf format.
+  static Status SerializeAutotuneResultsToFile(absl::string_view file_path);
+
+  // Loads autotune results from a file.
+  //
+  // If `file_path` ends with ".txt" or ".textproto", then the file is
+  // considered to be in the textproto format, otherwise the binary protobuf
+  // format.
+  static Status LoadAutotuneResultsFromFile(absl::string_view file_path);
+
+  static void ClearAutotuneResults();
 };
 
 }  // namespace gpu
