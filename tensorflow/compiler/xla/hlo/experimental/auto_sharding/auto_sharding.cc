@@ -2392,17 +2392,21 @@ ORToolsSolverResult CallORToolsSolver(
   if (M > 0) {
     for (size_t t = 0; t < L.size(); ++t) {
       std::string str = "[";
+      double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
       for (auto i : L[t]) {
         absl::StrAppend(&str, i, ", ");
+        total_fixed_memory_cost += *std::min_element(m[i].begin(), m[i].end());
       }
       str += "]";
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), M, absl::StrCat("mem[", t, "] = ", str));
+          -MPSolver::infinity(), M - total_fixed_memory_cost,
+          absl::StrCat("mem[", t, "] = ", str));
       for (auto i : L[t]) {
+        auto fixed_memory_cost = *std::min_element(m[i].begin(), m[i].end());
         for (size_t j = 0; j < s[i].size(); ++j) {
           double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
-          constraint->SetCoefficient(s[i][j],
-                                     accumulated_coefficient + m[i][j]);
+          constraint->SetCoefficient(
+              s[i][j], accumulated_coefficient + m[i][j] - fixed_memory_cost);
         }
       }
     }
