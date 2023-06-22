@@ -490,16 +490,6 @@ py_strict_library(
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "metrics",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:metrics",
-        "//tensorflow/python/ops:metrics_impl",
-    ],
-)
-
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
 # other purposes.
 
