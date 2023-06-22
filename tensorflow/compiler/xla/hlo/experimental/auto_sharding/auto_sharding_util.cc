@@ -2145,5 +2145,36 @@ std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
   return result;
 }
 
+void ComputeInstructionExecutionCountsHelper(
+    const HloComputation* computation, int64_t computation_execution_count,
+    int64_t loop_iteration_count_estimate,
+    absl::flat_hash_map<const HloInstruction*, int64_t>*
+        instruction_execution_counts) {
+  for (auto instruction : computation->instructions()) {
+    (*instruction_execution_counts)[instruction] = computation_execution_count;
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      ComputeInstructionExecutionCountsHelper(
+          instruction->while_body(), loop_iteration_count_estimate,
+          computation_execution_count * loop_iteration_count_estimate,
+          instruction_execution_counts);
+      ComputeInstructionExecutionCountsHelper(
+          instruction->while_condition(), loop_iteration_count_estimate,
+          computation_execution_count * loop_iteration_count_estimate,
+          instruction_execution_counts);
+    }
+  }
+}
+
+absl::flat_hash_map<const HloInstruction*, int64_t>
+ComputeInstructionExecutionCounts(const HloModule* module,
+                                  int64_t loop_iteration_count_estimate) {
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_execution_counts;
+  ComputeInstructionExecutionCountsHelper(module->entry_computation(), 1,
+                                          loop_iteration_count_estimate,
+                                          &instruction_execution_counts);
+  return instruction_execution_counts;
+}
+
 }  // namespace spmd
 }  // namespace xla

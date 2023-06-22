@@ -615,6 +615,13 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
 // multiple mesh shapes is enabled.
 std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
     int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims);
+
+// Statically estimate the execution counts of HLO ops. This matters for while
+// loops, and we use a constant iteration count for all while loops for this
+// approximation.
+absl::flat_hash_map<const HloInstruction*, int64_t>
+ComputeInstructionExecutionCounts(const HloModule* module,
+                                  int64_t loop_iteration_count_estimate);
 }  // namespace spmd
 }  // namespace xla
 
