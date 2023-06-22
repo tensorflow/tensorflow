@@ -492,16 +492,6 @@ py_strict_library(
 
 # TODO(b/285020435): Update usages and then remove.
 py_strict_library(
-    name = "image_ops",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:image_ops",
-        "//tensorflow/python/ops:image_ops_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
     name = "metrics",
     tags = ["avoid_dep"],
     deps = [
