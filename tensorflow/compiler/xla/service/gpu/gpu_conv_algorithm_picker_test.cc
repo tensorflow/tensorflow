@@ -52,14 +52,14 @@ ENTRY main {
                           PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
-  DeviceConfig device_config{stream_exec,
-                             /*allocator=*/nullptr};
 
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GpuConvAlgorithmPicker(device_config), m.get()));
+  DebugOptions opts;
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
@@ -79,8 +79,8 @@ ENTRY main {
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GpuConvAlgorithmPicker(device_config), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   // TupleSimplifier cleans this up a bit before we pattern-match

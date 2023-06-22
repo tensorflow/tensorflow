@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 
 #include <algorithm>
+#include <string>
 #include <tuple>
 #include <utility>
+
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
 namespace xla {
 namespace gpu {
@@ -25,10 +28,9 @@ namespace gpu {
 Status SerializeAutotuneResults(const AutotuneCacheMap& autotune_cache,
                                 AutotuneResults* results) {
   for (const auto& [k, result] : autotune_cache) {
-    const auto& [model_str, hlo] = k;
     auto& entry = *results->add_results();
-    entry.set_device(model_str);
-    entry.set_hlo(hlo);
+    entry.set_device(std::string(k.GetModelStr()));
+    entry.set_hlo(std::string(k.GetHlo()));
     *entry.mutable_result() = result;
   }
 
@@ -48,11 +50,46 @@ Status SerializeAutotuneResults(const AutotuneCacheMap& autotune_cache,
 Status LoadAutotuneResults(AutotuneCacheMap& autotune_cache,
                            const AutotuneResults& results) {
   for (const auto& result : results.results()) {
-    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
+    autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
         result.result();
   }
   return OkStatus();
 }
+
+/* static*/ StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
+    se::RedzoneAllocator& allocator, const Shape& shape,
+    const AutotuneConfig& config, int64_t& rng_state) {
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
+  if (config.should_init_buffers()) {
+    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
+                     buffer);
+  }
+  return buffer;
+}
+
+static std::string ToCanonicalString(const HloInstruction* instr) {
+  auto options = HloPrintOptions::Canonical();
+  if (instr->opcode() != HloOpcode::kFusion) {
+    options.set_print_backend_config(true);
+    return instr->ToString(options);
+  }
+  options.set_print_subcomputation_mode(
+      HloPrintOptions::PrintSubcomputationMode::kOff);
+  options.set_print_infeed_outfeed_config(false);
+  options.set_print_only_essential_constants(true);
+  options.set_print_operand_shape(true);
+  options.set_print_ids(false);
+  options.set_canonicalize_computations(true);
+
+  // TODO(b/266210099): This is unsound. We should probably do the fingerprint
+  // of the HLO computation proto instead.
+  return instr->called_computations()[0]->ToString(options);
+}
+
+AutotuneCacheKey::AutotuneCacheKey(absl::string_view model_str,
+                                   const HloInstruction& instr)
+    : AutotuneCacheKey(model_str, ToCanonicalString(&instr)) {}
 
 }  // namespace gpu
 }  // namespace xla

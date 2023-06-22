@@ -28,9 +28,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -56,7 +56,7 @@ namespace gpu {
 using tensorflow::AutotuneResult;
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-se::RedzoneAllocator CreateRedzoneAllocator(
+static se::RedzoneAllocator CreateRedzoneAllocator(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     const DebugOptions& debug_options, const AutotuneConfig& config) {
   int64_t redzone_size = config.should_check_correctness()
@@ -137,7 +137,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       *result.mutable_failure()->mutable_msg() =
           rz_check_status.RedzoneFailureMsg();
       LOG(ERROR) << "Detected out-of-bounds write in gemm buffer";
-      CHECK(!autotune_config.should_crash_on_check_failure);
+      CHECK(!autotune_config.should_crash_on_check_failure());
       continue;
     }
 
@@ -153,7 +153,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       if (!outputs_match) {
         LOG(ERROR) << "Results mismatch between different GEMM algorithms. "
                    << "This is likely a bug/unexpected loss of precision.";
-        CHECK(!autotune_config.should_crash_on_check_failure);
+        CHECK(!autotune_config.should_crash_on_check_failure());
 
         result.mutable_failure()->set_kind(AutotuneResult::WRONG_RESULT);
         result.mutable_failure()->mutable_reference_gemm()->set_algorithm(
@@ -162,7 +162,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
     }
   }
 
-  if (!autotune_config.should_crash_on_check_failure) {
+  if (!autotune_config.should_crash_on_check_failure()) {
     tensorflow::AutotuningLog log;
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
@@ -189,6 +189,8 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   return best;
 }
 
+// Select the best algorithm using information from a Blas instruction.
+// Returns the index (into `algorithms`) of the fastest algorithm.
 StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
@@ -231,63 +233,27 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   }
 }
 
-StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
-                                            const Shape& shape,
-                                            const AutotuneConfig& config,
-                                            int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
-  if (config.should_init_buffers()) {
-    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
-                     buffer);
-  }
-  return buffer;
-}
-
-StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
-                                            const HloInstruction& op,
-                                            const AutotuneConfig& config,
-                                            int64_t& rng_state) {
-  return CreateBuffer(allocator, op.shape(), config, rng_state);
-}
-
 static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
-static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
-static int64_t autotune_cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
-                                        const GemmBackendConfig& gemm_config,
-                                        se::DeviceMemoryAllocator* allocator,
-                                        se::Stream* stream) {
+                                        const AutotuneCacheKey& key,
+                                        const AutotuneConfig& autotune_config) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-
-  auto key = AutotuneCacheKeyFromInstruction(
-      gemm, stream->parent()->GetDeviceDescription().model_str());
-
-  {
-    absl::MutexLock lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    int64_t requests = autotune_cache_hits + autotune_cache_misses;
-    if (requests && requests % 10 == 0) {
-      VLOG(2) << "Autotuning cache hits/(hits + misses): "
-              << autotune_cache_hits << "/" << requests;
-    }
-
-    if (it != autotune_cache.end()) {
-      autotune_cache_hits++;
-      return it->second;
-    }
-    VLOG(4) << "Autotuning cache miss";
-    autotune_cache_misses++;
+  se::StreamExecutor* executor = autotune_config.GetExecutor();
+  se::DeviceMemoryAllocator* allocator = autotune_config.GetAllocator();
+  if (allocator == nullptr) {
+    allocator = executor->GetAllocator();
   }
-
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
+                      allocator->GetStream(executor->device_ordinal()));
+  GemmBackendConfig gemm_config =
+      gemm->backend_config<GemmBackendConfig>().value();
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
-  AutotuneConfig autotune_config = GetConfig(debug_options);
   const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
@@ -298,19 +264,22 @@ StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
       CreateRedzoneAllocator(stream, allocator, debug_options, autotune_config);
 
   int64_t rng_state = 0;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
-                      CreateBuffer(buffer_allocator, *gemm->operand(0),
-                                   autotune_config, rng_state));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
-                      CreateBuffer(buffer_allocator, *gemm->operand(1),
-                                   autotune_config, rng_state));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase lhs_buffer,
+      AutotunerUtil::CreateBuffer(buffer_allocator, gemm->operand(0)->shape(),
+                                  autotune_config, rng_state));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase rhs_buffer,
+      AutotunerUtil::CreateBuffer(buffer_allocator, gemm->operand(1)->shape(),
+                                  autotune_config, rng_state));
 
   const Shape& output_shape =
       gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
 
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase output_buffer,
-      CreateBuffer(buffer_allocator, output_shape, autotune_config, rng_state));
+      AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
+                                  autotune_config, rng_state));
 
   HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
   AutotuneResult best_algorithm;
@@ -329,10 +298,11 @@ StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
 
     se::DeviceMemoryBase bias_buffer;
     if (has_vector_bias) {
-      TF_ASSIGN_OR_RETURN(bias_buffer,
-                          CreateBuffer(buffer_allocator,
-                                       *gemm->operand(has_matrix_bias ? 3 : 2),
-                                       autotune_config, rng_state));
+      TF_ASSIGN_OR_RETURN(
+          bias_buffer,
+          AutotunerUtil::CreateBuffer(
+              buffer_allocator, gemm->operand(has_matrix_bias ? 3 : 2)->shape(),
+              autotune_config, rng_state));
     }
     se::DeviceMemoryBase a_scale_buffer, b_scale_buffer, c_scale_buffer,
         d_scale_buffer, d_amax_buffer;
@@ -340,9 +310,9 @@ StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
     se::DeviceMemoryBase aux_buffer;
     if (has_aux_output) {
       TF_ASSIGN_OR_RETURN(
-          aux_buffer,
-          CreateBuffer(buffer_allocator, gemm->shape().tuple_shapes(1),
-                       autotune_config, rng_state));
+          aux_buffer, AutotunerUtil::CreateBuffer(buffer_allocator,
+                                                  gemm->shape().tuple_shapes(1),
+                                                  autotune_config, rng_state));
     }
 
     TF_ASSIGN_OR_RETURN(auto plan,
@@ -409,46 +379,15 @@ StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
   return it->second;
 }
 
-StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
-  se::StreamExecutor* executor = config.stream_exec;
-  se::DeviceMemoryAllocator* allocator = config.allocator;
-  if (allocator == nullptr) {
-    allocator = executor->GetAllocator();
-  }
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(executor->device_ordinal()));
-
-  GemmBackendConfig gemm_config =
-      instr->backend_config<GemmBackendConfig>().value();
-
-  TF_ASSIGN_OR_RETURN(AutotuneResult gemm_algorithm,
-                      DoGemmAutotune(instr, gemm_config, allocator, stream));
-
-  // We update instruction->backend_config(); if no algorithms are supported,
-  // a different API is used, which does not require specifying an algorithm.
-  GemmBackendConfig updated_config = gemm_config;
-
-  // We only set the 'algorithm' field on non-Ampere architectures, as for
-  // Ampere it's ignored in any case.
-  if (gemm_algorithm.has_gemm() &&
-      !executor->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    VLOG(4) << "GEMM autotuning picked algorithm "
-            << gemm_algorithm.DebugString() << " for " << instr->name();
-    updated_config.set_selected_algorithm(gemm_algorithm.gemm().algorithm());
-  }
-  TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));
-  return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
-}
-
 #endif
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.
-StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
+StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
+                                const AutotuneConfig& config) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
-  auto key = AutotuneCacheKeyFromInstruction(gemm, config.model_str);
+  AutotuneCacheKey key(config.GetModelStr(), *gemm);
 
   // Load selected algorithm from the autotune cache.
   AutotuneResult algorithm;
@@ -457,10 +396,13 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
     if (auto it = autotune_cache.find(key); it != autotune_cache.end()) {
       algorithm = it->second;
     }
-    VLOG(4) << "AOT autotuning cache miss";
   }
 
-  se::CudaComputeCapability capability = config.cuda_compute_capability;
+  if (!algorithm.has_gemm() && !config.IsDeviceless()) {
+    TF_ASSIGN_OR_RETURN(algorithm, DoGemmAutotune(gemm, key, config));
+  }
+
+  se::CudaComputeCapability capability = config.GetCudaComputeCapability();
   GemmBackendConfig gemm_config =
       gemm->backend_config<GemmBackendConfig>().value();
   GemmBackendConfig updated_config = gemm_config;
@@ -479,22 +421,11 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
 }
 
 StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                AutotuningConfig config) {
+                                AutotuneConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsCublasGemm(*instr)) {
-      bool result;
-      if (auto device_config = std::get_if<DeviceConfig>(&config)) {
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-        TF_ASSIGN_OR_RETURN(result, RunOnInstruction(instr, *device_config));
-#else
-        LOG(FATAL) << "GPU-enabled build is required to run autotuning";
-#endif
-      } else {
-        TF_ASSIGN_OR_RETURN(
-            result,
-            RunOnInstruction(instr, std::get<DevicelessConfig>(config)));
-      }
+      TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, config));
       changed |= result;
     }
   }

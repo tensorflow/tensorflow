@@ -53,16 +53,16 @@ ENTRY main {
                           PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
-  DeviceConfig device_config{stream_exec, nullptr};
-
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmAlgorithmPicker(device_config), m.get()));
+  DebugOptions opts;
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
@@ -85,8 +85,8 @@ ENTRY main {
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmAlgorithmPicker(device_config), m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   SCOPED_TRACE(m->ToString());
@@ -122,9 +122,12 @@ ENTRY main {
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  DeviceConfig device_config{stream_exec, nullptr};
-  TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmAlgorithmPicker(device_config), m.get()));
+
+  DebugOptions opts;
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
@@ -142,16 +145,18 @@ ENTRY main {
   // have the new algorithm.
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
   changed = false;
+
+  DevicelessConfig deviceless_config{
+      stream_exec->GetDeviceDescription().model_str(),
+      stream_exec->GetDeviceDescription().cuda_compute_capability()};
+  AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmRewriter(stream_exec->GetDeviceDescription()
                                            .cuda_compute_capability()),
                           m.get()));
   changed = false;
-  DevicelessConfig deviceless_config{
-      stream_exec->GetDeviceDescription().model_str(),
-      stream_exec->GetDeviceDescription().cuda_compute_capability()};
   TF_ASSERT_OK_AND_ASSIGN(
-      changed, RunHloPass(GemmAlgorithmPicker(deviceless_config), m.get()))
+      changed, RunHloPass(GemmAlgorithmPicker(deviceless_cfg), m.get()))
   ASSERT_TRUE(changed);
 
   SCOPED_TRACE(m->ToString());

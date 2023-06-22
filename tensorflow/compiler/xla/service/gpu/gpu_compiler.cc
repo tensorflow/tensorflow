@@ -99,7 +99,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -110,7 +109,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_shape_verifier.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_stats.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_input_fusion.h"
@@ -198,7 +196,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/autotune_serialize.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -223,6 +223,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 // and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
 // else we do not need to enable the pass.
 bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
+#if GOOGLE_CUDA
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
     for (const HloInstruction* inst : comp->instructions()) {
       if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
@@ -230,6 +231,7 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
       }
     }
   }
+#endif
   // No convolution auto-tuning candidates found in the module.
   return false;
 }
@@ -939,40 +941,43 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  AutotuningConfig autotune_config =
-      stream_exec ? AutotuningConfig{DeviceConfig{stream_exec,
-                                                  options.device_allocator}}
-                  : AutotuningConfig{DevicelessConfig{
-                        gpu_target_config.device_description_str}};
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
   const bool enable_collecive_schedule_linearizer_for_spmd =
-      hlo_module->config().use_spmd_partitioning() &&
-      autotune_config.is_online() &&
+#if GOOGLE_CUDA
+      hlo_module->config().use_spmd_partitioning() && stream_exec != nullptr &&
       GpuConvAlgorithmPicker::IsEnabled(hlo_module);
+#else
+      false;
+#endif
 
   if (enable_collecive_schedule_linearizer_for_spmd) {
     pipeline.AddPass<CollectivesScheduleLinearizer>(
         RequiresCollectiveScheduleLinearizer);
   }
 
-  if (autotune_config.is_offline()) {
+#if GOOGLE_CUDA
+  AutotuneConfig autotune_config =
+      stream_exec
+          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                           debug_options}
+          : AutotuneConfig{
+                DevicelessConfig{gpu_target_config.device_description_str},
+                debug_options};
+  if (autotune_config.IsDeviceless()) {
     GpuConvAlgorithmPicker::ClearAutotuneResults();
     TF_RETURN_IF_ERROR(
         GpuConvAlgorithmPicker::LoadAutotuneResults(*autotune_results));
-#if GOOGLE_CUDA
     GemmAlgorithmPicker::ClearAutotuneResults();
     TF_RETURN_IF_ERROR(
         GemmAlgorithmPicker::LoadAutotuneResults(*autotune_results));
     TritonAutotuner::ClearAutotuneResults();
     TF_RETURN_IF_ERROR(TritonAutotuner::LoadAutotuneResults(*autotune_results));
-#endif  // GOOGLE_CUDA
   }
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline.AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
-#if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
 
   // By default use an externally provided thread pool.
