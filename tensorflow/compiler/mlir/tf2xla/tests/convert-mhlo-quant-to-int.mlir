@@ -169,3 +169,37 @@ func.func @uniform_quantize_requantize_and_dequantize(%arg0: tensor<?x?xf32>) ->
   %2 = mhlo.uniform_dequantize %1 : (tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>) -> tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_dequantize
+func.func @uniform_quantize_dot_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL3:.*]] = chlo.broadcast_subtract %[[VAL1:.*]], %[[VAL2:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = chlo.broadcast_subtract %[[VAL5:.*]], %[[VAL6:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL8:.*]] = "mhlo.dot"(%[[VAL3:.*]], %[[VAL7:.*]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL10:.*]] = chlo.broadcast_multiply %[[VAL8:.*]], %[[VAL9:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL12:.*]] = chlo.broadcast_add %[[VAL10:.*]], %[[VAL11:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL13:.*]] = mhlo.floor %[[VAL12:.*]] : tensor<?x?xf32>
+  // CHECK: %[[VAL15:.*]] = chlo.broadcast_add %[[VAL13:.*]], %[[VAL14:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL16:.*]] = mhlo.convert %[[VAL15:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL19:.*]] = mhlo.clamp %[[VAL17:.*]], %[[VAL16:.*]], %[[VAL18:.*]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL20:.*]] = mhlo.convert %[[VAL19:.*]] : (tensor<?x?xi32>) -> tensor<?x?xi8>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %2 = "mhlo.dot" (%0, %1) : (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
+  return %3 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @uniform_quantize_dot_dequantize_result_storage_type_not_int8(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>> {
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
+  // expected-error@+2 {{DotOp result storage type must be int8}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
+  %2 = "mhlo.dot" (%0, %1): (tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
+  return %2 : tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
+}
