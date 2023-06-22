@@ -4937,6 +4937,10 @@ tf_module {
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
+    name: "TFRecordDatasetV2"
+    argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'byte_offsets\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "TFRecordReader"
     argspec: "args=[\'container\', \'shared_name\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
