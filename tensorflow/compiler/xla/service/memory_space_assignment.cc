@@ -110,6 +110,16 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
           return true;
         }
         break;
+      case HloOpcode::kCopy:
+        if (user->IsFused() && (user == user->parent()->root_instruction())) {
+          user = user->parent()->FusionInstruction();
+          if (LooksLikeAnActivation(user)) {
+            return true;
+          } else {
+            break;
+          }
+        }
+        return true;
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicSlice:
         if (std::find(user->operands().begin() + 1, user->operands().end(),
