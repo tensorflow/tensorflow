@@ -204,6 +204,10 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#ifdef PLATFORM_GOOGLE
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#endif  // PLATFORM_GOOGLE
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -391,6 +395,14 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   TF_RETURN_IF_ERROR(pre_spmd_pipeline.Run(hlo_module).status());
 
   const int64_t num_partitions = hlo_module->config().num_partitions();
+  bool auto_sharding = hlo_module->config().use_auto_spmd_partitioning();
+
+#ifndef PLATFORM_GOOGLE
+  if (auto_sharding) {
+    LOG(ERROR) << "GPU autosharding is not yet available in open source.";
+  }
+#endif
+
   if (num_partitions > 1) {
     if (!hlo_module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -422,6 +434,36 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     spmd_simplify.AddPass<HloDCE>();
 
     spmd_pipeline.AddPass<HloConstantSplitter>();
+
+#ifdef PLATFORM_GOOGLE
+    if (auto_sharding) {
+      AutoShardingOption option;
+      option.enable = true;
+      if (!hlo_module->config().auto_spmd_partitioning_mesh_shape().empty()) {
+        option.device_mesh_shape =
+            hlo_module->config().auto_spmd_partitioning_mesh_shape();
+      } else {
+        // Use a simple mesh shape if not specified.
+        option.device_mesh_shape = {
+            stream_exec->GetDeviceDescription().core_count(), 1};
+      }
+      if (!hlo_module->config().auto_spmd_partitioning_mesh_ids().empty()) {
+        option.device_mesh_ids =
+            hlo_module->config().auto_spmd_partitioning_mesh_ids();
+      }
+      option.memory_budget_per_device =
+          hlo_module->config()
+              .debug_options()
+              .xla_gpu_auto_spmd_partitioning_memory_budget_gb() *
+          1024 * 1024 * 1024;
+      option.memory_budget_ratio =
+          hlo_module->config()
+              .debug_options()
+              .xla_gpu_auto_spmd_partitioning_memory_budget_ratio();
+      spmd_pipeline.AddPass<AutoSharding>(option);
+    }
+#endif  // PLATFORM_GOOGLE
+
     spmd_pipeline.AddPass<ShardingPropagation>(
         /*is_spmd=*/true, /*propagate_metadata=*/false,
         hlo_module->config().allow_spmd_sharding_propagation_to_output());

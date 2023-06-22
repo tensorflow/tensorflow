@@ -549,7 +549,15 @@ message DebugOptions {
   // CUDA.
   string xla_gpu_load_autotune_results_from = 223;
 
-  // Next id: 224
+  // Memory budget in GB per device for AutoSharding.
+  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+
+  // See the definition of the
+  // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
+  // this field.
+  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+
+  // Next id: 226
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

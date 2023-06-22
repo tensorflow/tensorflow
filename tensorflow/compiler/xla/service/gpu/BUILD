@@ -2415,6 +2415,18 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "auto_sharding_gpu_compiler_test",
+    srcs = ["auto_sharding_gpu_compiler_test.cc"],
+    tags = tf_cuda_tests_tags() + ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
+    deps = [
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "nvptx_compiler",
     srcs = if_cuda_is_configured([
