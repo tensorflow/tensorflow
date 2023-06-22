@@ -120,6 +120,16 @@ bool ShouldRunAsSingleDevice(const DTensorOperation& dtensor_operation) {
       GetFullOpName(dtensor_operation.name));
 }
 
+// Whether the op is DTensor specific eager op. Certain op can't
+// be landed on tf device since they don't have a kernel, and can only run on
+// dtensor device.
+bool IsDTensorMetaOp(const DTensorOperation& dtensor_operation) {
+  return (dtensor_operation.name == std::string("CopyToMesh") ||
+          dtensor_operation.name == std::string("CopyToMeshGrad") ||
+          dtensor_operation.name == std::string("Relayout") ||
+          dtensor_operation.name == std::string("RelayoutLike"));
+}
+
 class DTensorDevice {
  public:
   static StatusOr<DTensorDevice*> Create(absl::string_view name, bool is_async,
@@ -506,6 +516,24 @@ class DTensorDevice {
       const std::vector<const TranslatedFunction*>& function_list,
       const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
       int num_inputs, uint64 step_id, TF_Status* status);
+
+  // Whether the eager op can be executed with fast execution shortcut.
+  // See FastExecuteEagerPureOperation for more details.
+  bool ShouldFastExecuteEagerPureOperation(
+      const DTensorOperation& dtensor_operation, const Mesh& mesh,
+      const std::vector<TensorWithLayout*>& typed_inputs);
+
+  // Helper function to execute a eager op without MLIR path.
+  // This is a shortcut for performance improvement, especially for variable
+  // initialization. Under certain condition
+  // (see ShouldFastExecuteEagerPureOperation), the op can be run locally, and
+  // the result will be broadcast to each shards.
+  void FastExecuteEagerPureOperation(
+      TFE_Context* context, const DTensorOperation& dtensor_operation,
+      const Mesh& mesh, int num_inputs, int num_outputs,
+      const std::vector<TensorWithLayout*>& typed_inputs,
+      const TFE_OpAttrs* attributes, std::vector<TensorHandlePtr>& outputs,
+      TF_Status* status);
 
   // Wraps a TensorWithLayout into a TFE_TensorHandle.
   TFE_TensorHandle* MakeLayoutTensorHandle(TFE_Context* context,
@@ -2556,10 +2584,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
     if (!mesh->IsSingleDevice()  // Broadcast to single device tensor is
                                  // allowed.
-        && (operation_name != std::string("CopyToMesh") &&
-            operation_name != std::string("CopyToMeshGrad") &&
-            operation_name != std::string("Relayout") &&
-            operation_name != std::string("RelayoutLike")) &&
+        && !IsDTensorMetaOp(dtensor_operation) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       StatusOr<std::vector<int64_t>> shape = GetTensorShapeAsVector(input);
       if (!shape.ok()) {
@@ -2593,6 +2618,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     broadcast_results_keep_alive.emplace_back(std::move(tensor_with_layout));
   }
 
+  if (ShouldFastExecuteEagerPureOperation(dtensor_operation, mesh.value(),
+                                          typed_inputs)) {
+    FastExecuteEagerPureOperation(context, dtensor_operation, mesh.value(),
+                                  num_inputs, *num_outputs, typed_inputs,
+                                  attributes, outputs, status);
+    return;
+  }
+
   std::vector<TFE_TensorHandle*> raw_outputs(*num_outputs);
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
                           num_outputs, raw_outputs.data(), status);
@@ -2600,6 +2633,79 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     for (int i = 0; i < *num_outputs; ++i) {
       outputs[i].reset(raw_outputs[i]);
     }
+  }
+}
+
+bool DTensorDevice::ShouldFastExecuteEagerPureOperation(
+    const DTensorOperation& dtensor_operation, const Mesh& mesh,
+    const std::vector<TensorWithLayout*>& typed_inputs) {
+  if (IsDTensorMetaOp(dtensor_operation) || dtensor_operation.is_func() ||
+      !dtensor_operation.is_pure() ||
+      dtensor_operation.name == std::string("GetEmbeddingConfiguration") ||
+      mesh.IsSingleDevice() || mesh.is_remote() ||
+      // TODO(b/287529295): Disable this shortcut for TPU for now.
+      mesh.is_tpu_mesh()) {
+    return false;
+  }
+  bool all_replicated_inputs = true;
+  bool all_on_default_mesh = true;
+  bool all_dtype_supported = true;
+  for (auto typed_input : typed_inputs) {
+    auto layout = typed_input->layout();
+    all_replicated_inputs &= layout.IsFullyReplicated();
+
+    all_on_default_mesh &= layout.mesh() == mesh;
+
+    auto input_dtype = typed_input->dtype();
+    all_dtype_supported &= input_dtype != TF_STRING;
+  }
+
+  // In case user specify the default_layout, it could affect the output
+  // tensor layout, even the inputs are all replicated.
+  bool all_replicated_output =
+      (!default_layout_.has_value() || default_layout_->IsFullyReplicated());
+
+  // Fetch the ops registy to get the output dtype for the op. Certain dtypes
+  // like string are not supported by the broadcast.
+  const OpDef* op_def = nullptr;
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(dtensor_operation.name, &op_def);
+  if (!status.ok()) return false;
+  for (const auto& output_arg : op_def->output_arg()) {
+    all_dtype_supported &= output_arg.type() != DT_STRING;
+  }
+
+  return (all_replicated_inputs && all_replicated_output &&
+          all_dtype_supported && all_on_default_mesh);
+}
+
+void DTensorDevice::FastExecuteEagerPureOperation(
+    TFE_Context* context, const DTensorOperation& dtensor_operation,
+    const Mesh& mesh, int num_inputs, int num_outputs,
+    const std::vector<TensorWithLayout*>& typed_inputs,
+    const TFE_OpAttrs* attributes, std::vector<TensorHandlePtr>& outputs,
+    TF_Status* status) {
+  std::string device_name = std::string{mesh.local_devices()[0]};
+  std::vector<TFE_TensorHandle*> single_device_inputs;
+  single_device_inputs.reserve(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    TFE_TensorHandle* first_replica_input = typed_inputs[i]->get_tensor(0);
+    single_device_inputs.push_back(first_replica_input);
+  }
+  std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(context, single_device_inputs,
+                               dtensor_operation.name, device_name, attributes,
+                               &num_outputs, single_device_outputs, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  for (int i = 0; i < num_outputs; ++i) {
+    TFE_TensorHandle* output = single_device_outputs[i].get();
+    std::unique_ptr<TensorWithLayout> output_tensor =
+        Broadcast(context, output, mesh, status);
+    if (TF_GetCode(status) != TF_OK) return;
+    outputs[i].reset(
+        MakeLayoutTensorHandle(context, std::move(output_tensor), status));
+    if (TF_GetCode(status) != TF_OK) return;
   }
 }
 
