@@ -1530,33 +1530,24 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
   return GetSimpleAttribute<int64_t>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 }
 
-/* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
-                                           CUdevice device) {
+/* static */ tsl::Status GpuDriver::GetGridLimits(int* x, int* y, int* z,
+                                                  CUdevice device) {
   int value;
-  CUresult res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim x: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, device),
+      "Could not get device attribute");
   *x = value;
 
-  res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim y: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, device),
+      "Could not get device attribute");
   *y = value;
 
-  res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim z: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, device),
+      "Could not get device attribute");
   *z = value;
-  return true;
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetDriverVersion(int* driver_version) {

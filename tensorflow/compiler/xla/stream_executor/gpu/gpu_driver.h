@@ -528,7 +528,8 @@ class GpuDriver {
 
   // Queries the grid limits for device with cuDeviceGetAttribute calls.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static bool GetGridLimits(int* x, int* y, int* z, GpuDeviceHandle device);
+  static tsl::Status GetGridLimits(int* x, int* y, int* z,
+                                   GpuDeviceHandle device);
 
   // Returns a grab-bag of device properties in a caller-owned device_properties
   // structure for device_ordinal via cuDeviceGetProperties.
