@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
-#include "testing/base/public/gunit-spi.h"
+#include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
