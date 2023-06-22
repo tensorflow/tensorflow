@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,7 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/math_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace mhlo {
@@ -130,6 +133,13 @@ LogicalResult RequantizeWithoutClamping(
 class ConvertMHLOQuantToInt
     : public impl::ConvertMHLOQuantToIntBase<ConvertMHLOQuantToInt> {
  public:
+  ConvertMHLOQuantToInt() = default;
+  ConvertMHLOQuantToInt(const ConvertMHLOQuantToInt &) {}
+
+  explicit ConvertMHLOQuantToInt(bool legalize_chlo) {
+    legalize_chlo_ = legalize_chlo;
+  }
+
   // Performs conversion of MHLO quant ops to primitive ops.
   void runOnOperation() override;
 };
@@ -568,12 +578,28 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   if (failed(result)) {
     signalPassFailure();
   }
+
+  // Legalize CHLO if needed.
+  if (!legalize_chlo_) return;
+  RewritePatternSet patterns_2(context);
+
+  chlo::populateDecomposeChloPatterns(context, &patterns_2);
+  chlo::populateChloBroadcastingPatterns(context, &patterns_2);
+
+  ConversionTarget target_2 =
+      GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo_);
+
+  result = applyPartialConversion(op, target_2, std::move(patterns_2));
+  if (failed(result)) {
+    signalPassFailure();
+  }
 }
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass() {
-  return std::make_unique<ConvertMHLOQuantToInt>();
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
+    bool legalize_chlo) {
+  return std::make_unique<ConvertMHLOQuantToInt>(legalize_chlo);
 }
 
 }  // end namespace mhlo

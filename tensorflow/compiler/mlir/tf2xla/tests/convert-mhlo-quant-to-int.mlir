@@ -1,4 +1,4 @@
-// RUN: tf-opt -convert-mhlo-quant-to-int -split-input-file %s -verify-diagnostics | FileCheck %s
+// RUN: tf-opt "-convert-mhlo-quant-to-int=legalize-chlo=false" -split-input-file %s -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -27,6 +27,8 @@ func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?
   %1 = mhlo.uniform_dequantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
 }
+
+// -----
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_int4
 func.func @uniform_quantize_and_dequantize_int4(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {

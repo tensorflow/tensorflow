@@ -984,6 +984,8 @@ void LegalizeTF::runOnOperation() {
 
 }  // end namespace
 
+// TODO(b/288094093): Migrate uniform quantization legalization in a separate
+// pass.
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
   patterns
