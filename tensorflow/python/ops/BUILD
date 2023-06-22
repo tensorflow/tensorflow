@@ -4384,8 +4384,7 @@ py_strict_library(
     name = "weak_tensor_ops",
     srcs = ["weak_tensor_ops.py"],
     deps = [
-        ":array_ops",
-        ":math_ops",
+        ":weak_tensor_ops_list",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:weak_tensor",
         "//tensorflow/python/util:dispatch",
@@ -4397,13 +4396,36 @@ py_strict_test(
     srcs = ["weak_tensor_ops_test.py"],
     deps = [
         ":array_ops",
+        ":array_ops_gen",
+        ":bitwise_ops_gen",
+        ":clip_ops",
+        ":image_ops_impl",
         ":math_ops",
         ":weak_tensor_ops",
+        ":weak_tensor_ops_list",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:weak_tensor",
         "//tensorflow/python/platform:test",
+    ],
+)
+
+py_strict_library(
+    name = "weak_tensor_ops_list",
+    srcs = ["weak_tensor_ops_list.py"],
+    deps = [
+        ":array_ops",
+        ":array_ops_gen",
+        ":bitwise_ops_gen",
+        ":clip_ops",
+        ":image_ops_impl",
+        ":math_ops",
+        ":math_ops_gen",
+        ":nn_impl",
+        ":nn_ops",
+        ":nn_ops_gen",
+        ":special_math_ops",
     ],
 )

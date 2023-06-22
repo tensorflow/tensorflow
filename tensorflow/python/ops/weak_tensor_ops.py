@@ -18,8 +18,7 @@ import inspect
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.weak_tensor import WeakTensor
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import weak_tensor_ops_list
 from tensorflow.python.util import dispatch
 
 
@@ -30,30 +29,7 @@ for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
   setattr(WeakTensor, operator, tensor_oper)
 
 # List of unary ops that have support for WeakTensor.
-_TF_UNARY_APIS = [
-    math_ops.abs,
-    math_ops.softplus,
-    math_ops.sign,
-    math_ops.real,
-    math_ops.imag,
-    math_ops.angle,
-    math_ops.round,
-    math_ops.sigmoid,
-    math_ops.log_sigmoid,
-    math_ops.conj,
-    math_ops.reciprocal_no_nan,
-    math_ops.erfinv,
-    math_ops.ndtri,
-    math_ops.erfcinv,
-    math_ops.ceil,
-    math_ops.sqrt,
-    math_ops.exp,
-    math_ops.rsqrt,
-    math_ops.acos,
-    math_ops.floor,
-    array_ops.zeros_like,
-    array_ops.ones_like,
-]
+_TF_UNARY_APIS = weak_tensor_ops_list.ALL_UNARY_OPS
 
 
 def register_unary_weak_tensor_dispatcher(op):

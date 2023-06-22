@@ -20,11 +20,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_bitwise_ops
+from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weak_tensor_ops
+from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import weak_tensor_ops_list
 from tensorflow.python.platform import googletest
 
-_TF_UNARY_APIS = weak_tensor_ops._TF_UNARY_APIS
+
+_TF_UNARY_APIS = weak_tensor_ops_list.ALL_UNARY_OPS
 _TF_UNARY_APIS_SPECIFIC_DTYPE = [
     math_ops.to_float,
     math_ops.to_double,
@@ -34,20 +40,47 @@ _TF_UNARY_APIS_SPECIFIC_DTYPE = [
     math_ops.to_complex64,
     math_ops.to_complex128,
 ]
+_TF_UNARY_APIS_WITH_MULT_INPUT = [
+    gen_array_ops.check_numerics,
+    image_ops_impl.random_brightness,
+    image_ops_impl.stateless_random_brightness,
+    image_ops_impl.adjust_brightness,
+    clip_ops.clip_by_value,
+]
+_TF_UNARY_APIS_WITH_INT_INPUT = [
+    gen_bitwise_ops.invert,
+]
 
 
 class WeakTensorOpsTest(test_util.TensorFlowTestCase):
 
   def test_elementwise_unary_ops_return_weak_tensor(self):
-    a = weak_tensor.WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
     for op in _TF_UNARY_APIS:
-      res = op(a)
+      if op in _TF_UNARY_APIS_WITH_MULT_INPUT:
+        # Test unary ops with multple inputs separately.
+        continue
+      op_input = _get_test_input(op)
+      res = op(op_input)
       # Check that WeakTensor is returned.
       self.assertIsInstance(res, weak_tensor.WeakTensor)
       # Check that the actual result is correct.
       wt_result = self.evaluate(res)
-      t_result = self.evaluate(op(a.tensor))
+      t_result = self.evaluate(op(op_input.tensor))
       self.assertAllEqual(wt_result, t_result)
+
+  def test_elementwise_multi_arg_unary_ops_return_weak_tensor(self):
+    a = weak_tensor.WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
+    results = [
+        gen_array_ops.check_numerics(a, message=""),
+        image_ops_impl.random_brightness(a, 0.2),
+        image_ops_impl.stateless_random_brightness(
+            image=a, max_delta=0.2, seed=(1, 2)
+        ),
+        image_ops_impl.adjust_brightness(a, delta=0.2),
+        clip_ops.clip_by_value(a, clip_value_min=1.1, clip_value_max=2.2),
+    ]
+    for result in results:
+      self.assertIsInstance(result, weak_tensor.WeakTensor)
 
   def test_elementwise_unary_ops_return_normal_tensor(self):
     a = weak_tensor.WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
@@ -78,6 +111,15 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase):
     a = weak_tensor.WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
     self.assertIsInstance(math_ops.cast(a, dtypes.int32), ops.Tensor)
     self.assertIsInstance(math_ops.saturate_cast(a, dtypes.int32), ops.Tensor)
+
+
+def _get_test_input(op):
+  if op in _TF_UNARY_APIS_WITH_INT_INPUT:
+    return weak_tensor.WeakTensor(constant_op.constant([1, 2, 3], dtypes.int32))
+  else:
+    return weak_tensor.WeakTensor(
+        constant_op.constant([1, 2, 3], dtypes.float32)
+    )
 
 
 if __name__ == "__main__":
