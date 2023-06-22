@@ -70,7 +70,9 @@ inline GpuStats GetNumGPUs(const Cluster& cluster) {
     bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
     if ((compute_capability_it->second == "gfx908" ||
          compute_capability_it->second == "gfx90a" ||
-	 compute_capability_it->second == "gfx940" ) && is_enabled) {
+	 compute_capability_it->second == "gfx940" ||
+	 compute_capability_it->second == "gfx941" ||
+	 compute_capability_it->second == "gfx942") && is_enabled) {
        gpu_stats.num_voltas++;
     }
 #endif

@@ -179,26 +179,28 @@ class RocmComputeCapability {
         "gfx908",  // MI100
         "gfx90a",  // MI200
         "gfx940",  // MI300
-        "gfx1030", // Navi21
+        "gfx941",  // MI300
+        "gfx942",  // MI300
+        "gfx1030"  // Navi21
         "gfx1100"  // Navi31
     };
   }
   std::set<std::string> gfx_versions_with_nhwc_layout_support() {
-    return {"gfx908", "gfx90a", "gfx940"};
+    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
   }
   std::set<std::string> gfx_versions_with_fast_bf16_support() {
-    return {"gfx908", "gfx90a", "gfx940"};
+    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
   }
   std::set<std::string> gfx_versions_with_fast_fp16_support() {
-    return {"gfx906", "gfx908", "gfx90a", "gfx940", "gfx1030", "gfx1100"};
+    return {"gfx906", "gfx908", "gfx90a", "gfx940", "gfx941", "gfx942", "gfx1030", "gfx1100"};
   }
   std::set<std::string> gfx_versions_with_mfma_instr_support() {
-    return {"gfx908", "gfx90a", "gfx940"};
+    return {"gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"};
   }
   std::set<std::string> gfx_versions_with_fp16_atomics_support() {
     // TODO(rocm): Check. This should be the same as
     // gfx_versions_with_fast_fp16_support.
-    return {"gfx90a", "gfx940"};
+    return {"gfx90a", "gfx940", "gfx941", "gfx942"};
   }
 };
 
