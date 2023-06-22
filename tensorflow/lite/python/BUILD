@@ -477,11 +477,11 @@ py_test(
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/layers",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model",
     ],
 )
