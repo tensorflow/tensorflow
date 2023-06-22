@@ -192,6 +192,11 @@ class PjRtExecutableUtil {
   static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   RunHloCostAnalysis(const PjRtExecutable& executable,
                      HloCostAnalysis* hlo_cost_analysis);
+
+  static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  RunHloCostAnalysis(
+      const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
+      HloCostAnalysis* hlo_cost_analysis);
 };
 
 }  // namespace xla

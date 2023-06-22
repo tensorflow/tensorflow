@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -158,11 +159,26 @@ PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
   } else if (modules.size() > 1) {
     return Unimplemented(
         "GetCostAnalysis() doesn't support multiple program "
+        "multiple data executables (from executable '%s').",
+        executable.name());
+  }
+  return RunHloCostAnalysis(modules, hlo_cost_analysis);
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtExecutableUtil::RunHloCostAnalysis(
+    const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
+    HloCostAnalysis* hlo_cost_analysis) {
+  if (hlo_modules.empty()) {
+    return NotFound("RunHloCostAnalysis called with empty hlo_modules");
+  } else if (hlo_modules.size() > 1) {
+    return Unimplemented(
+        "GetCostAnalysis() doesn't support multiple program "
         "multiple data executables.");
   }
 
   TF_RETURN_IF_ERROR(
-      modules[0]->entry_computation()->Accept(hlo_cost_analysis));
+      hlo_modules[0]->entry_computation()->Accept(hlo_cost_analysis));
 
   // Return cost properties
   absl::flat_hash_map<std::string, PjRtValueType> ret;
