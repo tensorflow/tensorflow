@@ -790,24 +790,18 @@ int64_t MaxNumTiles(const StrategyMap& strategy_map,
   return max_num_tiles;
 }
 
-// Choose an operand to follow.
-// We choose to follow the operand with the highest priority.
-// The priority is defined as a two element tuple as below, where we compare
-// the first key first, and if the first key is the same, we compare the second
-// key:
+// Choose an operand to follow.  We choose to follow the operand with the
+// highest priority.  The priority is defined as a function of two entities as
+// below:
 //
-// priority(operand) = (
-//   max(x.output_spec.num_tiles for x in operand.strategies),
-//   depth(operand),
-// )
+// priority(operand) =
+//   max(x.output_spec.num_tiles for x in operand.strategies) +
+//   depth(operand) * depth_normalizer
 //
-// For example, When one operand has a sharding strategy that splits into
-// N slices, while another operand only has replicated strategy, we will choose
-// the first operand to follow since it can be split into more slices. When
-// both operands can be sliced into the same number of slices, we follow the
-// deeper one in the computational graph. When the depth is also similar,
-// we set these operators to be "tied" and let the ILP solver to pick which one
-// to follow.
+// For example, We therefore prefer one operand with strategies with a high
+// number of tiles and operands that have a higher depth in the graph. When the
+// priorities are similar (within range_delta), we set these operators to be
+// "tied" and let the ILP solver to pick which one to follow.
 //
 // The function returns (follow_idx, tie), where the follow_idx is the id of
 // the operand to follow and tie is a boolean variable that indicates whether
@@ -817,7 +811,6 @@ int64_t MaxNumTiles(const StrategyMap& strategy_map,
 std::pair<int64_t, bool> ChooseOperandToFollow(
     const StrategyMap& strategy_map, const InstructionDepthMap& depth_map,
     const AliasMap& alias_map,
-    const absl::flat_hash_set<const HloInstruction*>& undefined_set,
     int64_t max_depth, const HloInstruction* ins) {
   // If an alias constraint is set, always follow its alias source.
   auto it = alias_map.find(ins);
@@ -838,7 +831,6 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
 
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
     const HloInstruction* operand = ins->operand(i);
-    if (!undefined_set.count(operand)) {
       double priority = MaxNumTiles(strategy_map, operand) +
                         depth_map.at(operand) * depth_normalizer;
       if (priority > max_priority + range_delta) {
@@ -848,7 +840,6 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
       } else if (priority >= max_priority - range_delta) {
         tie = true;
       }
-    }
   }
   CHECK(follow_idx.has_value());
 
@@ -1301,7 +1292,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   StableHashMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
   LeafStrategies leaf_strategies;
   AssociativeDotPairs associative_dot_pairs;
-  absl::flat_hash_set<const HloInstruction*> undefined_set;
 
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
@@ -1410,9 +1400,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         const Shape& shape = ins->shape();
         const StrategyVector* src_strategies = strategy_map.at(indices).get();
         CHECK(!src_strategies->is_tuple);
-        if (undefined_set.contains(indices)) {
-          break;
-        }
         strategies->following = src_strategies;
         for (int32_t index_dim = 0; index_dim < indices->shape().rank();
              index_dim++) {
@@ -1425,7 +1412,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
             // Split only when the tensor shape is divisable by device
             // mesh.
-            // TODO(b/220942808) Shard non-divisible dimensions.
             if (device_mesh.dim(j) == 1 ||
                 (only_allow_divisible &&
                  !IsDivisible(shape.dimensions(index_dim),
@@ -1471,9 +1457,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                               leaf_strategies);
 
         const HloInstruction* operand = ins->operand(0);
-        if (undefined_set.contains(operand)) {
-          break;
-        }
 
         const StrategyVector* operand_strategies =
             strategy_map.at(operand).get();
@@ -1503,8 +1486,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                               leaf_strategies);
         const HloInstruction* operand = ins->operand(0);
-        if (!undefined_set.count(operand) &&
-            !(mesh_nn_dims >= 2 && solver_option.allow_mixed_mesh_shape)) {
+        if (!(mesh_nn_dims >= 2 && solver_option.allow_mixed_mesh_shape)) {
           // Create follow strategies
           const StrategyVector* src_strategies = strategy_map.at(operand).get();
           CHECK(!src_strategies->is_tuple);
@@ -1583,9 +1565,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                               leaf_strategies);
 
         const HloInstruction* operand = ins->operand(0);
-        if (undefined_set.contains(operand)) {
-          break;
-        }
 
         // Create follow strategies
         const StrategyVector* src_strategies = strategy_map.at(operand).get();
@@ -1637,10 +1616,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           case HloOpcode::kSelectAndScatter:
           case HloOpcode::kConcatenate:
             // Follow the operand according to the follow heuristics
-            follow_idx =
-                ChooseOperandToFollow(strategy_map, depth_map, alias_map,
-                                      undefined_set, max_depth, ins)
-                    .first;
+            follow_idx = ChooseOperandToFollow(strategy_map, depth_map,
+                                               alias_map, max_depth, ins)
+                             .first;
             break;
           // The following types are better to follow the first operand.
           case HloOpcode::kSlice:
@@ -1784,7 +1762,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         int64_t follow_idx;
         bool tie;
         std::tie(follow_idx, tie) = ChooseOperandToFollow(
-            strategy_map, depth_map, alias_map, undefined_set, max_depth, ins);
+            strategy_map, depth_map, alias_map, max_depth, ins);
 
         if (!tie || AllowTieFollowing(ins)) {
           strategies->following =
@@ -2027,8 +2005,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     if (ins->has_sharding()) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
-      // TODO(b/208668853) If needed, we can make auto sharding faster by using
-      // this sharding spec when merging node using strategies->following.
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
           ins->sharding(), cluster_env, pretrimmed_strategy_map, call_graph,
@@ -4142,11 +4118,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
-  // TODO(b/208668853): Keep shardings in custom-calls. After auto
-  // sharding pass, instead of fixing the shardings, mark all the replicated
-  // dims as "unspecified" instead of replicated. (this would require using
-  // custom-call annotations ops instead of in-place attributes). Then run the
-  // sharding propagation pass after that before spmd partitioner.
   auto status_or_changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
       &unspecified_dims, /*saved_root_shardings=*/nullptr,
