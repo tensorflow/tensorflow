@@ -77,6 +77,11 @@ class AutoScaler {
   tsl::Status ReportTargetProcessingTime(int64_t consumer_id,
                                          absl::Duration target_processing_time)
       TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters the worker with `worker_address`, removing its reported
+  // processing time from consideration of the current workload estimation.
+  // Returns an error if the specified worker does not exist.
+  tsl::Status RemoveWorker(const std::string &worker_address)
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;

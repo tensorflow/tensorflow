@@ -58,5 +58,17 @@ tsl::Status AutoScaler::ReportTargetProcessingTime(
   return tsl::OkStatus();
 }
 
+tsl::Status AutoScaler::RemoveWorker(const std::string& worker_address)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (!worker_throughputs_.contains(worker_address))
+    return absl::NotFoundError(
+        absl::StrCat("Worker with address ", worker_address, " not found"));
+
+  worker_throughputs_.erase(worker_address);
+
+  return tsl::OkStatus();
+}
+
 }  // namespace data
 }  // namespace tensorflow

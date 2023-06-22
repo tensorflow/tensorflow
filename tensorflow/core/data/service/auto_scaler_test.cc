@@ -112,6 +112,31 @@ TEST(AutoScalerTest, ReportTargetProcessingTimeNegativeDuration) {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(AutoScalerTest, RemoveWorkerSuccessful) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/1:20000",
+                                                absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker("/worker/task/0:20000"));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker("/worker/task/1:20000"));
+}
+
+TEST(AutoScalerTest, RemoveNonexistentWorker) {
+  AutoScaler auto_scaler;
+  EXPECT_THAT(auto_scaler.RemoveWorker("/worker/task/0:20000"),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(AutoScalerTest, RemoveWorkerAfterNewPTReported) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker("/worker/task/0:20000"));
+}
+
 }  // namespace
 
 }  // namespace data
