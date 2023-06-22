@@ -90,7 +90,7 @@ xla_cc_test(
     name = "se_gpu_pjrt_client_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         "//tensorflow/compiler/xla:statusor",
