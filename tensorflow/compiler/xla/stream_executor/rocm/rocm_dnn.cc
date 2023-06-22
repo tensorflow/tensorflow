@@ -4653,10 +4653,17 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+
+    if (is_profiling) {
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -4680,10 +4687,13 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
-                            timer->GetElapsedDuration());
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(elapsed));
+            absl::ToDoubleMilliseconds(*elapsed));
       }
     }
 
@@ -4747,11 +4757,17 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    if (is_profiling) {
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -4772,10 +4788,13 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
-                            timer->GetElapsedDuration());
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(elapsed));
+            absl::ToDoubleMilliseconds(*elapsed));
       }
     }
 
@@ -4855,11 +4874,17 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    if (is_profiling) {
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -4881,10 +4906,13 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
-                            timer->GetElapsedDuration());
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(elapsed));
+            absl::ToDoubleMilliseconds(*elapsed));
       }
     }
 
@@ -4968,12 +4996,17 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                                 output_profile_result != nullptr));
+    if (is_profiling) {
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
+    }
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -4997,10 +5030,13 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
-                            timer->GetElapsedDuration());
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(elapsed));
+            absl::ToDoubleMilliseconds(*elapsed));
       }
     }
 
