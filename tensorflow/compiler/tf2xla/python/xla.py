@@ -36,8 +36,8 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
@@ -228,9 +228,9 @@ bitcast_convert_type = array_ops.bitcast
 
 def broadcast(x, dims, name=None):
   x = ops.convert_to_tensor(x)
-  shape = array_ops.concat([constant_op.constant(dims),
-                            array_ops.shape(x)],
-                           axis=0)
+  shape = array_ops.concat(
+      [constant_op.constant(dims), array_ops.shape(x)], axis=0
+  )
   return array_ops.broadcast_to(x, shape, name=name)
 
 
@@ -241,19 +241,21 @@ def clamp(a, x, b, name=None):
 concatenate = array_ops.concat
 
 
-def conv(lhs,
-         rhs,
-         window_strides,
-         padding,
-         lhs_dilation,
-         rhs_dilation,
-         dimension_numbers,
-         feature_group_count=1,
-         precision_config=None,
-         preferred_element_type=None,
-         name=None,
-         use_v2=False,
-         batch_group_count=1):
+def conv(
+    lhs,
+    rhs,
+    window_strides,
+    padding,
+    lhs_dilation,
+    rhs_dilation,
+    dimension_numbers,
+    feature_group_count=1,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+    batch_group_count=1,
+):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -282,8 +284,10 @@ def conv(lhs,
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
   needs_v2 = (
-      preferred_element_type or (lhs.dtype != rhs.dtype) or
-      batch_group_count > 1)
+      preferred_element_type
+      or (lhs.dtype != rhs.dtype)
+      or batch_group_count > 1
+  )
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   if needs_v2 or use_v2:
@@ -299,7 +303,8 @@ def conv(lhs,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
-        name=name)
+        name=name,
+    )
   return gen_xla_ops.xla_conv(
       lhs,
       rhs,
@@ -310,7 +315,8 @@ def conv(lhs,
       feature_group_count=feature_group_count,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      name=name)
+      name=name,
+  )
 
 
 convert_element_type = math_ops.cast
@@ -324,13 +330,15 @@ DotDimensionNumbers = xla_data_pb2.DotDimensionNumbers
 PrecisionConfig = xla_data_pb2.PrecisionConfig
 
 
-def dot_general(lhs,
-                rhs,
-                dimension_numbers,
-                precision_config=None,
-                preferred_element_type=None,
-                name=None,
-                use_v2=False):
+def dot_general(
+    lhs,
+    rhs,
+    dimension_numbers,
+    precision_config=None,
+    preferred_element_type=None,
+    name=None,
+    use_v2=False,
+):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
@@ -344,13 +352,15 @@ def dot_general(lhs,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
-        name=name)
+        name=name,
+    )
   return gen_xla_ops.xla_dot(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      name=name)
+      name=name,
+  )
 
 
 def self_adjoint_eig(a, lower, max_iter, epsilon):
@@ -376,13 +386,15 @@ pad = gen_xla_ops.xla_pad
 def random_normal(mu, sigma, dims, name=None):
   mu = ops.convert_to_tensor(mu)
   return random_ops.random_normal(
-      dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name)
+      dims, mean=mu, stddev=sigma, dtype=mu.dtype, name=name
+  )
 
 
 def random_uniform(minval, maxval, dims, name=None):
   minval = ops.convert_to_tensor(minval)
   return random_ops.random_uniform(
-      dims, minval, maxval, dtype=minval.dtype, name=name)
+      dims, minval, maxval, dtype=minval.dtype, name=name
+  )
 
 
 def rng_bit_generator(algorithm, initial_state, shape, dtype):
@@ -402,9 +414,10 @@ def rng_bit_generator(algorithm, initial_state, shape, dtype):
   Returns:
     a tuple with a new state and generated data of the given shape.
   """
-  alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
+  alg_int = random_ops_util.convert_alg_to_int(algorithm)
   return gen_xla_ops.xla_rng_bit_generator(
-      alg_int, initial_state, shape, dtype=dtype)
+      alg_int, initial_state, shape, dtype=dtype
+  )
 
 
 recv = gen_xla_ops.xla_recv
@@ -414,15 +427,17 @@ variadic_reduce = gen_xla_ops.xla_variadic_reduce_v2
 ops.no_gradient("XlaVariadicReduce")
 
 
-def reduce_window(operand,
-                  init,
-                  reducer,
-                  window_dimensions,
-                  window_strides=None,
-                  base_dilations=None,
-                  window_dilations=None,
-                  padding=None,
-                  name=None):
+def reduce_window(
+    operand,
+    init,
+    reducer,
+    window_dimensions,
+    window_strides=None,
+    base_dilations=None,
+    window_dilations=None,
+    padding=None,
+    name=None,
+):
   """Wraps the XLA ReduceWindow operator.
 
   ReduceWindow is documented at
@@ -456,7 +471,8 @@ def reduce_window(operand,
       window_dilations=window_dilations,
       padding=padding,
       computation=reducer,
-      name=name)
+      name=name,
+  )
 
 
 replica_id = gen_xla_ops.xla_replica_id
@@ -522,10 +538,12 @@ def _sharding_grad(op, grad):
   grad_sharding = gen_xla_ops.xla_sharding(
       grad,
       sharding=sharding_attr,
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   # pylint: disable=protected-access
-  grad_sharding.op._set_attr("_XlaSharding",
-                             attr_value_pb2.AttrValue(s=sharding_attr))
+  grad_sharding.op._set_attr(
+      "_XlaSharding", attr_value_pb2.AttrValue(s=sharding_attr)
+  )
   return [grad_sharding]
 
 
@@ -540,7 +558,8 @@ def _spmd_full_to_shard_shape_grad(op, grad):
       manual_sharding=op.get_attr("manual_sharding"),
       full_shape=op.inputs[0].shape.as_list(),
       dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   return [s2f]
 
 
@@ -550,7 +569,8 @@ def _spmd_shard_to_full_shape_grad(op, grad):
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
       dim=op.get_attr("dim"),
-      unspecified_dims=op.get_attr("unspecified_dims"))
+      unspecified_dims=op.get_attr("unspecified_dims"),
+  )
   return [f2s]
 
 
@@ -641,6 +661,8 @@ def call_module(
   if isinstance(res, ops.Operation):
     res = ()
   return res
+
+
 # pylint: enable=g-doc-args
 # pylint: enable=g-doc-return-or-yield
 
@@ -654,28 +676,33 @@ def call_module_disable_check_platform():
   return "platform"
 
 
-def gather(operand,
-           start_indices,
-           dimension_numbers,
-           slice_sizes,
-           indices_are_sorted=False,
-           name=None):
+def gather(
+    operand,
+    start_indices,
+    dimension_numbers,
+    slice_sizes,
+    indices_are_sorted=False,
+    name=None,
+):
   return gen_xla_ops.xla_gather(
       operand,
       start_indices,
       slice_sizes=slice_sizes,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
-      name=name)
+      name=name,
+  )
 
 
-def scatter(operand,
-            scatter_indices,
-            updates,
-            update_computation,
-            dimension_numbers,
-            indices_are_sorted=False,
-            name=None):
+def scatter(
+    operand,
+    scatter_indices,
+    updates,
+    update_computation,
+    dimension_numbers,
+    indices_are_sorted=False,
+    name=None,
+):
   return gen_xla_ops.xla_scatter(
       operand,
       scatter_indices,
@@ -683,7 +710,8 @@ def scatter(operand,
       update_computation=update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
-      name=name)
+      name=name,
+  )
 
 
 def optimization_barrier(*args):

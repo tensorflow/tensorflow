@@ -124,7 +124,11 @@ StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
   }
   xla::Literal alg_literal;
   TF_RETURN_IF_ERROR(ctx->ConstantInput(alg_input_idx, &alg_literal));
-  return alg_literal.Get<int>({});
+  if (alg_dtype == DT_INT32) {
+    return alg_literal.Get<int>({});
+  } else {
+    return alg_literal.Get<int64>({});
+  }
 }
 
 StatusOr<xla::RandomAlgorithm> AlgorithmFromInput(

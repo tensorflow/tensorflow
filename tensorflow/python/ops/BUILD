@@ -2338,6 +2338,7 @@ py_strict_library(
         ":array_ops",
         ":array_ops_stack",
         ":math_ops",
+        ":random_ops_util",
         ":resource_variable_ops",
         ":stateful_random_ops_gen",
         ":stateless_random_ops",
@@ -2366,6 +2367,7 @@ py_strict_library(
         ":bitwise_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
+        ":random_ops_util",
         ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
@@ -2500,6 +2502,24 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+    ],
+)
+
+py_strict_library(
+    name = "random_ops_util",
+    srcs = ["random_ops_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":array_ops_stack",
+        ":bitwise_ops",
+        ":math_ops",
+        ":stateless_random_ops_v2_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
