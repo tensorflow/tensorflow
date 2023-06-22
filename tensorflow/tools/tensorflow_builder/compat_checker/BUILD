@@ -37,7 +37,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":compat_checker",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 

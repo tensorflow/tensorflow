@@ -32,7 +32,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":public_api",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
