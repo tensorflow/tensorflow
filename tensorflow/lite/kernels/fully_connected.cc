@@ -21,7 +21,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#ifdef TFLITE_HAVE_CPUINFO
 #include "include/cpuinfo.h"
+#endif
+
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -190,6 +193,7 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+#ifdef TFLITE_HAVE_CPUINFO
   // We ensure that cpuinfo is initialized to correctly detect the optimized
   // paths we can take. Note the we do not call `cpuinfo_deinitialize` in
   // `Free`: that operation is currently a no-op AND we want to avoid
@@ -200,6 +204,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
                "Could not initialize cpuinfo, some optimization opportunities "
                "may be missed.");
   }
+#endif
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().

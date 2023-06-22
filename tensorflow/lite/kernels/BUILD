@@ -750,6 +750,12 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         "@XNNPACK//:xnnpack_for_tflite",
     ],
+}) + select({
+    # This select must match the similar select in `copts`
+    "//tensorflow:linux_ppc64le": [],
+    "//tensorflow:linux_s390x": [],
+    "//tensorflow:fuchsia": [],
+    "//conditions:default": ["@cpuinfo//:cpuinfo_with_unstripped_include_path"],
 })
 
 cc_library(
@@ -759,14 +765,18 @@ cc_library(
         "dequantize.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
+    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS + select({
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
+    }),
     visibility = [
         "//tensorflow/lite/core/kernels:__subpackages__",
     ],
     deps = BUILTIN_KERNEL_DEPS + [
         ":variable_op_kernels",
         "@fft2d",
-        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:array",
         "//tensorflow/tsl/lib/random:philox_random",
