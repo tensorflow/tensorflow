@@ -70,9 +70,36 @@ TYPED_TEST(TfLiteArrayTest, BuildFromDynamicArray) {
   EXPECT_THAT(GetSpan(*array), ElementsAreArray(values));
 }
 
+TYPED_TEST(TfLiteArrayTest, BuildFromCArray) {
+  TypeParam values[] = {1, 2, 3, 4};
+  TfLiteArrayUniquePtr<TypeParam> array = BuildTfLiteArray(values);
+  ASSERT_NE(array, nullptr);
+  EXPECT_THAT(array->size, Eq(sizeof(values) / sizeof(TypeParam)));
+  EXPECT_THAT(GetSpan(*array), ElementsAreArray(values));
+}
+
 TYPED_TEST(TfLiteArrayTest, BuildFromVector) {
   std::vector<TypeParam> values = {1, 2, 3, 4};
   TfLiteArrayUniquePtr<TypeParam> array = BuildTfLiteArray(values);
+  ASSERT_NE(array, nullptr);
+  EXPECT_THAT(array->size, Eq(values.size()));
+  EXPECT_THAT(GetSpan(*array), ElementsAreArray(values));
+}
+
+TYPED_TEST(TfLiteArrayTest, BuildFromVectorForceType) {
+  using DifferentType =
+      std::conditional_t<std::is_same_v<TypeParam, int>, float, int>;
+  std::vector<DifferentType> values = {1, 2, 3, 4};
+  TfLiteArrayUniquePtr<TypeParam> array = BuildTfLiteArray<TypeParam>(values);
+  ASSERT_NE(array, nullptr);
+  EXPECT_THAT(array->size, Eq(values.size()));
+  EXPECT_THAT(GetSpan(*array), ElementsAreArray(values));
+}
+
+TYPED_TEST(TfLiteArrayTest, BuildFromSpan) {
+  std::vector<TypeParam> values = {1, 2, 3, 4};
+  TfLiteArrayUniquePtr<TypeParam> array =
+      BuildTfLiteArray(absl::Span<const TypeParam>(values));
   ASSERT_NE(array, nullptr);
   EXPECT_THAT(array->size, Eq(values.size()));
   EXPECT_THAT(GetSpan(*array), ElementsAreArray(values));
