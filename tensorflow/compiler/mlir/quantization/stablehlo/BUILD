@@ -30,6 +30,7 @@ package(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/prepare_srq_quantize.cc",
         "passes/quantize_weight.cc",
     ],
     hdrs = [
@@ -40,10 +41,12 @@ cc_library(
         ":fill_quantization_options",
         ":quantization_options_proto_cc",
         ":stablehlo_passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/core/platform:path",
         "//third_party/eigen3",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -107,7 +110,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":quantization_options_proto_cc",
-        "@llvm-project//llvm:Support",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/core/platform:path",
+        "@llvm-project//mlir:Support",
     ],
 )
 
