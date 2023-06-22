@@ -218,10 +218,8 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
-  if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
-                                    cuda_kernel->gpu_function_ptr())) {
-    return tsl::errors::Internal("Could not find function ", *kernelname);
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
+      context_, module, kernelname->c_str(), cuda_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.

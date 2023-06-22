@@ -299,9 +299,10 @@ class GpuDriver {
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor
   // function may be null. No ownership is taken of kernel_name.
-  static bool GetModuleFunction(GpuContext* context, GpuModuleHandle module,
-                                const char* kernel_name,
-                                GpuFunctionHandle* function);
+  static tsl::Status GetModuleFunction(GpuContext* context,
+                                       GpuModuleHandle module,
+                                       const char* kernel_name,
+                                       GpuFunctionHandle* function);
 
   // Retrieves a named global/constant symbol from a loaded module, and returns
   // a device pointer and size of the symbol on success. symbol_name may not be

@@ -628,32 +628,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return true;
 }
 
-/* static */ bool GpuDriver::GetModuleFunction(GpuContext* context,
-                                               CUmodule module,
-                                               const char* kernel_name,
-                                               CUfunction* function) {
+/* static */ tsl::Status GpuDriver::GetModuleFunction(GpuContext* context,
+                                                      CUmodule module,
+                                                      const char* kernel_name,
+                                                      CUfunction* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
   cudaError_t cuda_error = cudaPeekAtLastError();
   if (cuda_error != cudaSuccess) {
-    // Printing the cuda_error value is useful when cudaGetErrorName doesn't
-    // work.
-    const std::string error =
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrCat("There was an error before calling cuModuleGetFunction (",
                      cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
-                     cudaGetErrorString(cuda_error));
-    LOG(ERROR) << error;
-    return false;
+                     cudaGetErrorString(cuda_error)));
   }
-
-  CUresult res = cuModuleGetFunction(function, module, kernel_name);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to get PTX kernel \"" << kernel_name
-               << "\" from module: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(cuModuleGetFunction(function, module, kernel_name),
+                           "Failed to get module function");
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetModuleSymbol(GpuContext* context,

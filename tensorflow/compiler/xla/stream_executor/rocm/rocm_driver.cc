@@ -509,20 +509,16 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ bool GpuDriver::GetModuleFunction(GpuContext* context,
-                                               hipModule_t module,
-                                               const char* kernel_name,
-                                               hipFunction_t* function) {
+/* static */ tsl::Status GpuDriver::GetModuleFunction(GpuContext* context,
+                                                      hipModule_t module,
+                                                      const char* kernel_name,
+                                                      hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  hipError_t res = wrap::hipModuleGetFunction(function, module, kernel_name);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to get kernel \"" << kernel_name
-               << "\" from module: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleGetFunction(function, module, kernel_name),
+      "Failed to get kernel");
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetModuleSymbol(GpuContext* context,
