@@ -22,7 +22,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -185,10 +185,13 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # eagerly (infinite recursion), and even if it did it would use extra memory and
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
-_jvp_relaxed_shapes = tracing_compiler.TracingCompiler(
-    _jvp_helper_wrapper, name="_jvp_relaxed_shapes", reduce_retracing=True)
-_jvp_exact_shapes = tracing_compiler.TracingCompiler(
-    _jvp_helper_wrapper, name="_jvp_exact_shapes", reduce_retracing=False)
+_jvp_relaxed_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper, name="_jvp_relaxed_shapes", reduce_retracing=True
+)
+
+_jvp_exact_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper, name="_jvp_exact_shapes", reduce_retracing=False
+)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.
@@ -205,10 +208,13 @@ def _jvp_dispatch(op_name,
   # Note that this _TRACE_COUNT read races with writes. That's fine, it just
   # means we may trace a few more exact shapes before moving on to relaxation.
   if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
-    return _jvp_exact_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
-  return _jvp_relaxed_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
+    config = _jvp_exact_config
+  else:
+    config = _jvp_relaxed_config
+  return tracing_compilation.call_function(
+      (op_name, attr_tuple, inputs, outputs, tangents, use_batch),
+      tracing_options=config,
+  )
 
 
 pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)

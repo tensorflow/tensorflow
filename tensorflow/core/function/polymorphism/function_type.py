@@ -360,7 +360,7 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_inputs
 
-  def unpack_inputs(self, args, kwargs):
+  def unpack_inputs(self, bound_parameters: inspect.BoundArguments):
     """Unpacks python arguments to flat tensor inputs accepted by this type."""
     # Sort keyword-only parameters by name.
     sorted_parameters = []
@@ -375,7 +375,6 @@ class FunctionType(inspect.Signature):
     )
 
     flat = []
-    bound_parameters = self.bind(*args, **kwargs)
     for p in sorted_parameters:
       flat.extend(
           p.type_constraint._to_tensors(bound_parameters.arguments[p.name])  # pylint: disable=protected-access
@@ -501,15 +500,17 @@ def canonicalize_to_monomorphic(
            trace_type.InternalTracingContext]:
   """Converts polymorphic parameters to monomorphic and associated type."""
   poly_bound_arguments = polymorphic_type.bind(*args, **kwargs)
-  poly_bound_arguments.apply_defaults()
 
   # Inject Default Values.
-  default_values_injected = poly_bound_arguments.arguments
-  for name, value in default_values_injected.items():
-    if value is CAPTURED_DEFAULT_VALUE:
-      default_values_injected[name] = default_values[name]
-  poly_bound_arguments = inspect.BoundArguments(poly_bound_arguments.signature,
-                                                default_values_injected)
+  if default_values:
+    poly_bound_arguments.apply_defaults()
+    default_values_injected = poly_bound_arguments.arguments
+    for name, value in default_values_injected.items():
+      if value is CAPTURED_DEFAULT_VALUE:
+        default_values_injected[name] = default_values[name]
+    poly_bound_arguments = inspect.BoundArguments(
+        poly_bound_arguments.signature, default_values_injected
+    )
 
   parameters = []
   type_context = trace_type.InternalTracingContext()

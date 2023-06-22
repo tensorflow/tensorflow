@@ -264,12 +264,6 @@ class RestoredFunction(def_function.Function):
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 
-  def _compiler_with_scope(self, scope):
-    func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_type = self._function_type  # pylint: disable=protected-access
-    func._default_values = self._default_values  # pylint: disable=protected-access
-    return func
-
 
 def recreate_function(saved_function, concrete_functions):
   """Creates a `Function` from a `SavedFunction`.

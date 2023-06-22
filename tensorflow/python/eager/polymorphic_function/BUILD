@@ -140,8 +140,8 @@ cuda_py_strict_test(
 )
 
 py_strict_library(
-    name = "tracing_compiler",
-    srcs = ["tracing_compiler.py"],
+    name = "tracing_compilation",
+    srcs = ["tracing_compilation.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
@@ -191,7 +191,7 @@ py_strict_library(
         ":eager_function_run",
         ":function_type_utils",
         ":tf_method_target",
-        ":tracing_compiler",
+        ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute/parallel_device",
@@ -435,7 +435,7 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":polymorphic_function",
-        ":tracing_compiler",
+        ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python/eager:backprop",

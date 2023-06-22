@@ -206,7 +206,8 @@ class AtomicFunction:
       self, args: Sequence[Any], kwargs: Dict[str, Any], captures: Sequence[Any]
   ) -> Any:
     """Calls with structured tensor inputs and returns structured output."""
-    tensor_inputs = self.function_type.unpack_inputs(args, kwargs)
+    bound_parameters = self.function_type.bind(*args, **kwargs)
+    tensor_inputs = self.function_type.unpack_inputs(bound_parameters)
     capture_inputs = self.function_type.unpack_captures(captures)
     return self.flat_call(tensor_inputs + capture_inputs)
 

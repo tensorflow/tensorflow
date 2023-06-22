@@ -40,7 +40,7 @@ _NUM_DISPLAY_NORMALIZED_SIGNATURES = 5
 
 def _get_signature(function):
   if (
-      isinstance(function, (defun.Function, def_function.Function))
+      isinstance(function, def_function.Function)
       and function.input_signature is not None
   ):
     function = function._get_concrete_function_garbage_collected()  # pylint: disable=protected-access

@@ -664,7 +664,7 @@ py_strict_library(
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:tf_method_target",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/eager/polymorphic_function:transform",
     ],
 )
@@ -737,7 +737,7 @@ py_strict_library(
         ":execute",
         ":forwardprop_util",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
