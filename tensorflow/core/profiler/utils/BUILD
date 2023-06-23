@@ -391,17 +391,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "file_system_utils",
-    hdrs = ["file_system_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/utils:file_system_utils",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "parse_annotation",
     hdrs = ["parse_annotation.h"],
     copts = tf_profiler_copts(),
