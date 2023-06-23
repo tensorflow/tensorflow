@@ -3005,7 +3005,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
         rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(inputRank, 1));
     auto result = rewriter.create<SliceOp>(loc, input, sliceStartIndices,
                                            sliceLimits, sliceStrides);
-    rewriter.replaceOp(dynamicSlice, {result});
+    rewriter.replaceOp(dynamicSlice, result);
     return success();
   }
 };

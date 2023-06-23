@@ -26,17 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
-
-// Apply split K configuration from the tiling to the fused dot() computation:
-// bitcast the operands, change the output shape and the dot dimensions.
-Status MakeDotComputationSplitKBatch(
-    HloComputation* computation,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling);
 
 // Apply split K configuration from the tiling to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the
@@ -63,28 +56,38 @@ class DotFusionAnalysis {
   // Description of complex iteration over a sequence of several strides.
   // Describes a logically contiguous dimension of a tensor physically
   // separated into multiple fragments by other dimensions.
-  using IterationSpec = std::vector<IterationSpecFragment>;
+  using DimIterationSpec = std::vector<IterationSpecFragment>;
 
-  // Execute analysis of fusion rooted with the instruction.
+  // At most: contracting, non-contracting, split-K, another batch.
+  static const int kMaxDimsPerTensor = 4;
+  using TensorIterationSpec = std::array<DimIterationSpec, kMaxDimsPerTensor>;
+
+  // Execute analysis of dot fusion computation.
   // split_k indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  explicit DotFusionAnalysis(const HloInstruction* root, int64_t split_k = 1);
+  explicit DotFusionAnalysis(const HloComputation*, int64_t split_k = 1);
 
-  // Description of iteration of given dimension of given operand of `root`.
-  const IterationSpec& IterSpec(const int operand_number,
-                                const int dimension) const {
-    return iter_specs_.at(operand_number).at(dimension);
-  }
-  // Parameter HLO instruction corresponding to Nth operand of `root`.
-  const HloInstruction* OperandToParameter(const int operand_number) const {
-    return operand_to_parameter_.at(operand_number);
+  // A scope is an HLO graph that can be tiled efficiently using same or
+  // compatible tile shapes on all operations. GEMM fusion has 3 scopes
+  // defined by left operand, right operand and output.
+  enum class Scope { LHS = 0, RHS = 1, OUTPUT = 2 };
+
+  // Scope -> HLO -> dot dimension number -> iteration spec at the HLO's output.
+  const DimIterationSpec* IterSpec(Scope scope, const HloInstruction*,
+                                   int dimension) const;
+  // Parameter HLO instructions used in a scope of `dot`.
+  const absl::flat_hash_set<const HloInstruction*>& ScopeParameters(
+      const Scope scope) const {
+    return parameters_.at(scope);
   }
 
  private:
-  // Dimension number -> iteration spec for both dot operands.
-  std::array<absl::flat_hash_map<int, IterationSpec>, 2> iter_specs_;
-  // Computation parameters corresponding to both dot operands.
-  std::array<const HloInstruction*, 2> operand_to_parameter_;
+  absl::flat_hash_map<
+      Scope, absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>>
+      iter_specs_;
+  // HLO computation parameters per scope.
+  absl::flat_hash_map<Scope, absl::flat_hash_set<const HloInstruction*>>
+      parameters_;
 };
 
 // Rewrite compatible dot() calls into custom calls with fused computations

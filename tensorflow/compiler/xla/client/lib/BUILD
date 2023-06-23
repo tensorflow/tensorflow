@@ -345,8 +345,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -558,7 +556,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -611,8 +608,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "//tensorflow/tsl/platform:test",
     ],
 )

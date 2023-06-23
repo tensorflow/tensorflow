@@ -77,13 +77,6 @@ void TpuExecutor_RecordEvent(SE_StreamExecutor* executor, SE_Stream* stream,
 void TpuExecutor_WaitForEvent(SE_StreamExecutor* executor, SE_Stream* stream,
                               SE_Event* event, TF_Status* status);
 
-bool TpuExecutor_AllocateTimer(SE_StreamExecutor* executor, SE_Timer* timer);
-void TpuExecutor_DeallocateTimer(SE_StreamExecutor* executor, SE_Timer* timer);
-bool TpuExecutor_StartTimer(SE_StreamExecutor* executor, SE_Stream* stream,
-                            SE_Timer* timer);
-bool TpuExecutor_StopTimer(SE_StreamExecutor* executor, SE_Stream* stream,
-                           SE_Timer* timer);
-
 void TpuExecutor_SynchronousMemcpyToHost(SE_StreamExecutor* executor,
                                          void* host_dst,
                                          const SE_DeviceMemoryBase* device_src,
@@ -147,11 +140,6 @@ void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
 
 SE_Event* TpuEvent_New(SE_StreamExecutor* parent);
 void TpuEvent_Free(SE_Event*);
-
-SE_Timer* TpuTimer_New(SE_StreamExecutor* parent);
-void TpuTimer_Free(SE_Timer*);
-int64_t TpuTimer_Nanoseconds(SE_Timer*);
-int64_t TpuTimer_Microseconds(SE_Timer*);
 
 TF_Status* TpuStatus_New();
 TF_Status* TpuStatus_Create(int32_t code, const char* msg);
@@ -422,10 +410,6 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_RecordEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_WaitForEvent);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StartTimer);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_StopTimer);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronousMemcpyFromHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_MemcpyToHost);
@@ -452,11 +436,6 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_Free);
-
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_New);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Free);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Nanoseconds);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTimer_Microseconds);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);

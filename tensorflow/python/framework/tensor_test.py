@@ -344,13 +344,13 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
     # _cast does not support cast int tensor to float tensor
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       _ = spec._cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
 
   def testCastAssert(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(TypeError):
       _ = spec._cast([1, 2, 3], ctx)
 
   @parameterized.named_parameters(

@@ -25,12 +25,12 @@ namespace variants {
 IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape) {
   if (shape.dims->size == 0) {
     // `shape` tensor encode an unranked shape.
-    return BuildTfLiteIntArray({});
+    return BuildTfLiteArray({});
   }
   const int rank = shape.dims->data[0];
   const int* begin = reinterpret_cast<const int*>(shape.data.data);
   const int* end = begin + rank;
-  return BuildTfLiteIntArray(std::vector<int>(begin, end));
+  return BuildTfLiteArray(std::vector<int>(begin, end));
 }
 }  // namespace variants
 }  // namespace tflite

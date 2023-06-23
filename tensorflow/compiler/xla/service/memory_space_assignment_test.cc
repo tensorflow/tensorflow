@@ -2902,6 +2902,64 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+
+  while_body {
+    p0 = (f32[3]{0}) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    negate0 = f32[3]{0} negate(gte0)
+    ROOT tuple = (f32[3]{0}) tuple(negate0)
+  }
+
+  true_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    tuple = (f32[3]{0}) tuple(gte)
+    while = (f32[3]{0}) while(tuple), condition=while_cond, body=while_body
+    while_gte0 = f32[3]{0} get-tuple-element(while), index=0
+    ROOT root = f32[3]{0} negate(while_gte0)
+  }
+
+  false_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg3 = f32[3]{0} negate(gte)
+  }
+
+  true_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    constant = pred[] constant(true)
+    tuple = (f32[3]{0}) tuple(gte)
+    ROOT conditional = f32[3]{0} conditional(constant, tuple, tuple), true_computation=true_computation2, false_computation=false_computation2
+  }
+
+  false_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg3 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest,
        ConditionalComputationBufferOverlapBeforeParam) {
   absl::string_view hlo_string = R"(

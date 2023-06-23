@@ -153,14 +153,16 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
-  MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  MLIRContext context(registry);
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
-  mlir::DialectRegistry registry;
 
   if (input_mlir) {
     // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
     // back to do it properly in the future
+    mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
     registry.insert<mlir::func::FuncDialect>();
     context.appendDialectRegistry(registry);

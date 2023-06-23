@@ -18,8 +18,8 @@ limitations under the License.
 // This header file is no longer experimental.
 // Please use the non-experimental file instead.
 
-#include "tensorflow/lite/acceleration/configuration/nnapi_plugin.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"  // IWYU pragma: export
 
-// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/nnapi_plugin.h"
+// IWYU pragma: private, include "third_party/tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_

@@ -25,8 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
-#include "learning/brain/experimental/tfrt/native_lowering/saved_model/saved_model_translate.h"
 #include "absl/base/call_once.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -37,8 +35,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -68,10 +71,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -121,8 +124,8 @@ tensorflow::Status RunMlrtFunction(
   //
   // TODO(chky, rohitju): Unify tfrt::SyncContext with tf_mlrt::Context.
   tfrt::ExecutionContext exec_ctx(request_context);
-  execution_context.AddUserContext(std::make_unique<tfrt::SyncContext>(
-      *request_context->host(), sync_resource_state));
+  AddSyncContext(execution_context, *request_context->host(),
+                 sync_resource_state);
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
@@ -579,18 +582,14 @@ GraphExecutor::ImportAndCompileClientGraph(
     const GraphExecutor::ClientGraph& client_graph) {
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
-  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  auto context = std::make_unique<mlir::MLIRContext>(registry);
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-
-  if (auto tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tf_symbol_uid.ok()) {
-    symbol_uids.tf_symbol_uid = *tf_symbol_uid;
-  } else {
-    LOG(ERROR) << tf_symbol_uid.status();
-  }
+  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
@@ -608,15 +607,10 @@ GraphExecutor::ImportAndCompileClientGraph(
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
     }
-
     ASSIGN_OR_RETURN_IN_COMPILE(
-        auto bytecode_buffer,
-        tfrt::CompileTfMlirModuleToBytecode(module.get()));
-    mlrt::bc::Executable executable(bytecode_buffer.data());
-    auto bytecode_executable =
-        std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
-    executable_context = std::make_shared<ExecutableContext>(
-        std::move(bytecode_buffer), std::move(bytecode_executable));
+        executable_context,
+        tfrt::BuildExecutableContext(module.get(), *kernel_registry_));
+
   } else if (options_.enable_mlrt) {
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
@@ -639,13 +633,7 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-
-  if (auto tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tfrt_symbol_uid.ok()) {
-    symbol_uids.tfrt_symbol_uid = *tfrt_symbol_uid;
-  } else {
-    LOG(ERROR) << tfrt_symbol_uid.status();
-  }
+  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
@@ -866,10 +854,9 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
   mlrt::ExecutionContext execution_context(
       executable_context->bytecode_executable.get());
 
-  auto sync_context = std::make_unique<tfrt::SyncContext>(
-      *options_.runtime->core_runtime()->GetHostContext(),
-      &loaded_client_graph.sync_resource_state());
-  execution_context.AddUserContext(std::move(sync_context));
+  AddSyncContext(execution_context,
+                 *options_.runtime->core_runtime()->GetHostContext(),
+                 &loaded_client_graph.sync_resource_state());
 
   tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
       tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
@@ -961,6 +948,11 @@ tensorflow::Status GraphExecutor::CompileGraph(
              output_tensor_names, target_tensor_names,
              /*work_queue=*/nullptr, graph_name)
       .status();
+}
+
+void RegisterMlirDialect(mlir::DialectRegistry& registry) {
+  registry.insert<mlir::BuiltinDialect, mlir::func::FuncDialect>();
+  mlir::RegisterAllTensorFlowDialects(registry);
 }
 
 }  // namespace tfrt_stub

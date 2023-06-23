@@ -233,6 +233,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -1021,6 +1029,7 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
+        "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",

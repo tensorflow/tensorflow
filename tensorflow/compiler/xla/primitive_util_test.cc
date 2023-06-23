@@ -50,6 +50,10 @@ TEST(PrimitiveUtilTest, FloatTypes) {
   EXPECT_EQ(primitive_util::SignificandWidth(BF16), 8);
   EXPECT_EQ(primitive_util::ExponentWidth(F32), 8);
   EXPECT_EQ(primitive_util::ExponentWidth(BF16), 8);
+  EXPECT_EQ(primitive_util::UnderflowExponent(F32), -125);
+  EXPECT_EQ(primitive_util::UnderflowExponent(BF16), -125);
+  EXPECT_EQ(primitive_util::OverflowExponent(F32), 128);
+  EXPECT_EQ(primitive_util::OverflowExponent(BF16), 128);
 }
 
 TEST(PrimitiveUtilTest, CastPreservesValues) {

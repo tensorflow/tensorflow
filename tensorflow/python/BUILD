@@ -141,13 +141,8 @@ py_library(
         ":_pywrap_quantize_training",
         ":distributed_framework_test_lib",
         ":keras_lib",
-        ":metrics",
-        ":nn",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
-        ":rnn_cell",
-        ":sets",
-        ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/python/autograph",
@@ -223,14 +218,19 @@ py_library(
         "//tensorflow/python/ops:map_fn",
         "//tensorflow/python/ops:map_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:nccl_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:proto_ops",
         "//tensorflow/python/ops:random_crop_ops",
         "//tensorflow/python/ops:ref_variable",
+        "//tensorflow/python/ops:rnn_cell",
         "//tensorflow/python/ops:rnn_ops_gen",
         "//tensorflow/python/ops:script_ops",
         "//tensorflow/python/ops:sendrecv_ops_gen",
         "//tensorflow/python/ops:session_ops",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:standard_ops",
         "//tensorflow/python/ops:state_ops",
@@ -241,6 +241,7 @@ py_library(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:weights_broadcast_ops",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/ops:while_v2",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/distributions:bijector_test_util",
         "//tensorflow/python/ops/distributions:identity_bijector",
@@ -486,16 +487,6 @@ py_strict_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "sets",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:sets",
-        "//tensorflow/python/ops:sets_impl",
-    ],
 )
 
 # TODO(b/285020435): Update usages and then remove.
@@ -1319,6 +1310,7 @@ py_strict_library(
 )
 
 # copybara:uncomment_begin(google-only)
+# # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,

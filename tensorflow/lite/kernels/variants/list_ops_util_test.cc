@@ -26,7 +26,7 @@ namespace {
 
 TEST(TensorAsShape, ScalarTensorReturnsEmptyIntArray) {
   TensorUniquePtr scalar_tensor =
-      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteIntArray({}), kTfLiteDynamic);
+      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({}), kTfLiteDynamic);
 
   IntArrayUniquePtr shape_from_tensor = TensorAsShape(*scalar_tensor);
   ASSERT_THAT(shape_from_tensor.get(), DimsAre({}));
@@ -34,7 +34,7 @@ TEST(TensorAsShape, ScalarTensorReturnsEmptyIntArray) {
 
 TEST(TensorAsShape, SingleElementTensorReturnsSize1Shape) {
   TensorUniquePtr single_el_tensor =
-      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteIntArray({1}), kTfLiteDynamic);
+      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({1}), kTfLiteDynamic);
   single_el_tensor->data.i32[0] = 10;
 
   IntArrayUniquePtr shape_from_tensor = TensorAsShape(*single_el_tensor);
@@ -43,7 +43,7 @@ TEST(TensorAsShape, SingleElementTensorReturnsSize1Shape) {
 
 TEST(TensorAsShape, OneDMultipleElementShapeReturnsHighRankedShape) {
   TensorUniquePtr one_d_mul_el_tensor =
-      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteIntArray({3}), kTfLiteDynamic);
+      BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({3}), kTfLiteDynamic);
   one_d_mul_el_tensor->data.i32[0] = 10;
   one_d_mul_el_tensor->data.i32[1] = 9;
   one_d_mul_el_tensor->data.i32[2] = 8;

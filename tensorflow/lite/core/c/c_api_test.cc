@@ -353,10 +353,13 @@ TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
 // The following cast is safe only because this code is part of the API testing.
 bool SubgraphIsDelegationSkippable(TfLiteOpaqueContext* context,
                                    int subgraph_index) {
-  TfLiteOpaqueContext* skipped_subgraph_context =
-      TfLiteOpaqueContextGetSubgraphContext(context, subgraph_index);
+  TfLiteOpaqueContext* skipped_subgraph_context;
+  EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAcquireSubgraphContext(
+                           context, subgraph_index, &skipped_subgraph_context));
   tflite::Subgraph* subgraph = reinterpret_cast<::tflite::Subgraph*>(
       reinterpret_cast<TfLiteContext*>(skipped_subgraph_context)->impl_);
+  EXPECT_EQ(kTfLiteOk,
+            TfLiteOpaqueContextReleaseSubgraphContext(context, subgraph_index));
   return subgraph->IsDelegationSkippable();
 }
 
@@ -1474,8 +1477,13 @@ TEST(CApiSimple, OpaqueApiAccessors) {
           // 1 node for ADD and 1 node for the delegate kernel.
           EXPECT_EQ(2, TfLiteOpaqueContextGetNumNodes(opaque_context));
 
-          EXPECT_EQ(opaque_context,
-                    TfLiteOpaqueContextGetSubgraphContext(opaque_context, 0));
+          TfLiteOpaqueContext* acquired_opaque_context;
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueContextAcquireSubgraphContext(
+                        opaque_context, 0, &acquired_opaque_context));
+          EXPECT_EQ(opaque_context, acquired_opaque_context);
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextReleaseSubgraphContext(
+                                   opaque_context, 0));
 
           TfLiteOpaqueNode* node = nullptr;
           TfLiteRegistrationExternal* registration_external = nullptr;
@@ -1557,6 +1565,7 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan);
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
         context, reg, execution_plan, delegate);
+    EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextReleaseSubgraphContext(context, 0));
     return kTfLiteOk;
   };
   TfLiteDelegate my_delegate{};

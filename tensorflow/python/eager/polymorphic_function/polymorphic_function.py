@@ -880,7 +880,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         # no_variable_creation function.
         return self._no_variable_creation_fn(*args, **kwds)
     else:
-      _, _, filtered_flat_args = (
+      canon_args, canon_kwargs = (
           function_type_utils.canonicalize_function_inputs(
               args,
               kwds,
@@ -890,11 +890,17 @@ class Function(core.GenericFunction, trackable.Trackable):
           )
       )
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_variable_creation_fn._call_flat(   # pylint: disable=protected-access
+      filtered_flat_args = (
+          self._concrete_variable_creation_fn.function_type.unpack_inputs(
+              canon_args, canon_kwargs
+          )
+      )
+      return self._concrete_variable_creation_fn._call_flat(  # pylint: disable=protected-access
           filtered_flat_args,
-          self._concrete_variable_creation_fn.captured_inputs)
+          self._concrete_variable_creation_fn.captured_inputs,
+      )
 
-    def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
+    def fn_with_cond(inner_args, inner_kwds):
       """Conditionally runs initialization if it's needed."""
       condition = True
       for v, _ in initializers:
@@ -906,11 +912,8 @@ class Function(core.GenericFunction, trackable.Trackable):
       return cond.cond(
           condition,
           lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
-          functools.partial(
-              self._concrete_variable_creation_fn._call_flat,  # pylint: disable=protected-access
-              inner_filtered_flat_args,
-              captured_inputs=self._concrete_variable_creation_fn
-              .captured_inputs))
+          lambda: self._concrete_variable_creation_fn(*inner_args, **inner_kwds)
+      )
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
@@ -921,7 +924,7 @@ class Function(core.GenericFunction, trackable.Trackable):
           "We failed to lift variable creations out of this tf.function, "
           "so this tf.function cannot be run on XLA. A possible workaround is "
           "to move variable creation outside of the XLA compiled function.")
-    canon_args, canon_kwds, filtered_flat_args = (
+    canon_args, canon_kwds = (
         function_type_utils.canonicalize_function_inputs(
             args,
             kwds,
@@ -931,8 +934,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         )
     )
     return tracing_compiler.TracingCompiler(
-        fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
-                                      filtered_flat_args)
+        fn_with_cond, "fn_with_cond")(canon_args, canon_kwds)
 
   def experimental_get_compiler_ir(self, *args, **kwargs):
     # Implements GenericFunction.experimental_get_compiler_ir
@@ -971,9 +973,10 @@ class Function(core.GenericFunction, trackable.Trackable):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, filtered_flat_args = function_type_utils.canonicalize_function_inputs(
+    args, kwargs, = function_type_utils.canonicalize_function_inputs(
         args, kwargs, concrete_fn.function_type
     )
+    filtered_flat_args = concrete_fn.function_type.unpack_inputs(args, kwargs)
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       device_name = compiler_ir.maybe_get_device_name(device_name)

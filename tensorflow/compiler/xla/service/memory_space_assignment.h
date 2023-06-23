@@ -21,9 +21,9 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -36,9 +36,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -616,6 +620,9 @@ class MemorySpaceAssignment {
     }
     virtual ~Allocation() = default;
 
+    // True if the allocation is for a copy or a sliced-copy.
+    bool is_copy_like_allocation() const;
+
     virtual bool is_copy_allocation() const { return false; }
     virtual bool is_sliced_copy_allocation() const { return false; }
 
@@ -783,6 +790,8 @@ class MemorySpaceAssignment {
   // A proposed way to slice a buffer.
   struct SliceProposal {
     std::string ToString() const;
+    friend std::ostream& operator<<(std::ostream& os,
+                                    const SliceProposal& proposal);
     std::tuple<const Shape&,
                const std::vector<MemorySpaceAssignment::SliceParam>&, int64_t>
     ToTuple() const;
@@ -814,6 +823,18 @@ class MemorySpaceAssignment {
   using SliceProposalFunction = std::function<StatusOr<SliceProposalCollection>(
       const Shape& shape, const SlicedPrefetchOptions& options)>;
 
+  // A SliceDecision is a SliceProposal that we've determined where and when to
+  // allocate.
+  struct SliceDecision {
+    std::string ToString() const;
+    bool operator==(const SliceDecision& other) const;
+
+    Chunk chunk;
+    int64_t start_time;
+    SliceProposal sizing;
+    float copy_resource_consumed;
+  };
+
   // This class represents an allocation resulting from asynchronous sliced
   // copies.
   //
@@ -840,44 +861,38 @@ class MemorySpaceAssignment {
   // - end_time = t4
   class SlicedCopyAllocation : public Allocation {
    public:
-    // Input description of 1 slice.
-    struct SliceInput {
-      Chunk chunk;
-      int64_t start_time;
-      std::vector<SliceParam> slice_params;
-    };
-
-    // Details about a slice in the sliced allocation.
-    struct SliceDetails {
+    // Full details about a slice in the sliced allocation.
+    struct SliceDetail {
       std::string ToString() const;
-      std::tuple<const Chunk&, int64_t, int64_t, const std::vector<SliceParam>&,
-                 const HloInstruction*, const HloInstruction*>
+      std::tuple<const SliceDecision&, int64_t, int64_t, const HloInstruction*,
+                 const HloInstruction*>
       ToTuple() const;
-      bool operator==(const SliceDetails& other) const;
+      bool operator==(const SliceDetail& other) const;
 
       // Create the instructions to copy the slice. This method updates
-      // copy_start and copy_done.
+      // copy_start and copy_done. Given a Shape, the hardware may have
+      // constraints on how the shape is physically laid out in memory.
+      // update_layout_fn updates a Shape's layout in accordance with those
+      // constraints.
       Status CreateAsyncSlice(const Shape& original_shape,
-                              HloInstruction& producer, HloComputation& parent);
+                              HloInstruction& producer, HloComputation& parent,
+                              absl::FunctionRef<void(Shape*)> update_layout_fn);
 
-      Chunk chunk;
+      SliceDecision slice_decision;
       int64_t copy_start_after_time = -1;
       int64_t copy_done_before_time = -1;
-      std::vector<SliceParam> slice_params;
       HloInstruction* copy_start = nullptr;
       HloInstruction* copy_done = nullptr;
     };
 
-    // sorted_slice_input is sorted by start_time
-    //
     // REQUIRES:
-    // - sorted_slice_input.size() >= 2, otherwise, CopyAllocation should be
-    //   used.
-    SlicedCopyAllocation(const Allocation& prev_allocation,
-                         MemorySpace memory_space,
-                         const std::vector<SliceInput>& sorted_slice_input,
-                         int64_t end_time,
-                         int64_t copy_done_schedule_before_time);
+    // - slice_decisions_sorted_by_start_time.size() >= 2, otherwise,
+    //   CopyAllocation should be used.
+    SlicedCopyAllocation(
+        const Allocation& prev_allocation, MemorySpace memory_space,
+        std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
+        int64_t end_time, int64_t copy_done_schedule_before_time,
+        absl::FunctionRef<void(Shape*)> update_layout_fn);
 
     bool is_sliced_copy_allocation() const override { return true; }
 
@@ -896,10 +911,13 @@ class MemorySpaceAssignment {
     // SlicedCopyAllocation, this is when all copies have ended.
     int64_t earliest_available_time() const override;
 
-    const std::vector<SliceDetails>& sorted_slice_details() const;
-    std::vector<SliceDetails>& mutable_sorted_slice_details();
+    const std::vector<SliceDetail>& sorted_slice_details() const;
+    std::vector<SliceDetail>& mutable_sorted_slice_details();
     HloInstruction* concat() const { return concat_; }
 
+    std::tuple<const Allocation&, const std::vector<SliceDetail>&,
+               const HloInstruction*>
+    ToTuple() const;
     bool operator==(const SlicedCopyAllocation& other) const;
     std::string ToString() const override;
 
@@ -916,8 +934,9 @@ class MemorySpaceAssignment {
     //   sorted_segments_[i+j].copy.start_after_time
     // - sorted_segments_[i].copy_done_before_time <=
     //   sorted_segments_[i+j].copy.start_before_time
-    std::vector<SliceDetails> sorted_slice_details_;
+    std::vector<SliceDetail> slice_details_sorted_by_start_time_;
     HloInstruction* concat_ = nullptr;
+    absl::FunctionRef<void(Shape*)> update_layout_fn_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation

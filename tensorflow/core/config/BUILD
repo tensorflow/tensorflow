@@ -22,6 +22,15 @@ cc_library(
     visibility = ["//tensorflow:internal"],
 )
 
+filegroup(
+    name = "flags_headers_filegroup",
+    srcs = [
+        "flag_defs.h",
+        "flags.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+)
+
 cc_library(
     name = "flag_defs",
     srcs = ["flag_defs.cc"],

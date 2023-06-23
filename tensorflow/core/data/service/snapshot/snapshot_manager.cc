@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,9 +31,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
-#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
-#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -47,13 +46,44 @@ namespace tensorflow {
 namespace data {
 
 using ::tsl::OkStatus;
+using ::tsl::errors::Internal;
 using ::tsl::errors::InvalidArgument;
 
+// To reduce memory usage, restrict workers from processing more than two
+// streams at a time across all ongoing snapshots. Allowing two concurrent
+// streams, rather than one, helps minimize a worker's inactivity between
+// completing a stream and getting assigned a new one.
+constexpr int kMaxConcurrentStreams = 2;
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
 
+StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
+    absl::string_view snapshot_path, absl::string_view worker_address,
+    int64_t stream_index) {
+  if (assignments_[worker_address].size() >= kMaxConcurrentStreams) {
+    return false;
+  }
+  Assignment assignment{std::string(snapshot_path), stream_index};
+  auto [unused, success] = assignments_[worker_address].insert(assignment);
+  if (!success) {
+    return Internal("Worker ", worker_address,
+                    " already had an assignment for ",
+                    assignment.DebugString());
+  }
+  return true;
+}
+
+void SnapshotAssignmentManager::RemoveAssignment(
+    absl::string_view snapshot_path, absl::string_view worker_address,
+    int64_t stream_index) {
+  assignments_[worker_address].erase(
+      {std::string(snapshot_path), stream_index});
+}
+
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
-    const SnapshotRequest& request, Env* env) {
-  SnapshotManager* snapshot_manager = new SnapshotManager(request.path(), env);
+    const SnapshotRequest& request,
+    SnapshotAssignmentManager& assignment_manager, Env* env) {
+  SnapshotManager* snapshot_manager =
+      new SnapshotManager(request.path(), assignment_manager, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Start(request));
   return absl::WrapUnique(snapshot_manager);
 }
@@ -117,20 +147,22 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 }
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
-    absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
+    absl::string_view path, SnapshotAssignmentManager& assignment_manager,
+    Env* env) {
+  SnapshotManager* snapshot_manager =
+      new SnapshotManager(path, assignment_manager, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }
 
 Status SnapshotManager::Resume() {
   if (!env_->FileExists(path_).ok()) {
-    return InvalidArgument("failed to recover snapshot at ", path_,
+    return InvalidArgument("Failed to recover snapshot at ", path_,
                            ": the snapshot path doesn't exist");
   }
   if (env_->FileExists(SnapshotDoneFilePath(path_)).ok()) {
     mode_ = Mode::kDone;
-    LOG(INFO) << "attempted to recover snapshot at " << path_
+    LOG(INFO) << "Attempted to recover snapshot at " << path_
               << " but it's already done";
     return OkStatus();
   }
@@ -150,14 +182,14 @@ Status SnapshotManager::Resume() {
 
 Status SnapshotManager::ReadOnDiskMetadata() {
   if (!env_->FileExists(SnapshotMetadataFilePath(path_)).ok()) {
-    return InvalidArgument("failed to recover snapshot at ", path_,
+    return InvalidArgument("Failed to recover snapshot at ", path_,
                            ": snapshot has no snapshot.metadata");
   }
   TF_RETURN_IF_ERROR(
       ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata_));
 
   if (!env_->FileExists(DatasetDefFilePath(path_)).ok()) {
-    return InvalidArgument("failed to recovery snapshot at ", path_,
+    return InvalidArgument("Failed to recovery snapshot at ", path_,
                            ": snapshot has no dataset_def.proto");
   }
   DatasetDef dataset_def;
@@ -185,8 +217,8 @@ Status SnapshotManager::ReadOnDiskStreams() {
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
       return InvalidArgument(
-          "can't parse the name of ", stream_path,
-          ": filename must have the format stream_<stream_index>");
+          "Can't parse the name of ", stream_path,
+          ": filename must have the format stream_<stream_index>.");
     }
 
     TF_RETURN_IF_ERROR(ReadOnDiskStream(stream_index, global_split_indices));
@@ -194,7 +226,7 @@ Status SnapshotManager::ReadOnDiskStreams() {
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return InvalidArgument("found missing global split index, ", i, ", in ",
+      return InvalidArgument("Found missing global split index, ", i, ", in ",
                              path_);
     }
   }
@@ -239,11 +271,11 @@ Status SnapshotManager::ReadOnDiskStream(
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
       return InvalidArgument(
-          "can't parse the name of ", source_path,
+          "Can't parse the name of ", source_path,
           ": filename must have the format source_<source_index>");
     }
     if (source_index >= num_sources()) {
-      return InvalidArgument("found conflict between the number of sources, ",
+      return InvalidArgument("Found conflict between the number of sources, ",
                              num_sources(), ", and the filename of ",
                              source_path);
     }
@@ -253,8 +285,17 @@ Status SnapshotManager::ReadOnDiskStream(
 
   if (env_->FileExists(StreamDoneFilePath(path_, stream_index)).ok()) {
     streams_[stream_index].state = Stream::State::kDone;
+    return OkStatus();
   }
 
+  TF_ASSIGN_OR_RETURN(bool assignment_added,
+                      assignment_manager_.TryAddAssignment(
+                          path_, worker_address, stream_index));
+  if (!assignment_added) {
+    return Internal("Failed to recover tf.data snapshot dispatcher: Worker ",
+                    worker_address, " was assigned more than ",
+                    kMaxConcurrentStreams, " streams.");
+  }
   return OkStatus();
 }
 
@@ -293,7 +334,7 @@ Status SnapshotManager::ReadOnDiskSplit(
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
   auto [local_split_index, global_split_index] = split_indices;
   if (global_split_indices.contains(global_split_index)) {
-    return InvalidArgument("found duplicate global split index in name of ",
+    return InvalidArgument("Found duplicate global split index in name of ",
                            split_file);
   }
   global_split_indices.insert(global_split_index);
@@ -317,6 +358,7 @@ Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  assignment_manager_.RemoveAssignment(path_, worker_address, stream_index);
   ++num_completed_streams_;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
@@ -347,9 +389,15 @@ Status SnapshotManager::HandleStreamError(absl::string_view worker_address,
   return OkStatus();
 }
 
-StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
+StatusOr<std::optional<int64_t>> SnapshotManager::MaybeCreateAndAssignNewStream(
     absl::string_view worker_address) {
   int64_t new_stream_index = streams_.size();
+  TF_ASSIGN_OR_RETURN(bool assignment_added,
+                      assignment_manager_.TryAddAssignment(
+                          path_, worker_address, new_stream_index));
+  if (!assignment_added) {
+    return std::optional<int64_t>();
+  }
   for (int64_t source_index = 0; source_index < num_sources(); ++source_index) {
     for (int64_t repetition_index = 0;
          repetition_index <= sources_[source_index].repetition_index;
@@ -400,7 +448,7 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
       return std::optional<int64_t>();
     }
     TF_ASSIGN_OR_RETURN(assigned_stream_index,
-                        CreateAndAssignNewStream(worker_address));
+                        MaybeCreateAndAssignNewStream(worker_address));
   }
   if (assigned_stream_index &&
       streams_[*assigned_stream_index].state == Stream::State::kDone) {

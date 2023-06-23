@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
@@ -738,7 +739,7 @@ struct FunctionArgIndex {
   int sub_index = -1;
 };
 
-class FunctionLibraryRuntime {
+class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
   virtual ~FunctionLibraryRuntime() {}
 

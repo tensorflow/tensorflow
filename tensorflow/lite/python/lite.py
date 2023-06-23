@@ -1,4 +1,4 @@
-# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -634,6 +634,7 @@ class TFLiteConverterBase:
     self._experimental_enable_dynamic_update_slice = False
     self._experimental_preserve_assert_op = False
     self._experimental_guarantee_all_funcs_one_use = False
+    self._experimental_enable_hlo_to_tf_conversion = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
@@ -647,6 +648,12 @@ class TFLiteConverterBase:
 
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
+
+    # Debug parameters
+    self.mlir_dump_dir = None
+    self.mlir_dump_pass_regex = None
+    self.mlir_dump_func_regex = None
+    self.mlir_enable_timing = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -776,6 +783,13 @@ class TFLiteConverterBase:
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
         "quantization_options": self._experimental_quantization_options,
+        "enable_hlo_to_tf_conversion": (
+            self._experimental_enable_hlo_to_tf_conversion
+        ),
+        "mlir_dump_dir": self.mlir_dump_dir,
+        "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
+        "mlir_dump_func_regex": self.mlir_dump_func_regex,
+        "mlir_enable_timing": self.mlir_enable_timing,
     }
 
     if self.saved_model_dir:

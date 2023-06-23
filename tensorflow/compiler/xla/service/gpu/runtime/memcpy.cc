@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 
@@ -30,9 +31,13 @@ enum class MemcpyDirection { kD2D, kD2H, kH2D };
 
 template <MemcpyDirection direction>
 absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
+                        ConcurrentRegionStatus* region_status,
                         runtime::StridedMemrefView dst,
                         runtime::StridedMemrefView src) {
   se::Stream* stream = run_options->stream();
+  if (region_status->IsInConcurrentRegion()) {
+    TF_ASSIGN_OR_RETURN(stream, region_status->GetNextStream());
+  }
 
   if (dst.sizes != src.sizes) {
     return absl::InvalidArgumentError(
@@ -75,6 +80,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
     checks,
     CustomCall::Bind("xla.gpu.memcpy")
         .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<ConcurrentRegionStatus*>()
         .Arg<runtime::StridedMemrefView>()  // dst
         .Arg<runtime::StridedMemrefView>()  // src
 );

@@ -58,7 +58,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // To handle a constant, just give the literal data a new layout.
   Status HandleConstant(HloInstruction* hlo) override {
-    const Literal& literal = hlo->literal();
+    Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
     const Shape& shape = hlo->shape();
     if (literal.shape().IsTuple()) {
       // TODO(cheshire): Tuple constants.
@@ -66,16 +66,10 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     }
 
     Shape normalized_shape = Normalize(hlo->shape());
-
-    Literal new_literal(normalized_shape);
-
-    // TODO(cheshire): Do not duplicate storage.
-    std::memcpy(new_literal.untyped_data(), literal.untyped_data(),
-                literal.size_bytes());
+    *literal.mutable_shape_do_not_use() = normalized_shape;
 
     HloInstruction* normalized = hlo->parent()->AddInstruction(
-        HloInstruction::CreateConstant(std::move(new_literal)),
-        &hlo->metadata());
+        HloInstruction::CreateConstant(std::move(literal)), &hlo->metadata());
     HloInstruction* bc_to_orig = MakeBitcastHlo(normalized, shape);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
@@ -231,6 +225,16 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_orig = MakeBitcastHlo(normalized_broadcast, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
+  }
+
+  // BitcastConvert is only layout-preserving if it doesn't change the rank.
+  Status HandleBitcastConvert(HloInstruction* hlo) override {
+    // If the rank isn't changing this is just an unary op.
+    if (hlo->shape().rank() == hlo->operand(0)->shape().rank()) {
+      return HandleElementwiseUnary(hlo);
+    }
+
+    return DefaultAction(hlo);
   }
 
   // Pushes down the bitcast across the unary.

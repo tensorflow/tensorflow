@@ -4536,10 +4536,10 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
-  evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
-        return InternalError("Test error");
-      });
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    return InternalError("Test error");
+  });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
             ::tsl::error::INTERNAL);
 }
@@ -4561,19 +4561,19 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
-  evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
-        EXPECT_EQ(HloOpcode::kCustomCall, custom_call->opcode());
-        EXPECT_EQ("_my_custom_call", custom_call->custom_call_target());
-        EXPECT_EQ(2, custom_call->operand_count());
-        EXPECT_EQ(2, operands.size());
-        auto output = Literal::CreateFromShape(custom_call->shape());
-        auto operand0_data = operands[0]->data<uint32_t>();
-        auto operand1_data = operands[1]->data<uint32_t>();
-        auto output_data = output.data<uint32_t>();
-        output_data[0] = operand0_data[0] + operand1_data[0];
-        return output;
-      });
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    EXPECT_EQ(HloOpcode::kCustomCall, custom_call->opcode());
+    EXPECT_EQ("_my_custom_call", custom_call->custom_call_target());
+    EXPECT_EQ(2, custom_call->operand_count());
+    EXPECT_EQ(2, operands.size());
+    auto output = Literal::CreateFromShape(custom_call->shape());
+    auto operand0_data = operands[0]->data<uint32_t>();
+    auto operand1_data = operands[1]->data<uint32_t>();
+    auto output_data = output.data<uint32_t>();
+    output_data[0] = operand0_data[0] + operand1_data[0];
+    return output;
+  });
   TF_ASSERT_OK_AND_ASSIGN(
       Literal actual_literal,
       evaluator.Evaluate(*m_->entry_computation(), {&args[0], &args[1]}));
@@ -4967,6 +4967,38 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   m_->AddEntryComputation(b.Build());
   Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   TestRecursivelyEvaluateInstruction(gte2, expected);
+}
+
+TEST_F(HloEvaluatorTest, SlowReduceWindow) {
+#ifdef THREAD_SANITIZER
+  GTEST_SKIP();
+#endif
+  constexpr absl::string_view kHloModule = R"(
+    HloModule SlowReduceWindow
+    %add {
+      %lhs = s32[] parameter(0)
+      %rhs = s32[] parameter(1)
+      ROOT %sum = s32[] add(%lhs, %rhs)
+    }
+    ENTRY slow_reduce_window {
+      %input = s32[8192] parameter(0)
+      %zero = s32[] constant(0)
+      ROOT %scan = s32[8192] reduce-window(%input, %zero), window={size=8192 pad=8191_0}, to_apply=%add
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  std::vector<int32_t> data(8192, 1);
+  auto input = LiteralUtil::CreateR1<int32_t>(data);
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
+  std::vector<int32_t> expected(8192);
+  std::iota(expected.begin(), expected.end(), 1);
+  EXPECT_THAT(actual_literal.data<int32_t>(),
+              ::testing::ElementsAreArray(expected));
 }
 
 class PatternMatchParseWhileLoopTest : public HloTestBase {};

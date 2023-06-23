@@ -173,7 +173,7 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
 void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::RegisterAllTensorFlowDialectsImpl(registry, false);
   context.appendDialectRegistry(registry);
   for (llvm::StringRef name : registry.getDialectNames())
     context.getOrLoadDialect(name);

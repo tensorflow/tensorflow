@@ -147,7 +147,7 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
-        "//tensorflow/lite/acceleration/configuration:nnapi_plugin_impl",
+        "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
     ],
 )
 

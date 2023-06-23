@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -78,7 +79,7 @@ auto *mlir_failed_legalization_count = tensorflow::monitoring::Counter<2>::New(
 
 class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
-  explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
+  explicit LegalizeTF(bool legalize_chlo,
                       std::optional<StringRef> tf2xla_fallback_device_type,
                       bool prefer_tf2xla) {
     legalize_chlo_ = legalize_chlo;
@@ -992,11 +993,10 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
-    bool allow_partial_conversion, bool legalize_chlo,
-    std::optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
-  return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
-                                      tf2xla_fallback_device_type,
-                                      prefer_tf2xla);
+    bool legalize_chlo, std::optional<StringRef> tf2xla_fallback_device_type,
+    bool prefer_tf2xla) {
+  return std::make_unique<LegalizeTF>(
+      legalize_chlo, tf2xla_fallback_device_type, prefer_tf2xla);
 }
 
 }  // end namespace mhlo

@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -53,17 +54,6 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
     t = constant_op.constant(1, dtypes.int16)
     with self.assertRaises(TypeError):
       _ = weak_tensor.WeakTensor(t)
-
-  def test_weak_tensor_format_to_string(self):
-    # __str__ test
-    t = constant_op.constant([1.0, 2.0], dtypes.float32)
-    wt = weak_tensor.WeakTensor(t)
-    wt_str = f'{str(wt.tensor)} weakly typed'
-    self.assertEqual(str(wt), wt_str)
-
-    # __repr__ test
-    wt_repr = f'{repr(wt.tensor)} weakly typed'
-    self.assertEqual(repr(wt), wt_repr)
 
   def test_weak_tensor_num_methods(self):
     t = constant_op.constant(1, dtypes.int32)
@@ -180,6 +170,16 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       _ = f(wt_mismatch)
 
+  def test_weak_tensor_gradient(self):
+    x = weak_tensor.WeakTensor(constant_op.constant([3.0, 4.0, 5.0]))
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = x
+    dy_dx = g.gradient(y, x)
+    self.assertEqual(
+        dy_dx, weak_tensor.WeakTensor(constant_op.constant([1.0, 1.0, 1.0]))
+    )
+
   def test_weak_tensor_in_restored_function(self):
     class CustomModule(module.Module):
 
@@ -203,6 +203,35 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
         ValueError, 'Could not find matching concrete function'
     ):
       m_loaded(b)
+
+  def test_weak_tensor_format_to_string(self):
+    # __str__ test in eager mode
+    t = constant_op.constant([1.0, 2.0], dtypes.float32)
+    wt = weak_tensor.WeakTensor(t)
+    wt_str = 'tf.Tensor([1. 2.], shape=(2,), dtype=float32, weak=True)'
+    self.assertEqual(str(wt), wt_str)
+
+    # __repr__ test in eager mode
+    wt_repr = (
+        '<tf.Tensor: shape=(2,), dtype=float32, numpy=array([1., 2.],'
+        ' dtype=float32), weak=True>'
+    )
+    self.assertEqual(repr(wt), wt_repr)
+
+    @def_function.function()
+    def f():
+      # __str__ test in graph mode
+      t = constant_op.constant([1.0, 2.0], dtypes.float32)
+      wt = weak_tensor.WeakTensor(t)
+      wt_str = 'Tensor("Const:0", shape=(2,), dtype=float32, weak=True)'
+      self.assertEqual(str(wt), wt_str)
+
+      # __repr__ test in graph mode
+      wt_repr = "<tf.Tensor 'Const:0' shape=(2,) dtype=float32, weak=True>"
+      self.assertEqual(repr(wt), wt_repr)
+      return wt
+
+    _ = f()
 
 
 if __name__ == '__main__':

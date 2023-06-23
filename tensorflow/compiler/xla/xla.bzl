@@ -2,9 +2,9 @@
 
 load(
     "//tensorflow/tsl:tsl.bzl",
-    "clean_dep",
     "if_tsl_link_protobuf",
     "tsl_copts",
+    _tsl_clean_dep = "clean_dep",
 )
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
@@ -21,6 +21,17 @@ load(
 
 def register_extension_info(**kwargs):
     pass
+
+def clean_dep(target):
+    """Returns string to 'target' in @{org_tensorflow,xla} repository.
+
+    This is distinct from the clean_dep which appears in @{org_tensorflow,tsl}.
+    TODO(ddunleavy,jakeharmon): figure out what to do with this after vendoring.
+    """
+
+    # A repo-relative label is resolved relative to the file in which the
+    # Label() call appears, i.e. @org_tensorflow.
+    return str(Label(target))
 
 def xla_py_proto_library(**kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
@@ -44,7 +55,7 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
     # TODO(ddunleavy): some of these should be removed from here and added to
     # specific targets.
     deps += [
-        clean_dep("@com_google_protobuf//:protobuf"),
+        _tsl_clean_dep("@com_google_protobuf//:protobuf"),
         "//tensorflow/compiler/xla:xla_proto_cc_impl",
         "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
@@ -76,39 +87,39 @@ def xla_cc_test(
         deps = deps + if_tsl_link_protobuf(
                    [],
                    [
-                       clean_dep("@com_google_protobuf//:protobuf"),
+                       _tsl_clean_dep("@com_google_protobuf//:protobuf"),
                        # TODO(zacmustin): remove these in favor of more granular dependencies in each test.
-                       "//tensorflow/compiler/xla:xla_proto_cc_impl",
-                       "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
-                       "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
-                       "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
-                       "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
-                       "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
-                       "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-                       "//tensorflow/compiler/xla/stream_executor:device_id_utils",
-                       "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-                       "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
-                       "//tensorflow/tsl/profiler/utils:time_utils_impl",
-                       "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
-                       "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl",
-                       "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
-                       "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
-                       "//tensorflow/tsl/protobuf:protos_all_cc_impl",
-                       "//tensorflow/tsl/platform:env_impl",
-                       "//tensorflow/tsl/framework:allocator",
-                       "//tensorflow/tsl/framework:allocator_registry_impl",
-                       "//tensorflow/tsl/util:determinism",
+                       clean_dep("//tensorflow/compiler/xla:xla_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla:xla_data_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/service:hlo_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/stream_executor:stream_executor_impl"),
+                       clean_dep("//tensorflow/compiler/xla/stream_executor:device_id_utils"),
+                       clean_dep("//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
+                       clean_dep("//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/utils:time_utils_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl"),
+                       clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
+                       clean_dep("//tensorflow/tsl/protobuf:dnn_proto_cc_impl"),
+                       clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
+                       clean_dep("//tensorflow/tsl/platform:env_impl"),
+                       clean_dep("//tensorflow/tsl/framework:allocator"),
+                       clean_dep("//tensorflow/tsl/framework:allocator_registry_impl"),
+                       clean_dep("//tensorflow/tsl/util:determinism"),
                    ],
                ) +
                if_cuda_is_configured([
-                   "//tensorflow/compiler/xla/stream_executor/cuda:cuda_stream",
-                   "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
-                   "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/cuda:cuda_stream"),
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"),
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda"),
                ]) +
                if_rocm_is_configured([
-                   "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
-                   "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
-                   "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream"),
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/rocm:all_runtime"),
+                   clean_dep("//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm"),
                ]),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs

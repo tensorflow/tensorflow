@@ -910,6 +910,48 @@ XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
   Tensor key_tensor = ctx->input(ctx->num_inputs() - 1);
+
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileAndRunForDevice(
+              platform_info_.device_type());
+
+  if (use_pjrt) {
+    const PjRtExecutableClosureStore::KeyT& key = key_tensor.flat<tstring>()(0);
+    PjRtExecutableClosure closure =
+        PjRtExecutableClosureStore::Global()->Consume(key);
+
+    // Fetch inputs from the OpKernelContext. Inputs are the same as the ones
+    // for XlaCompile, except that the must-be-constant inputs that appear in
+    // the beginning are stripped off and the closure key is appended as the
+    // last input. So the inputs look like: input tensors, resource variables,
+    // closure key tensor.
+    std::vector<const Tensor*> inputs = InputsFromContext(ctx);
+    absl::flat_hash_map<int, const Tensor*> variable_snapshots;
+    for (const auto& [variable_index, variable_tensor] :
+         closure.resource_var_snapshots()) {
+      variable_snapshots.emplace(variable_index, variable_tensor.has_value()
+                                                     ? &variable_tensor.value()
+                                                     : nullptr);
+    }
+
+    {
+      StatusOr<std::vector<VariableInfo>> updated_variables =
+          GatherVariableInfo(ctx, *closure.compilation_result(),
+                             closure.num_constant_args());
+      OP_REQUIRES_OK(ctx, updated_variables.status());
+      OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*updated_variables)));
+      OP_REQUIRES_OK(
+          ctx, RunPjRtExecutable(*closure.client(), closure.num_constant_args(),
+                                 inputs, variable_snapshots, *updated_variables,
+                                 *closure.compilation_result(),
+                                 closure.executable(), ctx));
+    }
+
+    OP_REQUIRES_OK(ctx, OkStatus());
+    return;
+  }
+
   const XlaExecutableClosureStore::KeyT& key = key_tensor.flat<tstring>()(0);
 
   XlaExecutableClosure closure =

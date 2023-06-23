@@ -532,6 +532,54 @@ TEST_F(AlgebraicSimplifierTest,
                                                   m::ConstantScalar(4.0))))));
 }
 
+// Test that mul(conv(a, b), broadcast(c)) is simplified to
+// conv(a, mul(b, broadcast(c)))
+TEST_F(AlgebraicSimplifierTest, MultiplyConvolutionBroadcastReorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      in = f32[5,4,4,1] parameter(0)
+      filter = f32[2,2,1,2] constant({{{{1.1, 1.2}}, {{2.1, 2.2}}},
+                                      {{{3.1, 3.2}}, {{4.1, 4.2}}}})
+      conv = f32[5,3,3,2] convolution(in, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      scale = f32[2] constant({1.0, 1.1})
+      bcast = f32[5,3,3,2] broadcast(scale), dimensions={3}
+      ROOT multiply1 = f32[5,3,3,2] multiply(conv, bcast)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Convolution(
+          m::Parameter(0),
+          m::MultiplyAnyOrder(m::Constant(), m::Broadcast(m::Constant())))));
+}
+
+// Test that mul(conv(a, b), broadcast(c)) should not be simplified if broadcast
+// dimension is not the same as convolution output feature dimension.
+TEST_F(AlgebraicSimplifierTest, DoNotMultiplyConvolutionBroadcastReorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      in = f32[5,3,3,1] parameter(0)
+      filter = f32[2,2,1,2] constant({{{{1.1, 1.2}}, {{2.1, 2.2}}},
+                                      {{{3.1, 3.2}}, {{4.1, 4.2}}}})
+      conv = f32[5,2,2,2] convolution(in, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      scale = f32[2] constant({1.0, 1.1})
+      bcast = f32[5,2,2,2] broadcast(scale), dimensions={2}
+      ROOT multiply1 = f32[5,2,2,2] multiply(conv, bcast)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(RunHloPass(&simplifier, m.get()).value());
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});

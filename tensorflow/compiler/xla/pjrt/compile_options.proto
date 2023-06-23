@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 14.
+// Next id: 15.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -78,6 +78,9 @@ message ExecutableBuildOptionsProto {
   // single element of the output tuple. One value per element of the tuple
   // means that each value is attached to one of the output elements.
   repeated bool allow_spmd_sharding_propagation_to_output = 12;
+
+  // Opaque profile data for any feedback directed optimizations.
+  bytes fdo_profile = 14;
 }
 
 message OptionOverrideProto {

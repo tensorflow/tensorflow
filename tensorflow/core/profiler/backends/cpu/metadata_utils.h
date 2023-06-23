@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/backends/profiler/cpu/metadata_utils.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"

@@ -13369,6 +13369,26 @@ ENTRY %main.21 {
   EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
 }
 
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmerge) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,8,8,8]{3,2,1,0} parameter(0), sharding={devices=[1,1,2,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  tuple.2 = (f32[8,8,8,8]{3,2,1,0}) tuple(Arg_0.1), sharding={{devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
+  ROOT get-tuple-element.3 = f32[8,8,8,8]{3,2,1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
 TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
   const char* const hlo_string = R"(
 HloModule Test

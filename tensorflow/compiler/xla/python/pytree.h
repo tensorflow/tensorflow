@@ -184,6 +184,13 @@ class PyTreeDef {
 
   static PyTreeDef DeserializeFrom(const jax::PyTreeDefProto& input);
 
+  std::optional<std::pair<pybind11::type, pybind11::object>> GetNodeData()
+      const;
+
+  static PyTreeDef MakeFromNodeDataAndChildren(
+      std::optional<std::pair<pybind11::type, pybind11::object>> node_data,
+      pybind11::iterable children);
+
  private:
   void SetNumLeavesAndNumNodes();
 

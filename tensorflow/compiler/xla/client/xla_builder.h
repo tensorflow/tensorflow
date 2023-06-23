@@ -197,7 +197,6 @@ class XlaOp {
 
   friend class XlaBuilder;
   friend class ValueInference;
-  friend class MlirHloBuilder;
   friend struct internal::XlaBuilderFriend;
 
   // < 0 means "invalid handle".

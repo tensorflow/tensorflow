@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_H_
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -134,14 +136,19 @@ class SavedModel {
   // Per-request options.
   using RunOptions = GraphExecutionRunOptions;
 
-  explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
-    DCHECK(runtime_);
+  explicit SavedModel(const Runtime* runtime) : options_(runtime) {
+    DCHECK(runtime);
   }
+  explicit SavedModel(Options&& options) : options_(std::move(options)) {}
   virtual ~SavedModel();
 
+  const SessionMetadata& model_metadata() const {
+    return options_.graph_execution_options.model_metadata;
+  }
+
   const Runtime& runtime() const {
-    DCHECK(runtime_);
-    return *runtime_;
+    DCHECK(options_.graph_execution_options.runtime);
+    return *options_.graph_execution_options.runtime;
   }
   tfrt::HostContext* GetHostContext() const;
 
@@ -191,8 +198,8 @@ class SavedModel {
       absl::Span<const std::string> target_node_names,
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
- private:
-  const Runtime* runtime_ = nullptr;
+ protected:
+  const Options options_;
 };
 
 class SavedModelImpl final : public SavedModel {
@@ -288,7 +295,6 @@ class SavedModelImpl final : public SavedModel {
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
-  Options options_;
   SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
   // is removed.

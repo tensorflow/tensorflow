@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -481,7 +483,7 @@ tensorflow::Status PreprocessSignature(
 SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
 
 tfrt::HostContext* SavedModel::GetHostContext() const {
-  return runtime_->core_runtime()->GetHostContext();
+  return runtime().core_runtime()->GetHostContext();
 }
 
 namespace {
@@ -593,7 +595,9 @@ SavedModelImpl::LoadSavedModel(Options options,
   options.graph_execution_options.compile_options.saved_model_dir =
       saved_model_dir;
 
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  mlir::MLIRContext context(registry);
 
   // Step 1: Import saved model from a proto to an MLIR module.
   const auto import_start_time = absl::Now();
@@ -627,8 +631,7 @@ SavedModelImpl::LoadSavedModel(Options options,
           options.graph_execution_options.compile_options.use_bridge_for_gpu));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
-                             MaybeUploadMlirToXsymbol(mlir_module.get()));
+  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
 
   const auto import_duration = absl::Now() - import_start_time;
   saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
@@ -659,8 +662,7 @@ SavedModelImpl::LoadSavedModel(Options options,
         options.graph_execution_options.compile_options, mlir_module.get(),
         &bef, fallback_state.get()));
   }
-  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
-                              MaybeUploadMlirToXsymbol(mlir_module.get()));
+  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
       ->Set(absl::ToInt64Seconds(compile_duration));
@@ -735,8 +737,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
     std::unique_ptr<GraphExecutor> graph_executor)
-    : SavedModel(options.graph_execution_options.runtime),
-      options_(std::move(options)),
+    : SavedModel(std::move(options)),
       symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
       bef_(std::move(bef)),
@@ -1047,15 +1048,17 @@ StatusOr<JoinedSignature> JoinSignatures(
 StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  mlir::MLIRContext context(registry);
+
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportSubgraph(&context, joined_signature.input_nodes,
                                   joined_signature.output_nodes,
                                   joined_signature.target_nodes));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
-                             MaybeUploadMlirToXsymbol(module.get()));
+  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
@@ -1067,8 +1070,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
       &loading_result->bef, fallback_state_.get()));
-  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
-                              MaybeUploadMlirToXsymbol(module.get()));
+  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
   loading_result->symbol_uids = std::move(symbol_uids);
 
   // Step 3: Initialize runtime states using special BEF functions.

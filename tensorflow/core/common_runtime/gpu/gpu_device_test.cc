@@ -15,6 +15,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
@@ -28,6 +32,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+
+#ifdef TF_GPU_USE_PJRT
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#endif  // TF_GPU_USE_PJRT
 
 namespace tensorflow {
 namespace {
@@ -282,6 +291,20 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
       "match the number of elements in the virtual_devices "
       "list.");
 }
+
+#ifdef TF_GPU_USE_PJRT
+TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
+  SessionOptions opts = MakeSessionOptions("0");
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(1));
+  EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
+  EXPECT_EQ(static_cast<BaseGPUDevice*>(devices[0].get())->priority(), 0);
+  auto pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
+  EXPECT_OK(pjrt_client.status());
+}
+#endif  // TF_GPU_USE_PJRT
 
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.

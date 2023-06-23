@@ -70,7 +70,6 @@ cuda_py_strict_test(
     tags = ["no_windows"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -93,6 +92,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:handle_data_util",
         "//tensorflow/python/ops:init_ops",

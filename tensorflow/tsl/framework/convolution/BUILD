@@ -97,7 +97,7 @@ exports_files(
 )
 
 tsl_cc_test(
-    name = "spatial_convolutions_test",
+    name = "eigen_spatial_convolutions_test",
     size = "small",
     srcs = [
         "eigen_spatial_convolutions_test.cc",

@@ -1378,6 +1378,11 @@ typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 struct PJRT_TopologyDescription_Create_Args {
   size_t struct_size;
   void* priv;
+  const char* topology_name;
+  size_t topology_name_size;
+  // Extra platform-specific options to create a client.
+  PJRT_NamedValue* create_options;
+  size_t num_options;
   PJRT_TopologyDescription* topology;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Create_Args, topology);

@@ -53,6 +53,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   // Set autotune_level to 3 to disable correctness checking, which avoids
   // memory allocation during runtime.
@@ -84,8 +85,8 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
-            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, stream, algorithm,
-                                       &profile_result));
+            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, deterministic_ops,
+                                       stream, algorithm, &profile_result));
             return std::move(profile_result);
           }));
 
@@ -110,6 +111,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
@@ -143,7 +145,8 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 #endif
   }
 
-  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
+  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data,
+                 deterministic_ops, stream);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

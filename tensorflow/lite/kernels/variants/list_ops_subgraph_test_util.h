@@ -15,12 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/kernels/variants/list_ops_lib.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -29,10 +32,20 @@ class ListOpsSubgraphBuilder {
  public:
   void AddConstSubgraph(Subgraph* subgraph);
 
+  void AddReserveSubgraph(Subgraph* subgraph, TensorType element_type);
+
  private:
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,
                                  absl::Span<const int> shape,
                                  absl::Span<const int> data);
+  // Custom options usually live in the flatbuffer, so they won't
+  // be cleaned up by the `Interpreter`. When we create them in test
+  // we need to free when test is done. So we provide a factory function
+  // for construction.
+  variants::detail::ListReserveOptions* RequestReserveOptions(
+      TensorType element_type);
+  std::vector<variants::detail::ListReserveOptions> list_reserve_opts_;
+
   std::vector<std::vector<int32_t>> int_buffers_;
 };
 

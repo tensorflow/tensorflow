@@ -51,7 +51,6 @@ limitations under the License.
 namespace stream_executor {
 
 class Stream;
-class Timer;
 
 // An opaque handle to a loaded module.
 //
@@ -144,28 +143,6 @@ class StreamInterface {
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
-};
-
-// Pointer-to-implementation object type (i.e. the Timer class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any timer data/resource info/functionality
-// off of.
-class TimerInterface {
- public:
-  // Default constructor for the abstract interface.
-  TimerInterface() = default;
-
-  // Default destructor for the abstract interface.
-  virtual ~TimerInterface() = default;
-
-  // Returns the number of microseconds elapsed in a completed timer.
-  virtual uint64_t Microseconds() const = 0;
-
-  // Returns the number of nanoseconds elapsed in a completed timer.
-  virtual uint64_t Nanoseconds() const = 0;
-
- private:
-  SE_DISALLOW_COPY_AND_ASSIGN(TimerInterface);
 };
 
 // Interface for the different StreamExecutor platforms (i.e. CUDA, OpenCL).
@@ -275,10 +252,6 @@ class StreamExecutorInterface {
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
-  virtual bool AllocateTimer(Timer* timer) = 0;
-  virtual void DeallocateTimer(Timer* timer) = 0;
-  virtual bool StartTimer(Stream* stream, Timer* timer) = 0;
-  virtual bool StopTimer(Stream* stream, Timer* timer) = 0;
   virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
   virtual tsl::Status GetStatus(Stream* stream) {
     return tsl::Status(absl::StatusCode::kUnimplemented,
@@ -382,7 +355,6 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
   virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
-  virtual std::unique_ptr<TimerInterface> GetTimerImplementation() = 0;
 
   // Returns the CUDA or ROCm context associated with this StreamExecutor
   // platform implementation.

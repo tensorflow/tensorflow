@@ -3199,7 +3199,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       auto slice_op =
           rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
                                    operand, squeeze_op, slice_size);
-      rewriter.replaceOp(gather_op, {slice_op});
+      rewriter.replaceOp(gather_op, slice_op);
       return mlir::success();
     }
 
@@ -3235,7 +3235,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
     auto concat_op = rewriter.create<ConcatV2Op>(
         gather_op.getLoc(), result_type, slices, zero_scalar);
-    rewriter.replaceOp(gather_op, {concat_op});
+    rewriter.replaceOp(gather_op, concat_op);
     return mlir::success();
   }
 

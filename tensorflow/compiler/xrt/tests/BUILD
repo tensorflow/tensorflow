@@ -72,6 +72,7 @@ tf_cuda_cc_test(
     ],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171319142): re-enable.
+        "no_rocm",
     ],
     deps = [
         ":raw_api_test_lib",

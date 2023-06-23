@@ -66,7 +66,8 @@ int UnderflowExponent(PrimitiveType type) {
   // |std::numeric_limits<float>::min_exponent| is defined as: "minimum negative
   // integer such that radix raised to the power one less than that integer is a
   // normalized floating-point number." as such it does not actually yield the
-  // minimum exponent but the exponent of the first integer which overflows.
+  // minimum exponent but one above the minimum exponent that a normalized
+  // number can have.
   switch (type) {
     case F32:
       return std::numeric_limits<float>::min_exponent;

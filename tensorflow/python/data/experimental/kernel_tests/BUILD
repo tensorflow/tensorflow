@@ -89,6 +89,7 @@ tf_py_strict_test(
     name = "checkpoint_input_pipeline_hook_test",
     size = "medium",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],
+    tags = ["no_windows"],  # b/287333711
     deps = [
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/experimental/ops:iterator_ops",

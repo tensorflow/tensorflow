@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -153,7 +152,6 @@ class HloModuleConfig {
   // Set the launch id of the program. Launch id identifies a set of programs
   // that should be launched together.
   void set_launch_id(uint64_t launch_id) { launch_id_ = launch_id; }
-
   int32_t launch_id() const { return launch_id_; }
 
   void set_replica_count(int64_t replica_count) {
@@ -214,22 +212,19 @@ class HloModuleConfig {
   void set_deduplicate_hlo(bool deduplicate_hlo) {
     deduplicate_hlo_ = deduplicate_hlo;
   }
+  bool deduplicate_hlo() const { return deduplicate_hlo_; }
 
   void set_device_type(const std::string& device_type) {
     device_type_ = device_type;
   }
-
-  bool deduplicate_hlo() const { return deduplicate_hlo_; }
+  absl::string_view device_type() const { return device_type_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   std::string compilation_cache_key() const;
 
-  std::string device_type() const { return device_type_; }
-
   const DebugOptions& debug_options() const { return debug_options_; }
-
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
   }
@@ -247,7 +242,6 @@ class HloModuleConfig {
   bool has_static_device_assignment() const {
     return static_device_assignment_.has_value();
   }
-
   // Getter and setter of the compile-time known device assignment.
   const DeviceAssignment& static_device_assignment() const {
     CHECK(static_device_assignment_.has_value());
@@ -308,7 +302,6 @@ class HloModuleConfig {
       const {
     return dot_config_;
   }
-
   absl::flat_hash_map<std::string, std::vector<int64_t>>* mutable_dot_config() {
     return &dot_config_;
   }
@@ -316,7 +309,6 @@ class HloModuleConfig {
   const std::vector<std::vector<std::vector<int64_t>>>& layout_config() const {
     return layout_config_;
   }
-
   std::vector<std::vector<std::vector<int64_t>>>* mutable_layout_config() {
     return &layout_config_;
   }
@@ -324,7 +316,6 @@ class HloModuleConfig {
   const std::vector<std::vector<bool>>& phase_ordering_config() const {
     return phase_ordering_config_;
   }
-
   std::vector<std::vector<bool>>* mutable_phase_ordering_config() {
     return &phase_ordering_config_;
   }
@@ -344,7 +335,6 @@ class HloModuleConfig {
   const std::vector<uint64_t>& memory_space_assignment_config() const {
     return memory_space_assignment_config_;
   }
-
   std::vector<uint64_t>* mutable_memory_space_assignment_config() {
     return &memory_space_assignment_config_;
   }
@@ -356,7 +346,6 @@ class HloModuleConfig {
     }
     return (*it).second;
   }
-
   void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
     analysis_allowance_map_[pass_name] = allowance;
   }
@@ -368,6 +357,9 @@ class HloModuleConfig {
       PrecisionConfig::Precision matrix_unit_operand_precision) {
     matrix_unit_operand_precision_ = matrix_unit_operand_precision;
   }
+
+  absl::string_view fdo_profile() const { return fdo_profile_; }
+  std::string* mutable_fdo_profile() { return &fdo_profile_; }
 
  private:
   // If you add new members, be sure to update compilation_cache_key and the
@@ -476,6 +468,11 @@ class HloModuleConfig {
 
   PrecisionConfig::Precision matrix_unit_operand_precision_ =
       PrecisionConfig::DEFAULT;
+
+  // Profiling data for feedback directed optimizations. Note that this is not
+  // the only way to feed FDO data into the compiler and individual backends
+  // may choose to get FDO data by other means.
+  std::string fdo_profile_;
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 

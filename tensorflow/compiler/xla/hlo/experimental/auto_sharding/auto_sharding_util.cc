@@ -1823,15 +1823,7 @@ int64_t GetShardedInstructionSize(const Shape& shape, int64_t num_devices,
     return size;
   }
   if (sharding) {
-    if (sharding->IsReplicated()) {
-      return GetBytes(shape);
-    } else {
-      int64_t num_sharded_devices = 1;
-      for (size_t i = 0; i < shape.rank(); ++i) {
-        num_sharded_devices *= sharding->tile_assignment().dim(i);
-      }
-      return GetBytes(shape) / num_sharded_devices;
-    }
+    return GetBytes(shape) / sharding->NumTiles();
   }
   bool shardable = false;
   for (const auto dim : shape.dimensions()) {

@@ -110,6 +110,7 @@ cc_library_with_tflite(
         ":ret_macros",
     ],
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:minimal_logging",
         "@com_google_absl//absl/status",
     ],

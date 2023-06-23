@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -108,7 +107,6 @@ class Tf2XlaRewriter {
   std::string device_type_;
 
   mlir::PatternRewriter& rewriter_;
-  ::xla::MlirHloBuilder hlo_builder_;
   tensorflow::OpOrArgLocNameMapper name_mapper_;
 
   tensorflow::XlaContext* context_;  // Ref-counted.

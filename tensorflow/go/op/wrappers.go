@@ -46845,6 +46845,32 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 	return op.Output(0)
 }
 
+// Computes gradients for SparseSegmentMean.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentMean op.
+//	indices: indices passed to the corresponding SparseSegmentMean op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+func SparseSegmentMeanGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMeanGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
@@ -46926,6 +46952,32 @@ func SparseSegmentSqrtNGrad(scope *Scope, grad tf.Output, indices tf.Output, seg
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentSqrtN.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentSqrtN op.
+//	indices: indices passed to the corresponding SparseSegmentSqrtN op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentSqrtN op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
+func SparseSegmentSqrtNGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSqrtNGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Computes the sum along sparse segments of a tensor divided by the sqrt of N.
@@ -47037,6 +47089,32 @@ func SparseSegmentSumGrad(scope *Scope, grad tf.Output, indices tf.Output, segme
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentSum.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentSum op.
+//	indices: indices passed to the corresponding SparseSegmentSum op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentSum op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentSum op.
+func SparseSegmentSumGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSumGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Computes the sum along sparse segments of a tensor.

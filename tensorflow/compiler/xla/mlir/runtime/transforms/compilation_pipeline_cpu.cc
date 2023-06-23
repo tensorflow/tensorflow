@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
@@ -72,6 +73,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
                    mlir::sparse_tensor::SparseTensorDialect,
                    mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
                    RuntimeDialect>();
+
+  mlir::func::registerAllExtensions(*dialects);
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/execution_engine.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -57,9 +58,11 @@ using llvm::Triple;
 using llvm::orc::DynamicLibrarySearchGenerator;
 using llvm::orc::ExecutionSession;
 using llvm::orc::ExecutorAddr;
+using llvm::orc::InPlaceTaskDispatcher;
 using llvm::orc::IRCompileLayer;
 using llvm::orc::JITTargetMachineBuilder;
 using llvm::orc::RTDyldObjectLinkingLayer;
+using llvm::orc::SelfExecutorProcessControl;
 using llvm::orc::SymbolMap;
 using llvm::orc::ThreadSafeModule;
 using llvm::orc::TMOwningSimpleCompiler;
@@ -296,13 +299,31 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                                     obj_cache.get());
   };
 
+  // Use in-process executor process control with in-place task dispatcher.
+  auto executorProcessControl = SelfExecutorProcessControl::Create(
+      nullptr, std::make_unique<InPlaceTaskDispatcher>());
+
+  if (auto err = executorProcessControl.takeError())
+    return InternalError("failed to create executor process control: %s",
+                         ToString(err));
+
+  // TODO(b/286475799): Concurrent compilation leads to spurious memory
+  // corruptions and segfaults at run time, however nothing shows up in tsan
+  // or asan builds. This is a hack that for some unknown reason helps.
+  static auto *lljit_mu = new absl::Mutex();
+  std::optional<absl::MutexLock> lljit_lock(lljit_mu);
+
   // Construct the LLJIT with the given compiler and object linking layers.
   auto jit = llvm::orc::LLJITBuilder()
                  .setCompileFunctionCreator(compile_function_creator)
                  .setObjectLinkingLayerCreator(obj_layer_creator)
+                 .setExecutorProcessControl(std::move(*executorProcessControl))
                  .create();
+
   if (auto err = jit.takeError())
     return InternalError("failed to construct LLJIT: %s", ToString(err));
+
+  lljit_lock.reset();
 
   // Register input module with the LLJIT.
   ThreadSafeModule tsm(std::move(module), std::move(ctx));

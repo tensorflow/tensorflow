@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -59,13 +58,6 @@ namespace gpu {
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event->implementation());
-}
-
-// Given a platform-independent timer datatype, returns the internal ROCM
-// platform implementation pointer.
-static GpuTimer* AsGpuTimer(Timer* timer) {
-  DCHECK(timer != nullptr);
-  return static_cast<GpuTimer*>(timer->implementation());
 }
 
 // Given const GPU memory, returns a librocm device pointer datatype, suitable
@@ -619,14 +611,6 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
   rocm_stream->Destroy();
 }
 
-bool GpuExecutor::AllocateTimer(Timer* timer) {
-  return AsGpuTimer(timer)->Init();
-}
-
-void GpuExecutor::DeallocateTimer(Timer* timer) {
-  AsGpuTimer(timer)->Destroy();
-}
-
 bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   GpuEventHandle other_completed_event = *AsGpuStream(other)->completed_event();
   bool ok = GpuDriver::RecordEvent(context_, other_completed_event,
@@ -640,14 +624,6 @@ bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
 
   return GpuDriver::WaitStreamOnEvent(context_, AsGpuStreamValue(dependent),
                                       other_completed_event);
-}
-
-bool GpuExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Start(AsGpuStream(stream));
-}
-
-bool GpuExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Stop(AsGpuStream(stream));
 }
 
 tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
@@ -788,11 +764,6 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
-}
-
-std::unique_ptr<internal::TimerInterface>
-GpuExecutor::GetTimerImplementation() {
-  return std::unique_ptr<internal::TimerInterface>(new GpuTimer(this));
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }

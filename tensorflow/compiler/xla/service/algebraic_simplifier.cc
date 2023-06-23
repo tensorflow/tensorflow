@@ -3308,6 +3308,41 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     }
   }
 
+  {
+    HloInstruction *in, *filter, *constant, *convolution, *broadcast;
+    // Mul(Conv(in, filter), Broadcast(constant)) =>
+    // Conv(in, Mul(filter, Broadcast(constant)))
+    // where Broadcast(constant) broadcasts a 1D tensor to the output feature
+    // dimension. We conservatively only consider the case where filter is a
+    // constant and multiply can be constant-folded. If it's not a constant, the
+    // transformation would still be correct. But if the multiply cannot be
+    // fused, it might be slower to do it on the filter than on the output.
+    if (Match(multiply,
+              m::MultiplyAnyOrder(
+                  m::Convolution(&convolution, m::Op(&in), m::Constant(&filter))
+                      .WithOneUser(),
+                  m::Broadcast(&broadcast, m::Constant(&constant).WithShape(
+                                               m::Shape().WithRank(1)))))) {
+      const ConvolutionDimensionNumbers& dnums =
+          convolution->convolution_dimension_numbers();
+
+      if (broadcast->dimensions().size() == 1 &&
+          broadcast->dimensions()[0] == dnums.output_feature_dimension()) {
+        auto new_bcast =
+            multiply->AddInstruction(HloInstruction::CreateBroadcast(
+                filter->shape(), constant,
+                {dnums.kernel_output_feature_dimension()}));
+        auto new_multiply =
+            multiply->AddInstruction(HloInstruction::CreateBinary(
+                filter->shape(), HloOpcode::kMultiply, filter, new_bcast));
+        auto new_conv = convolution->CloneWithNewOperands(convolution->shape(),
+                                                          {in, new_multiply});
+        TF_RETURN_IF_ERROR(
+            ReplaceWithNewInstruction(multiply, std::move(new_conv)));
+      }
+    }
+  }
+
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
