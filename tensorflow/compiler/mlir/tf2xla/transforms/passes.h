@@ -77,8 +77,7 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           Tf2XlaTypeConverter& converter,
-                                          bool prefer_tf2xla = false,
-                                          bool use_tf2xla_hlo_importer = false);
+                                          bool prefer_tf2xla = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
