@@ -55,6 +55,8 @@ proto::Delegate ConvertDelegate(Delegate delegate) {
       return proto::Delegate::EDGETPU_CORAL;
     case Delegate_CORE_ML:
       return proto::Delegate::CORE_ML;
+    case Delegate_ARMNN:
+      return proto::Delegate::ARMNN;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -332,6 +334,9 @@ proto::StableDelegateLoaderSettings ConvertStableDelegateLoaderSettings(
   proto::StableDelegateLoaderSettings proto_settings;
   if (settings.delegate_path() != nullptr) {
     proto_settings.set_delegate_path(settings.delegate_path()->str());
+  }
+  if (settings.delegate_name() != nullptr) {
+    proto_settings.set_delegate_name(settings.delegate_name()->str());
   }
 
   return proto_settings;

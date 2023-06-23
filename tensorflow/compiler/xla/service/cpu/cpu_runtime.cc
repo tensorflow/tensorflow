@@ -158,11 +158,6 @@ extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 
 namespace {
 
-template <class T>
-struct is_complex : std::false_type {};
-template <class T>
-struct is_complex<std::complex<T>> : std::true_type {};
-
 struct CollectivePermuteParticipantData : ParticipantData {
   CollectivePermuteParticipantData(const RendezvousKey& rendezvous_key_p,
                                    int64_t device_ordinal_p,
@@ -514,7 +509,7 @@ class CpuAllReduceRendezvous
   };
 
   template <typename T,
-            typename std::enable_if<!is_complex<T>::value>::type* = nullptr>
+            typename std::enable_if<!is_complex_v<T>>::type* = nullptr>
   T PerformReductionStep(ReductionKind reduction_kind, T a, T b) {
     using SumProductType = typename SumProductTypeForReductionStep<
         T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
@@ -535,7 +530,7 @@ class CpuAllReduceRendezvous
   }
 
   template <typename T,
-            typename std::enable_if<is_complex<T>::value>::type* = nullptr>
+            typename std::enable_if<is_complex_v<T>>::type* = nullptr>
   T PerformReductionStep(ReductionKind reduction_kind, T a, T b) {
     using SumProductType = typename SumProductTypeForReductionStep<
         T, std::is_integral<T>::value && std::is_signed<T>::value>::type;

@@ -29,9 +29,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
     used.
   }];
   let options = [
-    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
-        /*default=*/"false",
-        "Allow operations that can't be legalized.">,
     Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
         "Legalizes intermediate chlo ops to hlo">,
     Option<"use_tf2xla_fallback_", "use-tf2xla-fallback", "bool",
@@ -68,9 +65,16 @@ def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncO
     Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
     like int ops.
   }];
+  let options = [
+    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
+        "Legalizes intermediate chlo ops to hlo">
+    ];
 
   let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
-  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
+                           "quant::QuantizationDialect",
+                           "shape::ShapeDialect",
+                           "func::FuncDialect"];
 }
 
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {

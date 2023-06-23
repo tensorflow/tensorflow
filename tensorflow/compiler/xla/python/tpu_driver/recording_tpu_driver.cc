@@ -14,7 +14,11 @@
 // =============================================================================
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
@@ -49,7 +53,7 @@ class RecordingEvent : public Event {
   explicit RecordingEvent(std::shared_ptr<Event> event, int64_t id)
       : shared_event_(event), id_(id) {}
 
-  ~RecordingEvent() override {}
+  ~RecordingEvent() override = default;
 
   xla::Status Await() override { return shared_event_->Await(); }
 

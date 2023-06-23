@@ -79,7 +79,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy(enable_packed_var=False):
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   strategy = tpu_lib.TPUStrategyV2(resolver)
   strategy._enable_packed_variable_in_eager_mode = enable_packed_var
   return strategy
@@ -176,11 +176,29 @@ class TPUTest(test.TestCase):
   def test_multiple_initialize_system(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     with test.mock.patch.object(logging, "warning") as mock_log:
-      tpu_strategy_util.initialize_tpu_system(resolver)
+      tpu_cluster_resolver.initialize_tpu_system(resolver)
       self.assertRegex(str(mock_log.call_args), "already been initialized")
+
+  def test_initialize_tpu_system_impl_input(self):
+    resolver = get_tpu_cluster_resolver()
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tpu_cluster_resolver_cls is not"
+        r" tf.distribute.cluster_resolver.TPUClusterResolver."):
+      tpu_strategy_util.initialize_tpu_system_impl(
+          resolver, tpu_cluster_resolver_cls=None)
+
+  def test_shutdown_tpu_system_impl_input(self):
+    resolver = get_tpu_cluster_resolver()
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tpu_cluster_resolver_cls is not"
+        r" tf.distribute.cluster_resolver.TPUClusterResolver."):
+      tpu_strategy_util.shutdown_tpu_system_impl(
+          resolver, tpu_cluster_resolver_cls=None)
 
   def test_tpu_tf_function_same_device(self):
     with ops.device("/device:TPU:0"):
@@ -332,7 +350,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_sequential_runs(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     # Computation replicated to all cores.
     device_assignment = device_assignment_lib.DeviceAssignment.build(
         topology, num_replicas=2)
@@ -443,7 +461,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_computation_on_subset_cores(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     all_core_strategy = tpu_lib.TPUStrategyV2(resolver)
     all_core_strategy._enable_packed_variable_in_eager_mode = enable_packed_var
 
@@ -484,7 +502,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
   def test_worker_devices_on_subset_cores(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     # Strategy for the 1st core.
     device_assignment = device_assignment_lib.DeviceAssignment.build(
@@ -1180,7 +1198,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology, core_assignment=[[[0, 0, 0, 1]], [[0, 0, 0, 0]]]
     )
@@ -1317,7 +1335,7 @@ class TPUStrategyDistributionTest(
   def test_update_config_proto(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
     strategy = tpu_lib.TPUStrategyV2(resolver)
 
     config_proto = config_pb2.ConfigProto()
@@ -1449,7 +1467,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_core_assignment(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology, core_assignment=[[[0, 0, 0, 0]]])
     self.assertAllEqual([[[0, 0, 0, 0]]], device_assignment.core_assignment)
@@ -1461,7 +1479,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_device_assignment_strategy_properties(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology, core_assignment=[[[0, 0, 0, 0]]])
     strategy = tpu_lib.TPUStrategyV2(
@@ -1474,7 +1492,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_device_assignment_constants(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
     device_assignment = device_assignment_lib.DeviceAssignment(
         topology,
         core_assignment=device_assignment_lib.SINGLE_CORE_ASSIGNMENT)
@@ -1487,7 +1505,7 @@ class DeviceAssignmentTest(test.TestCase):
   def test_variables_mismatched_device_assignment(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     strategy0 = tpu_lib.TPUStrategyV2(resolver)
     self.assertEqual(

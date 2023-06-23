@@ -144,6 +144,7 @@ cc_library(
         ":incomplete_nodedef_builder",
         "//tensorflow/compiler/jit:encapsulate_util",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:sharding_util",

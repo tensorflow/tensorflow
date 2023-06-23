@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_visibility_allowlist")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "minibenchmark_visibility_allowlist")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
@@ -24,16 +25,18 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
+cc_library_with_forced_in_process_benchmark_variant(
     name = "c_api",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    in_process_deps = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
+    ],
     deps = [
         ":c_api_types",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:benchmark_result_evaluator",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
@@ -55,7 +58,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "@flatbuffers//:runtime_cc",
-    ],
+    ] + libjpeg_handle_deps(),
 )
 
 cc_library(

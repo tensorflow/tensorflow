@@ -19,8 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_STREAM_H_
 
-#include "absl/base/thread_annotations.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include <variant>
+
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
@@ -38,7 +39,7 @@ class GpuStream : public internal::StreamInterface {
       : parent_(parent), gpu_stream_(nullptr), completed_event_(nullptr) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override {}
+  ~GpuStream() override = default;
 
   void* GpuStreamHack() override { return gpu_stream_; }
   void** GpuStreamMemberHack() override {
@@ -48,8 +49,16 @@ class GpuStream : public internal::StreamInterface {
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().
   bool Init();
-  void SetPriority(int priority) { priority_ = priority; }
-  int priority() const { return priority_; }
+
+  void SetPriority(StreamPriority priority) override {
+    stream_priority_ = priority;
+  }
+
+  void SetPriority(int priority) override { stream_priority_ = priority; }
+
+  std::variant<StreamPriority, int> priority() const override {
+    return stream_priority_;
+  }
 
   // Explicitly destroy the CUDA resources associated with this stream, used by
   // StreamExecutor::DeallocateStream().
@@ -80,7 +89,7 @@ class GpuStream : public internal::StreamInterface {
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
-  int priority_ = 0;
+  std::variant<StreamPriority, int> stream_priority_;
 
   // Event that indicates this stream has completed.
   GpuEventHandle completed_event_ = nullptr;
@@ -92,7 +101,6 @@ GpuStream* AsGpuStream(Stream* stream);
 
 // Extracts a GpuStreamHandle from a GpuStream-backed Stream object.
 GpuStreamHandle AsGpuStreamValue(Stream* stream);
-
 }  // namespace gpu
 }  // namespace stream_executor
 

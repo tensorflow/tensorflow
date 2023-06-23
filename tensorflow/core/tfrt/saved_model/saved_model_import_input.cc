@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"

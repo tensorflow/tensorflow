@@ -16,6 +16,7 @@
 
 from typing import Sequence
 
+from tensorflow.core.config import flags
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -203,17 +204,27 @@ def random_shuffle(value, seed=None, name=None):
 
 
 @dispatch.dispatch_for_types(array_ops.size_v2, StructuredTensor)
-def size_v2(input, out_type=dtypes.int32, name=None):
+def size_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor."""
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size(input, name=name, out_type=out_type)
 
 
 # pylint: disable=protected-access
 @dispatch.dispatch_for_types(array_ops.size, StructuredTensor)
-def size(input, name=None, out_type=dtypes.int32):
+def size(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor."""
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   with ops.name_scope(name, 'size', [input]) as name:
     if not input.row_partitions:
       if input.nrows() is not None:

@@ -899,6 +899,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<std::string> lines;
+  constexpr int64_t kMaxOperandsShown = 32;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<std::string> operand_str;
@@ -938,6 +939,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
       } else {
         lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
+    }
+    if (lines.size() == kMaxOperandsShown && i < instr->operand_count() - 1) {
+      lines.push_back("...");
+      break;
     }
   }
 
@@ -1307,6 +1312,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
+    } else if (absl::StartsWith(line, "feature_group_count=")) {
+      // Highlight the group count so it's obvious that it's a grouped
+      // convolution.
+      lines.push_back(StrFormat("<b>%s</b>", HtmlLikeStringSanitize(line)));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }

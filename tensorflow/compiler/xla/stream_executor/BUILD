@@ -56,7 +56,6 @@ cc_library(
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     visibility = ["//visibility:public"],
@@ -448,7 +447,6 @@ tsl_gpu_library(
         ":stream_executor_internal",
         ":temporary_device_memory",
         ":temporary_memory_manager",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -495,7 +493,6 @@ cc_library(
         "plugin_registry.h",
         "stream_executor.h",
         "stream_executor_internal.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -536,14 +533,12 @@ cc_library(
     srcs = [
         "device_description.h",
         "kernel_cache_config.h",
-        "timer.cc",
     ],
     hdrs = [
         "blas.h",
         "kernel.h",
         "stream.h",
         "stream_executor.h",
-        "timer.h",
     ],
     deps = [
         ":data_type",
@@ -765,7 +760,6 @@ cc_library(
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -790,7 +784,6 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_pimpl",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],

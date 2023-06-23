@@ -15,6 +15,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "llvm/ADT/DenseMapInfo.h"

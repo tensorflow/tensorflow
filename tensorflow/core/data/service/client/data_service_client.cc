@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -381,7 +382,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(WARNING)
+    LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
         << default_protocol << "'; falling back to grpc. "
         << "Original error: " << transfer_server.status();
@@ -407,6 +408,11 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
     if (current_round_ == task_info.starting_round()) {
       DCHECK_EQ(next_task_index_, 0);
     }
+  }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng;
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
   }
   return OkStatus();
 }

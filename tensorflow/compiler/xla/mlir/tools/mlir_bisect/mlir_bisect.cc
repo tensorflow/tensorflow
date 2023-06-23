@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -303,9 +304,11 @@ int main(int argc, char* argv[]) {
 
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::gml_st::GmlStDialect,
                   mlir::deallocation::DeallocationDialect,
-                  mlir::thlo::THLODialect, xla::runtime::RuntimeDialect>();
+                  mlir::arith::ArithDialect, mlir::thlo::THLODialect,
+                  xla::runtime::RuntimeDialect>();
 
   mlir::MLIRContext context(registry);
+  context.getOrLoadDialect<mlir::arith::ArithDialect>();
   auto module = mlir::bisect::ParseMlirInput(options.input_filename, &context);
 
   if (!options.hlo_snapshot.empty()) {

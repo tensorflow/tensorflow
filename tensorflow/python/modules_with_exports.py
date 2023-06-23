@@ -34,6 +34,9 @@ from tensorflow.core.util.event_pb2 import *
 # Data
 from tensorflow.python import data
 
+# Distribute
+from tensorflow.python import distribute
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *

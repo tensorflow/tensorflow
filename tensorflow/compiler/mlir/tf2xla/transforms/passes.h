@@ -50,13 +50,14 @@ namespace mhlo {
 /// functions are imported into the module. Importing functions into a
 /// module is not thread safe.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false, bool legalize_chlo = true,
+    bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
 // Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
 // like int ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
+    bool legalize_chlo = true);
 
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.

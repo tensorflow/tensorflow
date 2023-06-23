@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/transforms/passes.h"
 
 int main(int argc, char** argv) {
@@ -24,6 +25,8 @@ int main(int argc, char** argv) {
   mlir::registerAllDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
   xla::ifrt::registerIfrtIrPasses();
+
+  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "IFRT dialect driver\n", registry));

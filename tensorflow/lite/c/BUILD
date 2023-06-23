@@ -138,17 +138,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
-    deps = [
-        ":c_api_opaque_internal",
-        ":c_api_without_op_resolver",
-        ":common_internal",
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_without_op_resolver",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-    ],
+    deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver"],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
@@ -161,16 +151,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
-    deps = [
-        ":c_api_opaque_internal_without_alwayslink",
-        ":c_api_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-    ],
+    deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink"],
 )
 
 cc_library_with_tflite_with_c_headers_test(

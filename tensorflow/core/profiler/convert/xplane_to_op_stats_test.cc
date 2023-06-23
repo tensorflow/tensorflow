@@ -281,8 +281,8 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   BuildXSpaceForTest(*xspace2, kHost2);
 
   std::vector<std::string> xspace_paths;
-  xspace_paths.push_back("xspace_path1");
-  xspace_paths.push_back("xspace_path2");
+  xspace_paths.push_back("host1.pb");
+  xspace_paths.push_back("host2.pb");
 
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace1));

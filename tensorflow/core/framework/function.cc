@@ -1246,8 +1246,14 @@ std::string ToStringHelper(absl::Span<const StackFrame> stack_frames,
       });
 }
 
-FrozenStackTrace::FrozenStackTrace(absl::Span<StackFrame const> frames)
-    : frames_(frames.begin(), frames.end()) {}
+FrozenStackTrace::FrozenStackTrace(absl::Span<StackFrame const> frames,
+                                   absl::Span<StackFrame const> user_frames)
+    : frames_(frames.begin(), frames.end()),
+      user_frames_(user_frames.begin(), user_frames.end()) {
+  if (user_frames.empty()) {
+    user_frames_ = frames_;
+  }
+}
 
 FrozenStackTrace::FrozenStackTrace(
     const GraphDebugInfo::StackTrace& stack_trace,
@@ -1268,18 +1274,17 @@ absl::Span<StackFrame const> FrozenStackTrace::ToFrames() const {
   return frames_;
 }
 
-std::vector<StackFrame> FrozenStackTrace::ToUncachedFrames() const {
-  return frames_;
-}
-
 StackFrame FrozenStackTrace::LastUserFrame() const { return frames_.back(); }
 
 std::vector<StackFrame> FrozenStackTrace::GetUserFrames(int limit) const {
-  if (limit >= 0 && limit < frames_.size()) {
-    auto subspan = absl::MakeSpan(frames_).subspan(0, limit);
-    return std::vector<StackFrame>{subspan.begin(), subspan.end()};
+  std::vector<StackFrame> result;
+  if (limit < 0 || limit > user_frames_.size()) {
+    limit = user_frames_.size();
   }
-  return frames_;
+  for (int i = 0; i < limit; ++i) {
+    result.push_back(user_frames_[i]);
+  }
+  return result;
 }
 
 std::string FrozenStackTrace::ToString(const TracePrintingOptions& opts) const {
@@ -1308,10 +1313,10 @@ std::string FrozenStackTrace::ToString(const TracePrintingOptions& opts) const {
 }
 
 tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map) {
+    const tensorflow::StackTracesMap& map, bool user_frames) {
   GraphDebugInfoBuilder builder;
   GraphDebugInfoBuilder::Options options;
-  options.user_frames = true;
+  options.user_frames = user_frames;
   options.user_frames_limit = -1;
   builder.AccumulateStackTracesMap(map, "", options);
   return builder.Build();

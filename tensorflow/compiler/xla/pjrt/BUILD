@@ -19,6 +19,7 @@ package_group(
     ],
     packages = [
         "//third_party/australis/...",
+        "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -29,7 +30,6 @@ cc_library(
     hdrs = ["worker_thread.h"],
     deps = [
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -43,7 +43,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/stream_executor",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -55,7 +54,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -67,7 +65,6 @@ xla_cc_test(
         ":semaphore",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
     ],
@@ -91,7 +88,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
@@ -108,7 +104,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -129,7 +124,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -171,6 +165,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
+        ":utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -182,7 +177,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -226,11 +220,13 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = [":friends"],
     deps = [
+        ":pjrt_common",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -254,6 +250,7 @@ cc_library(
     name = "pjrt_device_description",
     hdrs = ["pjrt_device_description.h"],
     deps = [
+        ":pjrt_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -285,6 +282,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "pjrt_common",
+    hdrs = ["pjrt_common.h"],
+    visibility = [":friends"],
 )
 
 cc_library(
@@ -443,22 +446,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_plugin_device_client",
-    deps = [
-        ":pjrt_plugin_device_client_headers",
-        "//tensorflow/compiler/xla/pjrt/plugin",
-    ],
-)
-
-cc_library(
-    name = "pjrt_plugin_device_client_headers",
-    hdrs = ["pjrt_plugin_device_client.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-    ],
-)
-
-cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
     hdrs = ["mlir_to_hlo.h"],
@@ -472,6 +459,7 @@ cc_library(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -488,7 +476,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/types:span",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -518,7 +505,6 @@ xla_cc_test(
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
         "@com_google_googletest//:gtest_main",
-        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -646,6 +632,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -665,7 +652,6 @@ xla_cc_test(
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -760,7 +746,6 @@ xla_cc_test(
     deps = [
         ":tf_pjrt_client",
         ":tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/tsl/platform:env",

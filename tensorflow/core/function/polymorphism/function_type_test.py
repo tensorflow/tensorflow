@@ -790,7 +790,7 @@ class FromStructuredSignatureTest(test.TestCase, parameterized.TestCase):
   )
   def testArgs(self, signature, expected_types):
     generated_type = function_type.from_structured_signature(signature)
-    self.assertIsNone(generated_type.output)
+    self.assertEqual(generated_type.output, trace_type.from_value(None))
     for i, p in enumerate(generated_type.parameters.values()):
       self.assertEqual(p.kind, function_type.Parameter.POSITIONAL_ONLY)
       self.assertEqual(p.type_constraint, expected_types[i])
@@ -817,7 +817,7 @@ class FromStructuredSignatureTest(test.TestCase, parameterized.TestCase):
   )
   def testKwargs(self, signature, expected_types):
     generated_type = function_type.from_structured_signature(signature)
-    self.assertIsNone(generated_type.output)
+    self.assertEqual(generated_type.output, trace_type.from_value(None))
     for p in generated_type.parameters.values():
       self.assertEqual(p.kind, function_type.Parameter.KEYWORD_ONLY)
       self.assertEqual(p.type_constraint, expected_types[p.name])

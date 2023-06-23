@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/statusor.h"

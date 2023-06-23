@@ -380,7 +380,7 @@ StatusOr<Mesh> Mesh::ToDeviceType(const std::string& device_type) const {
                                   parsed_dev.task, device_type, parsed_dev.id));
     parsed_dev.Clear();
   }
-  return GetMesh(name_, mesh_dims_, global_device_ids_, local_device_ids_,
+  return GetMesh("", mesh_dims_, global_device_ids_, local_device_ids_,
                  to_local_devices, /*global_devices=*/{});
 }
 

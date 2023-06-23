@@ -2,7 +2,10 @@ load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:public"],
+)
 
 cc_library(
     name = "compiler_trace_instrumentation",

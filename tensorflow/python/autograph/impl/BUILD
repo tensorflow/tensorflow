@@ -74,9 +74,6 @@ tf_py_strict_test(
     deps = [
         ":api",
         ":conversion",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
@@ -91,6 +88,9 @@ tf_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
@@ -103,12 +103,12 @@ tf_py_strict_test(
     deps = [
         ":api",
         ":conversion",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:config",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -45,28 +45,28 @@ _MESH_2D_STRING = (
     '/job:localhost/replica:0/task:0/device:TPU:3'
 )
 
-_2D_GLOBAL_IDS = test_util.create_device_ids_array((2, 2))
+_2D_GLOBAL_IDS = test_util.create_device_ids_array((1, 2))
 
 _2D_MESH = layout.Mesh([_MESH_DIM_BATCH, _MESH_DIM_X], _2D_GLOBAL_IDS,
                        np.ravel(_2D_GLOBAL_IDS).tolist(),
-                       test_util.create_device_list((2, 2), 'TPU'))
+                       test_util.create_device_list((1, 2), 'TPU'))
 _2D_X_Y_MESH = layout.Mesh([_MESH_DIM_X, _MESH_DIM_Y], _2D_GLOBAL_IDS,
                            np.ravel(_2D_GLOBAL_IDS).tolist(),
-                           test_util.create_device_list((2, 2), 'CPU'))
+                           test_util.create_device_list((1, 2), 'CPU'))
 
 
 class LayoutPropagationV2Test(test_util.DTensorBaseTest):
 
   def setUp(self):
     super(LayoutPropagationV2Test, self).setUp()
-    global_ids = test_util.create_device_ids_array((2, 2))
+    global_ids = test_util.create_device_ids_array((1, 2))
     local_ids = np.ravel(global_ids).tolist()
     mesh_dict = {  # pylint: disable=g-complex-comprehension
         device: layout.Mesh(
             [_MESH_DIM_X, _MESH_DIM_Y],
             global_ids,
             local_ids,
-            test_util.create_device_list((2, 2), device),
+            test_util.create_device_list((1, 2), device),
         )
         for device in ('CPU', 'GPU', 'TPU')
     }
@@ -85,6 +85,9 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
     )
     self.unsharded_x_layout = layout.Layout.inner_sharded(
         self.mesh, _MESH_DIM_X, rank=2
+    )
+    self.unsharded_y_layout = layout.Layout.inner_sharded(
+        self.mesh, _MESH_DIM_Y, rank=2
     )
 
   def test_layout_prop_v2_with_const_tf_function(self):
@@ -239,6 +242,22 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
     self.assertDTensorEqual(golden_accum, sharded_layout_0, dtensor_accum)
     self.assertDTensorEqual(golden_accum_2, sharded_layout_1, dtensor_accum_2)
 
+  def test_layout_like(self):
+    a = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
+    a = numpy_util.pack_numpy(a, self.unsharded_layout)
+
+    b = constant_op.constant([0, 1, 2, 3], dtype=dtypes.int64)
+    b = numpy_util.pack_numpy(b, self.x_layout)
+
+    @polymorphic_function.function
+    def layout_like_function(i, t):
+      i = math_ops.sqrt(i)
+      return api.relayout_like(i, t)
+
+    # Triggers relayout_like with different dtype.
+    dtensor_result = layout_like_function(a, b)
+    api.check_layout(dtensor_result, self.x_layout)
+
   def test_layout_prop_v2_if(self):
     a = constant_op.constant([0, 1, 2, 1], dtype=dtypes.float32)
     a = numpy_util.pack_numpy(a, self.unsharded_layout)
@@ -310,6 +329,22 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
 
     expected_layout = layout.Layout([_MESH_DIM_X, layout.UNSHARDED], self.mesh)
     api.check_layout(out, expected_layout)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='unsharded_unsharded', sharded_layout=0),
+      dict(testcase_name='x_unsharded', sharded_layout=1),
+      dict(testcase_name='unsharded_y', sharded_layout=2),
+  )
+  def test_relayout_equivalent_layouts(self, sharded_layout):
+    layouts = [
+        self.unsharded_unsharded_layout, self.x_unsharded_layout,
+        self.unsharded_y_layout]
+    expected_layout = layouts[sharded_layout]
+    inputs = constant_op.constant([[0, 1], [2, 1]], dtype=dtypes.float32)
+    sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], self.mesh)
+    inputs = numpy_util.pack_numpy(inputs, sharded_layout)
+    output = api.relayout(inputs, expected_layout)
+    api.check_layout(output, expected_layout)
 
   def test_strided_slice_grad(self):
 

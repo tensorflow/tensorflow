@@ -70,6 +70,7 @@ tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -108,13 +109,13 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":functional_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -133,6 +134,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -182,6 +184,7 @@ tf_gen_op_wrapper_private_py(
     name = "audio_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/examples/speech_commands:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
 )
@@ -250,6 +253,7 @@ tf_gen_op_wrapper_private_py(
     name = "data_flow_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -296,6 +300,7 @@ tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
@@ -321,6 +326,7 @@ tf_gen_op_wrapper_private_py(
     name = "linalg_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
     ],
@@ -403,7 +409,6 @@ cuda_py_strict_test(
         ":script_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -411,6 +416,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -429,6 +435,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -441,6 +448,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -456,6 +464,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/ops:__subpackages__",
         "//tensorflow/security/fuzzing/google:__pkg__",
     ],
 )
@@ -475,6 +484,7 @@ tf_gen_op_wrapper_private_py(
     name = "random_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
@@ -494,6 +504,7 @@ tf_gen_op_wrapper_private_py(
     name = "stateful_random_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
@@ -560,6 +571,7 @@ tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -657,6 +669,7 @@ tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
@@ -744,10 +757,10 @@ cuda_py_strict_test(
     deps = [
         ":array_ops",
         ":gradient_checker_v2",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -923,11 +936,11 @@ tf_py_strict_test(
     deps = [
         ":clip_ops",
         ":numerics",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -963,8 +976,8 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":clustering_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -992,7 +1005,6 @@ tf_py_strict_test(
         ":variables",
         ":while_loop",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
@@ -1002,6 +1014,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
     ],
 )
@@ -1022,10 +1035,10 @@ tf_py_strict_test(
         ":array_ops",
         ":collective_ops",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -1042,7 +1055,6 @@ cuda_py_strict_test(
     ],
     deps = [
         ":collective_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
@@ -1051,6 +1063,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -1069,13 +1082,13 @@ cuda_py_strict_test(
         ":array_ops",
         ":collective_ops",
         ":while_loop",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -1248,7 +1261,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/eager/polymorphic_function:transform",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
@@ -1289,7 +1302,7 @@ tf_py_strict_test(
     deps = [
         ":control_flow_util_v2",
         ":control_flow_v2_toggles",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -1301,8 +1314,8 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":control_flow_util",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -1322,8 +1335,8 @@ tf_py_strict_test(
     ],
     deps = [
         ":control_flow_util",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -1405,14 +1418,15 @@ py_library(
     srcs = ["bincount_ops.py"],
     srcs_version = "PY3",
     deps = [
-        ":count_ops_gen",
-        "//tensorflow/python/compat",
+        ":array_ops",
+        ":math_ops",
+        ":math_ops_gen",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1426,14 +1440,10 @@ cuda_py_strict_test(
         ":bincount_ops",
         ":count_ops_gen",
         ":sparse_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops/ragged:ragged_factory_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1803,10 +1813,10 @@ py_strict_library(
         ":data_flow_ops_gen",
         ":io_ops_gen",
         ":parsing_ops_gen",
-        "//tensorflow/python:lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -2328,6 +2338,7 @@ py_strict_library(
         ":array_ops",
         ":array_ops_stack",
         ":math_ops",
+        ":random_ops_util",
         ":resource_variable_ops",
         ":stateful_random_ops_gen",
         ":stateless_random_ops",
@@ -2356,6 +2367,7 @@ py_strict_library(
         ":bitwise_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
+        ":random_ops_util",
         ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
@@ -2420,16 +2432,19 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":check_ops",
+        ":resource_variable_ops",
         ":script_ops_gen",
         ":sort_ops",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
@@ -2437,6 +2452,7 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/lib/core:_pywrap_py_func",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -2490,6 +2506,24 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "random_ops_util",
+    srcs = ["random_ops_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":array_ops_stack",
+        ":bitwise_ops",
+        ":math_ops",
+        ":stateless_random_ops_v2_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
     name = "sparse_grad",
     srcs = ["sparse_grad.py"],
     srcs_version = "PY3",
@@ -2511,17 +2545,22 @@ py_strict_library(
     deps = [
         ":array_ops",
         ":array_ops_stack",
+        ":bincount_ops",
         ":check_ops",
         ":control_flow_ops",
+        ":count_ops_gen",
         ":math_ops",
+        ":math_ops_gen",
         ":sparse_ops_gen",
         ":special_math_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -2529,6 +2568,19 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "sparse_bincount_ops_test",
+    srcs = ["sparse_bincount_ops_test.py"],
+    deps = [
+        ":sparse_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -2583,13 +2635,13 @@ tf_py_strict_test(
         ":array_ops",
         ":random_ops",
         ":sort_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -2684,10 +2736,10 @@ cuda_py_strict_test(
         ":math_ops",
         ":rnn_grad",
         ":rnn_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -2700,12 +2752,12 @@ py_strict_test(
         ":resource_variable_ops",
         ":script_ops",
         ":script_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -2842,7 +2894,6 @@ py_strict_library(
         ":summary_op_util",
         ":summary_ops_gen",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/framework:constant_op",
@@ -2852,6 +2903,7 @@ py_strict_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -3150,10 +3202,10 @@ py_strict_test(
     deps = [
         ":math_ops",
         ":op_selector",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3191,12 +3243,12 @@ cuda_py_strict_test(
         ":nn_grad",
         ":nn_ops",
         ":sparse_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
@@ -3308,14 +3360,14 @@ py_strict_library(
         ":image_ops",
         ":image_ops_gen",
         ":math_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -3346,7 +3398,6 @@ cuda_py_strict_test(
         ":stateless_random_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:get_single_element",
@@ -3362,6 +3413,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -3379,12 +3431,12 @@ cuda_py_strict_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3400,11 +3452,11 @@ cuda_py_strict_test(
         ":init_ops_v2",
         ":random_ops",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3425,13 +3477,13 @@ cuda_py_strict_test(
         ":gradient_checker_v2",
         ":gradients",
         ":math_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3481,6 +3533,9 @@ cuda_py_strict_test(
     ],
     deps = [
         ":math_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
@@ -3507,11 +3562,11 @@ cuda_py_strict_test(
         ":nn_grad",
         ":nn_impl",
         ":nn_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3529,13 +3584,13 @@ cuda_py_strict_test(
     deps = [
         ":nn_grad",
         ":nn_impl",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -3558,12 +3613,12 @@ cuda_py_strict_test(
         ":nn_impl",
         ":nn_ops",
         ":nn_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3591,7 +3646,6 @@ cuda_py_strict_test(
         ":stateful_random_ops",
         ":variable_scope",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -3601,6 +3655,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -3614,13 +3669,13 @@ py_strict_test(
     deps = [
         ":array_ops",
         ":nn_impl",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -3636,10 +3691,10 @@ cuda_py_strict_test(
         ":gradients_impl",
         ":nn_grad",
         ":nn_impl",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3652,11 +3707,11 @@ py_strict_test(
     deps = [
         ":array_ops",
         ":tensor_array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3704,7 +3759,6 @@ cuda_py_strict_test(
         ":math_ops",
         ":special_math_ops",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -3714,6 +3768,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:benchmark",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -3766,9 +3821,9 @@ tf_py_strict_test(
     ],
     deps = [
         ":array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3783,9 +3838,9 @@ tf_py_strict_test(
     ],
     deps = [
         ":array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3801,10 +3856,10 @@ tf_py_strict_test(
     deps = [
         ":math_ops",
         ":nn_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -3820,12 +3875,12 @@ py_strict_test(
         ":math_ops",
         ":random_ops",
         "//tensorflow/core/config:flags_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3838,8 +3893,8 @@ py_strict_test(
     deps = [
         ":array_ops",
         "//tensorflow/core/config:flags_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3858,10 +3913,10 @@ cuda_py_strict_test(
         ":random_ops",
         ":state_ops",
         ":state_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3879,11 +3934,11 @@ cuda_py_strict_test(
         ":nn_ops_gen",
         ":random_ops",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3895,10 +3950,10 @@ cuda_py_strict_test(
     deps = [
         ":collective_ops",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3913,9 +3968,9 @@ cuda_py_strict_test(
         ":gradients_impl",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3930,12 +3985,12 @@ cuda_py_strict_test(
         ":control_flow_util",
         ":math_ops",
         ":random_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -3952,10 +4007,10 @@ cuda_py_strict_test(
         ":variable_v1",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
     ],
 )
@@ -3970,10 +4025,10 @@ cuda_py_strict_test(
         ":control_flow_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:benchmark",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
     ],
@@ -3989,10 +4044,10 @@ cuda_py_strict_test(
         ":array_ops",
         ":control_flow_ops",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -4026,9 +4081,9 @@ py_strict_library(
         ":random_ops",
         ":variable_v1",
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -4048,11 +4103,11 @@ cuda_py_strict_test(
         ":nn_impl",
         ":nn_ops",
         ":nn_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -4100,9 +4155,9 @@ cuda_py_strict_test(
         ":array_ops",
         ":gradients",
         ":nccl_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -4161,12 +4216,12 @@ cuda_py_strict_test(
         ":data_flow_ops_gen",
         ":math_ops_gen",
         ":string_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -4210,7 +4265,17 @@ py_strict_library(
 py_strict_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
-    deps = ["//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl"],
+    deps = [
+        ":array_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/util:nest",
+    ],
 )
 
 py_strict_library(
@@ -4332,5 +4397,55 @@ py_strict_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "weak_tensor_ops",
+    srcs = ["weak_tensor_ops.py"],
+    deps = [
+        ":weak_tensor_ops_list",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/util:dispatch",
+    ],
+)
+
+py_strict_test(
+    name = "weak_tensor_ops_test",
+    srcs = ["weak_tensor_ops_test.py"],
+    deps = [
+        ":array_ops",
+        ":array_ops_gen",
+        ":bitwise_ops_gen",
+        ":clip_ops",
+        ":image_ops_impl",
+        ":math_ops",
+        ":weak_tensor_ops",
+        ":weak_tensor_ops_list",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+py_strict_library(
+    name = "weak_tensor_ops_list",
+    srcs = ["weak_tensor_ops_list.py"],
+    deps = [
+        ":array_ops",
+        ":array_ops_gen",
+        ":bitwise_ops_gen",
+        ":clip_ops",
+        ":image_ops_impl",
+        ":math_ops",
+        ":math_ops_gen",
+        ":nn_impl",
+        ":nn_ops",
+        ":nn_ops_gen",
+        ":special_math_ops",
     ],
 )

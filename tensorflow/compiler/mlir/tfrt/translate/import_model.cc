@@ -21,15 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
@@ -37,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -105,6 +110,15 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
   return xla_func_defs;
 }
 
+std::string BuildModuleName(mlir::ModuleOp module,
+                            tfrt_stub::ModelRuntimeContext& model_context) {
+  if (model_context.name().empty())
+    return tfrt::StrCat(module.getName().value_or("unknown_graph"));
+
+  return tfrt::StrCat(module.getName().value_or("unknown_graph"), "_",
+                      model_context.name(), "_", model_context.version());
+}
+
 }  // namespace
 
 Status ConvertFunctionToBef(
@@ -141,6 +155,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
+    tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
@@ -168,7 +183,8 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
 
     TF_RETURN_IF_ERROR(
-        mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+        mlir::TFTPU::TPUBridge(module, /*fallback_enabled=*/false,
+                               BuildModuleName(module, model_context)));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
@@ -178,7 +194,8 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
              options.use_bridge_for_gpu) {
-    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
+    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(
+        module, BuildModuleName(module, model_context)));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
@@ -190,11 +207,21 @@ Status ConvertTfMlirToRuntimeExecutable(
         TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
       }
     }
+  } else if (options.backend_compiler != nullptr) {
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
+    }
+    TF_RETURN_IF_ERROR(
+        options.backend_compiler->CompileTensorflow(model_context, module));
   }
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tf_dialect", module);
   }
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
 
   // Lower MLIR TF Dialect to MLIR TFRT CoreRT dialect.
   mlir::PassManager pm(module.getContext());
@@ -216,6 +243,7 @@ Status ConvertTfMlirToRuntimeExecutable(
 
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::ModelRuntimeContext& model_context,
                           tfrt_stub::FallbackState* fallback_state) {
   return ConvertTfMlirToRuntimeExecutable(
       options, module,
@@ -243,12 +271,15 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
         bef_buffer->shrink_to_fit();
         return OkStatus();
       },
-      fallback_state);
+      model_context, fallback_state);
 }
 
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options) {
   auto pipeline_options = std::make_unique<tensorflow::TfrtPipelineOptions>();
+
+  pipeline_options->saved_model_dir = options.saved_model_dir;
+
   if (!options.default_device.empty()) {
     pipeline_options->default_device = options.default_device;
   }

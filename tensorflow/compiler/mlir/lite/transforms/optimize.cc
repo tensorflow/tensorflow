@@ -519,8 +519,12 @@ Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
   // so we could cast safely here.
   auto type = value.getType().cast<ShapedType>();
   SmallVector<int> new_shape;
-  for (int64_t dim : type.getShape().drop_back()) {
-    new_shape.push_back(dim);
+  if (type.hasStaticShape()) {
+    for (int64_t dim : type.getShape().drop_back()) {
+      new_shape.push_back(dim);
+    }
+  } else {
+    new_shape.push_back(-1);
   }
   return builder.create<ReshapeOp>(
       value.getLoc(), value,
@@ -640,6 +644,15 @@ bool AllValuesAreZero(mlir::Value value) {
   for (auto elem : vals.getValues<float>())
     if (elem != 0.0f) return false;
   return true;
+}
+
+bool IsF32Splat(Attribute input_splat) {
+  if (!input_splat) return false;
+  auto val = dyn_cast_or_null<DenseElementsAttr>(input_splat);
+  if (val) {
+    return !val.empty() && val.getElementType().isF32() && val.isSplat();
+  }
+  return false;
 }
 
 // Converts an Attribute with a single value of float or integral type to an
@@ -766,6 +779,9 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     // Check if the constant RHS is either 0D (scalar), or a 1D with
     // `{num_channels}` shape.
     auto constant_val_type = constant_val.getType().cast<TensorType>();
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
 
     // In TFLite FullyConnect definition, bias must be a 1D tensor where
     // the number of elements is equal to the number of channels.

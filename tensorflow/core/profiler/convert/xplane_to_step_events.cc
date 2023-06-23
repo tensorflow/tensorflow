@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
@@ -186,7 +188,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    if (absl::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
+    if (std::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
       result[stat->IntValue()].AddMarker(
           StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
                      event.GetTimespan()));

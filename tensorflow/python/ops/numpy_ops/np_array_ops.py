@@ -1436,8 +1436,8 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
-  arr_shape_original = array_ops.shape(arr)
-  indices_shape_original = array_ops.shape(indices)
+  arr_shape_original = array_ops.shape(arr, out_type=indices.dtype)
+  indices_shape_original = array_ops.shape(indices, out_type=indices.dtype)
   arr_shape = array_ops.tensor_scatter_update(arr_shape_original, [[axis]], [1])
   indices_shape = array_ops.tensor_scatter_update(indices_shape_original,
                                                   [[axis]], [1])

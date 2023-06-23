@@ -225,10 +225,9 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
 
   // Copy unranked memref descriptor to stack-allocated memory.
   // ...
-  // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.alloca %[[RESULT_DESCR_SIZE:[0-9]*]] x i8
   // CHECK: %[[RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
-  // CHECK: "llvm.intr.memcpy"(%[[STACK_RESULT_DESCR]], %[[RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
+  // CHECK: "llvm.intr.memcpy"(%[[STACK_RESULT_DESCR]], %[[RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
   // CHECK: llvm.call @free(%[[RESULT_DESCR]])
   // CHECK: %[[T0:.*]] = llvm.mlir.undef
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
@@ -237,10 +236,9 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
 
   // Copy unranked memref descriptor to heap-allocated memory for return.
   // ...
-  // CHECK: %[[FALSE:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[HEAP_RESULT_DESCR:.*]] = llvm.call @malloc(%[[RESULT_DESCR_SIZE:[0-9]*]])
   // CHECK: %[[STACK_RESULT_DESCR:.*]] = llvm.extractvalue %[[RESULT]][1]
-  // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]], %[[FALSE]])
+  // CHECK: "llvm.intr.memcpy"(%[[HEAP_RESULT_DESCR]], %[[STACK_RESULT_DESCR]], %[[RESULT_DESCR_SIZE]]) <{isVolatile = false}>
   // CHECK: %[[T0:.*]] = llvm.mlir.undef
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[RESULT]][0]
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]

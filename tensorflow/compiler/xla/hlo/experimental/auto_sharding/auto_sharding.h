@@ -167,6 +167,10 @@ struct AutoShardingOption {
   // before the timeout, we rely on the heuristic-based sharding implemented in
   // sharding_propagation.cc.
   int64_t solver_timeout_in_seconds = 3600;
+
+  // Static estimate for iteration count of a while loop, used in the cost model
+  int64_t loop_iteration_count_estimate = 100;
+
   std::vector<int64_t> strategy_vector;
 
   std::string ToString() {

@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <iterator>
 #include <list>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "analysis/userange_analysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"

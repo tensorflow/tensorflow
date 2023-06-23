@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "llvm/IR/Constants.h"
@@ -326,70 +327,49 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   return Index(operand_multidim_index, operand_shape, index_type_);
 }
 
-static absl::InlinedVector<int64_t, 8> ReverseIota(int64_t n) {
-  absl::InlinedVector<int64_t, 8> ret(n);
-  absl::c_generate(ret, [n = ret.size()]() mutable { return --n; });
-  return ret;
-}
-
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& shape, const Shape& operand_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
 
+  const ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(operand_shape, shape);
+
   // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
   // instead. This will reuse linear() if possible, so we don't have to build a
   // new 'linear_index'.
-  if (ShapeUtil::ReshapeIsBitcast(operand_shape, shape)) {
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
+          decomposition)) {
     return SourceIndexOfReshape(shape, operand_shape, builder);
   }
 
-  if (std::optional<std::vector<int64_t>> dimensions =
-          ShapeUtil::DeduceTransposeDimensionsForBitcast(operand_shape,
-                                                         shape)) {
-    return SourceIndexOfTranspose(shape, operand_shape, *dimensions);
+  if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
+          decomposition)) {
+    const auto& decomposition_transpose =
+        std::get<ShapeUtil::BitcastDecompositionTranspose>(decomposition);
+    return SourceIndexOfTranspose(shape, operand_shape,
+                                  decomposition_transpose.transpose_dims);
   }
 
-  // Every bitcast from A to B can be represented as a sequence of:
-  // 1) Transpose to a normalized layout of A
-  // 2) Reshape to a normalized layout of B
-  // 3) Transpose from (2) to B
-  //
-  // Steps (1) and (3) can be skipped if the layout is already descending.
-  // Such a sequence of index transformations is markedly faster than the
-  // previous approach of linearizing and delinearizing the entire index.
-  Shape normalized_operand_shape =
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          operand_shape);
+  CHECK(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  const auto& decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
 
-  std::vector<int64_t> transpose_dims_to_normalized_operand_shape =
-      ComposePermutations(operand_shape.layout().minor_to_major(),
-                          ReverseIota(operand_shape.rank()));
-
-  // We need to go from target `shape` to an index of `operand_shape`.
-  std::vector<int64_t> transpose_perm =
-      ComposePermutations(ReverseIota(shape.rank()),
-                          InversePermutation(shape.layout().minor_to_major()));
-
-  // Has same rank as output shape.
-  Shape reshape_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      shape.element_type(),
-      ComposePermutations(shape.dimensions(),
-                          InversePermutation(transpose_perm)));
-  Index transposed_index =
-      absl::c_is_sorted(transpose_perm)
-          ? *this
-          : SourceIndexOfTranspose(shape, reshape_shape, transpose_perm);
-
-  CHECK(ShapeUtil::ReshapeIsBitcast(reshape_shape, normalized_operand_shape,
-                                    /*ignore_element_type=*/true));
-  Index out = transposed_index.SourceIndexOfReshape(
-      reshape_shape, normalized_operand_shape, builder);
-  return absl::c_is_sorted(transpose_dims_to_normalized_operand_shape)
-             ? out
-             : out.SourceIndexOfTranspose(
-                   normalized_operand_shape, operand_shape,
-                   transpose_dims_to_normalized_operand_shape);
+  Index index = *this;
+  if (!decomposition_trt.IsTranspose2Identity()) {
+    index = index.SourceIndexOfTranspose(shape, decomposition_trt.reshape_shape,
+                                         decomposition_trt.transpose2_dims);
+  }
+  index =
+      index.SourceIndexOfReshape(decomposition_trt.reshape_shape,
+                                 decomposition_trt.transpose1_shape, builder);
+  if (!decomposition_trt.IsTranspose1Identity()) {
+    index = index.SourceIndexOfTranspose(decomposition_trt.transpose1_shape,
+                                         operand_shape,
+                                         decomposition_trt.transpose1_dims);
+  }
+  return index;
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
@@ -580,6 +560,8 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* b) const {
+  if (shape_ == new_shape) return *this;
+
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(

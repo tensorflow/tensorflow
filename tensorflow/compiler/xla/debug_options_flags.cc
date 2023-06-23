@@ -67,6 +67,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_functions(true);
   opts.set_xla_cpu_fast_math_honor_division(true);
 
+  // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
+  opts.set_xla_gpu_enable_cudnn_fmha(false);
+
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
@@ -81,6 +84,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
+  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(true);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -107,13 +111,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
+  opts.set_xla_gpu_enable_highest_priority_async_stream(false);
+  opts.set_xla_gpu_enable_data_parallel_collective_optimizer(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -129,14 +134,21 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-
-  opts.set_xla_gpu_enable_dot_strength_reduction(true);
+  opts.set_xla_gpu_enable_triton_softmax_fusion(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
   opts.set_xla_gpu_collective_inflation_factor(1);
+
+  opts.set_xla_gpu_enable_experimental_block_size(false);
+  opts.set_xla_gpu_exhaustive_tiling_search(false);
+
+  opts.set_xla_gpu_enable_priority_fusion(false);
+
+  opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
+  opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
   return opts;
 }
 
@@ -215,6 +227,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     };
   };
 
+  auto float_setter_for = [](void (DebugOptions::*member_setter)(float)) {
+    return [member_setter](float value) {
+      (flag_values->*member_setter)(value);
+      return true;
+    };
+  };
+
   // Custom "sub-parser" lambda for xla_gpu_shape_checks.
   auto setter_for_xla_gpu_shape_checks =
       [debug_options](const std::string& value) {
@@ -268,11 +287,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                                         comma_separated_values);
         return true;
       };
-
-  auto setter_for_xla_gpu_enable_mlir_lowering = [debug_options](bool value) {
-    debug_options->set_xla_gpu_enable_mlir_lowering(value);
-    return true;
-  };
 
   // Custom "sub-parser" lambda for xla_partitioning_algorithm.
   auto setter_for_xla_partitioning_algorithm =
@@ -836,6 +850,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       debug_options->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_cudnn_fmha",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
+      debug_options->xla_gpu_enable_cudnn_fmha(),
+      "Use the cuDNN Fused Attention runtime fusion when possible. Note "
+      "that dropout support and the developement of this feature as a whole is "
+      "in progress. Attention with dropout may cause results to diverge with "
+      "and without this  flag turned on."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_cublaslt",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
@@ -860,6 +882,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_capture_threshold(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cuda_graph_enable_concurrent_region",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
+      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
+      "Identify concurrent regions in cuda graphs and execute them "
+      "concurrently."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",
@@ -920,10 +949,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
-      debug_options->xla_gpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",
                 bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),
@@ -996,6 +1021,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_lhs_enable_gpu_async_tracker(),
       "Enable GPU async tracker for latency-hiding scheduler in XLA:GPU"));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_highest_priority_async_stream",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_highest_priority_async_stream),
+      debug_options->xla_gpu_enable_highest_priority_async_stream(),
+      "Enable async stream to have the highest priority."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_data_parallel_collective_optimizer",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_data_parallel_collective_optimizer),
+      debug_options->xla_gpu_enable_data_parallel_collective_optimizer(),
+      "Enable data parallel collective optimizer."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
@@ -1005,6 +1042,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_triton_softmax_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_softmax_fusion),
+      debug_options->xla_gpu_enable_triton_softmax_fusion(),
+      "Use Triton-based Softmax fusion."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_int8x32_convolution_reordering",
       bool_setter_for(
@@ -1018,11 +1060,53 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_experimental_block_size",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_experimental_block_size),
+                debug_options->xla_gpu_enable_experimental_block_size(),
+                "Enable experimental block size."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_dot_strength_reduction",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
-      debug_options->xla_gpu_enable_dot_strength_reduction(),
-      "Enable dot strength reduction-related optimizations on GPU."));
+      "xla_gpu_exhaustive_tiling_search",
+      bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),
+      debug_options->xla_gpu_exhaustive_tiling_search(),
+      "Enable (slow) search for the Triton GEMM fusion tilings."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_priority_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_priority_fusion),
+      debug_options->xla_gpu_enable_priority_fusion(),
+      "Enable priority queue for fusion order."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotune_results_to",
+      string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
+      debug_options->xla_gpu_dump_autotune_results_to(),
+      "File to write autotune results to. It will be a binary file unless the "
+      "name ends with .txt or .textproto. Warning: The results are written at "
+      "every compilation, possibly multiple times per process. This only works "
+      "on CUDA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_load_autotune_results_from",
+      string_setter_for(&DebugOptions::set_xla_gpu_load_autotune_results_from),
+      debug_options->xla_gpu_load_autotune_results_from(),
+      "File to load autotune results from. It will be considered a binary file "
+      "unless the name ends with .txt or .textproto. It will be loaded at most "
+      "once per process. This only works on CUDA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_auto_spmd_partitioning_memory_budget_gb),
+      debug_options->xla_gpu_auto_spmd_partitioning_memory_budget_gb(),
+      "Memory budget in GB per device for AutoSharding."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_auto_spmd_partitioning_memory_budget_ratio",
+      float_setter_for(
+          &DebugOptions::
+              set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio),
+      debug_options->xla_gpu_auto_spmd_partitioning_memory_budget_ratio(),
+      "Enabled when xla_gpu_auto_spmd_partitioning_memory_budget_gb is 0. "
+      "The memory budget is set to "
+      "xla_gpu_auto_spmd_partitioning_memory_budget_ratio times the estimated "
+      "memory usage lower bound."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

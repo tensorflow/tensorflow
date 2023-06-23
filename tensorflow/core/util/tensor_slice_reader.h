@@ -19,9 +19,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_H_
 
+#include <functional>
+#include <memory>
 #include <unordered_map>
-
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -75,7 +78,7 @@ class TensorSliceReader {
   int num_files() const { return sss_.size(); }
 
   // Get the status of the reader.
-  const Status status() const { return status_; }
+  Status status() const { return status_; }
 
   // Checks if the reader contains any slice of a tensor. In case the reader
   // does contain the tensor, if "shape" is not nullptr, fill "shape" with the
@@ -139,7 +142,7 @@ class TensorSliceReader {
 };
 
 Status OpenTableTensorSliceReader(const string& fname,
-                                  TensorSliceReader::Table** table);
+                                  TensorSliceReader::Table** result);
 
 template <typename T>
 bool TensorSliceReader::CopySliceData(const string& name,

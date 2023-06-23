@@ -303,6 +303,15 @@ def DTensorMergeClusters
   ];
 }
 
+def DTensorDecomposeControlflow
+    : Pass<"dtensor-decompose-controlflow", "mlir::ModuleOp"> {
+  let summary = "Decompose control flow ops to different meshes";
+  let constructor = "CreateDTensorDecomposeControlflowPass()";
+  let dependentDialects = [
+  ];
+}
+
+
 def DTensorLowerSendRecv
     : Pass<"dtensor-lower-send-recv", "mlir::ModuleOp"> {
   let summary = "Lowers DTensorSend/DTensorRecv ops to send/recv ops.";

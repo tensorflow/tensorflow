@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
@@ -53,18 +55,13 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
-  // Set autotune_level to 3 to disable correctness checking, which avoids
-  // memory allocation during runtime.
-  AutotuneConfig autotune_config{
-      /*autotune_level=*/3,
-      /*should_crash_on_check_failure=*/true,
-  };
-
-  // RedzoneAllocator will have size 0 for this autotune_level.
-  se::RedzoneAllocator buffer_allocator =
-      CreateRedzoneAllocator(stream, stream->parent()->GetAllocator(),
-                             *debug_options, autotune_config);
+  se::RedzoneAllocator buffer_allocator(
+      stream, stream->parent()->GetAllocator(),
+      PtxOptsFromDebugOptions(*debug_options),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/se::RedzoneAllocator::kDefaultRedzoneSize);
 
   // Upgrade the reader lock for execution to a writer lock to protect runtime
   // autotuning.
@@ -72,9 +69,12 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
       gpu_lock->UpgradeToWriterMutexLock();
 
   TF_ASSIGN_OR_RETURN(
-      auto best_algorithm_idx,
+      AutotuneResult best_algorithm,
       GetBestBlasAlgorithm(
-          stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
+          stream, buffer_allocator, /*gemm_str=*/std::nullopt,
+          AutotuneConfig{
+              DeviceConfig{stream->parent(), stream->parent()->GetAllocator()},
+              *debug_options},
           lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
           [&](const se::blas::AlgorithmType& algorithm)
               -> StatusOr<se::blas::ProfileResult> {
@@ -84,13 +84,13 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
-            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, stream, algorithm,
-                                       &profile_result));
+            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, deterministic_ops,
+                                       stream, algorithm, &profile_result));
             return std::move(profile_result);
           }));
 
-  if (best_algorithm_idx.has_value()) {
-    config.algorithm = algorithms[best_algorithm_idx.value()];
+  if (best_algorithm.has_gemm()) {
+    config.algorithm = algorithms[best_algorithm.gemm().algorithm()];
     return OkStatus();
   } else {
     return InternalError("Runtime autotuning failed to select an algorithm");
@@ -110,13 +110,14 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
   Shape output_shape = ToShape(out);
 
   // Get the gemm config from the state.
-  absl::StatusOr<GemmConfig*> config_from_state = state.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(GemmConfig * gemm_config, state.GetOrCreate([&] {
     StatusOr<GemmConfig> gemm_config =
         GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
                       dot_dims.lhs_batch, dot_dims.lhs_contract,
@@ -124,10 +125,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                       precision.empty() ? se::blas::kDefaultComputePrecision
                                         : *absl::c_max_element(precision));
     return ToAbsl(gemm_config);
-  });
-
-  if (!config_from_state.ok()) return config_from_state.status();
-  GemmConfig* gemm_config = *config_from_state;
+  }));
 
   // Set the gemm algorithm by runtime autotuning. We do runtime autotuning
   // outside of state.GetOrCreate() because otherwise it would be a potential
@@ -146,12 +144,8 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 #endif
   }
 
-  Status executed =
-      RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
-
-  if (!executed.ok()) return executed;
-
-  return absl::OkStatus();
+  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data,
+                 deterministic_ops, stream);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

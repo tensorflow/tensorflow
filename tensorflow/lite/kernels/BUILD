@@ -192,6 +192,7 @@ cc_library(
         ":acceleration_test_util",
         ":kernel_util",
         ":test_delegate_providers_lib",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:simple_planner",
@@ -199,6 +200,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
@@ -217,6 +219,8 @@ cc_library(
         "//tensorflow/lite/tools/versioning",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -505,6 +509,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -542,6 +547,7 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
@@ -744,6 +750,12 @@ BUILTIN_KERNEL_DEPS = [
     "//conditions:default": [
         "@XNNPACK//:xnnpack_for_tflite",
     ],
+}) + select({
+    # This select must match the similar select in `copts`
+    "//tensorflow:linux_ppc64le": [],
+    "//tensorflow:linux_s390x": [],
+    "//tensorflow:fuchsia": [],
+    "//conditions:default": ["@cpuinfo//:cpuinfo_with_unstripped_include_path"],
 })
 
 cc_library(
@@ -753,7 +765,12 @@ cc_library(
         "dequantize.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
+    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS + select({
+        "//tensorflow:linux_ppc64le": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
+    }),
     visibility = [
         "//tensorflow/lite/core/kernels:__subpackages__",
     ],
@@ -761,6 +778,7 @@ cc_library(
         ":variable_op_kernels",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/lite:array",
         "//tensorflow/tsl/lib/random:philox_random",
         "//tensorflow/tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
@@ -2611,6 +2629,8 @@ cc_test(
         ":test_main",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
@@ -2723,6 +2743,8 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest",
     ],
 )

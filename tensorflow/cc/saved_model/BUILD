@@ -30,6 +30,8 @@ package(
 
 exports_files([
     "loader.h",
+    "testdata/chunked_saved_model/chunked_model/saved_model.cpb",
+    "testdata/chunked_saved_model/chunked_model/saved_model.pbtxt",
 ])
 
 cc_library(
@@ -257,15 +259,15 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:lookup_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:asset",
@@ -281,11 +283,11 @@ py_binary(
 #     python_version = "PY3",
 #     srcs_version = "PY3",
 #     deps = [
-#         "//tensorflow/python:client_testlib",
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
 #         "//tensorflow/python/framework:constant_op",
 #         "//tensorflow/python/module",
+#         "//tensorflow/python/platform:client_testlib",
 #         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",
 #         "//tensorflow/python/saved_model:save_options",

@@ -18,6 +18,8 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
@@ -134,8 +136,21 @@ cc_library(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels:test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
-        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stable_delegate_test_suite",
+    size = "medium",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":kernel_test_main",
+        "//tensorflow/lite/kernels:combined_all_kernel_tests_lib",
     ],
 )
 

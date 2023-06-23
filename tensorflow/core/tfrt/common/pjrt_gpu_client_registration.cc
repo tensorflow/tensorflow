@@ -27,13 +27,12 @@ namespace xla {
 
 StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
     const PjrtClientFactoryOptions& option) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtClient> client,
-      xla::GetStreamExecutorGpuClient(
-          option.gpu_options.asynchronous, /*allocator_config=*/{},
-          /*distributed_client=*/nullptr, option.gpu_options.node_id,
-          option.gpu_options.allowed_devices,
-          option.gpu_options.platform_name));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                      xla::GetStreamExecutorGpuClient(
+                          option.gpu_options.asynchronous,
+                          /*allocator_config=*/{}, option.gpu_options.node_id,
+                          /*num_nodes=*/1, option.gpu_options.allowed_devices,
+                          option.gpu_options.platform_name));
   return std::move(client);
 }
 

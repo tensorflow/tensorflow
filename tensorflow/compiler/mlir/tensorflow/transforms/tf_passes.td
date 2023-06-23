@@ -354,7 +354,7 @@ def TransformEinsumPass : Pass<"tf-einsum", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateTransformEinsumPass()";
 }
 
-def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "mlir::func::FuncOp"> {
+def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
   let summary = "Legalize from HLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
   let constructor = "TF::CreateLegalizeHloToTfPass()";
@@ -399,6 +399,16 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
     let description = [{
     For architectures that support accelerated embedding lookups, this pass will
     rewrite the graph to use pipelining for better device utilization.
+  }];
+}
+
+def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for sequential execution of embeddings";
+  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
+    let description = [{
+    This is a strictly sequential and formally correct fallback option for the
+    embedding pipelining pass intended for debugging during pipelining
+    development.
   }];
 }
 
@@ -1295,7 +1305,7 @@ def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "Modu
     func @outside_compilation() -> tensor<f32> {
       %0 = "tf_device.parallel_execute"() ( {
         "tf_device.launch"() ( {
-          %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+          %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
           %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
           %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
           "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()

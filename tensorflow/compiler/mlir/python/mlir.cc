@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/python/mlir.h"
 
+#include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"

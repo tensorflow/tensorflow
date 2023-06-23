@@ -1870,7 +1870,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
   }
 
   if (ShapeUtil::ElementIsSigned(divide->shape())) {
-    int64_t b_value = c->literal().GetFirstElement<T>();
+    int64_t b_value = static_cast<int64_t>(c->literal().GetFirstElement<T>());
     if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = MakeScalarLike(a, 0);
@@ -1901,7 +1901,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
                                            neqated_quotient, quotient);
     }
   } else {
-    uint64_t b_value = c->literal().GetFirstElement<T>();
+    uint64_t b_value = static_cast<uint64_t>(c->literal().GetFirstElement<T>());
     if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
@@ -1923,57 +1923,18 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   }
 
   // A / B => A >> log2(B) if B is a power of 2.
-  switch (divide->shape().element_type()) {
-    case S8:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int8_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case S16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int16_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case S32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int32_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case S64:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<int64_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case U8:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint8_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case U16:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint16_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case U32:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint32_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    case U64:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryDivideToShift<uint64_t>(divide, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(divide, std::move(shift));
-      }
-      break;
-    default:
-      break;
+  if (std::unique_ptr<HloInstruction> shift =
+          primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+              [&](auto kType) -> std::unique_ptr<HloInstruction> {
+                if constexpr (primitive_util::IsIntegralType(kType)) {
+                  using NativeT = primitive_util::NativeTypeOf<kType>;
+                  return TryDivideToShift<NativeT>(divide, computation_,
+                                                   simplifier_);
+                }
+                return nullptr;
+              },
+              divide->shape().element_type())) {
+    return ReplaceWithNewInstruction(divide, std::move(shift));
   }
 
   Shape* shape;
@@ -3347,6 +3308,42 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     }
   }
 
+  {
+    HloInstruction *in, *filter, *constant, *convolution, *broadcast;
+    // Mul(Conv(in, filter), Broadcast(constant)) =>
+    // Conv(in, Mul(filter, Broadcast(constant)))
+    // where Broadcast(constant) broadcasts a 1D tensor to the output feature
+    // dimension. We conservatively only consider the case where filter is a
+    // constant and multiply can be constant-folded. If it's not a constant, the
+    // transformation would still be correct. But if the multiply cannot be
+    // fused, it might be slower to do it on the filter than on the output.
+    if (options_.enable_scalar_multiply_reduction() &&
+        Match(multiply,
+              m::MultiplyAnyOrder(
+                  m::Convolution(&convolution, m::Op(&in), m::Constant(&filter))
+                      .WithOneUser(),
+                  m::Broadcast(&broadcast, m::Constant(&constant).WithShape(
+                                               m::Shape().WithRank(1)))))) {
+      const ConvolutionDimensionNumbers& dnums =
+          convolution->convolution_dimension_numbers();
+
+      if (broadcast->dimensions().size() == 1 &&
+          broadcast->dimensions()[0] == dnums.output_feature_dimension()) {
+        auto new_bcast =
+            multiply->AddInstruction(HloInstruction::CreateBroadcast(
+                filter->shape(), constant,
+                {dnums.kernel_output_feature_dimension()}));
+        auto new_multiply =
+            multiply->AddInstruction(HloInstruction::CreateBinary(
+                filter->shape(), HloOpcode::kMultiply, filter, new_bcast));
+        auto new_conv = convolution->CloneWithNewOperands(convolution->shape(),
+                                                          {in, new_multiply});
+        TF_RETURN_IF_ERROR(
+            ReplaceWithNewInstruction(multiply, std::move(new_conv)));
+      }
+    }
+  }
+
   VLOG(10) << "trying transform [(A * C1) * C2 => A * (C1 * C2)]";
   HloInstruction *a, *c1, *c2;
   if (Match(multiply,
@@ -4258,7 +4255,7 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
   }
 
   if (ShapeUtil::ElementIsSigned(remainder->shape())) {
-    int64_t b_value = c->literal().GetFirstElement<T>();
+    int64_t b_value = static_cast<int64_t>(c->literal().GetFirstElement<T>());
     if (b_value > 0 && absl::has_single_bit(static_cast<uint64_t>(b_value))) {
       // Handle negative dividends by negating the result of the division.
       HloInstruction* zero_like_a = BroadcastZeros(computation, a->shape());
@@ -4290,11 +4287,11 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(
           neqated_quotient, quotient);
     }
   } else {
-    uint64_t b_value = c->literal().GetFirstElement<T>();
+    uint64_t b_value = static_cast<uint64_t>(c->literal().GetFirstElement<T>());
     if (absl::has_single_bit(b_value)) {
       HloInstruction* mask_amount =
           remainder->AddInstruction(simplifier->CreateConstantWithLayoutUpdated(
-              LiteralUtil::CreateR0<T>(b_value - 1)));
+              LiteralUtil::CreateR0<T>(static_cast<T>(b_value - 1))));
       if (!ShapeUtil::IsScalar(b->shape())) {
         mask_amount = remainder->AddInstruction(
             HloInstruction::CreateBroadcast(b->shape(), mask_amount, {}));
@@ -4317,57 +4314,18 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
   }
 
   // A % B => A & (B - 1) if B is a power of 2.
-  switch (remainder->shape().element_type()) {
-    case S8:
-      if (std::unique_ptr<HloInstruction> shift =
-              TryRemainderToAnd<int8_t>(remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case S16:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int16_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case S32:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int32_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case S64:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<int64_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case U8:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint8_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case U16:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint16_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case U32:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint32_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    case U64:
-      if (std::unique_ptr<HloInstruction> shift = TryRemainderToAnd<uint64_t>(
-              remainder, computation_, simplifier_)) {
-        return ReplaceWithNewInstruction(remainder, std::move(shift));
-      }
-      break;
-    default:
-      break;
+  if (std::unique_ptr<HloInstruction> shift =
+          primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+              [&](auto kType) -> std::unique_ptr<HloInstruction> {
+                if constexpr (primitive_util::IsIntegralType(kType)) {
+                  using NativeT = primitive_util::NativeTypeOf<kType>;
+                  return TryRemainderToAnd<NativeT>(remainder, computation_,
+                                                    simplifier_);
+                }
+                return nullptr;
+              },
+              remainder->shape().element_type())) {
+    return ReplaceWithNewInstruction(remainder, std::move(shift));
   }
 
   // If M < N, then {0, ..., M} % N ==> {0, ..., M}.

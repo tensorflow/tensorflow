@@ -71,6 +71,7 @@ SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params), iterator_(std::move(iterator)) {
   DCHECK_NE(iterator_.get(), nullptr);
+  last_checkpoint_time_ = absl::FromUnixMicros(params_.env->NowMicros());
   snapshot_thread_ = absl::WrapUnique(params_.env->StartThread(
       /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
       [this]() { WriteSnapshotAndLog(); }));
@@ -103,6 +104,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Finished writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   completed_ = true;
+  iterator_ = nullptr;  // Reclaims iterator resources.
 }
 
 Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
@@ -248,6 +250,10 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 
 bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
+  const absl::Time now = absl::FromUnixMicros(params_.env->NowMicros());
+  if (now < last_checkpoint_time_ + params_.checkpoint_interval) {
+    return false;
+  }
   if (end_of_sequence_) {
     // If this is the last chunk, we only write checkpoints when there are more
     // than one chunk. For example, if there are 3 chunks, the files will be:
@@ -282,6 +288,7 @@ Status SnapshotStreamWriter::Save() {
   LOG(INFO) << "Wrote checkpoint file " << checkpoint_path << ". "
             << "Checkpointing distributed tf.data snapshot writer took "
             << (end_time - start_time);
+  last_checkpoint_time_ = end_time;
   return DeleteOutdatedCheckpoints();
 }
 
@@ -315,6 +322,8 @@ Status SnapshotStreamWriter::DeleteCheckpoints() {
   if (params_.test_only_keep_temp_files) {
     return OkStatus();
   }
+  LOG(INFO) << "Deleting tf.data snapshot checkpoints directory: "
+            << params_.CheckpointsDirectory();
   if (params_.env->FileExists(params_.CheckpointsDirectory()).ok()) {
     int64_t undeleted_files, undeleted_dirs;
     return params_.env->DeleteRecursively(params_.CheckpointsDirectory(),

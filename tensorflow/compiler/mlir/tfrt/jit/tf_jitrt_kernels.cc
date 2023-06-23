@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
 #define EIGEN_USE_THREADS
 
 #include <memory>
@@ -279,7 +280,7 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 }
 
 // Gets the session name from the fallback request state.
-static const std::string GetSessionName(RequestContext* req_ctx) {
+static std::string GetSessionName(RequestContext* req_ctx) {
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback) return "<unknown>";
 

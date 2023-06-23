@@ -33,6 +33,10 @@ cc_library(
     hdrs = [
         "bfloat16.h",
     ],
+    visibility = visibility + [
+        "//third_party/courier:__subpackages__",
+        "//third_party/py/courier:__subpackages__",
+    ],
     deps = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863

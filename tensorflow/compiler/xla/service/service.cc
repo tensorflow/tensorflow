@@ -382,7 +382,6 @@ Service::ExecuteParallelAndRegisterResult(
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
   std::vector<StreamPool::Ptr> streams;
-  std::vector<std::unique_ptr<se::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
   std::vector<GlobalDataHandle> result_handles;
@@ -414,14 +413,6 @@ Service::ExecuteParallelAndRegisterResult(
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
 
-      if (replica == 0 && profile != nullptr) {
-        timers.push_back(std::make_unique<se::Timer>(streams.back()->parent()));
-        streams.back()
-            ->InitTimer(timers.back().get())
-            .ThenStartTimer(timers.back().get());
-        CHECK(timers.front() != nullptr);
-      }
-
       if (replica == 0 &&
           executables[i]->module_config().debug_options().xla_hlo_profile() &&
           executables[i]->hlo_profiling_enabled()) {
@@ -440,18 +431,14 @@ Service::ExecuteParallelAndRegisterResult(
       if (i == 0) {
         options.set_execution_profile(profile);
       }
-      ServiceExecutableRunOptions run_options(options,
-                                              backend->StreamBorrower());
+      ServiceExecutableRunOptions run_options(
+          options, backend->StreamBorrowerWithPriority());
 
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
                               &run_options, arguments[i][replica],
                               /*hlo_execution_profile=*/nullptr));
-
-      if (replica == 0 && profile != nullptr) {
-        streams.back()->ThenStopTimer(timers.back().get());
-      }
 
       result_buffers.push_back(std::move(result));
     }
@@ -467,33 +454,6 @@ Service::ExecuteParallelAndRegisterResult(
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
                            block_status.message());
-    }
-  }
-
-  if (profile != nullptr) {
-    CHECK(!timers.empty());
-    std::vector<uint64_t> timer_nanoseconds;
-    timer_nanoseconds.reserve(timers.size());
-    for (auto& timer : timers) {
-      timer_nanoseconds.push_back(timer->Nanoseconds());
-    }
-    uint64_t nanoseconds =
-        *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
-
-    // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(nanoseconds);
-
-    // TODO(b/28123297): On GPU we end up including transfer time in
-    // the compute time this way. Instead, we should get the correct
-    // value by measuring it. Setting the field here at least lets
-    // benchmarks provide *some* value for GPU computations.
-    //
-    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
-    // the compute time without the transfer time, so this way we get the
-    // correct compute time. We should instead have the correct value for
-    // compute_and_transfer_time and set compute_time to the compute time.
-    if (profile->compute_time_ns() == 0) {
-      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
   }
 
@@ -534,7 +494,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
     options.set_execution_profile(profile);
-    run_options.emplace_back(options, backend->StreamBorrower());
+    run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
 
   if (options_.number_of_replicas() == 1) {
@@ -1154,7 +1114,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   HloEvaluator evaluator;
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
   evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call,
+      [](const HloInstruction* custom_call,
          absl::Span<const Literal*> operands) -> StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();

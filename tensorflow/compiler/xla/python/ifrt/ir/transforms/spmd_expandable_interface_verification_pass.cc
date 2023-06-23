@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -46,10 +48,6 @@ class SpmdExpandableInterfaceVerificationPass
   mlir::LogicalResult initialize(mlir::MLIRContext* context) override {
     dialects_require_no_spmd_interface_.insert(excluded_dialects_.begin(),
                                                excluded_dialects_.end());
-    // TODO(b/261623129): Add SPMD expander for func.return and remove the
-    // following line. Add FuncDialect as all functions will need this dialect.
-    dialects_require_no_spmd_interface_.insert(
-        mlir::func::FuncDialect::getDialectNamespace().str());
     return mlir::success();
   }
 
@@ -88,7 +86,8 @@ class SpmdExpandableInterfaceVerificationPass
  private:
   bool HasOpWithUnimplementedInterface(mlir::func::FuncOp func_op) {
     auto result = func_op->walk([&](mlir::Operation* op) -> mlir::WalkResult {
-      if (dialects_require_no_spmd_interface_.contains(
+      if (llvm::isa<mlir::func::FuncOp>(op) ||
+          dialects_require_no_spmd_interface_.contains(
               op->getName().getDialectNamespace())) {
         return mlir::WalkResult::advance();
       }

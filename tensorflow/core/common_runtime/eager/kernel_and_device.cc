@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -94,7 +98,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
     if (!status.ok()) {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
-                << status.ToString();
+                << status;
     }
   }
 }
@@ -474,7 +478,7 @@ void KernelAndDeviceFunc::RunAsync(
   tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
-      absl::nullopt, coordination_service_agent, &created_rendezvous);
+      std::nullopt, coordination_service_agent, &created_rendezvous);
 
   pflr_->Run(
       *opts, handle_, inputs, outputs,

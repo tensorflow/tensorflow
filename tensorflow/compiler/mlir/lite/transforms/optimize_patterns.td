@@ -54,6 +54,10 @@ class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
+class FloatValueEquals<string val> : Constraint<CPred<
+  "FloatValueEquals($0, " # val # ")">>;
+
+
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
@@ -333,6 +337,23 @@ def MatchHardSwishQuantized : Pat<
     (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
   (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern5 : Pat<
+  (TFL_MulOp
+     $arg,
+     (TFL_DivOp
+      (TFL_AddOp
+        $arg,
+        (Arith_ConstantOp F32ElementsAttr:$cst_3),
+        TFL_AF_Relu6),
+      (Arith_ConstantOp F32ElementsAttr:$cst_6),
+      TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $arg),
+  [
+    (FloatValueEquals<"3"> $cst_3),
+    (FloatValueEquals<"6"> $cst_6),
+  ]>;
 
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
@@ -735,9 +756,6 @@ def ConvertExpandDimsToReshape : Pat<
   (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $expand_dims_op))),
   [(AnyStaticShapeTensor $expand_dims_op)]>;
 
-class FloatValueEquals<string val> : Constraint<CPred<
-  "FloatValueEquals($0, " # val # ")">>;
-
 // Here, the element type can be any integer or float type.
 class IsConstantValueOf<int value> : Constraint<CPred<
   "TFL::IsConstantValueOf($0," # value # ")">>;
@@ -1092,8 +1110,17 @@ def ReshapeValueDroppingLastDim : NativeCodeCall<
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
-// Checks if the shape has shape with last dimension equals 1.
+// Checks if the shape has static shape with last dimension equals 1.
 def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// As above but if shape is not static and rank 2 with last dim 1.
+def IsLastDimensionEqualOneOrDynamicBatchDimRank2 : Constraint<
+  CPred<"IsLastDimensionEqualOne($0) || "
+        "(!$0.getType().cast<ShapedType>().hasStaticShape() && "
+        "  $0.getType().cast<ShapedType>().hasRank() && "
+        "  $0.getType().cast<ShapedType>().getRank() == 2 && "
+        "  !$0.getType().cast<ShapedType>().getShape().empty() && "
+        "  $0.getType().cast<ShapedType>().getShape()[1] == 1)">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1109,7 +1136,7 @@ def ReshapeEqualOpToOneHotOp : Pat<
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastDimensionEqualOne $x),
+  [(IsLastDimensionEqualOneOrDynamicBatchDimRank2 $x),
    (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
@@ -1191,6 +1218,28 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     (Arith_ConstantOp (GetShape (GetIthValue<0> $outputs)))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
+
+// Same as above, but if indices are already 1D, then no reshape is needed.
+def ReplaceOneHotDynamicShapeFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp:$outputs
+    (TFL_OneHotOp
+      1DTensorOf<[I32]>:$indices,
+      (Arith_ConstantOp $depth),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    $keep_num_dims,
+    $asymmetric_quantize_inputs),
+  (TFL_EmbeddingLookupOp $indices,
+    (TFL_TransposeOp
+      $filter,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">))),
+  [(I32ElementsVal $indices),
+   (IsNoneType $bias)]>;
 
 def AreInputDimensionsOneInAxes : Constraint<CPred<
   "AreInputDimensionsOneInAxes($0, $1)">>;
@@ -1322,4 +1371,62 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
   [(IsLastDimensionEqualOne $condition),
    (AllValuesAreZero $zeros_1),
    (AllValuesAreZero $zeros_2)
+  ]>;
+
+def FuseSigmoid : Pat<
+  (TFL_DivOp
+   (Arith_ConstantOp F32ElementsAttr:$ones),
+   (TFL_AddOp:$add_out
+    (TFL_ExpOp:$exp_out
+     (TFL_NegOp:$neg_out $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+  (TFL_LogisticOp $arg),
+  [(FloatValueEquals<"1"> $ones_1),
+   (FloatValueEquals<"1"> $ones),
+   (HasOneUse $neg_out),
+   (HasOneUse $add_out),
+   (HasOneUse $exp_out),
+  ]>;
+
+def FuseEluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero)),
+   $arg,
+   (TFL_SubOp:$sub_out
+    (TFL_ExpOp:$exp_out
+     (TFL_SelectOp:$select_out
+      (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero_1)),
+      (Arith_ConstantOp F32ElementsAttr:$zero_2),
+      $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$one),
+    TFL_AF_None)),
+  (TFL_EluOp $arg),
+  [
+    (FloatValueEquals<"0"> $zero_2),
+    (FloatValueEquals<"0"> $zero_1),
+    (FloatValueEquals<"0"> $zero),
+    (FloatValueEquals<"1"> $one),
+    (HasOneUse $select_out),
+    (HasOneUse $exp_out),
+    (HasOneUse $sub_out),
+  ]>;
+
+
+def isF32Splat : Constraint<
+  CPred<"IsF32Splat($0)">>;
+
+def ExtractF32AtIndex0: NativeCodeCall<
+    "$_builder.getF32FloatAttr($_self.cast<DenseElementsAttr>().getValues<float>()[0])">;
+
+def FuseLeakyReluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterEqualOp:$geq_out $arg, (Arith_ConstantOp F32ElementsAttr:$threshold)),
+   $arg,
+   (TFL_MulOp:$mul_out $arg, (Arith_ConstantOp F32ElementsAttr:$alpha), TFL_AF_None)),
+  (TFL_LeakyReluOp $arg, ExtractF32AtIndex0:$alpha),
+  [
+    (FloatValueEquals<"0"> $threshold),
+    (isF32Splat $alpha),
+    (HasOneUse $geq_out),
+    (HasOneUse $mul_out),
   ]>;

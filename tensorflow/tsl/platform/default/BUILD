@@ -50,6 +50,15 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    hdrs = ["//tensorflow/tsl/platform:criticality.h"],
+    textual_hdrs = ["criticality.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
+)
+
+cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],

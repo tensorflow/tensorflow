@@ -50,7 +50,7 @@ Status RewriteLayoutWithShardedShape(
     // TODO(endlessroad): for variable input & update, we might have
     // different layouts which will prevent input output aliasing and
     // increase memory usage. Investigate such cases.
-    int64_t device = *sharding->tile_assignment().begin();
+    int64_t device = sharding->tile_assignment().first();
     std::vector<int64_t> offset =
         sharding->TileOffsetForDevice(*xla_shape, device);
     std::vector<int64_t> limit =
@@ -114,6 +114,11 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
         hlo_sharding, fast_mem, shape_determination_fns, &to_shape));
   }
   if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
+    if (original_shape.layout().minor_to_major() ==
+        to_shape.layout().minor_to_major()) {
+      // No need for reshape.
+      return original;
+    }
     for (int64_t i = 0; i < original_shape.rank(); ++i) {
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }

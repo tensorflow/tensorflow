@@ -3,7 +3,7 @@
 # This will change in the future.
 absl-py ~= 1.0.0
 astunparse ~= 1.6.3
-flatbuffers ~= 23.5.8
+flatbuffers ~= 23.5.26
 google_pasta ~= 0.2
 h5py ~= 3.8.0  # Earliest version for Python 3.11
 # TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
@@ -38,3 +38,6 @@ scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 # This is usually vendored in setuptools but ensure it gets installed in CI anyway
 # No bound here, we prefer the one in setuptools
 packaging
+
+# For using Python 3.11 with Bazel 6 (b/286090018)
+lit ~= 16.0.5.post0

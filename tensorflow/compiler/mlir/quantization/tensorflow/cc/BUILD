@@ -144,3 +144,19 @@ tf_cc_test(
         "@com_google_absl//absl/status",
     ],
 )
+
+cc_library(
+    name = "run_passes",
+    srcs = ["run_passes.cc"],
+    hdrs = ["run_passes.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)

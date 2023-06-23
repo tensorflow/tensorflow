@@ -106,6 +106,7 @@ extern "C" PyObject* PyArray_tp_new(PyTypeObject* type, PyObject*, PyObject*) {
 }
 
 extern "C" void PyArray_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   auto* obj = reinterpret_cast<PyArrayObject*>(self);
 
@@ -287,6 +288,22 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto dtype = PrimitiveTypeToDtype(key.dtype).value();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
       WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
+  return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
+PyArray PyArray::MakeFromIfrtArrayAndSharding(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
+    bool weak_type, bool committed) {
+  auto shape_span = ifrt_array->shape().dims();
+  ShapedArrayCacheKey key;
+  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.weak_type = weak_type;
+  auto aval = MakeShapedArrayCached(key);
+  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
@@ -978,8 +995,10 @@ Status PyArray::RegisterTypes(py::module& m) {
         return xla::ValueOrThrow(self.UnsafeBufferPointer());
       },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") = jax::property_readonly(
-      [](PyArray self) { return self.CudaArrayInterface(); });
+  type.attr("__cuda_array_interface__") =
+      jax::property_readonly([](PyArray self) {
+        return xla::ValueOrThrow(self.CudaArrayInterface());
+      });
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       py::is_method(type));

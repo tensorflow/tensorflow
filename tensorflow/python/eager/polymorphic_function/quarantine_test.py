@@ -27,7 +27,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -202,7 +202,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       self.v = variables.Variable(1.0)
       return self.v.read_value()
 
-    f = tracing_compiler.TracingCompiler(f_py, 'f')
+    f = lambda: tracing_compilation.call_function(  # pylint: disable=g-long-lambda
+        tracing_options=tracing_compilation.TracingOptions(f_py, 'f')
+    )
     self.assertAllEqual(f(), 1.0)
 
     with ops.Graph().as_default():
@@ -329,8 +331,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       return while_loop.while_loop(loop_test, loop_body, [0.0])
 
-    test_function = tracing_compiler.TracingCompiler(
-        test_function_py, 'test_function'
+    test_function = tracing_compilation.trace_function(
+        tracing_options=tracing_compilation.TracingOptions(
+            test_function_py, 'test_function'
+        )
     )
 
     self.assertEqual(test_function().shape, [])
@@ -341,8 +345,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       self.v = variables.Variable(0.0)
       return self.v.read_value()
 
-    defined = tracing_compiler.TracingCompiler(
-        variable_creator, 'variable_creator'
+    defined = tracing_compilation.trace_function(
+        tracing_options=tracing_compilation.TracingOptions(
+            variable_creator, 'variable_creator'
+        )
     )
     defined()  # Create the variable.
     self.assertIsInstance(self.v, resource_variable_ops.ResourceVariable)
@@ -390,7 +396,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return conv(x)
 
     x = array_ops.ones([1, 2, 2, 1])
-    y = tracing_compiler.TracingCompiler(model, 'model')(x)
+    y = tracing_compilation.call_function(
+        (x,), tracing_options=tracing_compilation.TracingOptions(model, 'model')
+    )
 
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
@@ -971,10 +979,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError,
-        'TracingCompiler does not support `experimental_1` as an attribute.',
+        'Tracing compilation does not support `experimental_1` as an'
+        ' attribute.',
     ):
-      tracing_compiler.TracingCompiler(
-          add, 'add', attributes={'experimental_1': 'value1'}
+      tracing_compilation.trace_function(
+          (1, 2),
+          tracing_options=tracing_compilation.TracingOptions(
+              add, 'add', attributes={'experimental_1': 'value1'}
+          ),
       )
 
   def testRegisterFunction(self):

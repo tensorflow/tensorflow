@@ -97,3 +97,6 @@ class FunctionCache:
   def values(self):
     """Returns a list of all functions held by this cache."""
     return list(self._primary.values())
+
+  def __len__(self):
+    return len(self._primary)

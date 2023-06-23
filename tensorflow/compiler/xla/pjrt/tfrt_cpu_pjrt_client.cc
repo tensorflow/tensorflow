@@ -176,6 +176,10 @@ class TfrtCpuAsyncHostToDeviceTransferManager
     buffers.reserve(shapes.size());
     absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs;
     avs.reserve(shapes.size());
+    absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight;
+    buffer_transfers_in_flight.resize(shapes.size(), 0);
+    absl::InlinedVector<bool, 4> last_transfer_finished;
+    last_transfer_finished.resize(shapes.size(), false);
     for (const Shape& shape : shapes) {
       absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> local_avs;
       TF_ASSIGN_OR_RETURN(
@@ -204,7 +208,9 @@ class TfrtCpuAsyncHostToDeviceTransferManager
 
     return absl::WrapUnique(new TfrtCpuAsyncHostToDeviceTransferManager(
         std::move(avs), std::move(buffers), std::move(device_buffers),
-        std::move(buffer_sizes), DefaultThreadPoolSize(), device));
+        std::move(buffer_sizes), DefaultThreadPoolSize(), device,
+        std::move(buffer_transfers_in_flight),
+        std::move(last_transfer_finished)));
   }
 
   ~TfrtCpuAsyncHostToDeviceTransferManager() override {
@@ -261,12 +267,15 @@ class TfrtCpuAsyncHostToDeviceTransferManager
     CHECK_GE(buffer_index, 0);
     CHECK_LT(buffer_index, buffers_.size());
     CHECK_LE(transfer_size + offset, buffer_sizes_[buffer_index]);
+    CHECK(!last_transfer_finished_[buffer_index]);
+    ++buffer_transfers_in_flight_[buffer_index];
     ++transfers_in_flight_;
     EnqueueWork(
         thread_pool_.get(),
         [this, device_buffer = device_buffers_[buffer_index],
          av = avs_[buffer_index].CopyRef(), data, offset, transfer_size,
-         is_last_transfer, on_done = std::move(on_done)]() mutable -> void {
+         is_last_transfer, on_done = std::move(on_done),
+         buffer_index]() mutable -> void {
           absl::MutexLock l(&mu_);
           const std::shared_ptr<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
@@ -274,9 +283,14 @@ class TfrtCpuAsyncHostToDeviceTransferManager
                       transfer_size);
           std::move(on_done)();
           if (is_last_transfer) {
+            last_transfer_finished_[buffer_index] = true;
+          }
+          --buffer_transfers_in_flight_[buffer_index];
+          --transfers_in_flight_;
+          if (buffer_transfers_in_flight_[buffer_index] == 0 &&
+              last_transfer_finished_[buffer_index]) {
             av->SetStateConcrete();
           }
-          --transfers_in_flight_;
         });
     return tsl::OkStatus();
   }
@@ -296,9 +310,13 @@ class TfrtCpuAsyncHostToDeviceTransferManager
       absl::InlinedVector<std::unique_ptr<TfrtCpuBuffer>, 4> buffers,
       absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4> device_buffers,
       absl::InlinedVector<size_t, 4> buffer_sizes, size_t num_threads,
-      TfrtCpuDevice* device)
+      TfrtCpuDevice* device,
+      absl::InlinedVector<int64_t, 4> transfers_for_buffer,
+      absl::InlinedVector<bool, 4> seen_last_transfer)
       : transfers_in_flight_(0),
         avs_(std::move(avs)),
+        buffer_transfers_in_flight_(std::move(transfers_for_buffer)),
+        last_transfer_finished_(std::move(seen_last_transfer)),
         buffers_(std::move(buffers)),
         device_buffers_(std::move(device_buffers)),
         buffer_sizes_(std::move(buffer_sizes)),
@@ -313,6 +331,11 @@ class TfrtCpuAsyncHostToDeviceTransferManager
   // AsyncValues used to mark buffers as ready for consumption.
   absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs_
       ABSL_GUARDED_BY(mu_);
+  // Holds the number of in-flight transfers for each buffer.
+  absl::InlinedVector<int64_t, 4> buffer_transfers_in_flight_
+      ABSL_GUARDED_BY(mu_);
+  // Flag to indicate whether we have seen the last transfer of each buffer.
+  absl::InlinedVector<bool, 4> last_transfer_finished_ ABSL_GUARDED_BY(mu_);
   // The newly created buffers, which will be returned to the caller via
   // Retrieve.
   absl::InlinedVector<std::unique_ptr<TfrtCpuBuffer>, 4> buffers_

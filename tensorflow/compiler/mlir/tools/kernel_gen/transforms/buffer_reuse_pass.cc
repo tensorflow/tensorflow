@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <vector>
 

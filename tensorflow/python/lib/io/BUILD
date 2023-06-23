@@ -38,10 +38,16 @@ py_strict_library(
         "tf_record.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":_pywrap_file_io",
         ":_pywrap_record_io",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -74,7 +80,7 @@ tf_py_strict_test(
     ],
     deps = [
         ":lib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl/testing:parameterized",
@@ -95,7 +101,7 @@ tf_py_strict_test(
     ],
     deps = [
         ":lib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
     ],

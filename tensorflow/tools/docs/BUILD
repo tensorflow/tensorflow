@@ -61,8 +61,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -107,8 +107,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -174,7 +174,7 @@ py_test(
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//third_party/py/yaml",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -204,7 +204,7 @@ py_library(
         ":base_dir_oss",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",

@@ -23,7 +23,7 @@ limitations under the License.
 // and when it is undefined at build time, this file becomes an empty
 // compilation unit
 
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
@@ -51,19 +51,20 @@ class MklMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] ndims must be >= 2"));
+                absl::InvalidArgumentError("In[0] ndims must be >= 2"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] ndims must be >= 2"));
+                absl::InvalidArgumentError("In[1] ndims must be >= 2"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
     int d1 = a.dim_size(dim_pair[0].first);
     int d2 = b.dim_size(dim_pair[0].second);
-    OP_REQUIRES(ctx, d1 == d2,
-                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
-                                        a.shape().DebugString(),
-                                        ", In[1]: ", b.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, d1 == d2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
+            ", In[1]: ", b.shape().DebugString())));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(
@@ -215,4 +216,4 @@ TF_CALL_bfloat16(REGISTER_CPU);
 #endif  // !DNNL_AARCH64_USE_ACL
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
