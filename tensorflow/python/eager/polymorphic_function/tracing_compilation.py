@@ -16,12 +16,13 @@
 
 import contextlib
 import dataclasses
+import enum
 import threading
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
-from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.core.function.polymorphism import function_cache as function_cache_lib
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.eager import monitoring
@@ -36,55 +37,63 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 
-
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).",
 )
 
 
+class ScopeType(enum.Enum):
+  """Enumerate scopes under which functions might be traced."""
+  NO_SCOPE = 1
+  VARIABLE_CREATION = 2
+  NO_VARIABLE_CREATION = 3
+
+
 @dataclasses.dataclass
 class TracingOptions:
   """Configuration options for tracing."""
   # Python function to trace.
-  python_function: Any = lambda *args, **kwargs: None
+  python_function: Callable[Any, Any] = lambda *args, **kwargs: None
 
   # Name given to the traced function.
-  name: Any = "function"
+  name: str = "function"
 
   # Known FunctionType of the python function.
-  polymorphic_type: Any = None
+  polymorphic_type: Optional[function_type_lib.FunctionType] = None
 
   # Known default values for the python function parameters.
-  default_values: Any = None
+  default_values: Optional[Dict[str, Any]] = None
+
+  # Identifies effecting scope under which the function is traced.
+  scope_type: ScopeType = ScopeType.NO_SCOPE
 
   # FunctionDef attributes for traced function.
-  attributes: Any = None
+  attributes: Optional[Dict[str, Any]] = None
 
   # See https://www.tensorflow.org/guide/autograph for more information.
   # If autograph is enabled.
-  autograph: Any = True
+  autograph: bool = True
   # Optional tuple of `tf.autograph.experimental.Feature` values.
-  autograph_options: Any = None
+  autograph_options: Optional[Tuple[Any, ...]] = None
 
   # Trace generalized functions where possible to avoid future retracing.
-  reduce_retracing: Any = False
+  reduce_retracing: bool = False
 
   # If true, XLA-based compilation is enabled.
-  jit_compile: Any = None
+  jit_compile: Optional[bool] = None
 
   # If true, graph of generated Function will be destroyed with the function.
   bind_graph_to_function: bool = False
 
-  # TODO(fmuham): stateful parameters, lift and remove from here.
   # A FunctionCache object that holds existing traced functions.
-  function_cache: Any = None
+  function_cache: Optional[function_cache_lib.FunctionCache] = None
 
   # A FunctionCaptures object that tracks by-ref captures.
-  function_captures: Any = None
+  function_captures: Optional[capture_container.FunctionCaptures] = None
 
   # If specified, guards tracing and function lookup
-  lock: Any = None
+  lock: Optional[threading.Lock] = None
 
   def __post_init__(self):
     if self.attributes:
@@ -106,15 +115,6 @@ class TracingOptions:
     self._input_signature = function_type_utils.to_input_signature(
         self.polymorphic_type
     )
-
-    if self.function_cache is None:
-      self.function_cache = function_cache.FunctionCache()
-
-    if self.function_captures is None:
-      self.function_captures = capture_container.FunctionCaptures()
-
-    if self.lock is None:
-      self.lock = threading.RLock()
 
   @property
   def is_pure(self):
@@ -173,7 +173,7 @@ def trace_function(args=None, kwargs=None, tracing_options=None):
     )
     args, kwargs = bound_args.args, bound_args.kwargs
 
-  with tracing_options.lock:
+  with tracing_options.lock or contextlib.nullcontext():
     if tracing_options.input_signature and not args and not kwargs:
       args = tracing_options.input_signature
       kwargs = {}
@@ -191,8 +191,6 @@ def trace_function(args=None, kwargs=None, tracing_options=None):
 
 def _maybe_define_function(args, kwargs, tracing_options):
   """Gets a function for these inputs, defining it if necessary.
-
-  Caller must hold tracing_options.lock.
 
   Args:
     args: The varargs for the Python function.
@@ -223,18 +221,31 @@ def _maybe_define_function(args, kwargs, tracing_options):
         *args[len(tracing_options.input_signature) :],
     )
 
-  current_func_context = function_context.make_function_context()
+  current_func_context = function_context.make_function_context(
+      tracing_options.scope_type
+  )
+
+  capture_types = (
+      tracing_options.function_captures.capture_types
+      if tracing_options.function_captures
+      else {}
+  )
   lookup_func_type, lookup_func_context = (
       function_type_utils.make_canonicalized_monomorphic_type(
           args,
           kwargs,
-          tracing_options.function_captures.capture_types,
+          capture_types,
           tracing_options.polymorphic_type,
       )
   )
-  concrete_function = tracing_options.function_cache.lookup(
-      lookup_func_type, current_func_context
-  )
+
+  if tracing_options.function_cache is not None:
+    concrete_function = tracing_options.function_cache.lookup(
+        lookup_func_type, current_func_context
+    )
+  else:
+    concrete_function = None
+
   if concrete_function is not None:
     return concrete_function
 
@@ -266,6 +277,7 @@ def _maybe_define_function(args, kwargs, tracing_options):
         if (
             tracing_options.input_signature is None
             and tracing_options.reduce_retracing
+            and tracing_options.function_cache
         ):
           target_func_type = tracing_options.function_cache.generalize(
               current_func_context, lookup_func_type
@@ -276,9 +288,10 @@ def _maybe_define_function(args, kwargs, tracing_options):
             target_func_type, lookup_func_context, func_graph, tracing_options
         )
 
-        tracing_options.function_cache.add(
-            concrete_function, current_func_context
-        )
+        if tracing_options.function_cache is not None:
+          tracing_options.function_cache.add(
+              concrete_function, current_func_context
+          )
 
         return concrete_function
 
@@ -309,8 +322,10 @@ def _create_concrete_function(
   transform.apply_func_graph_transforms(traced_func_graph)
 
   graph_capture_container = traced_func_graph.function_captures
-  # Maintain the list of all captures
-  tracing_options.function_captures.merge_by_ref_with(graph_capture_container)
+
+  if tracing_options.function_captures:
+    # Maintain the list of all captures
+    tracing_options.function_captures.merge_by_ref_with(graph_capture_container)
 
   # Create a new FunctionType including captures and outputs.
   output_type = trace_type.from_value(

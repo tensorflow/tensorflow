@@ -193,6 +193,8 @@ py_strict_library(
         ":tf_method_target",
         ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",

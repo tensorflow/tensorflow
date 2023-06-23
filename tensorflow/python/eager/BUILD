@@ -736,6 +736,7 @@ py_strict_library(
         ":backprop_util",
         ":execute",
         ":forwardprop_util",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",

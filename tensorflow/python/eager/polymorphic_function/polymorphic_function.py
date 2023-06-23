@@ -71,6 +71,8 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.capture import capture_container
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
@@ -103,7 +105,6 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
-
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
@@ -488,6 +489,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._function_type, self._default_values = (
         function_type_utils.make_function_type(python_function, input_signature)
     )
+    self._function_cache = function_cache.FunctionCache()
+    self._function_captures = capture_container.FunctionCaptures()
 
     self._attributes = {}
     if experimental_implements is not None:
@@ -566,7 +569,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     return self._python_function
 
-  def _generate_scoped_tracing_options(self, scope):
+  def _generate_scoped_tracing_options(self, scope, scope_type):
     """Creates TracingOptions for variable creator scopes."""
 
     weak_wrapped_fn = None
@@ -598,7 +601,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     return self._generate_tracing_options(tf_decorator.make_decorator(
         self._python_function,
-        wrapped_fn))
+        wrapped_fn), scope_type)
 
   def _create_implements_attribute(self, implements_arg):
     """Creates the attribute value corresponding to attribute_lib.IMPLEMENTS."""
@@ -621,7 +624,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         attributes[attributes_lib.IMPLEMENTS] = implements_arg
     return attributes
 
-  def _generate_tracing_options(self, fn):
+  def _generate_tracing_options(self, fn, scope_type):
     """Return a TracingOptions catered to the input function."""
     attributes = self._attributes.copy()
 
@@ -643,11 +646,15 @@ class Function(core.GenericFunction, trackable.Trackable):
         self._name,
         polymorphic_type=self._function_type,
         default_values=self._default_values,
+        scope_type=scope_type,
         attributes=attributes,
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
         autograph_options=self._experimental_autograph_options,
+        function_cache=self._function_cache,
+        function_captures=self._function_captures,
+        lock=self._lock,
     )
 
   def _initialize(self, args, kwds, add_initializers_to=None):
@@ -681,7 +688,9 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     self._created_variables = created_variables
     self._variable_creation_config = self._generate_scoped_tracing_options(
-        variable_capturing_scope)
+        variable_capturing_scope,
+        tracing_compilation.ScopeType.VARIABLE_CREATION,
+    )
     # Force the definition of the function for these arguments
     self._concrete_variable_creation_fn = tracing_compilation.trace_function(
         args, kwds, self._variable_creation_config
@@ -697,7 +706,9 @@ class Function(core.GenericFunction, trackable.Trackable):
           "for more information.")
 
     self._no_variable_creation_config = self._generate_scoped_tracing_options(
-        invalid_creator_scope)
+        invalid_creator_scope,
+        tracing_compilation.ScopeType.NO_VARIABLE_CREATION,
+    )
 
   def _clone(self, python_function):
     """Clone the function with different python function."""
@@ -784,17 +795,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     different argument type, and so it was traced again.
 
     """
-    result = (
-        len(self._no_variable_creation_config.function_cache)
-        if self._no_variable_creation_config
-        else 0
-    )
-    result += (
-        len(self._variable_creation_config.function_cache)
-        if self._variable_creation_config
-        else 0
-    )
-    return result
+    return len(self._function_cache)
 
   @property
   def _run_functions_eagerly(self):
@@ -1123,16 +1124,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     """Returns all concrete functions."""
     if self.input_signature is not None:
       self.get_concrete_function()
-    concrete_functions = []
-    # pylint: disable=protected-access
-    if self._variable_creation_config:
-      concrete_functions.extend(
-          self._variable_creation_config.function_cache.values())
-    if self._no_variable_creation_config:
-      concrete_functions.extend(
-          self._no_variable_creation_config.function_cache.values())
-    # pylint: enable=protected-access
-    return concrete_functions
+    return self._function_cache.values()
 
   def _list_all_concrete_functions_for_serialization(self):
     """Returns all concrete functions for serialization.
