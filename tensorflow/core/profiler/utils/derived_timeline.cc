@@ -36,18 +36,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using tsl::profiler::FindMutableTensorCorePlanes;
 
 inline std::string HloModuleEventName(const GpuEventStats& stats) {
   return stats.program_id ? tsl::profiler::HloModuleNameWithProgramId(

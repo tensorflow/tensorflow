@@ -283,7 +283,6 @@ cc_library(
         ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
-        ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
@@ -292,6 +291,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -428,15 +428,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "tpu_xplane_utils",
-    hdrs = ["tpu_xplane_utils.h"],
-    deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
     ],
 )
 
