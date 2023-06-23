@@ -366,6 +366,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       a2.flatten('invalid')
 
+  def testIsInf(self):
+    x1 = ops.convert_to_tensor(-2147483648)
+    x2 = ops.convert_to_tensor(2147483647)
+    self.assertFalse(np_math_ops.isinf(x1))
+    self.assertFalse(np_math_ops.isinf(x2))
+    self.assertFalse(np_math_ops.isposinf(x1))
+    self.assertFalse(np_math_ops.isposinf(x2))
+    self.assertFalse(np_math_ops.isneginf(x1))
+    self.assertFalse(np_math_ops.isneginf(x2))
 
 if __name__ == '__main__':
   ops.enable_tensor_equality()

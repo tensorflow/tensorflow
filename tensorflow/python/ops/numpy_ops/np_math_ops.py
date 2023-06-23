@@ -867,17 +867,23 @@ def isfinite(x):
 
 @np_utils.np_doc('isinf')
 def isinf(x):
-  return _scalar(math_ops.is_inf, x, True)
+  if x.dtype.is_floating:
+    return _scalar(math_ops.is_inf, x, True)
+  return False
 
 
 @np_utils.np_doc('isneginf')
 def isneginf(x):
-  return x == np_array_ops.full_like(x, -np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, -np.inf)
+  return False
 
 
 @np_utils.np_doc('isposinf')
 def isposinf(x):
-  return x == np_array_ops.full_like(x, np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, np.inf)
+  return False
 
 
 @np_utils.np_doc('log2')
