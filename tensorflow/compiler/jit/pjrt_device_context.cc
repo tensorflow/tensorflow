@@ -19,9 +19,14 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
@@ -145,7 +150,39 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
                                                Device* device,
                                                Tensor* output_tensor,
                                                StatusCallback done) const {
-  done(errors::Unimplemented("Same-device copies not implemented."));
+  if (!DeviceFactory::IsPluggableDevice(device->device_type())) {
+    done(absl::UnimplementedError(
+        "Same-device copies in PjRtDeviceContext is only implemented when "
+        "is_pluggable_device is true."));
+  }
+  // TODO(b/288585098): consider whether to support same device copy in PJRT
+  // API.
+  StatusOr<PJRT_Buffer*> c_src_buffer = GetPjRtCBufferFromTensor(input_tensor);
+  if (!c_src_buffer.ok()) {
+    done(c_src_buffer.status());
+  }
+  StatusOr<xla::PjRtCApiClient*> c_api_client = tensorflow::GetPjRtCApiClient(
+      tensorflow::DeviceType(device->device_type()));
+  if (!c_api_client.ok()) {
+    done(c_api_client.status());
+  }
+
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  PJRT_Buffer* dst_buffer = TfnpdApi()->TFNPD_SameDevicePjRtBufferCopy(
+      *c_src_buffer, (*c_api_client)->pjrt_c_client(), c_status_ptr.get());
+  auto copy_c_buffer_status = StatusFromTF_Status(c_status_ptr.get());
+  if (!copy_c_buffer_status.ok()) {
+    done(copy_c_buffer_status);
+  }
+
+  auto set_c_buffer_status =
+      SetPjRtCBufferToTensor(dst_buffer, *c_api_client, output_tensor);
+  if (!set_c_buffer_status.ok()) {
+    done(set_c_buffer_status);
+  }
+  AsyncValueTensor* result_tensor =
+      tensorflow::AsyncValueTensor::FromTensor(output_tensor);
+  result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
 }
 
 }  // namespace tensorflow
