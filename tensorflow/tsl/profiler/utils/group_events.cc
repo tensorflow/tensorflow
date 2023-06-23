@@ -353,6 +353,27 @@ const EventNode* EventNode::FindParent(int64_t event_type) const {
       this, /*include_self=*/true);
 }
 
+void EventForest::FindEventNodeAndApply(
+    const int64_t event_type, const std::vector<int64_t>& stat_types,
+    const std::function<void(EventNode&, const std::vector<uint64>&)>& cb) {
+  if (auto* event_node_list = gtl::FindOrNull(event_node_map_, event_type)) {
+    // Drop 'const' here because the event_node entry can be mutated by the
+    // apply function 'cb'.
+    for (EventNode& event_node : *event_node_list) {
+      std::vector<uint64> stats;
+      for (const auto stat_type : stat_types) {
+        std::optional<XStatVisitor> stat =
+            event_node.GetEventVisitor().GetStat(stat_type);
+        if (!stat) break;
+        stats.push_back(stat->IntOrUintValue());
+      }
+      if (stats.size() == stat_types.size()) {
+        cb(event_node, stats);
+      }
+    }
+  }
+}
+
 void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
   bool is_host_plane = (visitor->Name() == kHostThreadsPlaneName);
@@ -398,38 +419,28 @@ void EventForest::ConnectInterThread(
     if (child_stat_types->empty()) {
       child_stat_types = &parent_stat_types;
     }
-    if (auto parent_event_node_list =
-            gtl::FindOrNull(event_node_map_, connect_info.parent_event_type)) {
-      for (EventNode& parent_event_node : *parent_event_node_list) {
-        std::vector<uint64> stats;
-        for (auto stat_type : parent_stat_types) {
-          std::optional<XStatVisitor> stat =
-              parent_event_node.GetContextStat(stat_type);
-          if (!stat) break;
-          stats.push_back(stat->IntOrUintValue());
-        }
-        if (stats.size() == parent_stat_types.size()) {
-          connect_map[stats] = &parent_event_node;
-        }
-      }
-    }
-    if (auto child_event_node_list =
-            gtl::FindOrNull(event_node_map_, connect_info.child_event_type)) {
-      for (EventNode& child_event_node : *child_event_node_list) {
-        std::vector<uint64> stats;
-        for (auto stat_type : *child_stat_types) {
-          std::optional<XStatVisitor> stat =
-              child_event_node.GetContextStat(stat_type);
-          if (!stat) break;
-          stats.push_back(stat->IntOrUintValue());
-        }
-        if (stats.size() == child_stat_types->size()) {
+
+    // Find all the parent nodes with the given parent_event_type. Build a
+    // connect_map `stats -> node` if parent_stat_types is a subset of stats of
+    // the parent node.
+    FindEventNodeAndApply(connect_info.parent_event_type, parent_stat_types,
+                          [&connect_map](EventNode& event_node,
+                                         const std::vector<uint64>& stats) {
+                            connect_map[stats] = &event_node;
+                          });
+
+    // Find all the children with the given child_event_type which is the same
+    // as the parent_stat_types if it's empty in connect_info.
+    // if child_stat_types is a subset of stats of a child node, add this child
+    // as children of the parent retrieved from the connect_map.
+    FindEventNodeAndApply(
+        connect_info.child_event_type, *child_stat_types,
+        [&connect_map](EventNode& event_node,
+                       const std::vector<uint64>& stats) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
-            parent_event_node->AddChild(&child_event_node);
+            parent_event_node->AddChild(&event_node);
           }
-        }
-      }
-    }
+        });
   }
 }
 
