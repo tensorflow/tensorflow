@@ -366,7 +366,7 @@ def make_canonicalized_monomorphic_type(
       for name, value in kwargs.items()
   }
 
-  _, function_type, type_context = (
+  function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
           args, kwargs, {}, capture_types, polymorphic_type
       )

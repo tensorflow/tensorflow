@@ -496,9 +496,8 @@ def canonicalize_to_monomorphic(
     args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
                                                                         Any],
     capture_types: collections.OrderedDict, polymorphic_type: FunctionType
-) -> Tuple[inspect.BoundArguments, FunctionType,
-           trace_type.InternalTracingContext]:
-  """Converts polymorphic parameters to monomorphic and associated type."""
+) -> Tuple[FunctionType, trace_type.InternalTracingContext]:
+  """Generates a monomorphic type out of polymorphic type for given args."""
   poly_bound_arguments = polymorphic_type.bind(*args, **kwargs)
 
   # Inject Default Values.
@@ -549,11 +548,7 @@ def canonicalize_to_monomorphic(
                                      type_context,
                                      poly_parameter.type_constraint))
 
-  monomorphic_function_type = FunctionType(parameters, capture_types)
-  mono_bound_arguments = monomorphic_function_type.bind(
-      *poly_bound_arguments.args, **poly_bound_arguments.kwargs)
-
-  return mono_bound_arguments, monomorphic_function_type, type_context
+  return FunctionType(parameters, capture_types), type_context
 
 
 # TODO(fmuham): Share code with canonicalize_to_monomorphic.

@@ -180,7 +180,7 @@ def set_preinitialized_function_spec(concrete_fn, spec):
   )
   arg_specs, kwarg_specs = concrete_fn.structured_input_signature
 
-  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+  input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
       arg_specs,
       {
           function_type_lib.sanitize_arg_name(k): v
