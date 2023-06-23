@@ -232,7 +232,7 @@ rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-so
 `tf.raw_ops.xxx` symbols is the best way to uncover code weakness, please bear
 in mind that this is not a typical use case that has security implications. It is
 better to try to translate the vulnerability to something that can be exploited
-during training or inference of a model (i.e., build a model tha when given a
+during training or inference of a model (i.e., build a model that when given a
 specific input would produce unwanted behavior). Alternatively, if the
 TensorFlow API is only used in ancillary tooling, consider the environment where
 the tool would run. For example, if `saved_model_cli` tool would crash on
