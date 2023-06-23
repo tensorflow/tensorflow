@@ -442,6 +442,7 @@ cc_library(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_types",
@@ -1039,6 +1040,38 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ] + libjpeg_handle_deps(),
+)
+
+cc_test(
+    name = "validator_runner_impl_opaque_delegate_test",
+    srcs = ["validator_runner_impl_opaque_delegate_test.cc"],
+    data = ["//tensorflow/lite/delegates/utils/experimental/stable_delegate:libtensorflowlite_stable_xnnpack_delegate.so"],
+    tags = [
+        # TODO(b/259303511): Propagate build config to data correctly to enable the test on x86 platforms.
+        "no_test_android",
+        "no_test_android_x86",
+    ],
+    deps = [
+        ":benchmark_result_evaluator",
+        ":embedded_mobilenet_validation_model",
+        ":embedded_validator_runner_entrypoint",
+        ":fb_storage",
+        ":libjpeg_handle_static_link",
+        ":mini_benchmark_test_helper",
+        ":status_codes",
+        ":validator_runner_entrypoint",
+        ":validator_runner_impl",
+        ":validator_runner_options",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader_opaque_delegate",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
 )
 
 cc_test(
