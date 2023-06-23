@@ -838,7 +838,8 @@ tensorflow::Status SavedModelImpl::Run(
         const LoadingResult& loading_result,
         GetOrCreateLoadingResult(run_options, {std::string(name)}));
     symbol_uids = &loading_result.symbol_uids;
-    func = loading_result.bef_file->GetFunction(loading_result.name);
+    func = loading_result.bef_file->GetFunction(
+        tensorflow::kImportModelDefaultGraphFuncName);
     runner_table = loading_result.runner_table.get();
     resource_array = loading_result.resource_array.get();
   } else {
@@ -941,12 +942,11 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelImpl::ImportSubgraph(
-    mlir::MLIRContext* context, const std::string& name,
+    mlir::MLIRContext* context,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
     const std::vector<std::string>& output_nodes,
     const std::vector<std::string>& target_nodes) {
   tensorflow::GraphImportConfig graph_import_config;
-  graph_import_config.graph_func_name = name;
   graph_import_config.prune_unused_nodes = true;
   graph_import_config.enable_shape_inference = false;
   graph_import_config.inputs = input_nodes;
@@ -1068,11 +1068,10 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
 
-  ASSIGN_OR_RETURN_IN_IMPORT(auto module,
-                             ImportSubgraph(&context, joined_signature.name,
-                                            joined_signature.input_nodes,
-                                            joined_signature.output_nodes,
-                                            joined_signature.target_nodes));
+  ASSIGN_OR_RETURN_IN_IMPORT(
+      auto module, ImportSubgraph(&context, joined_signature.input_nodes,
+                                  joined_signature.output_nodes,
+                                  joined_signature.target_nodes));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());

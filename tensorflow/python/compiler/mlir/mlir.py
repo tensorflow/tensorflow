@@ -69,7 +69,7 @@ def convert_function(concrete_function,
   ...     tf.TensorSpec(None, tf.dtypes.float32),
   ...     tf.TensorSpec(None, tf.dtypes.float32))
   >>> tf.mlir.experimental.convert_function(concrete_function)
-  '...module @... attributes {...} {...}...'
+  '...module attributes {...} {...}...'
 
   Args:
     concrete_function: An object of type ConcreteFunction.

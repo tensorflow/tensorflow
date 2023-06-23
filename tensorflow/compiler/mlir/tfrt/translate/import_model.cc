@@ -173,8 +173,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
 
     TF_RETURN_IF_ERROR(
-        mlir::TFTPU::TPUBridge(module, /*fallback_enabled=*/false,
-                               module.getName().value_or("unknown_graph")));
+        mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
@@ -184,8 +183,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
              options.use_bridge_for_gpu) {
-    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(
-        module, module.getName().value_or("unknown_graph")));
+    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
