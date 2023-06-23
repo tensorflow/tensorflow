@@ -1327,6 +1327,124 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
+TEST_F(CompareTest, TritonDotFusionCanHaveOnlyRHSParameter) {
+  const std::string kHloTextTest = R"(
+HloModule m, is_scheduled=true
+
+triton_gemm___computation {
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  c = f16[] constant(321)
+  b = f16[11,63] broadcast(c)
+  cc = f32[11,63] convert(b)
+  ROOT _.1 = f32[63,92]{1,0} dot(cc, parameter_0),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[92,11]{1,0} parameter(0)
+  ROOT triton_gemm__ = f32[63,92]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_gemm___computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"16","block_n":"64",
+                                          "block_k":"16","split_k":"1",
+                                          "num_stages":"3","num_warps":"2"}}
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m, is_scheduled=true
+
+ENTRY e {
+  constant_2 = f32[] constant(321)
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  broadcast.2 = f32[11,63]{1,0} broadcast(constant_2), dimensions={}
+  ROOT custom-call = f32[63,92]{1,0} custom-call(broadcast.2, parameter_0),
+    custom_call_target="__cublas$gemm",
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, TritonDotFusionCanHaveOnlyLHSParameter) {
+  const std::string kHloTextTest = R"(
+HloModule m, is_scheduled=true
+
+triton_gemm___computation {
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  c = f32[] constant(123)
+  b = f32[11,63] broadcast(c)
+  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[92,11]{1,0} parameter(0)
+  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_gemm___computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"16","block_n":"64",
+                                          "block_k":"16","split_k":"1",
+                                          "num_stages":"3","num_warps":"2"}}
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m, is_scheduled=true
+
+ENTRY triton_gemm___computation {
+  constant = f32[] constant(123)
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
+  ROOT custom-call = f32[92,63]{1,0} custom-call(parameter_0, broadcast),
+    custom_call_target="__cublas$gemm",
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
+  const std::string kHloTextTest = R"(
+HloModule m, is_scheduled=true
+
+triton_gemm___computation {
+  c = f32[] constant(123)
+  b = f32[11,63] broadcast(c)
+  c2 = f32[] constant(945)
+  b2 = f32[63,45] broadcast(c2)
+  ROOT _.1 = f32[11,45]{1,0} dot(b, b2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  ROOT triton_gemm__ = f32[11,45]{1,0} fusion(), kind=kCustom,
+    calls=triton_gemm___computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"16","block_n":"64",
+                                          "block_k":"16","split_k":"1",
+                                          "num_stages":"3","num_warps":"2"}}
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m, is_scheduled=true
+
+ENTRY triton_gemm___computation {
+  constant_1 = f32[] constant(945)
+  constant = f32[] constant(123)
+  broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
+  broadcast.1 = f32[63,45]{1,0} broadcast(constant_1), dimensions={}
+  ROOT custom-call = f32[11,45]{1,0} custom-call(broadcast, broadcast.1),
+    custom_call_target="__cublas$gemm",
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      /*run_hlo_passes=*/false));
+}
 class TritonSoftmaxTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {

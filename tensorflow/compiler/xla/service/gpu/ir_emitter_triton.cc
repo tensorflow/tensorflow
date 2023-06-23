@@ -638,10 +638,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
   const DotFusionAnalysis analysis(dot_instr->parent(), config.split_k());
-  const HloInstruction* lhs_param0 =
-      *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).cbegin();
-  const HloInstruction* rhs_param0 =
-      *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).cbegin();
+
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
   CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
@@ -710,77 +707,87 @@ StatusOr<LaunchDimensions> MatMulImpl(
   IndexT stride_lhs_k = 0;
   IndexT stride_lhs_batch = 0;
   IndexT stride_rhs_batch = 0;
-  const DotFusionAnalysis::DimIterationSpec* lhs_nc_iter_spec =
-      analysis.IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                        lhs_noncontracting_dim_idx);
-  lhs_nc_split = lhs_nc_iter_spec->size() > 1;
-  // For now split non-contracting and batch are not supported simultaneously
-  // because they are implemented via same mechanism.
-  CHECK_LE(have_batch + lhs_nc_split, 1);
-  if (lhs_nc_split) {
-    batch_size = lhs_nc_iter_spec->at(1).count;
-    CHECK_GE(batch_size, 1);
-    stride_lhs_batch = lhs_nc_iter_spec->at(1).stride;
-    CHECK_GE(stride_lhs_batch, 1);
-  } else if (have_batch) {
-    const int64_t lhs_batch_dim_idx = *(dims.lhs_batch_dimensions().cend() - 1);
-    batch_size = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                               lhs_batch_dim_idx)
-                     ->at(0)
-                     .count;
-    CHECK_GE(batch_size, 1);
-    stride_lhs_batch = analysis
-                           .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                                     lhs_batch_dim_idx)
-                           ->at(0)
-                           .stride;
-    CHECK_GE(stride_lhs_batch, 1);
-  }
+  if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).empty()) {
+    const HloInstruction* lhs_param0 =
+        *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin();
+    const DotFusionAnalysis::DimIterationSpec* lhs_nc_iter_spec =
+        analysis.IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                          lhs_noncontracting_dim_idx);
+    lhs_nc_split = lhs_nc_iter_spec->size() > 1;
+    // For now split non-contracting and batch are not supported simultaneously
+    // because they are implemented via same mechanism.
+    CHECK_LE(have_batch + lhs_nc_split, 1);
+    if (lhs_nc_split) {
+      batch_size = lhs_nc_iter_spec->at(1).count;
+      CHECK_GE(batch_size, 1);
+      stride_lhs_batch = lhs_nc_iter_spec->at(1).stride;
+      CHECK_GE(stride_lhs_batch, 1);
+    } else if (have_batch) {
+      const int64_t lhs_batch_dim_idx =
+          *(dims.lhs_batch_dimensions().cend() - 1);
+      batch_size = analysis
+                       .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                                 lhs_batch_dim_idx)
+                       ->at(0)
+                       .count;
+      CHECK_GE(batch_size, 1);
+      stride_lhs_batch = analysis
+                             .IterSpec(DotFusionAnalysis::Scope::LHS,
+                                       lhs_param0, lhs_batch_dim_idx)
+                             ->at(0)
+                             .stride;
+      CHECK_GE(stride_lhs_batch, 1);
+    }
 
-  CHECK_EQ(lhs_nc_iter_spec->size(), 1 + lhs_nc_split);
-  CHECK_EQ(analysis
-               .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                         dims.lhs_contracting_dimensions(0))
-               ->size(),
-           1);
-  stride_lhs_m = lhs_nc_iter_spec->at(0).stride;
-  stride_lhs_k = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                               dims.lhs_contracting_dimensions(0))
-                     ->at(0)
-                     .stride;
-  // Just the fastest-varying part of it if the dimension is split.
-  m = lhs_nc_iter_spec->at(0).count;
+    CHECK_EQ(lhs_nc_iter_spec->size(), 1 + lhs_nc_split);
+    CHECK_EQ(analysis
+                 .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                           dims.lhs_contracting_dimensions(0))
+                 ->size(),
+             1);
+    stride_lhs_m = lhs_nc_iter_spec->at(0).stride;
+    stride_lhs_k = analysis
+                       .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                                 dims.lhs_contracting_dimensions(0))
+                       ->at(0)
+                       .stride;
+    // Just the fastest-varying part of it if the dimension is split.
+    m = lhs_nc_iter_spec->at(0).count;
+  }
 
   CHECK_GE(m, 1);
 
   IndexT stride_rhs_k = 0;
   IndexT stride_rhs_n = 0;
-  // Splitting of RHS non-contracting is not supported yet.
-  CHECK_EQ(analysis
-               .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                         rhs_noncontracting_dim_idx)
-               ->size(),
-           1);
-  stride_rhs_k = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                               dims.rhs_contracting_dimensions(0))
-                     ->at(0)
-                     .stride;
-  stride_rhs_n = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                               rhs_noncontracting_dim_idx)
-                     ->at(0)
-                     .stride;
-  if (have_batch) {
-    const int64_t rhs_batch_dim_idx = *(dims.rhs_batch_dimensions().cend() - 1);
-    stride_rhs_batch = analysis
-                           .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                                     rhs_batch_dim_idx)
-                           ->at(0)
-                           .stride;
-    CHECK_GE(stride_rhs_batch, 1);
+  if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).empty()) {
+    const HloInstruction* rhs_param0 =
+        *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin();
+    // Splitting of RHS non-contracting is not supported yet.
+    CHECK_EQ(analysis
+                 .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                           rhs_noncontracting_dim_idx)
+                 ->size(),
+             1);
+    stride_rhs_k = analysis
+                       .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                                 dims.rhs_contracting_dimensions(0))
+                       ->at(0)
+                       .stride;
+    stride_rhs_n = analysis
+                       .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                                 rhs_noncontracting_dim_idx)
+                       ->at(0)
+                       .stride;
+    if (have_batch) {
+      const int64_t rhs_batch_dim_idx =
+          *(dims.rhs_batch_dimensions().cend() - 1);
+      stride_rhs_batch = analysis
+                             .IterSpec(DotFusionAnalysis::Scope::RHS,
+                                       rhs_param0, rhs_batch_dim_idx)
+                             ->at(0)
+                             .stride;
+      CHECK_GE(stride_rhs_batch, 1);
+    }
   }
 
   constexpr int group_m = 8;
