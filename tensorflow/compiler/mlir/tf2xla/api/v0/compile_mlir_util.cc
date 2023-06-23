@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -341,7 +342,7 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   // TODO(b/288214422): Add a verification pass for converting MHLO quant to
   // MHLO int after this one.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createConvertMHLOQuantToIntPass(legalize_chlo));
+      mlir::stablehlo::createConvertMHLOQuantToIntPass(legalize_chlo));
 
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(

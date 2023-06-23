@@ -11,6 +11,7 @@ cc_library(
     srcs = ["compile_mlir_util.cc"],
     hdrs = ["compile_mlir_util.h"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",

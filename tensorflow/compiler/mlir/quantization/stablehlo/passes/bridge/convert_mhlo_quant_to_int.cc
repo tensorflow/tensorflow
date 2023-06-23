@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -34,19 +33,18 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/math_utils.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace mhlo {
+namespace stablehlo {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTMHLOQUANTTOINT
-#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
 FailureOr<TensorType> GetSameShapeTensorType(Operation *op,
                                              TensorType tensor_type,
@@ -54,7 +52,7 @@ FailureOr<TensorType> GetSameShapeTensorType(Operation *op,
                                              PatternRewriter &rewriter) {
   if (auto ranked_ty = tensor_type.dyn_cast_or_null<RankedTensorType>()) {
     Attribute encoding = ranked_ty.getEncoding();
-    if (!(!encoding || encoding.isa<TypeExtensionsAttr>() ||
+    if (!(!encoding || encoding.isa<mhlo::TypeExtensionsAttr>() ||
           encoding.isa<sparse_tensor::SparseTensorEncodingAttr>())) {
       return rewriter.notifyMatchFailure(
           op,
@@ -150,7 +148,7 @@ class ConvertUniformQuantizeOp
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::UniformQuantizeOp op, UniformQuantizeOpAdaptor adaptor,
+      mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto quantized_type = getElementTypeOrSelf(op.getResult().getType())
                               .dyn_cast<quant::UniformQuantizedType>();
@@ -170,7 +168,7 @@ class ConvertUniformQuantizeOp
   }
 
   LogicalResult matchAndRewriteQuantize(
-      mhlo::UniformQuantizeOp op, UniformQuantizeOpAdaptor adaptor,
+      mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter,
       const quant::UniformQuantizedType &quantized_type) const {
     Value scale = rewriter.create<mhlo::ConstantOp>(
@@ -239,7 +237,7 @@ class ConvertUniformQuantizeOp
   // precalculating and bundling the "* input_scale / output_scale" part into
   // a single multiplication.
   LogicalResult matchAndRewriteRequantize(
-      mhlo::UniformQuantizeOp op, UniformQuantizeOpAdaptor adaptor,
+      mhlo::UniformQuantizeOp op, mhlo::UniformQuantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter,
       const quant::UniformQuantizedType &output_quantized_type) const {
     auto input_quantized_type = getElementTypeOrSelf(op.getOperand().getType())
@@ -291,7 +289,7 @@ class ConvertUniformDequantizeOp
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::UniformDequantizeOp op, UniformDequantizeOpAdaptor adaptor,
+      mhlo::UniformDequantizeOp op, mhlo::UniformDequantizeOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto element_type = getElementTypeOrSelf(op.getOperand().getType())
                             .dyn_cast<quant::UniformQuantizedType>();
@@ -339,7 +337,7 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::AddOp op, AddOpAdaptor adaptor,
+      mhlo::AddOp op, mhlo::AddOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto lhs_element_type = op.getLhs()
                                 .getType()
@@ -426,7 +424,7 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DotOp op, DotOpAdaptor adaptor,
+      mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto lhs_element_type = op.getLhs()
                                 .getType()
@@ -570,7 +568,7 @@ void ConvertMHLOQuantToInt::runOnOperation() {
     return llvm::all_of(op->getOperandTypes(), is_not_quant) &&
            llvm::all_of(op->getResultTypes(), is_not_quant);
   };
-  target.addDynamicallyLegalDialect<MhloDialect>(is_legal);
+  target.addDynamicallyLegalDialect<mhlo::MhloDialect>(is_legal);
   target.addDynamicallyLegalDialect<chlo::ChloDialect>(is_legal);
 
   LogicalResult result =
@@ -587,7 +585,7 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   chlo::populateChloBroadcastingPatterns(context, &patterns_2);
 
   ConversionTarget target_2 =
-      GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo_);
+      mhlo::GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo_);
 
   result = applyPartialConversion(op, target_2, std::move(patterns_2));
   if (failed(result)) {
@@ -602,5 +600,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
   return std::make_unique<ConvertMHLOQuantToInt>(legalize_chlo);
 }
 
-}  // end namespace mhlo
+}  // end namespace stablehlo
 }  // end namespace mlir

@@ -1,4 +1,4 @@
-// RUN: tf-opt "-convert-mhlo-quant-to-int=legalize-chlo=true" -split-input-file %s -verify-diagnostics | FileCheck %s
+// RUN: stablehlo-quant-opt "-convert-mhlo-quant-to-int=legalize-chlo=true" -split-input-file %s -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {

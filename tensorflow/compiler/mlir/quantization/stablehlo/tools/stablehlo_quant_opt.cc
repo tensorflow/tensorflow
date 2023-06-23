@@ -22,16 +22,19 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
+  mlir::stablehlo::registerBridgePasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
@@ -42,6 +45,7 @@ int main(int argc, char **argv) {
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::stablehlo::StablehloDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();
+  mlir::mhlo::registerAllMhloDialects(registry);
   return failed(
       mlir::MlirOptMain(argc, argv, "StableHLO quant Pass Driver\n", registry));
 }

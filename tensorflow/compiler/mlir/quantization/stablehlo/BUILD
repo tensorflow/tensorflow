@@ -61,6 +61,56 @@ cc_library(
     alwayslink = True,
 )
 
+gentbl_cc_library(
+    name = "bridge_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=Bridge",
+            ],
+            "passes/bridge/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/bridge/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "bridge_passes",
+    srcs = [
+        "passes/bridge/convert_mhlo_quant_to_int.cc",
+    ],
+    hdrs = [
+        "passes/bridge/passes.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [
+        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
+    ],
+    deps = [
+        ":bridge_passes_inc_gen",
+        ":math_utils",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
 cc_library(
     name = "quantize_passes",
     srcs = [
@@ -158,12 +208,14 @@ tf_cc_binary(
     srcs = ["tools/stablehlo_quant_opt.cc"],
     visibility = [":internal_visibility_allowlist_package"],
     deps = [
+        ":bridge_passes",
         ":passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
