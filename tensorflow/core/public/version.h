@@ -108,7 +108,7 @@ limitations under the License.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 1535  // Updated: 2023/6/22
+#define TF_GRAPH_DEF_VERSION 1536  // Updated: 2023/6/23
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //
