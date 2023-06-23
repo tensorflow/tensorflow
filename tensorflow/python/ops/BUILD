@@ -639,17 +639,6 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "risc_ops_gen",
-    visibility = [
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/ops/risc:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:risc_ops_op_lib",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
     name = "rnn_ops_gen",
     visibility = [
         "//tensorflow/python:__pkg__",
