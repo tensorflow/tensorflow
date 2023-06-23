@@ -307,25 +307,14 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     }
     loads.push_back(load);
   }
-  mlir::Operation* op = nullptr;
-  if (instr->opcode() == xla::HloOpcode::kReduce) {
-    TF_RET_CHECK(loads.size() % 2 == 0);
-    std::vector<int64_t> dimensions(instr->dimensions().begin(),
-                                    instr->dimensions().end());
-    auto reduce_op = b.create<mhlo::ReduceOp>(
-        loc, llvm::ArrayRef(loads).take_front(loads.size() / 2),
-        llvm::ArrayRef(loads).drop_front(loads.size() / 2),
-        GetI64DenseElementsAttr(dimensions));
-
-    TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
-        &builder_, /*flatten_region_arg_tuple=*/true));
-    op = reduce_op;
-  } else {
-    TF_ASSIGN_OR_RETURN(op,
-                        xla::HloFunctionImporter::ImportInstruction(
-                            instr, loads, symbol_table_, &b,
-                            xla::DynamicShapeHandlingMode::kConvertToStatic));
+  TF_ASSIGN_OR_RETURN(mlir::Operation * op,
+                      xla::HloFunctionImporter::ImportInstruction(
+                          instr, loads, symbol_table_, &b,
+                          xla::DynamicShapeHandlingMode::kConvertToStatic));
+  if (llvm::isa<mlir::mhlo::TupleOp>(op)) {
+    auto underlyingOp = op->getPrevNode();
+    op->erase();
+    op = underlyingOp;
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {
