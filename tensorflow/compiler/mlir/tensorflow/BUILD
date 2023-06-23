@@ -1225,6 +1225,7 @@ cc_library(
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
         "transforms/embedding_pipelining.cc",
+        "transforms/embedding_program_key.cc",
         "transforms/embedding_sequencing.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",

@@ -453,6 +453,7 @@ CreateReplicaIDToDeviceOrdinalPass();
 // while developing full pipelining capabilities.
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
