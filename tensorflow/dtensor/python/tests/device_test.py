@@ -102,10 +102,6 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
   @mock.patch.dict(os.environ, {"DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION": "1"})
   def testMultiDeviceExpansion(self):
-    self.skipForDeviceType(
-        ["TPU"], "Multi-device expansion unsupported on TPUs."
-    )
-
     # Tests for b = Op(a).
     a = constant_op.constant([1.0, 2.0, 3.0, 4.0])
     a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=1))

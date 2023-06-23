@@ -1884,6 +1884,7 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
   ExecuteSingleDeviceOperation(
       context, eager_inputs, function.translated_function_name,
       /*device_name=*/"", attributes, &num_outputs, eager_outputs, status);
+  if (TF_GetCode(status) != TF_OK) return;
 
   int output_offset = 0;
   for (int i = 0; i < num_output_layouts; i++) {
