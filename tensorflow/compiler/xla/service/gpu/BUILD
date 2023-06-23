@@ -2753,6 +2753,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2766,15 +2767,13 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_hlo_schedule",
-        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
     ],
 )
 

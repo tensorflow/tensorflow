@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -382,7 +382,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
     costs { name: "ar-start" cost_us: 10.0 }
     costs { name: "ar-start1" cost_us: 1000.0 }
   )pb";
-  xla::ProfiledInstructionsProto profile;
+  tensorflow::profiler::ProfiledInstructionsProto profile;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       ar1_long_latency_proto_text, &profile));
   std::string ar1_long_latency_proto_binary = profile.SerializeAsString();

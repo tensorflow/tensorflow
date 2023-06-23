@@ -1195,9 +1195,9 @@ cc_library(
     hdrs = ["profile_guided_latency_estimator.h"],
     deps = [
         ":latency_hiding_scheduler",
-        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -1208,11 +1208,11 @@ xla_cc_test(
     deps = [
         ":latency_hiding_scheduler",
         ":profile_guided_latency_estimator",
-        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],

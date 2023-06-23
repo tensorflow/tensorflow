@@ -345,9 +345,9 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
   }
 };
 
-std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
+std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     const HloModule* module, const std::string& fingerprint) {
-  ProfiledInstructionsProto profile;
+  tensorflow::profiler::ProfiledInstructionsProto profile;
 
   absl::string_view fdo_profile = module->config().fdo_profile();
   // First attempt to read the profile from `fdo_profile` in ModuleConfig
@@ -444,7 +444,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
-  std::optional<ProfiledInstructionsProto> profile =
+  std::optional<tensorflow::profiler::ProfiledInstructionsProto> profile =
       ReadPGLEProfile(module, fingerprint);
   if (profile.has_value()) {
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(

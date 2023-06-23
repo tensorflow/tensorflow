@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 
@@ -81,7 +81,7 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
 ProfileGuidedLatencyEstimator::ProfileGuidedLatencyEstimator(
     const SchedulerConfig& config,
     std::unique_ptr<LatencyEstimator> latency_estimator,
-    const ProfiledInstructionsProto& proto)
+    const tensorflow::profiler::ProfiledInstructionsProto& proto)
     : config_(config), latency_estimator_(std::move(latency_estimator)) {
   const int cycles_per_microsecond = latency_estimator_->CyclesPerMicrosecond();
   for (const auto& instr_cost : proto.costs()) {

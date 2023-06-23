@@ -955,17 +955,3 @@ message ScheduleProto {
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
 }
-
-message ProfiledInstructionsProto {
-  message InstructionCost {
-    string name = 1;
-    double cost_us = 2;
-  }
-  message Latency {
-    string source = 1;
-    string target = 2;
-    double latency_us = 3;
-  }
-  repeated InstructionCost costs = 1;
-  repeated Latency latencies = 2;
-}
