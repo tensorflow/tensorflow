@@ -4417,7 +4417,11 @@ py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/ops/numpy_ops:np_array_ops",
+        "//tensorflow/python/ops/numpy_ops:np_config",
+        "//tensorflow/python/ops/numpy_ops:np_math_ops",
         "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -4436,5 +4440,7 @@ py_strict_library(
         ":nn_ops",
         ":nn_ops_gen",
         ":special_math_ops",
+        "//tensorflow/python/ops/numpy_ops:np_array_ops",
+        "//tensorflow/python/ops/numpy_ops:np_math_ops",
     ],
 )
