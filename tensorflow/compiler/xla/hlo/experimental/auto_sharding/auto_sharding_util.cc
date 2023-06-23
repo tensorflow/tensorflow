@@ -2153,13 +2153,19 @@ void ComputeInstructionExecutionCountsHelper(
   for (auto instruction : computation->instructions()) {
     (*instruction_execution_counts)[instruction] = computation_execution_count;
     if (instruction->opcode() == HloOpcode::kWhile) {
+      int64_t while_body_condition_execution_count =
+          computation_execution_count * loop_iteration_count_estimate;
       ComputeInstructionExecutionCountsHelper(
-          instruction->while_body(), loop_iteration_count_estimate,
-          computation_execution_count * loop_iteration_count_estimate,
+          instruction->while_body(),
+          /*computation_execution_count */
+          while_body_condition_execution_count,
+          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
           instruction_execution_counts);
       ComputeInstructionExecutionCountsHelper(
-          instruction->while_condition(), loop_iteration_count_estimate,
-          computation_execution_count * loop_iteration_count_estimate,
+          instruction->while_condition(),
+          /*computation_execution_count */
+          while_body_condition_execution_count,
+          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
           instruction_execution_counts);
     }
   }
