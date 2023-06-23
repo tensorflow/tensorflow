@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -71,20 +72,26 @@ FailureOr<TensorType> GetSameShapeTensorType(Operation *op,
 // `res_int32` tensor. Clamping is omitted because for some ops clamping can be
 // done later to avoid duplicate.
 LogicalResult RequantizeWithoutClamping(
-    mlir::OpState op, Value input, TensorType input_int32_tensor_type,
+    mlir::OpState op, Value input, TensorType int32_tensor_type,
     quant::UniformQuantizedType input_quantized_type,
     quant::UniformQuantizedType result_quantized_type, Value &res_int32,
     ConversionPatternRewriter &rewriter) {
+  // Skip requantization when input and result have the same type.
+  if (input_quantized_type == result_quantized_type) {
+    res_int32 = rewriter.create<mhlo::ConvertOp>(op->getLoc(),
+                                                 int32_tensor_type, input);
+    return success();
+  }
+
   // Convert input to int32 tensor.
-  res_int32 = rewriter.create<mhlo::ConvertOp>(op->getLoc(),
-                                               input_int32_tensor_type, input);
+  res_int32 =
+      rewriter.create<mhlo::ConvertOp>(op->getLoc(), int32_tensor_type, input);
   // Undo the input zero point.
   Value input_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                         input_quantized_type.getZeroPoint())));
   res_int32 = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), input_int32_tensor_type, res_int32, input_zero_point,
-      nullptr);
+      op->getLoc(), int32_tensor_type, res_int32, input_zero_point, nullptr);
 
   // Adjust the scale.
   const double effective_scale =
@@ -111,19 +118,18 @@ LogicalResult RequantizeWithoutClamping(
       op->getLoc(), rewriter.getI32IntegerAttr(
                         static_cast<int32_t>(1 << (14 - effective_shift))));
   res_int32 = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), input_int32_tensor_type, res_int32, multiplier, nullptr);
+      op->getLoc(), int32_tensor_type, res_int32, multiplier, nullptr);
   res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), input_int32_tensor_type, res_int32, half, nullptr);
+      op->getLoc(), int32_tensor_type, res_int32, half, nullptr);
   res_int32 = rewriter.create<chlo::BroadcastShiftRightArithmeticOp>(
-      op->getLoc(), input_int32_tensor_type, res_int32, total_shift, nullptr);
+      op->getLoc(), int32_tensor_type, res_int32, total_shift, nullptr);
 
   // Apply the output zero point.
   Value output_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                         result_quantized_type.getZeroPoint())));
   res_int32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), input_int32_tensor_type, res_int32, output_zero_point,
-      nullptr);
+      op->getLoc(), int32_tensor_type, res_int32, output_zero_point, nullptr);
 
   return success();
 }
@@ -352,11 +358,9 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
                                    .getElementType()
                                    .dyn_cast<quant::UniformQuantizedType>();
 
-    // We only handle cases where lhs, rhs and results all have the same
-    // quantized element type.
-    if (!lhs_element_type || !rhs_element_type || !result_element_type ||
-        lhs_element_type != rhs_element_type ||
-        lhs_element_type != result_element_type) {
+    // We only handle cases where lhs, rhs and results all have quantized
+    // element type.
+    if (!lhs_element_type || !rhs_element_type || !result_element_type) {
       op->emitError(
           "AddOp requires the same quantized element type for all operands and "
           "results");
@@ -371,6 +375,25 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
       return failure();
     }
 
+    // When lhs, rhs and result have different scale and zps, requantize them to
+    // be the same as the result.
+    // TODO: b/260280919 - Consider avoiding conversion to int32.
+    Value lhs = adaptor.getLhs();
+    Value lhs_int32_tensor;
+    if (failed(RequantizeWithoutClamping(op, lhs, *res_int32_tensor_type_or,
+                                         lhs_element_type, result_element_type,
+                                         lhs_int32_tensor, rewriter))) {
+      return failure();
+    }
+
+    Value rhs = adaptor.getRhs();
+    Value rhs_int32_tensor;
+    if (failed(RequantizeWithoutClamping(op, rhs, *res_int32_tensor_type_or,
+                                         rhs_element_type, result_element_type,
+                                         rhs_int32_tensor, rewriter))) {
+      return failure();
+    }
+
     Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                           result_element_type.getStorageTypeMin())));
@@ -381,9 +404,7 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                           result_element_type.getZeroPoint())));
 
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
-
+    // Now the lhs and rhs have been coverted to the same scale and zps.
     // Given:
     // lhs_fp = (lhs_quant - zp) * scale
     // rhs_fp = (rhs_quant - zp) * scale
@@ -391,12 +412,7 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
     //        = ((lhs_quant + rhs_quant - zp) - zp) * scale
     // res_quant = res_fp / scale + zp
     //           = lhs_quant + rhs_quant - zp
-    // The following converts inputs quantized operands to int32 type and add,
-    // and then substract by zero point.
-    Value lhs_int32_tensor = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_int32_tensor_type_or, lhs);
-    Value rhs_int32_tensor = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_int32_tensor_type_or, rhs);
+    // The following add the inputs and then substract by zero point.
     Value add_result = rewriter.create<chlo::BroadcastAddOp>(
         op->getLoc(), *res_int32_tensor_type_or, lhs_int32_tensor,
         rhs_int32_tensor, nullptr);

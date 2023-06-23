@@ -8,6 +8,8 @@ func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?
   return %1 : tensor<?x?xf32>
 }
 
+// -----
+
 // CHECK-LABEL: func @uniform_quantize_and_dequantize_int4
 func.func @uniform_quantize_and_dequantize_int4(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-NOT: chlo
@@ -50,6 +52,37 @@ func.func @uniform_quantize_add_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor
 
 // -----
 
+// CHECK-LABEL: @uniform_quantize_add_different_lhs_type
+func.func @uniform_quantize_add_different_lhs_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>, tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @uniform_quantize_add_different_rhs_type
+func.func @uniform_quantize_add_different_rhs_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  return
+}
+
+// CHECK-LABEL: @uniform_quantize_add_different_res_type
+func.func @uniform_quantize_add_different_res_type(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> () {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
+  %2 = mhlo.add %0, %1: (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @uniform_quantize_requantize_and_dequantize
 func.func @uniform_quantize_requantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-NOT: chlo
@@ -57,4 +90,16 @@ func.func @uniform_quantize_requantize_and_dequantize(%arg0: tensor<?x?xf32>) ->
   %1 = mhlo.uniform_quantize %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>
   %2 = mhlo.uniform_dequantize %1 : (tensor<?x?x!quant.uniform<i8:f32, 5.000000e+00:1>>) -> tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_dequantize
+func.func @uniform_quantize_dot_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %2 = "mhlo.dot" (%0, %1) : (tensor<?x?x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
+  return %3 : tensor<?x?xf32>
 }
