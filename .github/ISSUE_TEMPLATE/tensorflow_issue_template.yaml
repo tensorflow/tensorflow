@@ -55,7 +55,7 @@ body:
     attributes:
       label: Tensorflow Version
       description: 
-      placeholder: ex,. tf 2.8
+      placeholder: e.g., tf 2.8
     validations:
       required: true
   - type: dropdown
