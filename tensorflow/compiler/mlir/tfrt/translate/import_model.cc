@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
-#include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -110,15 +109,6 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
   return xla_func_defs;
 }
 
-std::string BuildModuleName(mlir::ModuleOp module,
-                            tfrt_stub::ModelRuntimeContext& model_context) {
-  if (model_context.name().empty())
-    return tfrt::StrCat(module.getName().value_or("unknown_graph"));
-
-  return tfrt::StrCat(module.getName().value_or("unknown_graph"), "_",
-                      model_context.name(), "_", model_context.version());
-}
-
 }  // namespace
 
 Status ConvertFunctionToBef(
@@ -184,7 +174,7 @@ Status ConvertTfMlirToRuntimeExecutable(
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*fallback_enabled=*/false,
-                               BuildModuleName(module, model_context)));
+                               module.getName().value_or("unknown_graph")));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
@@ -195,7 +185,7 @@ Status ConvertTfMlirToRuntimeExecutable(
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
              options.use_bridge_for_gpu) {
     TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(
-        module, BuildModuleName(module, model_context)));
+        module, module.getName().value_or("unknown_graph")));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
     // bridge. Hence, the MLIR functions for XLA clusters are exported and added
