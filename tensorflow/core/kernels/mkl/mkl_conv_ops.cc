@@ -49,6 +49,7 @@ namespace tensorflow {
 #define SET_FUSE_ACTIVATION_FOR_RELU6 \
   set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu, 6.0)
 #define SET_MKL_LAYOUT(md) SetMklLayout(&md)
+#define OUTPUT_SCALE_DCHECK (post_op_param.name == "output_scale")
 #define TSCALED_BIAS Tbias
 #define SCALE scales
 #define SUMMAND_SCALE_U8(summand_range, output_range) \
@@ -64,6 +65,10 @@ namespace tensorflow {
 #define SET_FUSE_ACTIVATION_FOR_RELU6 \
   set_fuse_activation(true, dnnl::algorithm::eltwise_clip, 0.0, 6.0)
 #define SET_MKL_LAYOUT(md) SetMklLayout(md)
+#define OUTPUT_SCALE_DCHECK                  \
+  (post_op_param.name == "src_scale") ||     \
+      (post_op_param.name == "wei_scale") || \
+      (post_op_param.name == "dst_scale")
 #define TSCALED_BIAS float
 #define SCALE wei_scale
 #define SUMMAND_SCALE_U8(summand_range, output_range) summand_range / 255.0f
@@ -476,14 +481,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
                                  *context_.bn_offset_md);
         } else {
           DCHECK((post_op_param.name == "activation") ||
-                 (post_op_param.name == "sum") ||
-#ifndef ENABLE_ONEDNN_V3
-                 (post_op_param.name == "output_scale") ||
-#else
-                 (post_op_param.name == "src_scale") ||
-                 (post_op_param.name == "wei_scale") ||
-                 (post_op_param.name == "dst_scale") ||
-#endif  // !ENABLE_ONEDNN_V3
+                 (post_op_param.name == "sum") || OUTPUT_SCALE_DCHECK ||
                  (post_op_param.name == "fuse_bn"));
         }
       }
@@ -2576,7 +2574,9 @@ class MklQuantizedConvOp
         scaled_bias_->set_data_handle(scaled_bias_buf_);
       }
       std::unique_ptr<memory> scale_mem(
-          new memory({{depth}, MklDnnType<float>(), memory::format_tag::x},
+          new memory({{static_cast<int64_t>(depth)},
+                      MklDnnType<float>(),
+                      memory::format_tag::x},
                      this->cpu_engine_, scales_.data()));
       auto reorder_desc =
           ReorderPd(this->cpu_engine_, input_bias_->get_desc(),
@@ -3200,6 +3200,7 @@ REGISTER_KERNEL_BUILDER(
 #undef GET_DATA_TYPE
 #undef SET_FUSE_ACTIVATION_FOR_RELU6
 #undef SET_MKL_LAYOUT
+#undef OUTPUT_SCALE_DCHECK
 #undef TSCALED_BIAS
 #undef SCALE
 #undef SUMMAND_SCALE_U8
