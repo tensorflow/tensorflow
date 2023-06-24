@@ -639,6 +639,7 @@ cc_library(
         ":dot_as_convolution_util",
         ":hlo_graph_dumper",
         ":hlo_pass",
+        ":pattern_matcher",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:sharding_op_util",

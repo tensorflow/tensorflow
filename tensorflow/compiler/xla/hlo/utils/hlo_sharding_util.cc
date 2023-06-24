@@ -1921,12 +1921,10 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
   return std::nullopt;
 }
 
-static std::optional<GatherScatterParallelDims>
-GetGatherScatterBatchParallelDims(const HloInstruction* indices,
-                                  absl::Span<const int64_t> slice_sizes,
-                                  int64_t index_vector_dim,
-                                  absl::Span<const int64_t> index_map,
-                                  const CallGraph& call_graph) {
+std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
+    const HloInstruction* indices, absl::Span<const int64_t> slice_sizes,
+    int64_t index_vector_dim, absl::Span<const int64_t> index_map,
+    const CallGraph& call_graph) {
   // Try to identify if there's a dimension in the indices that is monotonically
   // increasing with a Iota across a certain dimension. This would mean that the
   // access in the relative dimension indexed by this index in the operand is

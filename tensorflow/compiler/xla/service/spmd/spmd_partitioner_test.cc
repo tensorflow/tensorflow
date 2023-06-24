@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/spmd/spmd_prepare.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -76,6 +77,7 @@ class SpmdPartitioningTest : public HloTestBase {
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
+    pass.AddPass<SpmdPrepare>();
     pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options,
                                   collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
