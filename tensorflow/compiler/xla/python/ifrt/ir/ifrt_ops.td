@@ -22,18 +22,10 @@ include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.td"
+include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_interfaces.td"
 
 class Ifrt_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ifrt_Dialect, mnemonic, traits>;
-
-// Verifies op used in a FuncOp with `ifrt.function` attr.
-def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
-
-// Verifies callee is a valid symbol ref to callee_op_type.
-// Provides `callee_op_type getCalleeOp(SymbolTableCollection)`.
-// Concrete type must have a SymbolRefAttr named `callee`.
-class IfrtCallLike<string callee_op_type>
-    : ParamNativeOpTrait<"xla::ifrt::IfrtCallLikeTrait", callee_op_type>;
 
 def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let summary = "Reshards a host tensor or device array";
