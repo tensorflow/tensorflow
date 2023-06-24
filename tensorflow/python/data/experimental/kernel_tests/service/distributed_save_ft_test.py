@@ -315,6 +315,24 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
                            [worker_max_concurrent_snapshots] * num_workers)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(1000)
+    self.evaluate(distributed_save_op.distributed_save(
+        ds, self._path, cluster.dispatcher_address(), compression=None))
+
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [self._path])
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+
+    dataset = dataset_ops.Dataset.load(self._path)
+    self.assertDatasetProduces(dataset, range(1000), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
