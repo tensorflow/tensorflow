@@ -91,10 +91,13 @@ class MergeTfIfOpsPass
       }
 
       if (changed) {
-        // Run inliner pass to expose more merge opportunities among the
+        // Run optimization passes to expose more merge opportunities among the
         // then-branch functions and the else-branch functions that are now
         // respectively merged, for the next iteration.
         mlir::OpPassManager pm(module.getOperationName());
+        pm.addPass(mlir::createInlinerPass());
+        pm.addPass(mlir::createCSEPass());
+        pm.addPass(CreateDeduplicateIfResultPass());
         pm.addPass(mlir::createInlinerPass());
         pm.addPass(mlir::createCSEPass());
         if (mlir::failed(runPipeline(pm, module))) {
