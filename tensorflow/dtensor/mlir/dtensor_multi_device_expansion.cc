@@ -361,7 +361,7 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
       if (argument_number == kDeviceIDArgumentNumber) {
         for (int i = 0; i < num_devices; ++i) {
           const auto value_attr = mlir::DenseIntElementsAttr::get<int>(
-              mlir::RankedTensorType::get({0}, builder.getI32Type()), {i});
+              mlir::RankedTensorType::get({}, builder.getI32Type()), {i});
           replications.emplace_back(
               builder.create<mlir::TF::ConstOp>(arg.getLoc(), value_attr));
         }

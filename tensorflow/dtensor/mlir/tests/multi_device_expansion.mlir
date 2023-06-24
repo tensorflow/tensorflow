@@ -38,7 +38,7 @@ module attributes {
   // CHECK: %arg6: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:6"}
   // CHECK: %arg7: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:7"}
   // CHECK: tf.entry_function = {inputs = "input_0,input_1,input_2,input_3,input_4,input_5,input_6,input_7", outputs = "output_0,output_1,output_2,output_3,output_4,output_5,output_6,output_7"
-  // CHECK: %[[CST0:.*]] = "tf.Const"
+  // CHECK: %[[CST0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[CST1:.*]] = "tf.Const"
   // CHECK: %[[CST2:.*]] = "tf.Const"
   // CHECK: %[[CST3:.*]] = "tf.Const"
