@@ -54,7 +54,7 @@ class ScopeType(enum.Enum):
 class TracingOptions:
   """Configuration options for tracing."""
   # Python function to trace.
-  python_function: Callable[Any, Any] = lambda *args, **kwargs: None
+  python_function: Callable[[Any], Any] = lambda *args, **kwargs: None
 
   # Name given to the traced function.
   name: str = "function"
