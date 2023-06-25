@@ -7,6 +7,11 @@ load(
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
 
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
@@ -834,6 +839,19 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "text_literal_reader_fuzz",
+    srcs = ["text_literal_reader_fuzz.cc"],
+    deps = [
+        ":literal",
+        ":shape_util",
+        ":text_literal_reader",
+        ":types",
+        ":xla_data_proto_cc",
+        "//tensorflow/tsl/platform:env",
     ],
 )
 
