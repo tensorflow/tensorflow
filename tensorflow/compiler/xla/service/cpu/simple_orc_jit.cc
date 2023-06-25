@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/onednn_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_acl.h"
@@ -325,6 +326,10 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  registry->Register("onednn.matmul", reinterpret_cast<void*>(onednn_matmul),
+                     "Host");
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
                      "Host");
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),

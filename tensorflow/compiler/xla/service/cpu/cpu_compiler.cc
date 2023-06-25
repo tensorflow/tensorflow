@@ -124,6 +124,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/onednn_rewriter.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/convolution_call.h"
@@ -648,6 +649,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+
+  // Rewrite to custom calls with target as oneDNN library calls.
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  pipeline.AddPass<OneDnnRewriter>();
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+
   // Promote BF16 all-reduce to F32.
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
       {BF16, F32}};
