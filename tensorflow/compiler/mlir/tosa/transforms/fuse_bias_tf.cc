@@ -72,7 +72,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
   auto output_type =
-      tf_biasadd_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_biasadd_op.getResult().getType());
 
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output not a ranked tensor");
