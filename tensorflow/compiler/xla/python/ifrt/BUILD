@@ -90,6 +90,7 @@ xla_cc_test(
     srcs = ["array_test.cc"],
     deps = [
         ":ifrt",
+        ":mock",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -248,5 +249,23 @@ xla_cc_test(
     deps = [
         ":no_impl_test_main",
         ":tuple_impl_test_lib",
+    ],
+)
+
+cc_library(
+    name = "mock",
+    testonly = True,
+    srcs = ["mock.cc"],
+    hdrs = ["mock.h"],
+    deps = [
+        ":ifrt",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/pjrt:pjrt_device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:ref_count",
     ],
 )
