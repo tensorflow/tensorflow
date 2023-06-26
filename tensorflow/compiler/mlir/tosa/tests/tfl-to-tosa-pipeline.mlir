@@ -1063,7 +1063,7 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_slice_minus1_size
-// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = array<i64: 4, 13, 1>, start = array<i64: 6, 8, 0>}
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 4, 13, 1>, start = array<i64: 6, 8, 0>}>
 func.func @test_slice_minus1_size(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[6, 8, 0]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[4, -1, 1]> : tensor<3xi32>
