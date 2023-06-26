@@ -487,8 +487,7 @@ class DTensorDevice {
 
   // Executes a multi-device function.
   void ExecuteMultiDeviceOperation(
-      TFE_Context* context,
-      const DTensorOperationLoweringContext& lowering_context,
+      TFE_Context* context, const ExecutionFunctions* execution_functions,
       const TFE_OpAttrs* attributes, const TranslatedFunction& function,
       const std::vector<TensorWithLayoutTf*>& inputs,
       std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
@@ -1865,8 +1864,7 @@ void DTensorDevice::ParallelExecuteRegularOperation(
 }
 
 void DTensorDevice::ExecuteMultiDeviceOperation(
-    TFE_Context* context,
-    const DTensorDevice::DTensorOperationLoweringContext& lowering_context,
+    TFE_Context* context, const ExecutionFunctions* execution_functions,
     const TFE_OpAttrs* attributes, const TranslatedFunction& function,
     const std::vector<TensorWithLayoutTf*>& inputs,
     std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
@@ -1879,6 +1877,7 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
 
   int num_outputs = function.local_output_shapes.size();
   int num_output_layouts = function.output_layouts.size();
+  const auto& global_output_shapes = execution_functions->global_output_shapes;
 
   std::vector<TensorHandlePtr> eager_outputs(num_outputs);
   ExecuteSingleDeviceOperation(
@@ -1888,8 +1887,7 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
 
   int output_offset = 0;
   for (int i = 0; i < num_output_layouts; i++) {
-    const auto& dim_sizes =
-        lowering_context.global_output_shapes[i].dim_sizes();
+    const auto& dim_sizes = global_output_shapes[i].dim_sizes();
     std::vector<int64_t> output_shape =
         std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
     const Layout& output_layout = function.output_layouts[i];
@@ -2306,7 +2304,7 @@ void DTensorDevice::ExecuteRegularOperation(
     VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
 
     if (multi_device_mode) {
-      ExecuteMultiDeviceOperation(context, lowering_context, attributes,
+      ExecuteMultiDeviceOperation(context, execution_functions, attributes,
                                   function, inputs_tf, typed_outputs, status);
     } else if (mesh.IsSingleDevice()) {
       ExecuteEagerOperation(context, attributes, function, inputs_tf,
