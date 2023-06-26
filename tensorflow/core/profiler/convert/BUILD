@@ -599,6 +599,7 @@ cc_library(
         ":op_stats_to_pod_viewer",
         ":op_stats_to_tf_stats",
         ":preprocess_single_host_xplane",
+        ":process_megascale_dcn",
         ":repository",
         ":tool_options",
         ":xplane_to_memory_profile",
@@ -910,6 +911,7 @@ cc_library(
     name = "dcn_utils",
     srcs = ["dcn_utils.cc"],
     hdrs = ["dcn_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_visitor",
@@ -933,6 +935,7 @@ cc_library(
     name = "dcn_analysis",
     srcs = ["dcn_analysis.cc"],
     hdrs = ["dcn_analysis.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":dcn_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
@@ -941,6 +944,19 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "process_megascale_dcn",
+    srcs = ["process_megascale_dcn.cc"],
+    hdrs = ["process_megascale_dcn.h"],
+    deps = [
+        ":dcn_analysis",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
     ],
 )
 
