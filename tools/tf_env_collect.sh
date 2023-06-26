@@ -20,7 +20,7 @@ die() {
   # Print a message and exit with code 1.
   #
   # Usage: die <error_message>
-  #   e.g., die "Something bad happened."
+  #   e.g., die "Something bad happened"
 
   echo $@
   exit 1
@@ -33,7 +33,7 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
 
 {
 echo
-echo '== check python ==================================================='
+echo '== check python =='
 } >> ${OUTPUT_FILE}
 
 cat <<EOF > /tmp/check_python.py
