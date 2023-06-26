@@ -372,6 +372,9 @@ tf_cc_binary(
         "odml_to_stablehlo.cc",
     ],
     copts = ["-O3"],
+    deprecation = "odml_to_stablehlo is being deprecated, please use TFlite converter with flag: " +
+                  "converter.target_spec.supported_ops = " +
+                  " [tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS]",
     deps = [
         ":check_accepted_ops_pass",
         ":op_stat_pass",
