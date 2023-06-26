@@ -17,7 +17,7 @@ If we have enough GPUs, we can replay these HLOs like this:
 
 ```
 bazel run -c opt --config=cuda --dynamic_mode=off \
-  //tensorflow/compiler/xla/tools/multihost_hlo_runner:hlo_runner_main \
+  //xla/tools/multihost_hlo_runner:hlo_runner_main \
   -- --device_type=gpu --use_spmd_partitioning=true \
   --num_partitions=2 --num_replicas=1 \
   --hlo_file=my-hlo.txt
