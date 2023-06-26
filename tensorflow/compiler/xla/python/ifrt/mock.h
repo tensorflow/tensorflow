@@ -132,17 +132,19 @@ class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
 
 class MockDevice final : public Device {
  public:
-  MOCK_METHOD(PjRtClient*, client, (), (const, final));
+  MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
-  MOCK_METHOD(const PjRtDeviceDescription&, description, (), (const, final));
+  MOCK_METHOD(const xla::PjRtDeviceDescription&, description, (),
+              (const, final));
   MOCK_METHOD(int, id, (), (const, final));
   MOCK_METHOD(int, process_index, (), (const, final));
   MOCK_METHOD(int, local_hardware_id, (), (const, final));
   MOCK_METHOD(absl::string_view, device_kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
-  MOCK_METHOD((const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&),
-              Attributes, (), (const, final));
+  MOCK_METHOD(
+      (const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>&),
+      Attributes, (), (const, final));
   MOCK_METHOD(std::unique_ptr<ScopedAsyncTrackingEvent>,
               CreateAsyncTrackingEvent, (absl::string_view description),
               (const, final));
@@ -151,7 +153,7 @@ class MockDevice final : public Device {
               (final));
   MOCK_METHOD(StatusOr<tsl::AllocatorStats>, GetAllocatorStats, (),
               (const, final));
-  MOCK_METHOD(absl::Span<PjRtMemorySpace* const>, memory_spaces, (),
+  MOCK_METHOD(absl::Span<xla::PjRtMemorySpace* const>, memory_spaces, (),
               (const, final));
 };
 
