@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
-#include "tensorflow/core/tfrt/utils/tfrt_runtime.h"
 
 namespace tensorflow::tfrt_stub {
 
@@ -30,8 +30,7 @@ tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
     const std::unordered_set<std::string>& tags) {
   return SavedModelImpl::LoadSavedModel(
       tensorflow::tfrt_stub::SavedModel::Options(
-          tensorflow::tfrt_stub::TfrtRuntime::GetGlobalTfrtRuntime()
-              .GetRuntime()),
+          tensorflow::tfrt_stub::GetGlobalRuntime()),
       saved_model_dir, tags);
 }
 

@@ -46,7 +46,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
-        "//tensorflow/core/tfrt/utils:tfrt_runtime",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",

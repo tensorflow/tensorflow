@@ -25,10 +25,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tfrt {
-class CoreRuntime;
 }  // namespace tfrt
 
 namespace tensorflow {
@@ -99,7 +99,6 @@ class Runtime {
       std::unique_ptr<WorkQueueInterface> work_queue);
 
   ~Runtime();
-
   Runtime(Runtime&&) = default;
   Runtime& operator=(Runtime&&) = default;
 
@@ -190,9 +189,15 @@ class Runtime {
       runtime_resource_fns_;
 };
 
+// Get a singleton instance of tfrt_stub::Runtime. Returns nullptr until
+// SetGlobalRuntime has been called.
+// Not thread safe.
 Runtime* GetGlobalRuntime();
 
-void SetGlobalRuntime(Runtime* runtime);
+// Instantiates the singleton instance of tfrt_stub::Runtime by transferring
+// an instance of tfrt_stub::Runtime.
+// Not thread safe.
+void SetGlobalRuntime(std::unique_ptr<Runtime> runtime);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

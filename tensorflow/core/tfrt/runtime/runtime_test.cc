@@ -12,37 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_UTILS_TFRT_RUNTIME_H_
-#define TENSORFLOW_CORE_TFRT_UTILS_TFRT_RUNTIME_H_
-
-#include <memory>
-
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+
+#include <gtest/gtest.h>
 
 namespace tensorflow {
 namespace tfrt_stub {
+namespace {
 
-// A class to hold global TFRT core runtime. The class is thread-safe.
-// TODO(b/281750702) Unify this class with `tensorflow::tfrt_stub::Runtime`.
-class TfrtRuntime {
- public:
-  // Set Global TFRT Runtime.
-  void SetRuntime(std::unique_ptr<Runtime> runtime);
+TEST(RuntimeTest, GlobalRuntimeWorks) {
+  // Before SetGlobalRuntime, it is null.
+  EXPECT_EQ(GetGlobalRuntime(), nullptr);
+  // After SetGlobalRuntime, it is not null.
+  SetGlobalRuntime(Runtime::Create(/*num_inter_op_threads=*/4));
+  EXPECT_NE(GetGlobalRuntime(), nullptr);
+  // It is only allocated once.
+  EXPECT_EQ(GetGlobalRuntime(), GetGlobalRuntime());
+}
 
-  // Get Global TFRT Runtime.
-  Runtime* GetRuntime();
-
-  // Get a global instance of the TfrtRuntime.
-  static TfrtRuntime& GetGlobalTfrtRuntime();
-
- private:
-  absl::Mutex m_;
-  // TFRT Runtime.
-  std::unique_ptr<Runtime> runtime_ ABSL_GUARDED_BY(m_);
-};
-
+}  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_TFRT_UTILS_TFRT_RUNTIME_H_
