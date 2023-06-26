@@ -693,20 +693,19 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
   return false;
 }
 
-bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
+tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
+                              BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetGridLimits(&x, &y, &z, device));
 
   block_dim_limit->x = x;
   block_dim_limit->y = y;
   block_dim_limit->z = z;
-  return true;
+  return tsl::OkStatus();
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }
@@ -866,7 +865,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(device, &block_dim_limit);
+    TF_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
     builder.set_block_dim_limit(block_dim_limit);
   }
 
