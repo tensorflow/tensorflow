@@ -16,24 +16,37 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PRIORITY_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PRIORITY_FUSION_H_
 
+#include <stdint.h>
+
 #include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 class GpuPriorityFusion : public InstructionFusion {
  public:
-  explicit GpuPriorityFusion(const GpuDeviceInfo& d)
-      : InstructionFusion(GpuPriorityFusion::IsExpensive), device_info_(d) {}
+  explicit GpuPriorityFusion(
+      const GpuDeviceInfo& d,
+      const GpuHloCostAnalysis::Options& cost_analysis_options)
+      : InstructionFusion(GpuPriorityFusion::IsExpensive),
+        device_info_(d),
+        cost_analysis_options_(cost_analysis_options) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -69,6 +82,9 @@ class GpuPriorityFusion : public InstructionFusion {
       fusion_node_evaluations_;
 
   const GpuDeviceInfo device_info_;
+
+  // Options for priority queue cost analysis.
+  GpuHloCostAnalysis::Options cost_analysis_options_;
 };
 
 }  // namespace gpu

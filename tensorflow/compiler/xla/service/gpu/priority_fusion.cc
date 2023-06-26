@@ -24,17 +24,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/meta/type_traits.h"
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -53,14 +61,22 @@ bool ElementIsF32OrF16(const Shape& shape) {
 // max-benefit producer to fuse, and update the estimated benefits of the fused
 // nodes and their operands.
 class GpuPriorityFusionQueue : public FusionQueue {
-  using Priority = std::pair<double, int64_t>;
+  using Priority = int64_t;
   using CanFuseCallback = std::function<bool(
       HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
 
  public:
-  GpuPriorityFusionQueue(HloComputation* computation,
-                         const CanFuseCallback& can_fuse)
-      : can_fuse_(can_fuse) {
+  GpuPriorityFusionQueue(
+      HloComputation* computation, const GpuDeviceInfo& d,
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
+      : computation_(computation),
+        gpu_device_info_(d),
+        cost_analysis_(cost_analysis_options),
+        can_fuse_(can_fuse) {
+    VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
+    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+
     // Initializes the priority queue.
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kParameter ||
@@ -126,8 +142,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Returns the priority of the producer based on its current operands and
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
-    // TODO(shyshkov): Use cost model.
-    return {1., 1};
+    std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
+
+    GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
+        producer, &cost_analysis_, gpu_device_info_, fusible_users,
+        // producer, &cost_analysis_, gpu_device_info_, producer->users(),
+        /*multi_output=*/false);
+
+    return absl::ToInt64Nanoseconds(t.time_unfused - t.time_fused);
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
@@ -150,9 +172,18 @@ class GpuPriorityFusionQueue : public FusionQueue {
     return fusible_users;
   }
 
+  // Store computation for cost analysis.
+  HloComputation* computation_;
+
+  // Data that describes the execution target.
+  const GpuDeviceInfo gpu_device_info_;
+
+  // Cost model that defines priorities in the queue.
+  GpuHloCostAnalysis cost_analysis_;
+
   // The priority queue of producers, implemented as an ordered map, where a
-  // key is a pair: the first element is the priority, the second one is the
-  // unique ID of the instruction to break ties.
+  // key is a pair: the first element is the priority and the second element is
+  // the unique ID of the instruction to break ties.
   using PriorityQueue = std::map<std::pair<Priority, int>, HloInstruction*>;
   PriorityQueue producer_priority_queue_;
 
@@ -291,7 +322,8 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, [this](HloInstruction* consumer, int64_t operand_index) {
+      computation, device_info_, cost_analysis_options_,
+      [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));
 }
