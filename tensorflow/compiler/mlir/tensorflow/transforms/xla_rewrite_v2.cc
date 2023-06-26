@@ -289,14 +289,24 @@ Operation* BuildCompileOp(tf_device::ClusterFuncOp cluster_func,
                                     compilation_device);
 }
 
+mlir::LogicalResult GetCompilationDeviceFromParallelExecuteOp(
+    tf_device::ParallelExecuteOp& old_parallel_execute,
+    std::string& compilation_device) {
+  auto& first_block = old_parallel_execute.GetRegionBlockWithIndex(0);
+  if (isa<tf_device::LaunchOp>(first_block.front())) {
+    auto device_attr =
+        first_block.front().getAttrOfType<StringAttr>(kDeviceAttr);
+    if (device_attr) {
+      compilation_device = device_attr.str();
+    } else {
+      return failure();
+    }
+  }
+  return success();
+}
+
 mlir::LogicalResult Rewrite(tf_device::ClusterFuncOp cluster_func,
                             SymbolTable& symtab, OpBuilder& builder) {
-  // Fetch compilation device
-  std::string compilation_device;
-
-  if (failed(GetClusterFuncDevice(cluster_func, compilation_device)))
-    return failure();
-
   // Fetch the ParallelExecute parent of `cluster_func`, or create it if
   // it does not exist.
   tf_device::ParallelExecuteOp old_parallel_execute =
@@ -306,9 +316,19 @@ mlir::LogicalResult Rewrite(tf_device::ClusterFuncOp cluster_func,
     cluster_func->emitError() << "The ParallelExecute ancestor of a "
                                  "ClusterFunc must be its direct parent.";
   }
-  if (!old_parallel_execute)
+
+  // Fetch compilation device
+  std::string compilation_device;
+  if (!old_parallel_execute) {
+    if (failed(GetClusterFuncDevice(cluster_func, compilation_device)))
+      return failure();
     old_parallel_execute =
         mlir::TF::BuildParallelExecuteOp(cluster_func, &builder);
+  } else {
+    if (failed(GetCompilationDeviceFromParallelExecuteOp(old_parallel_execute,
+                                                         compilation_device)))
+      return failure();
+  }
 
   // Build compile op _XlaCompile
   builder.setInsertionPoint(old_parallel_execute);
@@ -318,8 +338,11 @@ mlir::LogicalResult Rewrite(tf_device::ClusterFuncOp cluster_func,
     return failure();
   }
 
-  // TODO(b/4789094): Replace program key placeholder ops that are required
-  // by XlaRecvAtHost and XlaSendFromHost ops added in earlier pass.
+  old_parallel_execute.walk(
+      [&](TF::_XlaCompileMlirPlaceholderProgramKeyOp key_op) {
+        key_op.replaceAllUsesWith(compile_op->getResult(0));
+        key_op.erase();
+      });
 
   // Build new parallel execute op
   tf_device::ParallelExecuteOp new_parallel_execute;
