@@ -81,28 +81,18 @@ mlir::LogicalResult VerifySameGlobalShape(mlir::Operation* op,
   return mlir::success();
 }
 
-// Verifies that
-// 1. Elements in `devices` are non-negative and unique.
-// 2. Each of `inputs` and `outputs` is placed on a subset of `devices`.
+// Verifies that each of `inputs` and `outputs` is placed on a subset of
+// `devices`.
 mlir::LogicalResult VerifyDevicePlacement(
     mlir::Operation* op, llvm::ArrayRef<int> devices,
     llvm::ArrayRef<IfrtArrayType> inputs,
     llvm::ArrayRef<IfrtArrayType> outputs) {
-  llvm::SmallSet<int, 4> attr_devices;
-  for (const int device : devices) {
-    if (device < 0) {
-      return op->emitOpError()
-             << "has negative device id " << device << " in `devices` attr";
-    }
-    if (!attr_devices.insert(device).second) {
-      return op->emitOpError()
-             << "has duplicate device id " << device << " in `devices` attr";
-    }
-  }
+  llvm::SmallSet<int, 4> device_set;
+  device_set.insert(devices.begin(), devices.end());
 
   for (const IfrtArrayType input : inputs) {
     for (const int input_device : input.getDevices()) {
-      if (!attr_devices.count(input_device)) {
+      if (!device_set.count(input_device)) {
         return op->emitOpError()
                << "requires all inputs placed on `devices` attr. The following "
                   "input is placed on device "
@@ -113,7 +103,7 @@ mlir::LogicalResult VerifyDevicePlacement(
 
   for (const IfrtArrayType output : outputs) {
     for (const int output_device : output.getDevices()) {
-      if (!attr_devices.count(output_device)) {
+      if (!device_set.count(output_device)) {
         return op->emitOpError()
                << "requires all outputs placed on `devices` attr. The "
                   "following output is placed on device "

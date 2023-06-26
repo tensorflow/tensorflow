@@ -144,6 +144,8 @@ mlir::LogicalResult IfrtArrayType::verify(
   return mlir::success();
 }
 
+IfrtDevicesAttr::operator llvm::ArrayRef<int>() const { return getIds(); }
+
 mlir::LogicalResult IfrtDevicesAttr::verify(
     llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
     llvm::ArrayRef<int> ids) {

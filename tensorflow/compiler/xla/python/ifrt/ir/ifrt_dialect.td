@@ -42,7 +42,15 @@ def Ifrt_DevicesAttr : AttrDef<Ifrt_Dialect, "IfrtDevices"> {
   let parameters = (ins ArrayRefParameter<"int">:$ids);
   let assemblyFormat = "`[` $ids `]`";
 
+  let returnType = "::llvm::ArrayRef<int>";
+  let convertFromStorage = "$_self";
+  let constBuilderCall = "$_builder.getAttr<::xla::ifrt::IfrtDevicesAttr>($0)";
+
   let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    operator ::llvm::ArrayRef<int>() const;
+  }];
 }
 
 def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {

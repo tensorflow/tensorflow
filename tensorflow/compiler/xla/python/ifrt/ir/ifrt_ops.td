@@ -126,14 +126,15 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     Variadic<Ifrt_ControlType>:$control_inputs,
 
     SymbolRefAttr:$callee,
-    DenseI32ArrayAttr:$devices,
+    Ifrt_DevicesAttr:$devices,
     DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs)
+    `on` `devices` $devices attr-dict `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
@@ -170,7 +171,8 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
@@ -186,18 +188,20 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
   let arguments = (ins
     SymbolNameAttr: $sym_name,
     TypeAttrOf<FunctionType>: $function_type,
-    DenseI32ArrayAttr:$devices
+    Ifrt_DevicesAttr:$devices
   );
 
-  let assemblyFormat = "$sym_name attr-dict `:` $function_type";
+  let assemblyFormat = [{
+    $sym_name `on` `devices` $devices attr-dict `:` $function_type
+  }];
   let hasVerifier = 1;
 }
 
 def Ifrt_AfterOp : Ifrt_Op<"After", [NestedInIfrtFunc]> {
   let summary = "Get a control handle for array materialization.";
   let description = [{
-    When depending on the `control_output`, the op will be not be scheduled until
-    all `inputs` are materialized. For example, this could mean the data
+    When depending on the `control_output`, the op will be not be scheduled
+    until all `inputs` are materialized. For example, this could mean the data
     transfer is completed from a `Reshard` op.
 
     Moreover, this op provides fine-grained control dependency on `CallOp`'s
