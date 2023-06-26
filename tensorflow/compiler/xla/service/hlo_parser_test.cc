@@ -3485,7 +3485,7 @@ TEST_F(HloParserTest, ParseTrivialIotaShardingPartialReplication) {
   const std::string original = "{devices=[2,2]<=[4] last_tile_dim_replicate}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
-  TileAssignment tiling_last_dim_replicated({2, 2});
+  TileAssignment tiling_last_dim_replicated((absl::Span<const int64_t>){2, 2});
   EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
             original);
 }
