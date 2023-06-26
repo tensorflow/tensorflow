@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -57,10 +58,10 @@ class SpmdExpandableInterfaceVerificationPass
     mlir::SymbolTableCollection symbol_table;
 
     auto result = module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-      mlir::DenseI32ArrayAttr device_attr = call_op.getDevicesAttr();
-      DCHECK_GT(device_attr.size(), 0);
+      llvm::ArrayRef<int> devices = call_op.getDevices();
+      DCHECK_GT(devices.size(), 0);
       // CallOp with only 1 device need no SPMD expansion, so skip checking.
-      if (device_attr.size() == 1) {
+      if (devices.size() == 1) {
         return mlir::WalkResult::advance();
       }
 

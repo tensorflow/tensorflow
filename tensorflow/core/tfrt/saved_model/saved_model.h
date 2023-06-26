@@ -277,7 +277,7 @@ class SavedModelImpl final : public SavedModel {
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
-      mlir::MLIRContext* context, const std::string& name,
+      mlir::MLIRContext* context,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);

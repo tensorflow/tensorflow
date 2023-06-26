@@ -223,12 +223,12 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
 
       if (reader_) {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kOffset), reader_->TellOffset()));
+            writer->WriteScalar(prefix(), kOffset, reader_->TellOffset()));
       }
       return OkStatus();
     }
@@ -238,12 +238,12 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       ResetStreamsLocked();
       int64_t current_file_index;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
-                                            &current_file_index));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kCurrentFileIndex, &current_file_index));
       current_file_index_ = size_t(current_file_index);
-      if (reader->Contains(full_name(kOffset))) {
+      if (reader->Contains(prefix(), kOffset)) {
         int64_t offset;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kOffset), &offset));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kOffset, &offset));
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         TF_RETURN_IF_ERROR(reader_->SeekOffset(offset));
       }

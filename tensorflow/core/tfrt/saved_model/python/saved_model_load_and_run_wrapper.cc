@@ -18,7 +18,6 @@ limitations under the License.
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/saved_model/python/saved_model_load_and_run.h"
-#include "tensorflow/core/tfrt/utils/tfrt_runtime.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;

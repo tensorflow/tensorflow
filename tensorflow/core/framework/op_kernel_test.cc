@@ -426,6 +426,31 @@ TEST_F(OpKernelTest, InputDtype) {
   EXPECT_EQ(dtype, DT_INT32);
 }
 
+TEST_F(OpKernelTest, InputOnly) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  DummyDevice device(env);
+  params.device = &device;
+  Status status;
+  std::unique_ptr<OpKernel> op(
+      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
+                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
+                     TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  Tensor a(DT_FLOAT, TensorShape({}));
+  gtl::InlinedVector<TensorValue, 2> inputs{TensorValue(&a)};
+  params.inputs = inputs;
+  auto ctx = std::make_unique<OpKernelContext>(&params);
+
+  ASSERT_TRUE(ctx->get_input(0).ok());
+  EXPECT_FALSE(ctx->get_input(1).ok());
+  EXPECT_EQ(ctx->get_input(1).status(),
+            absl::InvalidArgumentError(
+                "Given index was 1, but index of input must be greater than 0, "
+                "less than the number of inputs (1), and not a ref."));
+}
+
 TEST_F(OpKernelTest, RefInputs) {
   Env* env = Env::Default();
   OpKernelContext::Params params;

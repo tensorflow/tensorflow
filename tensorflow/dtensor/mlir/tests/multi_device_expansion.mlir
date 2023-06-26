@@ -38,7 +38,7 @@ module attributes {
   // CHECK: %arg6: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:6"}
   // CHECK: %arg7: tensor<8xi32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:7"}
   // CHECK: tf.entry_function = {inputs = "input_0,input_1,input_2,input_3,input_4,input_5,input_6,input_7", outputs = "output_0,output_1,output_2,output_3,output_4,output_5,output_6,output_7"
-  // CHECK: %[[CST0:.*]] = "tf.Const"
+  // CHECK: %[[CST0:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[CST1:.*]] = "tf.Const"
   // CHECK: %[[CST2:.*]] = "tf.Const"
   // CHECK: %[[CST3:.*]] = "tf.Const"
@@ -108,6 +108,7 @@ module attributes {dtensor.enable_multi_device_mode = true} {
 // CHECK-LABEL: module @test_tpu_no_inputs
 // CHECK-LABEL: func.func private @_multi_device_func_
 // CHECK: %[[RES:.*]] = "tf_device.cluster_func"()
+// CHECK: func = @_tpu_func
 // CHECK: num_cores_per_replica = 1 : i64
 // CHECK: num_replicas = 2 : i64
 // CHECK: %[[OUT:.*]]:2 = "tf.TPUPartitionedOutputV2"(%[[RES]])
@@ -121,7 +122,7 @@ module @test_tpu_no_inputs attributes {dtensor.enable_multi_device_mode = true} 
     return %0 : tensor<4xf32>
   }
   func.func private @_cpu_func() -> tensor<4xf32> {
-    %0 = "tf_device.cluster_func"() {_tpu_replicate = "|batch=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", device_assignment = [], func = @_func_6424807043089489694_13177756294888803478_7202481784160596067, num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false} : () -> tensor<4xf32>
+    %0 = "tf_device.cluster_func"() {_tpu_replicate = "|batch=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", device_assignment = [], func = @_tpu_func, num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false} : () -> tensor<4xf32>
     return %0 : tensor<4xf32>
   }
   func.func private @_tpu_func() -> tensor<4xf32> {
@@ -140,6 +141,7 @@ module @test_tpu_no_inputs attributes {dtensor.enable_multi_device_mode = true} 
 // CHECK-SAME: _XlaSharding = ""
 // CHECK-SAME: partition_dims = []
 // CHECK: %[[RES:.*]] = "tf_device.cluster_func"(%[[IN]])
+// CHECK: func = @_tpu_func
 // CHECK: num_cores_per_replica = 1 : i64
 // CHECK: num_replicas = 2 : i64
 // CHECK: %[[OUT:.*]]:2 = "tf.TPUPartitionedOutputV2"(%[[RES]])
@@ -153,7 +155,7 @@ module @test_tpu_with_inputs attributes {dtensor.enable_multi_device_mode = true
     return %0 : tensor<4xf32>
   }
   func.func private @_cpu_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "|batch=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", device_assignment = [], func = @_func_6424807043089489694_13177756294888803478_7202481784160596067, num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false} : (tensor<4xf32>) -> tensor<4xf32>
+    %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "|batch=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", device_assignment = [], func = @_tpu_func, num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = "", use_spmd_for_xla_partitioning = false} : (tensor<4xf32>) -> tensor<4xf32>
     return %0 : tensor<4xf32>
   }
   func.func private @_tpu_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {

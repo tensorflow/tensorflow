@@ -390,6 +390,7 @@ cc_library(
     srcs = [
         "transforms/cross_device_transfer.cc",
         "transforms/deduplicate_batch_function.cc",
+        "transforms/deduplicate_if_result_pass.cc",
         "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
         "transforms/lower_saved_model.cc",
@@ -563,7 +564,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
     ],
 )
 

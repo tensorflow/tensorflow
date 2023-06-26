@@ -934,6 +934,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
   bool multi_device_mode = EnableMultiDeviceMode();
   ExecutionFunctions execution_functions;
   execution_functions.function_list = std::vector<TranslatedFunction>();
+  execution_functions.global_output_shapes = global_output_shapes;
   for (Node* node : graph.nodes()) {
     if (node->op_def().name() != "StatefulPartitionedCall") continue;
     // Extract mesh to execute the function.

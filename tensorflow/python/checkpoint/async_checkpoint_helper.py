@@ -17,6 +17,7 @@
 import atexit
 import collections
 import copy
+import queue
 import threading
 import time
 import weakref
@@ -124,11 +125,15 @@ class AsyncCheckpointHelper:
     self._save_file_prefix = None
     self._use_checkpoint_save = False
     self._async_save_thread = None
-    self._async_save_thread_shutdown = False
-    # Semaphores for writing/reading the cpu-copied variables (self._var_pairs)
-    # TODO(chienchunh): Consider Queue/Condition instead of Semaphore.
-    self._writer_sem = threading.Semaphore(1)
-    self._reader_sem = threading.Semaphore(0)
+    # Concurrent queue that coordinates the events for writing/reading the
+    # cpu-copied variables. A 'True' in the queue triggers the async thread to
+    # perform saving; a 'False' breaks the while loop so that the async thread
+    # exits; no other values will be added to the queue.
+    # Maxsize is set to 1 only to ensure the exit procedure. We could have used
+    # queue.join() in _join_async_save_thread(), but queue.join() does not have
+    # a timeout argument. Hence we use queue.put(timeout=300), in case the last
+    # checkpoint takes forever. To achieve that, maxsize needs to be 1.
+    self._queue = queue.Queue(maxsize=1)
 
     # Register to join the async save thread upon exit.
     atexit.register(self._join_async_save_thread)
@@ -271,39 +276,36 @@ class AsyncCheckpointHelper:
       self._async_error = None
       logging.error("Propagating the most recent error from the async thread "
                     "before joining: %s", str(e))
-      # This allows the registered at-exit method '_join_async_save_thread' to
-      # acquire the semaphore instead of timing out.
-      self._writer_sem.release()
       raise e
 
   def _join_async_save_thread(self):
     """Join the async save thread.
 
     The steps for terminating the async save thread:
-    1). Wait until the last async save event is done.
-    2). Set _async_save_thread_shutdown flag to false to indicate termination.
-    3). Trigger the async save thread to check and fail the while-predicate.
-    4). Join the async save thread. (The thread may finish before joining.)
+    1). Put will succeed when the last async save event is done. Putting a false
+        triggers the async save thread's while loop to end. We use put instead
+        of sync because sync does not have a timeout argument.
+    2). Join the async save thread. (The thread may finish before joining.)
     """
-    # Expose the async thread error (if any) before joining the thread.
-    self._check_async_thread_error()
-
-    if self._writer_sem.acquire(timeout=300):  # Step-1.
-      self._async_save_thread_shutdown = True  # Step-2.
-      self._reader_sem.release()  # Step-3.
+    try:
+      self._queue.put(False, timeout=300)  # Step-1.
       logging.info("Joining the async save thread.")
       if self._async_save_thread is not None:
-        self._async_save_thread.join()  # Step-4.
-    else:
+        self._async_save_thread.join()  # Step-2.
+    except queue.Full:
       logging.error("Timeout waiting for the async save thread; terminating the"
                     " thread instead. The last checkpoint may be incomeplete.")
+    finally:
+      self._check_async_thread_error()
 
   def _async_save(self):
     """The thread function for the async checkpoint save."""
     with context.executor_scope(
         executor.new_executor(
             enable_async=False, enable_streaming_enqueue=False)):
-      while self._reader_sem.acquire() and not self._async_save_thread_shutdown:
+      # The main thread inserts: a True to the queue when the user calls save,
+      # triggering async save; and a False when we exit the Checkpoint instance.
+      while self._queue.get():
         logging.info("Starting async checkpoint save on the device: %s",
                      self._default_device)
 
@@ -330,7 +332,7 @@ class AsyncCheckpointHelper:
         except Exception as e:   # # pylint: disable=broad-except
           self._async_error = e
         finally:
-          self._writer_sem.release()
+          self._queue.task_done()
 
         async_save_end_time = time.time()
         metrics.AddAsyncCheckpointWriteDuration(
@@ -476,9 +478,10 @@ class AsyncCheckpointHelper:
 
     write_start_time = time.time()
 
-    # Copy the variable values to the host CPU.
-    if self._writer_sem.acquire():
-      self._copy_to_cpu()
+    # First wait for async thread to finish the previous save, then copy the
+    # variable values to the host CPU.
+    self._queue.join()
+    self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
     # This step should come after the sem acquision step in the above, so that
@@ -499,7 +502,7 @@ class AsyncCheckpointHelper:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
     self._async_write_done_callback = write_done_callback
-    self._reader_sem.release()
+    self._queue.put(True)  # Trigger save in async thread
 
     write_end_time = time.time()
     metrics.AddCheckpointWriteDuration(
@@ -531,9 +534,10 @@ class AsyncCheckpointHelper:
 
     save_start_time = time.time()
 
-    # Copy the variable values to the host CPU.
-    if self._writer_sem.acquire():
-      self._copy_to_cpu()
+    # First wait for async thread to finish the previous save, then copy the
+    # variable values to the host CPU.
+    self._queue.join()
+    self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
     # This step should come after the sem acquision step in the above, so that
@@ -543,7 +547,7 @@ class AsyncCheckpointHelper:
 
     # Retrieve the save counter from the underlying checkpoint object to
     # re-construct the full path of the checkpoint file.
-    # This step has to happen before triggerting the underlying checkpoint;
+    # This step has to happen before triggering the underlying checkpoint;
     # otherwise, the save_counter value may or may not have been updated.
     save_counter = self.checkpointer().save_counter.numpy() + 1
     full_path = "{}-{}".format(save_path, save_counter)
@@ -560,7 +564,7 @@ class AsyncCheckpointHelper:
     if self._checkpoint_options:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
-    self._reader_sem.release()
+    self._queue.put(True)  # Trigger save in async thread
 
     save_end_time = time.time()
     metrics.AddCheckpointWriteDuration(
@@ -606,19 +610,19 @@ class AsyncCheckpointHelper:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
     # Wait for any ongoing checkpoint event to finish.
-    with self._writer_sem:
-      # Restore the values of the cpu-copied variables.
-      status = self.checkpointer().restore(save_path, self._checkpoint_options)
+    self._queue.join()
+    # Restore the values of the cpu-copied variables.
+    status = self.checkpointer().restore(save_path, self._checkpoint_options)
 
-      # Copy the values back to the original variables.
-      # This is only executed if the copies of the variables have been created,
-      # i.e., object_map is created.
-      if self._initialized:
-        self._copy_from_cpu()
+    # Copy the values back to the original variables.
+    # This is only executed if the copies of the variables have been created,
+    # i.e., object_map is created.
+    if self._initialized:
+      self._copy_from_cpu()
 
-      return status
+    return status
 
   def sync(self):
     """Sync on any ongoing save or restore events."""
-    with self._writer_sem:
-      logging.info("Sync on ongoing save/restore.")
+    self._queue.join()
+    logging.info("Sync on ongoing save/restore.")

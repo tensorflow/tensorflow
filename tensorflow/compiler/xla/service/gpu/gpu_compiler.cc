@@ -121,6 +121,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/priority_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
@@ -741,9 +742,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*debug_only=*/true);
 
     if (debug_options.xla_gpu_enable_priority_fusion()) {
-      fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
-                                           gpu_device_info,
-                                           /*priority_fusion=*/true);
+      GpuHloCostAnalysis::Options cost_analysis_options{
+          ShapeSizeBytesFunction(),
+          /*per_second_rates=*/{},
+          /*count_multiple_input_accesses=*/true};
+      fusion.AddPass<GpuPriorityFusion>(gpu_device_info, cost_analysis_options);
     } else {
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                            gpu_device_info);
@@ -981,7 +984,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyBroadcastDimensionsOrder()
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
-
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.

@@ -485,7 +485,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
-         const absl::flat_hash_map<std::string, PjRtValueType>& options)
+         const absl::flat_hash_map<std::string, PjRtValueType>& options,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
 #ifdef XLA_PYTHON_ENABLE_TPU
@@ -498,13 +499,28 @@ PYBIND11_MODULE(xla_extension, m) {
         }
 #endif
 #endif  // XLA_PYTHON_ENABLE_TPU
-        std::unique_ptr<PjRtClient> c_api_client =
-            xla::ValueOrThrow(GetCApiClient(platform_name, options));
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        if (distributed_client != nullptr) {
+          kv_get = [distributed_client, platform_name](const std::string& k,
+                                                       absl::Duration timeout) {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(platform_name, ":", k), timeout);
+          };
+          kv_put = [distributed_client, platform_name](const std::string& k,
+                                                       const std::string& v) {
+            return distributed_client->KeyValueSet(
+                absl::StrCat(platform_name, ":", k), v);
+          };
+        }
+        std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
+            GetCApiClient(platform_name, options, kv_get, kv_put));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(c_api_client)));
       },
       py::arg("platform_name"),
-      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>());
+      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
+      py::arg("distributed_client") = nullptr);
   // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",

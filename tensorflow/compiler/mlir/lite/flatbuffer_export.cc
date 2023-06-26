@@ -707,6 +707,11 @@ class Translator {
   // Return false if fail to update offset
   bool UpdateBufferOffsets(tflite::Model* mutable_model);
 
+  // check if Flatbuffer builder can no longer hold the given amount of the data
+  inline bool IsModelBiggerThan2GB(const uint64_t data_size) {
+    return data_size > flatbuffer_size_max - builder_.GetSize();
+  }
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -843,6 +848,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       buffer_data_map_[index] = packed_buffer;
       return tflite::CreateBuffer(builder_, 0, 1, 1);
     } else {
+      if (IsModelBiggerThan2GB(packed_buffer.size())) {
+        require_use_buffer_offset_ = true;
+        return empty_buffer_;
+      }
       auto buffer_data =
           builder_.CreateVector(packed_buffer.data(), packed_buffer.size());
       return tflite::CreateBuffer(builder_, buffer_data);
@@ -875,6 +884,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       buffer_data_map_[index] = buffer_data;
       return tflite::CreateBuffer(builder_, 0, 1, 1);
     } else {
+      if (IsModelBiggerThan2GB(bytes)) {
+        require_use_buffer_offset_ = true;
+        return empty_buffer_;
+      }
       auto buffer_data = builder_.CreateVector(
           reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
       free(tensor_buffer);
@@ -889,6 +902,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     buffer_data_map_[index] = buffer_data;
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
+    if (IsModelBiggerThan2GB(tensor_data.size())) {
+      require_use_buffer_offset_ = true;
+      return empty_buffer_;
+    }
     auto buffer_data = builder_.CreateVector(
         reinterpret_cast<const uint8_t*>(tensor_data.data()),
         tensor_data.size());
@@ -1204,6 +1221,14 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*builtin_options=*/0, 0, tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0,
         1, 1);
   }
+  if (IsModelBiggerThan2GB(custom_option_vector.size())) {
+    require_use_buffer_offset_ = true;
+    return tflite::CreateOperator(
+        builder_, opcode_index, builder_.CreateVector(operands),
+        builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+        /*builtin_options=*/0,
+        /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
+  }
   return tflite::CreateOperator(
       builder_, opcode_index, builder_.CreateVector(operands),
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
@@ -1226,6 +1251,10 @@ std::optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
     flex_builder->String(node_def_str);
   });
   flex_builder->Finish();
+  if (IsModelBiggerThan2GB(flex_builder->GetSize()) && !use_buffer_offset_) {
+    require_use_buffer_offset_ = true;
+    return builder_.CreateVector({});
+  }
   return builder_.CreateVector(flex_builder->GetBuffer());
 }
 
@@ -1690,6 +1719,8 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         return std::nullopt;
     }
 
+    if (require_use_buffer_offset_) return std::nullopt;
+
     // Skip constant ops as they don't represent a TFLite operator.
     if (IsConst(&inst)) continue;
 
@@ -2115,6 +2146,7 @@ std::optional<std::string> Translator::TranslateInternal() {
   // index in the subgraph list.
   int subgraph_index = 0;
   for (const auto& it : llvm::enumerate(named_regions)) {
+    if (require_use_buffer_offset_ && !use_buffer_offset_) return std::nullopt;
     auto subgraph_or =
         BuildSubGraph(it.value().first, it.value().second, subgraph_index);
     if (!subgraph_or) {
@@ -2160,6 +2192,8 @@ std::optional<std::string> Translator::TranslateInternal() {
                  << "\nSee instructions: "
                     "https://www.tensorflow.org/lite/guide/ops_custom";
   }
+
+  if (require_use_buffer_offset_) return std::nullopt;
 
   if (first_failed_func != -1) {
     std::string failed_flex_ops_summary =

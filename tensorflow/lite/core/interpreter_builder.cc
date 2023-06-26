@@ -232,17 +232,19 @@ InterpreterBuilder::InterpreterBuilder(
 InterpreterBuilder::InterpreterBuilder(
     const ::tflite::Model* model, const OpResolver& op_resolver,
     ErrorReporter* error_reporter,
-    const InterpreterOptions* options_experimental)
+    const InterpreterOptions* options_experimental,
+    const Allocation* allocation)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(error_reporter)),
-      metadata_(FlatBufferModel::ReadAllMetadata(model_)) {
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)),
+      allocation_(allocation) {
   if (options_experimental) {
     options_ = *options_experimental;
   }
 }
 
-InterpreterBuilder::~InterpreterBuilder() {}
+InterpreterBuilder::~InterpreterBuilder() = default;
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;

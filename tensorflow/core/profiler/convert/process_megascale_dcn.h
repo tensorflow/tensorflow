@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,27 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_FILE_SYSTEM_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_FILE_SYSTEM_UTILS_H_
-
-#include <initializer_list>
-#include <string>
-
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ProfilerJoinPath;      // NOLINT
-using tsl::profiler::ProfilerJoinPathImpl;  // NOLINT
+// Process Dcn Megascale TraceMe info.
+void ProcessMegascaleDcn(XSpace* space);
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_FILE_SYSTEM_UTILS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_

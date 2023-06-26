@@ -36,15 +36,20 @@ bool IsCollectiveCommunicationOp(HloOpcode op) {
          op == HloOpcode::kCollectivePermuteStart;
 }
 
-bool IsAsyncCollectiveStartOp(HloOpcode op) {
+bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv) {
   return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart ||
-         op == HloOpcode::kAsyncStart;
+         op == HloOpcode::kAsyncStart ||
+         (include_send_recv &&
+          (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
-bool IsAsyncCollectiveDoneOp(HloOpcode op) {
+bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv) {
   return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
-         op == HloOpcode::kCollectivePermuteDone || op == HloOpcode::kAsyncDone;
+         op == HloOpcode::kCollectivePermuteDone ||
+         op == HloOpcode::kAsyncDone ||
+         (include_send_recv &&
+          (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {

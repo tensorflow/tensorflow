@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_FORMAT_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_FORMAT_UTILS_H_
+#include "tensorflow/compiler/xla/python/ifrt/mock.h"
 
-#include "tensorflow/tsl/profiler/utils/format_utils.h"
+namespace xla {
+namespace ifrt {
 
-namespace tensorflow {
-namespace profiler {
+char MockArray::ID = 0;
+char MockClient::ID = 0;
+char MockCompiler::ID = 0;
+char MockExecutable::ID = 0;
+char MockLoadedExecutable::ID = 0;
+char MockHostCallback::ID = 0;
+char MockLoadedHostCallback::ID = 0;
+char MockSharding::ID = 0;
 
-using tsl::profiler::MaxPrecision;  // NOLINT
-using tsl::profiler::OneDigit;      // NOLINT
-using tsl::profiler::ThreeDigits;   // NOLINT
-using tsl::profiler::TwoDigits;     // NOLINT
-
-}  // namespace profiler
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_FORMAT_UTILS_H_
+}  // namespace ifrt
+}  // namespace xla

@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -86,6 +88,50 @@ TEST(PjRtCApiHelperTest, InvalidOptionTypeIndex) {
   EXPECT_THAT(status.message(),
               HasSubstr("Option passed to PJRT_Client_Create with name string "
                         "has type index 1 but expected type index is 0"));
+}
+
+TEST(PjRtCApiHelperTest, Callback) {
+  absl::flat_hash_map<std::string, std::string> kv_store;
+  absl::Mutex mu;
+  xla::PjRtClient::KeyValueGetCallback kv_get =
+      [&kv_store, &mu](const std::string& k,
+                       absl::Duration timeout) -> xla::StatusOr<std::string> {
+    absl::Duration wait_interval = absl::Milliseconds(10);
+    int num_retry = timeout / wait_interval;
+    for (int i = 0; i < num_retry; i++) {
+      {
+        absl::MutexLock lock(&mu);
+        auto iter = kv_store.find(k);
+        if (iter != kv_store.end()) {
+          return iter->second;
+        }
+      }
+      absl::SleepFor(wait_interval);
+    }
+    return absl::NotFoundError(
+        absl::StrCat(k, " is not found in the kv store."));
+  };
+  xla::PjRtClient::KeyValuePutCallback kv_put =
+      [&kv_store, &mu](const std::string& k,
+                       const std::string& v) -> xla::Status {
+    {
+      absl::MutexLock lock(&mu);
+      kv_store[k] = v;
+    }
+    return tsl::OkStatus();
+  };
+  auto kv_callback_data = ConvertToCKeyValueCallbacks(kv_get, kv_put);
+  auto converted_back_kv_get = ToCppKeyValueGetCallback(
+      kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func);
+  auto converted_back_kv_put = ToCppKeyValuePutCallback(
+      kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
+
+  auto s = converted_back_kv_put("key", "value");
+  TF_EXPECT_OK(s);
+
+  auto v = converted_back_kv_get("key", absl::Seconds(1));
+  TF_EXPECT_OK(v.status());
+  EXPECT_EQ(*v, "value");
 }
 
 }  // namespace

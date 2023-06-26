@@ -1177,13 +1177,6 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
-
-  let options = [
-    Option<"globally_unique_func_names_", "globally-unique-func-names", "bool",
-           /*default=*/"true",
-           "If true, the pass adds extra identifiers to make function names "
-           "globally unique within a process, not just within a module.">
-  ];
 }
 
 def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {

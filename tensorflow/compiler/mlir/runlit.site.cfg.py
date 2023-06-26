@@ -52,7 +52,6 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/xla/mlir/runtime',
     'tensorflow/compiler/xla/mlir/tools/mlir_bisect',
     'tensorflow/compiler/xla/mlir_hlo',
-    'tensorflow/compiler/xla/mlir_hlo/tosa',
     'tensorflow/compiler/xla/python/ifrt/ir/tests',
     'tensorflow/compiler/xla/service/gpu/tests',
     'tensorflow/compiler/xla/service/mlir_gpu',

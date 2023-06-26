@@ -16,14 +16,16 @@
 
 import collections
 import inspect
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from absl import logging
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type_pb2
 from tensorflow.core.function.trace_type import serialization
+from tensorflow.python.types import core
 from tensorflow.python.types import trace
+
 
 # Represents a defined parameter default value that is saved alongside the
 # function's captures.
@@ -202,7 +204,6 @@ class FunctionType(inspect.Signature):
         else None
     )
 
-  # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.
   @classmethod
   def from_callable(cls,
                     obj: Callable[..., Any],
@@ -351,7 +352,7 @@ class FunctionType(inspect.Signature):
     return inspect.BoundArguments(self, arguments)
 
   @property
-  def flat_inputs(self):
+  def flat_inputs(self) -> List[trace.TraceType]:
     """Flat tensor inputs accepted by this FunctionType."""
     if not hasattr(self, "_cached_flat_inputs"):
       self._cached_flat_inputs = []
@@ -360,7 +361,9 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_inputs
 
-  def unpack_inputs(self, bound_parameters: inspect.BoundArguments):
+  def unpack_inputs(
+      self, bound_parameters: inspect.BoundArguments
+  ) -> List[core.Tensor]:
     """Unpacks python arguments to flat tensor inputs accepted by this type."""
     # Sort keyword-only parameters by name.
     sorted_parameters = []
@@ -393,7 +396,7 @@ class FunctionType(inspect.Signature):
     return dealiased_inputs
 
   @property
-  def flat_captures(self):
+  def flat_captures(self) -> List[trace.TraceType]:
     """Flat tensor captures needed by this FunctionType."""
     if not hasattr(self, "_cached_flat_captures"):
       self._cached_flat_captures = []
@@ -402,15 +405,20 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_captures
 
-  def unpack_captures(self, captures):
+  def unpack_captures(self, captures) -> List[core.Tensor]:
     """Unpacks captures to flat tensors."""
     flat = []
     for v, t in zip(captures, self.captures.values()):
       flat.extend(t._to_tensors(v))  # pylint: disable=protected-access
+    if len(flat) != len(self.flat_captures):
+      raise TypeError(
+          f"Flattening captures {captures} with type {self!r} produced"
+          f" {len(flat)} tensors instead of {len(self.flat_captures)}"
+      )
     return flat
 
   @property
-  def flat_outputs(self):
+  def flat_outputs(self) -> List[trace.TraceType]:
     """Flat tensor outputs returned by this FunctionType."""
     if not hasattr(self, "_cached_flat_outputs"):
       if self.output is not None:
@@ -418,7 +426,7 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_outputs
 
-  def pack_output(self, flat_values):
+  def pack_output(self, flat_values: Sequence[core.Tensor]) -> Any:
     """Packs flat tensors to generate a value of the output type."""
     if flat_values is None:
       flat_values = []

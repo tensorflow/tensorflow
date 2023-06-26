@@ -391,12 +391,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
 // Creates a pass that outlines regions of tf_device.cluster operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass(
-    bool globally_unique_func_names = true);
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass(
-    bool globally_unique_func_names = true);
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass();
 
 // Creates a pass that converts tf_device::LaunchFuncOp into
 // TF::PartitionedCallOp.

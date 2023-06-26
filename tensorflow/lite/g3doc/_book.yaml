@@ -406,6 +406,13 @@ upper_tabs:
         - title: "Overview"
           path: /lite/api_docs/cc/
         - include: /lite/api_docs/cc/_doxygen.yaml
+      - title: "C"
+        platform: cpp
+        style: accordion
+        section:
+        - title: "Overview"
+          path: /lite/api_docs/c/
+        - include: /lite/api_docs/c/_doxygen.yaml
 
 - include: /api_docs/_upper_tabs_api.yaml
 - include: /resources/_upper_tabs_resources.yaml

@@ -55,5 +55,5 @@ def register_unary_weak_tensor_dispatcher(op):
   return wrapper
 
 
-for tf_api in _TF_UNARY_APIS:
-  register_unary_weak_tensor_dispatcher(tf_api)
+for tf_unary_api in _TF_UNARY_APIS:
+  register_unary_weak_tensor_dispatcher(tf_unary_api)

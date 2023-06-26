@@ -369,7 +369,7 @@ Status BatchResourceBase::RegisterInput(
                                    },
                                    &num_outstanding_batches_});
     }
-    ++num_outstanding_batches_;
+    num_outstanding_batches_ += batch_components->size();
   }
 
   return batcher_queue->Schedule(&batch_components);
@@ -930,7 +930,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   auto process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
     if (!session_metadata().name().empty()) {
       absl::MutexLock lock(&outstanding_batch_mu_);
-      --num_outstanding_batches_;
+      num_outstanding_batches_ -= batch->size();
     }
     if (!has_process_batch_function_) {
       ProcessBatch(std::move(batch));

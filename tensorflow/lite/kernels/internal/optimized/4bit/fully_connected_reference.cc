@@ -150,6 +150,9 @@ void ReferenceBatchQuantizeFloats4Bit(const float* float_data_ptr, int n_batch,
       for (int c = 0; c < cols; ++c) {
         scale_denom = std::max(scale_denom, std::abs(*(start++)));
       }
+      if (scale_denom == 0) {
+        scale_denom = 127.0;
+      }
       scale[w] = 127.0 / scale_denom;
       scaling_factors_ptr[w] = scale_denom / 127.0;
     }

@@ -6,7 +6,8 @@
 // CHECK: tf_device.cluster
 // CHECK-NEXT: tf.StatefulPartitionedCall
 // CHECK-NEXT: tf_device.return
-// CHECK: allow_soft_placement = true
+// CHECK: _cluster_outlined_function_name = "stateful_pcall_func"
+// CHECK-SAME: allow_soft_placement = true
 // CHECK: tf.Const
 // CHECK: tf.Add
 func.func @xla_must_compile_true(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {

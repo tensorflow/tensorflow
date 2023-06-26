@@ -119,3 +119,19 @@ func.func @cluster_attrs() -> tensor<?xi32> {
 // CHECK: "tf_device.cluster_func"
 // CHECK-SAME: cluster_attr = "cluster_attr"
 // CHECK-SAME: device = "device"
+
+// -----
+
+// Tests user-specified name is used as the outlined funciton name.
+
+// CHECK-LABEL: func @cluster_outlined_function_name
+func.func @cluster_outlined_function_name() -> tensor<?xi32> {
+  %0 = "tf_device.cluster"() ({
+    %1 = "tf.A"() : () -> tensor<?xi32>
+    tf_device.return %1 : tensor<?xi32>
+  }) {_cluster_outlined_function_name = "cluster_func"} : () -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
+}
+
+// CHECK: "tf_device.cluster_func"
+// CHECK-SAME: func = @cluster_func

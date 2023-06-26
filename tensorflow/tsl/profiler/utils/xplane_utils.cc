@@ -117,19 +117,25 @@ void CopyEventMetadata(const XEventMetadata& src_event_metadata,
       !src_event_metadata.metadata().empty()) {
     dst_event_metadata.set_metadata(src_event_metadata.metadata());
   }
-  XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
-                                                   &src_event_metadata);
-  src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& stat) {
-    XStatMetadata& metadata = *dst_plane.GetOrCreateStatMetadata(stat.Name());
-    XStat dst_stat = stat.RawStat();
-    if (stat.ValueCase() == XStat::kRefValue) {
-      XStatMetadata& value_metadata =
-          *dst_plane.GetOrCreateStatMetadata(stat.StrOrRefValue());
-      dst_stat.set_ref_value(value_metadata.id());
-    }
-    dst_stat.set_metadata_id(metadata.id());
-    *dst_event_metadata.add_stats() = std::move(dst_stat);
-  });
+
+  if (dst_event_metadata.stats().empty() &&
+      !src_event_metadata.stats().empty()) {
+    XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
+                                                     &src_event_metadata);
+    src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& src_stat) {
+      XStatMetadata& metadata =
+          *dst_plane.GetOrCreateStatMetadata(src_stat.Name());
+      XStat& dst_stat = *dst_event_metadata.add_stats();
+      dst_stat = src_stat.RawStat();
+      if (src_stat.ValueCase() == XStat::kRefValue) {
+        XStatMetadata& value_metadata =
+            *dst_plane.GetOrCreateStatMetadata(src_stat.StrOrRefValue());
+        dst_stat.set_ref_value(value_metadata.id());
+      }
+      dst_stat.set_metadata_id(metadata.id());
+    });
+  }
+  DCHECK_EQ(src_event_metadata.stats_size(), dst_event_metadata.stats_size());
 }
 
 bool IsOpLineName(absl::string_view line_name) {
