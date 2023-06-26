@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -79,10 +82,11 @@ class MergeTfIfOpsPass
   }
 
   void runOnOperation() override {
-    constexpr int kMaxIter = 10;
+    constexpr int kMaxIter = 20;
     auto module = getOperation();
 
     bool changed = true;
+
     for (int i = 0; i < kMaxIter && changed; ++i) {
       changed = false;
       for (auto func_op :
@@ -90,24 +94,28 @@ class MergeTfIfOpsPass
         changed |= ProcessFunction(func_op, i);
       }
 
-      if (changed) {
-        // Run optimization passes to expose more merge opportunities among the
-        // then-branch functions and the else-branch functions that are now
-        // respectively merged, for the next iteration.
-        mlir::OpPassManager pm(module.getOperationName());
-        pm.addPass(mlir::createInlinerPass());
-        pm.addPass(mlir::createCSEPass());
-        pm.addPass(CreateDeduplicateIfResultPass());
-        pm.addPass(mlir::createInlinerPass());
-        pm.addPass(mlir::createCSEPass());
-        if (mlir::failed(runPipeline(pm, module))) {
-          module.emitWarning(
-              absl::StrCat("could not run inliner pass within the "
-                           "tfrt-merge-tf-if-ops pass iteration ",
-                           i));
-          break;
-        }
+      mlir::OperationFingerPrint fingerprint(module);
+
+      // Run optimization passes to expose more merge opportunities among the
+      // then-branch functions and the else-branch functions that are now
+      // respectively merged, for the next iteration.
+      mlir::OpPassManager pm(module.getOperationName());
+      pm.addPass(mlir::createInlinerPass());
+      pm.addPass(mlir::createCSEPass());
+      pm.addPass(CreateDeduplicateIfResultPass());
+      pm.addPass(mlir::createInlinerPass());
+      pm.addPass(mlir::createCSEPass());
+      pm.addNestedPass<mlir::func::FuncOp>(
+          tfrt_compiler::CreateOptimizeTfForTfrtPass());
+      if (mlir::failed(runPipeline(pm, module))) {
+        module.emitWarning(
+            absl::StrCat("could not run inliner pass within the "
+                         "tfrt-merge-tf-if-ops pass iteration ",
+                         i));
+        break;
       }
+
+      changed |= fingerprint != mlir::OperationFingerPrint(module);
     }
   }
 
