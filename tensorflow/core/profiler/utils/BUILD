@@ -224,24 +224,6 @@ cc_library(
 )
 
 cc_library(
-    name = "group_events",
-    hdrs = ["group_events.h"],
-    copts = tf_profiler_copts(),
-    visibility = [":friends"],
-    deps = [
-        ":xplane_visitor",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:group_events",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
     name = "cost_utils",
     srcs = ["cost_utils.cc"],
     hdrs = ["cost_utils.h"],
@@ -270,7 +252,6 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":gpu_event_stats",
-        ":group_events",
         ":hlo_module_map",
         ":hlo_proto_map",
         ":math_utils",
@@ -285,6 +266,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/utils:group_events",
         "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -299,7 +281,6 @@ tf_cc_test(
     srcs = ["derived_timeline_test.cc"],
     deps = [
         ":derived_timeline",
-        ":group_events",
         ":tf_xplane_visitor",
         ":trace_utils",
         ":xplane_builder",
@@ -310,6 +291,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:group_events",
         "@com_google_absl//absl/strings",
     ],
 )

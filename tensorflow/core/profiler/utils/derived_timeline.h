@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -115,8 +115,9 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
 
 
 // Derives "Steps" line from group_id XStat in XEvents.
-void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
-                                XPlane* device_trace);
+void DeriveStepEventsFromGroups(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    XPlane* device_trace);
 
 // Derives "TensorFlow Ops", "TensorFlow Name Scope", "XLA Ops" and "XLA Module"
 // lines in an NVIDIA_GPU device trace from data passed as ScopedAnnotations and
@@ -127,14 +128,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  XPlane* device_trace);
 
 // Derives "Launch Activities Summary" line from host trace.
-void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const GroupMetadataMap& group_metadata_map,
-                               std::vector<XPlane*> device_traces);
+void DeriveEventsFromHostTrace(
+    const XPlane* host_trace,
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    std::vector<XPlane*> device_traces);
 
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space);
+void GenerateDerivedTimeLines(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map, XSpace* space);
 
 // Derives `Tensorflow Ops`, `Tensorflow Name Scope` and `Source Code` lines
 // from device_trace.

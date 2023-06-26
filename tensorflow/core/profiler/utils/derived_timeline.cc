@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 #include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
@@ -232,8 +232,9 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
   }
 }
 
-void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
-                                XPlane* device_trace) {
+void DeriveStepEventsFromGroups(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    XPlane* device_trace) {
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(device_trace);
   const XStatMetadata* group_id_stat_metadata =
       plane_visitor.GetStatMetadataByType(StatType::kGroupId);
@@ -313,9 +314,10 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   RemoveEmptyLines(device_trace);
 }
 
-void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const GroupMetadataMap& group_metadata_map,
-                               std::vector<XPlane*> device_traces) {
+void DeriveEventsFromHostTrace(
+    const XPlane* host_trace,
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
     tsl::Stat<uint64_t> stat;
@@ -377,7 +379,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     for (const auto& kv : per_device_launch_info[i]) {
       int64_t group_id = kv.first;
       const GroupLaunchInfo& group_info = kv.second;
-      if (const GroupMetadata* group_metadata =
+      if (const tsl::profiler::GroupMetadata* group_metadata =
               gtl::FindOrNull(group_metadata_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
@@ -395,8 +397,8 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
   }
 }
 
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space) {
+void GenerateDerivedTimeLines(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map, XSpace* space) {
   HloModuleMap hlo_module_map;
   {
     HloProtoMap hlo_proto_map;
