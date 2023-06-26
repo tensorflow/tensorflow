@@ -27,11 +27,16 @@ namespace xla {
 // Helper interface for making queries about the HLO IR.
 namespace hlo_query {
 
-// Returns whether the given opcode is a collective communications operation.
+// Returns whether the given opcode is a collective communications operation
+// that is represented as HloCollectiveInstruction.
 bool IsCollectiveCommunicationOp(HloOpcode op);
 
-bool IsAsyncCollectiveStartOp(HloOpcode op);
-bool IsAsyncCollectiveDoneOp(HloOpcode op);
+// Returns whether the given opcode represents the start operation for a
+// collective communication, may include send & recv operations.
+bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv = false);
+// Returns whether the given opcode represents the done operation for a
+// collective communication, may include send & recv operations.
+bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv = false);
 
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
