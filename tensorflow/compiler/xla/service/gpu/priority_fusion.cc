@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
@@ -90,6 +91,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
           std::make_pair(priority, instruction->unique_id()), instruction);
       CHECK(emplace_result.second);
       reverse_map_.emplace(instruction, emplace_result.first);
+      producer_user_count_[instruction] = instruction->user_count();
     }
   }
 
@@ -124,10 +126,66 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Updates data for the new fusion instruction and its users and operands.
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
-                           HloInstruction* original_consumer) override {}
+                           HloInstruction* original_consumer) override {
+    // Collect the instructions whose priorities need to be updated.
+    for (HloInstruction* operand : fusion->operands()) {
+      if (operand == original_producer ||
+          original_producer->opcode() == HloOpcode::kBroadcast ||
+          operand->opcode() == HloOpcode::kBroadcast ||
+          operand->opcode() == HloOpcode::kConstant ||
+          operand->opcode() == HloOpcode::kGetTupleElement) {
+        continue;
+      }
+      // Need to consider only instructions that are fusible, e.g., rng with
+      // greater than one user is not fusible.
+      if (!operand->IsFusible()) {
+        continue;
+      }
+      // We only update the priority for the operand when its user count has
+      // changed, which is the main cause of priority change. The priority could
+      // change in other cases, but we skip them to improve compile time.
+      auto user_count_it = producer_user_count_.find(operand);
+      if (user_count_it != producer_user_count_.end() &&
+          user_count_it->second == operand->user_count()) {
+        continue;
+      }
+      producer_user_count_[operand] = operand->user_count();
+      to_update_priority_.insert(operand);
+    }
+    to_update_priority_.insert(fusion);
+
+    if (current_consumers_.empty()) {
+      // When current_consumers_ is empty, we will need to dequeue a new
+      // producer next time, so we update the priorities now.
+      for (auto instruction : to_update_priority_) {
+        auto reverse_it = reverse_map_.find(instruction);
+        const auto new_priority = CalculateProducerPriority(instruction);
+        const auto new_key =
+            std::make_pair(new_priority, instruction->unique_id());
+        if (reverse_it != reverse_map_.end()) {
+          if (new_key == reverse_it->second->first) {
+            continue;
+          }
+          producer_priority_queue_.erase(reverse_it->second);
+        }
+        auto emplace_result =
+            producer_priority_queue_.emplace(new_key, instruction);
+        CHECK(emplace_result.second);
+        if (reverse_it != reverse_map_.end()) {
+          reverse_it->second = emplace_result.first;
+        } else {
+          reverse_map_.emplace(instruction, emplace_result.first);
+        }
+      }
+      to_update_priority_.clear();
+    }
+  }
 
   // Removes data for the instruction.
   void RemoveInstruction(HloInstruction* instruction) override {
+    to_update_priority_.erase(instruction);
+    producer_user_count_.erase(instruction);
+
     auto reverse_it = reverse_map_.find(instruction);
     if (reverse_it == reverse_map_.end()) {
       return;
@@ -200,6 +258,17 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // producer and consumer, where the consumer is given as a HloInstruction*
   // and the producer is given as the consumer's operand index.
   CanFuseCallback can_fuse_;
+
+  // The user counts of producers, used to determine whether we update their
+  // priorities when fusion happens.
+  absl::flat_hash_map<HloInstruction*, int64_t> producer_user_count_;
+
+  // The set of producers whose priorities need to be updated. Their
+  // priorities are changed because their neighbors got fused, but we delay
+  // the priority updates until current_consumers_ becomes empty. This is to
+  // avoid recomputing priorities multiple times before we dequeue a new
+  // producer.
+  absl::flat_hash_set<HloInstruction*> to_update_priority_;
 };
 
 }  // namespace
