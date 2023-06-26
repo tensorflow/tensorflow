@@ -133,6 +133,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
