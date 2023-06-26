@@ -367,17 +367,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "parse_annotation",
-    hdrs = ["parse_annotation.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:friends"],
-    deps = [
-        "//tensorflow/tsl/profiler/utils:parse_annotation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "device_caps_utils",
     srcs = ["device_caps_utils.cc"],
     hdrs = ["device_caps_utils.h"],
