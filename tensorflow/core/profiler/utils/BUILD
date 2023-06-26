@@ -81,9 +81,9 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":math_utils",
-        ":tf_op_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -108,22 +108,13 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":op_metrics_db_utils",
-        ":tf_op_utils",
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "tf_op_utils",
-    hdrs = ["tf_op_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -229,7 +220,6 @@ cc_library(
     hdrs = ["cost_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
-        ":tf_op_utils",
         ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:framework",
@@ -239,6 +229,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:op_context",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -255,7 +246,6 @@ cc_library(
         ":hlo_module_map",
         ":hlo_proto_map",
         ":math_utils",
-        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
         ":trace_utils",
@@ -267,6 +257,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "//tensorflow/tsl/profiler/utils:group_events",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",

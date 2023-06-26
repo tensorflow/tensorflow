@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -68,7 +68,7 @@ void SetIteratorMetadata(int64_t id, const XEventVisitor& event,
   if (parent_id_stat.has_value()) {
     metadata->set_parent_id(parent_id_stat->IntValue());
   }
-  metadata->set_name(IteratorName(event.Name()));
+  metadata->set_name(tsl::profiler::IteratorName(event.Name()));
   metadata->set_long_name(event.Name().data(), event.Name().size());
   metadata->set_is_async(IsAsyncIterator(metadata->name()));
   // TODO(b/161831651): Set params.
@@ -179,7 +179,8 @@ void ProcessIteratorEvent(const tsl::profiler::EventNode& iterator_event,
   Timespan self_time_span = visitor.GetTimespan();
   for (const tsl::profiler::EventNode* child : iterator_event.GetChildren()) {
     const XEventVisitor& child_visitor = child->GetEventVisitor();
-    if (ParseTfOpFullname(child_visitor.Name()).category == Category::kTfData) {
+    if (tsl::profiler::ParseTfOpFullname(child_visitor.Name()).category ==
+        tsl::profiler::Category::kTfData) {
       int64_t overlap_duration_ps =
           self_time_span.OverlappedDurationPs(child_visitor.GetTimespan());
       ProcessIteratorEvent(*child, input_pipeline_stat,

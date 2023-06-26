@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
@@ -96,11 +96,13 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
                       XPlaneBuilder& plane_builder,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder) {
-  TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
-  Category category = tf_op.category;
-  if (category == Category::kTensorFlow || category == Category::kJax) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(tf_op_full_name);
+  tsl::profiler::Category category = tf_op.category;
+  if (category == tsl::profiler::Category::kTensorFlow ||
+      category == tsl::profiler::Category::kJax) {
     tf_name_scope_line_builder.ExpandOrAddEvents(
-        plane_builder.GetOrCreateEventsMetadata(ParseTfNameScopes(tf_op)),
+        plane_builder.GetOrCreateEventsMetadata(
+            tsl::profiler::ParseTfNameScopes(tf_op)),
         event_span, group_id);
   }
   XEventMetadata* tf_op_event_metadata =
@@ -108,7 +110,7 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
   // Set the display name to op_type so that the events of the same op_type have
   // the same color in the trace viewer.
   if (tf_op_event_metadata->display_name().empty()) {
-    tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
+    tf_op_event_metadata->set_display_name(tsl::profiler::TfOpEventName(tf_op));
   }
   tf_op_line_builder.ExpandOrAddEvent(*tf_op_event_metadata, event_span,
                                       group_id);
