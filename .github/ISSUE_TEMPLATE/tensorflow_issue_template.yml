@@ -1,5 +1,5 @@
 name: Tensorflow Issue Template
-description: Please report security related issue using [Google Bug Hunters reporting form](https://bughunters.google.com/). To report any other TensorFlow related issue please use this template.
+description: Use this template to report Tensorflow-related issues.
 body:
   - type: dropdown
     id: issue-type
@@ -33,10 +33,10 @@ body:
         - "No"
     validations:
       required: true
-          
+
   - type: markdown
     attributes:
-      value: | 
+      value: |
         You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)  You can also obtain the TensorFlow version with: <br> 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
 
   - type: dropdown
@@ -49,20 +49,20 @@ body:
         - binary
     validations:
       required: true
-      
+
   - type: input
     id: tfversion
     attributes:
       label: Tensorflow Version
-      description: 
-      placeholder: ex,. tf 2.8
+      description:
+      placeholder: e.g., tf 2.8
     validations:
       required: true
   - type: dropdown
     id: Code
     attributes:
       label: Custom Code
-      description: 
+      description:
       options:
         - "Yes"
         - "No"
@@ -72,7 +72,7 @@ body:
     id: OS
     attributes:
       label: OS Platform and Distribution
-      description: 
+      description:
       placeholder: e.g., Linux Ubuntu 16.04
     validations:
       required: false
@@ -80,7 +80,7 @@ body:
     id: Mobile
     attributes:
       label: Mobile device
-      description: 
+      description:
       placeholder: e.g., Linux Ubuntu 16.04
     validations:
       required: false
@@ -88,7 +88,7 @@ body:
     id: Python
     attributes:
       label: Python version
-      description: 
+      description:
       placeholder: e.g., 3.9
     validations:
       required: false
@@ -97,7 +97,7 @@ body:
     attributes:
       label: Bazel version
       description: if compiling from source
-      placeholder: 
+      placeholder:
     validations:
       required: false
   - type: input
@@ -105,7 +105,7 @@ body:
     attributes:
       label: GCC/Compiler version
       description: if compiling from source
-      placeholder: 
+      placeholder:
     validations:
       required: false
   - type: input
@@ -113,7 +113,7 @@ body:
     attributes:
       label: CUDA/cuDNN version
       description:
-      placeholder: 
+      placeholder:
     validations:
       required: false
   - type: input
@@ -121,7 +121,7 @@ body:
     attributes:
       label: GPU model and memory
       description: if compiling from source
-      placeholder: 
+      placeholder:
     validations:
       required: false
   - type: textarea
@@ -139,7 +139,7 @@ body:
       label: Standalone code to reproduce the issue
       description: Provide a reproducible test case that is the bare minimum necessary to generate the problem. If possible, please share a link to Colab/Jupyter/any notebook.
       placeholder: Tell us what you see!
-      value: 
+      value:
       render: shell
     validations:
       required: true
