@@ -102,7 +102,9 @@ class PjRtCApiDevice : public PjRtDevice {
 
 class PjRtCApiClient : public PjRtClient {
  public:
-  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client);
+  PjRtCApiClient(
+      const PJRT_Api* c_api, PJRT_Client* c_client,
+      std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
 
   int process_index() const override;
 
@@ -242,7 +244,7 @@ class PjRtCApiClient : public PjRtClient {
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
-
+  std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data_;
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
@@ -542,7 +544,9 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
-    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    PjRtClient::KeyValueGetCallback kv_get = nullptr,
+    PjRtClient::KeyValuePutCallback kv_put = nullptr);
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
