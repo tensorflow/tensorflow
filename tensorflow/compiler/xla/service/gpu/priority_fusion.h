@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
-
-#include <stdint.h>
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PRIORITY_FUSION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PRIORITY_FUSION_H_
 
 #include <memory>
 #include <vector>
@@ -24,24 +22,18 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
-#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
-#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuInstructionFusion : public InstructionFusion {
+class GpuPriorityFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d)
-      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
-        device_info_(d) {}
+  explicit GpuPriorityFusion(const GpuDeviceInfo& d)
+      : InstructionFusion(GpuPriorityFusion::IsExpensive), device_info_(d) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -82,4 +74,4 @@ class GpuInstructionFusion : public InstructionFusion {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PRIORITY_FUSION_H_
