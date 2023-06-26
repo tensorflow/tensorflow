@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
@@ -160,6 +161,16 @@ class SnapshotStreamWriter {
 
   // Commits the current chunk.
   Status CommitChunk();
+
+  // Commits a chunk and deletes previously committed chunks. For example, when
+  // it commits `chunk_0_0_x`, it will deletes `chunk_0_0_y`.
+  Status ReplaceChunk(const std::string& uncommitted_chunk_filename,
+                      const std::string& committed_chunk_filename);
+  // Same as the above, except the prior committed chunks are passed in to avoid
+  // repeated enumeration of the chunks directory.
+  Status ReplaceChunk(const std::vector<std::string>& prior_chunks,
+                      const std::string& uncommitted_chunk_filename,
+                      const std::string& committed_chunk_filename);
 
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;

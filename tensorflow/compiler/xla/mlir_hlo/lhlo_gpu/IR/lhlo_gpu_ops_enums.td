@@ -109,4 +109,49 @@ def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
 
 def CublasLtMatmulEpilogueAttr : EnumAttr<LmhloGpuDialect, CublasLtMatmulEpilogue, "epilogue">;
 
+def FusedMHAAlgorithmConfigAttr : AttrDef<
+  LmhloGpuDialect, "FusedMHAAlgorithmConfig"> {
+  let mnemonic = "fHMA_algorithm_config";
+  let parameters = (ins
+  "int64_t":$algorithm,
+   // These 2 fields are a TableGen transliteration of AlgorithmProto.
+   // Currently only knobs ids and values are relevant for fMHA but this
+   // Attr can be used to add algorithm related fields.
+   // The next two fields are aligned arrays of knob IDs and values to
+   // represent the knob_id -> knob_value map.
+   I64ArrayParameter:$knob_ids,
+   I64ArrayParameter:$knob_values,
+   "int64_t":$workspace_size
+ );
+  let assemblyFormat = "`<` struct(params) `>`";
+ let summary = "GPU Fused Multi Headed Attention Algorithm configuration";
+}
+
+def FusedMhaDagDefault : I32EnumAttrCase<"Default", 0>;
+def FusedMhaDagScaleBiasMaskSoftmax : I32EnumAttrCase<"ScaleBiasMaskSoftmax", 1>;
+def FusedMhaDagScaleBiasMaskSoftmaxDropout : I32EnumAttrCase<"ScaleBiasMaskSoftmaxDropout", 2>;
+def FusedMhaDagScaleMaskSoftmax : I32EnumAttrCase<"ScaleMaskSoftmax", 3>;
+def FusedMhaDagScaleMaskSoftmaxDropout : I32EnumAttrCase<"ScaleMaskSoftmaxDropout", 4>;
+def FusedMhaDagSoftmaxDropout : I32EnumAttrCase<"SoftmaxDropout", 5>;
+def FusedMhaDagSoftmax : I32EnumAttrCase<"Softmax", 6>;
+def FusedMhaDagScaleBiasSoftmaxDropout : I32EnumAttrCase<"ScaleBiasSoftmaxDropout", 7>;
+def FusedMhaDagScaleBiasSoftmax : I32EnumAttrCase<"ScaleBiasSoftmax", 8>;
+
+def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
+    "DAG configuration for Fused Multi-Headed Attention",
+    [FusedMhaDagDefault, 
+    FusedMhaDagScaleBiasMaskSoftmax, 
+    FusedMhaDagScaleBiasMaskSoftmaxDropout, 
+    FusedMhaDagScaleMaskSoftmax, 
+    FusedMhaDagScaleMaskSoftmaxDropout, 
+    FusedMhaDagSoftmaxDropout,
+    FusedMhaDagSoftmax,
+    FusedMhaDagScaleBiasSoftmaxDropout,
+    FusedMhaDagScaleBiasSoftmax]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::lmhlo_gpu";
+}
+
+def FusedMhaDagSignatureAttr : EnumAttr<LmhloGpuDialect, FusedMhaDagSignature, "fused_mha_dag">;
+
 #endif // LHLO_GPU_OPS_ENUMS

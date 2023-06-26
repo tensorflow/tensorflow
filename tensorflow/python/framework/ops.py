@@ -1014,7 +1014,9 @@ def _create_c_op(graph,
   # Record the current Python stack trace as the creating stacktrace of this
   # TF_Operation.
   if extract_traceback:
-    tf_stack.extract_stack_for_op(c_op, stacklevel=3)
+    pywrap_tf_session.TF_SetOpStackTrace(
+        c_op, tf_stack.extract_stack(stacklevel=3)
+    )
 
   return c_op
 
@@ -1155,11 +1157,6 @@ class Operation(pywrap_tf_session.PyOperation):
 
     # Post process for control flows.
     self._control_flow_post_processing(input_tensors=inputs)
-
-    # Removes this frame from the Python traceback.
-    # We adjust stacklevel directly to avoid triggering serialization.
-    if self.traceback is not None:
-      self.traceback._stacklevel += 1  # pylint: disable=protected-access
 
     return self
 

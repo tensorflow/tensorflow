@@ -30,6 +30,8 @@ package(
 
 exports_files([
     "loader.h",
+    "testdata/chunked_saved_model/chunked_model/saved_model.cpb",
+    "testdata/chunked_saved_model/chunked_model/saved_model.pbtxt",
 ])
 
 cc_library(

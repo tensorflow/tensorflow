@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_recv_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_send_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
@@ -108,6 +110,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
 StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     CustomCall::RemainingArgs& args) {
   // Add MemRef arguments as buffer arguments.
+  TF_RET_CHECK(args.size() % 2 == 0);
   const int buffer_pairs = args.size() / 2;
   std::vector<DeviceBufferPair> device_buffers;
   device_buffers.reserve(buffer_pairs);
@@ -125,6 +128,22 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
         GetDeviceAddress(*destination)});
   }
   return device_buffers;
+}
+
+// Expects a single argument, and returns a device buffer pair with that
+// argument replicated in both source and destination buffer.
+StatusOr<std::vector<DeviceBufferPair>> GetSingleArgAsDeviceBufferPair(
+    CustomCall::RemainingArgs& args) {
+  TF_RET_CHECK(args.size() == 1);
+  auto buffer = args.get<StridedMemrefView>(0);
+  if (failed(buffer)) {
+    return InvalidArgument("Unsupported device buffer type");
+  }
+  int64_t element_count = 1;
+  for (int64_t size : buffer->sizes) element_count *= size;
+  return std::vector<DeviceBufferPair>{
+      DeviceBufferPair{buffer->dtype, element_count, GetDeviceAddress(*buffer),
+                       GetDeviceAddress(*buffer)}};
 }
 
 absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
@@ -148,24 +167,39 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-absl::Status CollectivePermuteImplCommon(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, se::Stream* stream,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values,
-    absl::Span<const int64_t> source_peers,
-    absl::Span<const int64_t> target_peers, bool is_async) {
+using NcclP2PRunner = absl::FunctionRef<absl::Status(
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
+    int64_t current_id)>;
+
+using DeviceBuffersGetter =
+    absl::FunctionRef<StatusOr<std::vector<DeviceBufferPair>>(
+        CustomCall::RemainingArgs& args)>;
+
+absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           se::Stream* stream, CustomCall::RemainingArgs args,
+                           int64_t group_mode, int64_t op_id,
+                           absl::Span<const int64_t> replica_group_offsets,
+                           absl::Span<const int64_t> replica_group_values,
+                           absl::Span<const int64_t> source_peers,
+                           absl::Span<const int64_t> target_peers,
+                           NcclP2PRunner runner,
+                           DeviceBuffersGetter device_buffers_getter,
+                           bool is_async = true) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  TF_ASSIGN_OR_RETURN(
-      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, is_async));
-  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
+  const std::string device_string =
+      NcclCollectiveThunk::GetDeviceString(params);
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values, is_async);
+  if (!comm.ok()) return ToAbslStatus(comm.status());
 
-  if (device_buffers.size() != 1) {
+  auto device_buffers = device_buffers_getter(args);
+  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (device_buffers->size() != 1) {
     return absl::InternalError(absl::StrFormat(
-        "Expected device buffer size: 1, got %d", device_buffers.size()));
+        "Expected device buffer size: 1, got %d", device_buffers->size()));
   }
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
@@ -178,21 +212,19 @@ absl::Status CollectivePermuteImplCommon(
                                      CollectiveOpGroupMode::kCrossReplica
                                  ? current_logical_id.replica_id
                                  : current_logical_id.computation_id;
-  std::string device_string = NcclCollectiveThunk::GetDeviceString(params);
 
-  NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
+  NcclP2PConfig::IdToSourceTargetMap id_to_source_target;
   for (int i = 0; i < source_peers.size(); ++i) {
     id_to_source_target[target_peers[i]].source = source_peers[i];
     id_to_source_target[source_peers[i]].target = target_peers[i];
   }
-  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
-      NcclCollectivePermuteConfig::GetSourceTarget(id_to_source_target,
-                                                   current_id);
+  const NcclP2PConfig::SourceTargetMapEntry source_target =
+      NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
   return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunCollectivePermute(source_target, device_buffers[0], *stream,
-                                    *comm, device_string, current_id);
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() -> Status {
+        return runner(source_target, (*device_buffers)[0], *stream, **comm,
+                      device_string, current_id);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -208,14 +240,14 @@ absl::Status CollectivePermuteImpl(
     absl::Span<const int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running CollectivePermute " << (is_async ? "(Async)" : "(Sync)");
-  return RunSyncOrAsync(run_options, collectives, async_collectives, uid,
-                        is_async, [&](se::Stream* stream) {
-                          return CollectivePermuteImplCommon(
-                              run_options, debug_options, stream, args,
-                              group_mode, op_id, replica_group_offsets,
-                              replica_group_values, source_peers, target_peers,
-                              is_async);
-                        });
+  return RunSyncOrAsync(
+      run_options, collectives, async_collectives, uid, is_async,
+      [&](se::Stream* stream) {
+        return P2PImplCommon(
+            run_options, debug_options, stream, args, group_mode, op_id,
+            replica_group_offsets, replica_group_values, source_peers,
+            target_peers, RunCollectivePermute, GetDeviceBufferPairs, is_async);
+      });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -224,6 +256,102 @@ absl::Status CollectivePermuteImpl(
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CollectivePermute, FunctionWrapper<CollectivePermuteImpl>(), checks,
     CustomCall::Bind("xla.gpu.collective_permute")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .UserData<CollectivesSupport*>()
+        .UserData<AsyncCollectivesSupport*>()
+        .RemainingArgs()  // args
+        .Attr<int32_t>("uid")
+        .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+        .Attr<int64_t>("op_id")
+        .Attr<bool>("is_async")
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<absl::Span<const int64_t>>("source_peers")
+        .Attr<absl::Span<const int64_t>>("target_peers"));
+
+//===----------------------------------------------------------------------===//
+// Send.
+//===----------------------------------------------------------------------===//
+
+static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                CollectivesSupport* collectives,
+                                AsyncCollectivesSupport* async_collectives,
+                                CustomCall::RemainingArgs args, int32_t uid,
+                                int64_t group_mode, int64_t op_id,
+                                bool is_async,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                absl::Span<const int64_t> source_peers,
+                                absl::Span<const int64_t> target_peers) {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running Send";
+  TF_RET_CHECK(is_async);
+  return RunSyncOrAsync(
+      run_options, collectives, async_collectives, uid, is_async,
+      [&](se::Stream* stream) {
+        return P2PImplCommon(run_options, debug_options, stream, args,
+                             group_mode, op_id, replica_group_offsets,
+                             replica_group_values, source_peers, target_peers,
+                             RunSend, GetSingleArgAsDeviceBufferPair, is_async);
+      });
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    P2PSend, FunctionWrapper<P2PSendImpl>(), checks,
+    CustomCall::Bind("xla.gpu.send")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .UserData<CollectivesSupport*>()
+        .UserData<AsyncCollectivesSupport*>()
+        .RemainingArgs()  // args
+        .Attr<int32_t>("uid")
+        .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+        .Attr<int64_t>("op_id")
+        .Attr<bool>("is_async")
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<absl::Span<const int64_t>>("source_peers")
+        .Attr<absl::Span<const int64_t>>("target_peers"));
+
+//===----------------------------------------------------------------------===//
+// Recv.
+//===----------------------------------------------------------------------===//
+
+static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                CollectivesSupport* collectives,
+                                AsyncCollectivesSupport* async_collectives,
+                                CustomCall::RemainingArgs args, int32_t uid,
+                                int64_t group_mode, int64_t op_id,
+                                bool is_async,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                absl::Span<const int64_t> source_peers,
+                                absl::Span<const int64_t> target_peers) {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running Recv";
+  TF_RET_CHECK(is_async);
+  return RunSyncOrAsync(
+      run_options, collectives, async_collectives, uid, is_async,
+      [&](se::Stream* stream) {
+        return P2PImplCommon(run_options, debug_options, stream, args,
+                             group_mode, op_id, replica_group_offsets,
+                             replica_group_values, source_peers, target_peers,
+                             RunRecv, GetSingleArgAsDeviceBufferPair, is_async);
+      });
+#else   // XLA_ENABLE_XCCL
+  return absl::InternalError("NCCL disabled");
+#endif  // XLA_ENABLE_XCCL
+}
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    P2PRecv, FunctionWrapper<P2PRecvImpl>(), checks,
+    CustomCall::Bind("xla.gpu.recv")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const DebugOptions*>()
         .UserData<CollectivesSupport*>()
@@ -621,6 +749,8 @@ absl::StatusOr<se::Event> AsyncCollectivesSupport::PopEvent(int32_t uid) {
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.collective_permute", CollectivePermute);
+  registry.Register("xla.gpu.send", P2PSend);
+  registry.Register("xla.gpu.recv", P2PRecv);
   registry.Register("xla.gpu.all_gather", AllGather);
   registry.Register("xla.gpu.all_reduce", AllReduce);
   registry.Register("xla.gpu.all_to_all", AllToAll);

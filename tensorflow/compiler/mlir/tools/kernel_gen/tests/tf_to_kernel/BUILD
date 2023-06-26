@@ -6,6 +6,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_tags = [
         # We need access to the CUDA SDK.

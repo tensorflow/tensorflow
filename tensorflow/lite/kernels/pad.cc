@@ -52,21 +52,6 @@ struct PadContext {
     dims = NumDimensions(input);
     switch (paddings->type) {
       case kTfLiteInt64: {
-        const int64_t* paddings_data = GetTensorData<int64_t>(paddings);
-        if (paddings_data) {
-          int64_t int32_min =
-              static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-          int64_t int32_max =
-              static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-          for (int idx = 0; idx < dims; ++idx) {
-            int64_t padding = *paddings_data++;
-            if (padding < int32_min || padding > int32_max) {
-              TF_LITE_KERNEL_LOG(context,
-                                 "INT64 padding overflow. Only support value "
-                                 "between INT32_MIN and INT32_MAX.");
-            }
-          }
-        }
         SetResizingCategory<int64_t>(context);
         break;
       }
@@ -102,6 +87,25 @@ struct PadContext {
   int dims;
   ResizingCategory resizing_category;
 };
+
+bool CheckPaddingOverflow(PadContext* op_context) {
+  if (op_context->paddings->type == kTfLiteInt64) {
+    const int64_t* paddings_data = GetTensorData<int64_t>(op_context->paddings);
+    if (paddings_data != nullptr) {
+      int64_t int32_min =
+          static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+      int64_t int32_max =
+          static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+      for (int idx = 0; idx < op_context->dims; ++idx) {
+        int64_t padding = paddings_data[idx];
+        if (padding < int32_min || padding > int32_max) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 // Helper template function for resizing output array based on the input size
 // and padding size. Do not call this directly, call ResizeOutputTensor()
@@ -213,6 +217,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   PadContext op_context(context, node);
+  if (IsConstantTensor(op_context.paddings)) {
+    TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
+                       "INT64 padding overflow. Only support value between "
+                       "INT32_MIN and INT32_MAX.");
+  }
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
   if (op_context.constant_values != nullptr) {
@@ -276,6 +285,10 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
+
+  TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
+                     "INT64 padding overflow. Only support value between "
+                     "INT32_MIN and INT32_MAX.");
 
   if (op_context.constant_values != nullptr) {
     // Ensure that constant_values is a scalar.

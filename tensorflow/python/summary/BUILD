@@ -63,9 +63,9 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":plugin_asset",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -92,7 +92,6 @@ tf_py_strict_test(
     deps = [
         ":summary_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -103,6 +102,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
     ],
 )
 

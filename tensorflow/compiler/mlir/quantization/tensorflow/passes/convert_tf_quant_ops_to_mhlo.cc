@@ -19,7 +19,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -55,6 +57,7 @@ class ConvertTFQuantOpsToMHLOPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
     registry.insert<mhlo::MhloDialect>();
+    registry.insert<chlo::ChloDialect>();
     registry.insert<tf_type::TFTypeDialect>();
     registry.insert<quant::QuantizationDialect>();
     registry.insert<quantfork::QuantizationForkDialect>();
@@ -68,10 +71,19 @@ static PassRegistration<ConvertTFQuantOpsToMHLOPass> pass;
 void ConvertTFQuantOpsToMHLOPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   func::FuncOp func = getOperation();
+  ConversionTarget target(*ctx);
+  target.addLegalDialect<TF::TensorFlowDialect, mhlo::MhloDialect,
+                         chlo::ChloDialect>();
+  target.addIllegalOp<
+      TF::UniformQuantizeOp, TF::UniformRequantizeOp, TF::UniformDequantizeOp,
+      TF::UniformQuantizedDotOp, TF::UniformQuantizedDotHybridOp,
+      TF::UniformQuantizedConvolutionOp,
+      TF::UniformQuantizedConvolutionHybridOp, TF::UniformQuantizedAddOp,
+      TF::UniformQuantizedClipByValueOp>();
 
   RewritePatternSet patterns(ctx);
   mhlo::PopulateLegalizeTfQuantizationPatterns(ctx, &patterns);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
     signalPassFailure();
   }
 }

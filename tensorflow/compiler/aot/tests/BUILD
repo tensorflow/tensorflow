@@ -91,7 +91,6 @@ genrule(
     testonly = 1,
     outs = [
         "test_graph_tfadd.pb",
-        "test_debuginfo_tfadd.pb",
         "test_graph_tfadd_with_ckpt.ckpt",
         "test_graph_tfadd_with_ckpt.pb",
         "test_graph_tfadd_with_ckpt_saver.ckpt",

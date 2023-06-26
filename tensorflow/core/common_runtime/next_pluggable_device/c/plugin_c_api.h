@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/compiler/xla/c/c_api_decl.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 
 #define TFNPD_MAJOR 0
@@ -90,6 +91,10 @@ typedef TFNPD_DeviceEvent* TFNPD_HostTensorToDeviceTensor(
 typedef TFNPD_DeviceEvent* TFNPD_SameDeviceTensorCopy(
     TFNPD_DeviceContext* context);
 
+typedef PJRT_Buffer* TFNPD_SameDevicePjRtBufferCopy(PJRT_Buffer* src_buffer,
+                                                    PJRT_Client* c_client,
+                                                    TF_Status* status);
+
 typedef void TFNPD_DeviceContextDelete(TFNPD_DeviceContext* context);
 
 // ------------------------------  TF2XLA  -------------------------------------
@@ -134,6 +139,7 @@ typedef struct {
   TFNPD_API_STRUCT_FN(TFNPD_DeviceTensorToHostTensor);
   TFNPD_API_STRUCT_FN(TFNPD_HostTensorToDeviceTensor);
   TFNPD_API_STRUCT_FN(TFNPD_SameDeviceTensorCopy);
+  TFNPD_API_STRUCT_FN(TFNPD_SameDevicePjRtBufferCopy);
 
   TFNPD_API_STRUCT_FN(TFNPD_XlaShapeToDeviceShapeRepresentation);
 

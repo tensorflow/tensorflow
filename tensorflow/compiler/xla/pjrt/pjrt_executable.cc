@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -143,6 +144,47 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
     GetOpSharding(out, s.ToProto());
   }
   return out;
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
+                                       HloCostAnalysis* hlo_cost_analysis) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
+                      executable.GetHloModules());
+  if (modules.empty()) {
+    return NotFound(
+        "Executable '%s' did not have an HloModule to generate "
+        "cost analysis with.",
+        executable.name());
+  } else if (modules.size() > 1) {
+    return Unimplemented(
+        "GetCostAnalysis() doesn't support multiple program "
+        "multiple data executables (from executable '%s').",
+        executable.name());
+  }
+  return RunHloCostAnalysis(modules, hlo_cost_analysis);
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtExecutableUtil::RunHloCostAnalysis(
+    const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
+    HloCostAnalysis* hlo_cost_analysis) {
+  if (hlo_modules.empty()) {
+    return NotFound("RunHloCostAnalysis called with empty hlo_modules");
+  } else if (hlo_modules.size() > 1) {
+    return Unimplemented(
+        "GetCostAnalysis() doesn't support multiple program "
+        "multiple data executables.");
+  }
+
+  TF_RETURN_IF_ERROR(
+      hlo_modules[0]->entry_computation()->Accept(hlo_cost_analysis));
+
+  // Return cost properties
+  absl::flat_hash_map<std::string, PjRtValueType> ret;
+  hlo_cost_analysis->properties().ForEach(
+      [&](absl::string_view key, float val) { ret[key] = val; });
+  return ret;
 }
 
 Status CompileOptions::ApplyOption(const std::string& key,

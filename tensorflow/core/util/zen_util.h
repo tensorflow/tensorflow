@@ -37,9 +37,10 @@ inline int64_t GetMempool() {
 inline bool IsBlockedFormatEnabled() {
   static absl::once_flag once;
   static bool blocked_format = false;
+  static int64_t conv_algo = 1;
   absl::call_once(once, [&] {
-    TF_CHECK_OK(ReadBoolFromEnvVar("ZENDNN_BLOCKED_FORMAT", blocked_format,
-                                   &blocked_format));
+    TF_CHECK_OK(ReadInt64FromEnvVar("ZENDNN_CONV_ALGO", conv_algo, &conv_algo));
+    blocked_format = (conv_algo == 3);
     return blocked_format;
   });
   return blocked_format;

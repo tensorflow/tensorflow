@@ -1501,15 +1501,19 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/tsl/framework:device_id_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 

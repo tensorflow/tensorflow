@@ -21,8 +21,7 @@ limitations under the License.
 
 #include <variant>
 
-#include "absl/base/thread_annotations.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
@@ -40,7 +39,7 @@ class GpuStream : public internal::StreamInterface {
       : parent_(parent), gpu_stream_(nullptr), completed_event_(nullptr) {}
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override {}
+  ~GpuStream() override = default;
 
   void* GpuStreamHack() override { return gpu_stream_; }
   void** GpuStreamMemberHack() override {
@@ -51,13 +50,13 @@ class GpuStream : public internal::StreamInterface {
   // by StreamExecutor::AllocateStream().
   bool Init();
 
-  void SetPriority(stream_executor::StreamPriority priority) override {
+  void SetPriority(StreamPriority priority) override {
     stream_priority_ = priority;
   }
 
   void SetPriority(int priority) override { stream_priority_ = priority; }
 
-  std::variant<stream_executor::StreamPriority, int> priority() const override {
+  std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
   }
 
@@ -90,7 +89,7 @@ class GpuStream : public internal::StreamInterface {
  private:
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
-  std::variant<stream_executor::StreamPriority, int> stream_priority_;
+  std::variant<StreamPriority, int> stream_priority_;
 
   // Event that indicates this stream has completed.
   GpuEventHandle completed_event_ = nullptr;

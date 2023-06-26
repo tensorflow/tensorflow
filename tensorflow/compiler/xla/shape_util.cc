@@ -1472,6 +1472,81 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
   return transpose_perm;
 }
 
+namespace {
+
+static absl::InlinedVector<int64_t, 8> ReverseIota(int64_t n) {
+  absl::InlinedVector<int64_t, 8> ret(n);
+  absl::c_generate(ret, [n = ret.size()]() mutable { return --n; });
+  return ret;
+}
+
+}  // namespace
+
+bool ShapeUtil::BitcastDecompositionTrt::IsTranspose1Identity() const {
+  return absl::c_is_sorted(transpose1_dims);
+}
+
+bool ShapeUtil::BitcastDecompositionTrt::IsTranspose2Identity() const {
+  return absl::c_is_sorted(transpose2_dims);
+}
+
+/* static */ ShapeUtil::BitcastDecompositionTrt
+ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
+                                 const Shape& output_shape) {
+  CHECK(input_shape.has_layout()) << input_shape.ToString();
+  CHECK(output_shape.has_layout()) << output_shape.ToString();
+
+  BitcastDecompositionTrt decomposition;
+  decomposition.transpose1_shape =
+      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(input_shape);
+  decomposition.reshape_shape =
+      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(output_shape);
+  CHECK(ReshapeIsBitcast(decomposition.transpose1_shape,
+                         decomposition.reshape_shape,
+                         /*ignore_element_type=*/true));
+
+  // Let a * b denote Permute(a, perm=b).
+  //
+  // (input_dims * transpose1_dims) * R = input_dims * input_layout
+  // transpose1_dims * R = input_layout  | * R, knowing R * R = I
+  // transpose1_dims = input_layout * R
+  decomposition.transpose1_dims = ComposePermutations(
+      LayoutPerm(input_shape), ReverseIota(input_shape.rank()));
+  CHECK(TransposeIsBitcast(input_shape, decomposition.transpose1_shape,
+                           decomposition.transpose1_dims,
+                           /*ignore_element_type=*/false));
+
+  // (reshape_dims * transpose2_dims) * output_layout = reshape_dims * R
+  // transpose2_dims * output_layout = R  | * inv(output_layout)
+  // transpose2_dims = R * inv(output_layout)
+  decomposition.transpose2_dims =
+      ComposePermutations(ReverseIota(output_shape.rank()),
+                          InversePermutation(LayoutPerm(output_shape)));
+  CHECK(TransposeIsBitcast(decomposition.reshape_shape, output_shape,
+                           decomposition.transpose2_dims,
+                           /*ignore_element_type=*/false));
+
+  return decomposition;
+}
+
+/* static */ ShapeUtil::BitcastDecomposition ShapeUtil::DecomposeBitcast(
+    const Shape& input_shape, const Shape& output_shape) {
+  CHECK(input_shape.has_layout()) << input_shape.ToString();
+  CHECK(output_shape.has_layout()) << output_shape.ToString();
+
+  if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
+                                  /*ignore_element_type=*/true)) {
+    return BitcastDecompositionReshape{};
+  }
+
+  if (std::optional<std::vector<int64_t>> transpose_dims =
+          DeduceTransposeDimensionsForBitcast(input_shape, output_shape)) {
+    return BitcastDecompositionTranspose{transpose_dims.value()};
+  }
+
+  return DecomposeBitcastToTrt(input_shape, output_shape);
+}
+
 /* static */ std::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(input_shape.IsArray());

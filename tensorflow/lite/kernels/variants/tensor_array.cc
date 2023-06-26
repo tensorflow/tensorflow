@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 
+#include <cstring>
+
 namespace tflite {
 namespace variants {
 
@@ -80,6 +82,12 @@ bool TensorArray::Set(int index, TensorUniquePtr tensor) {
   return true;
 }
 
+TensorArray::~TensorArray() {
+  Clear();
+  free(elements_);
+  elements_ = nullptr;
+}
+
 void TensorArray::Drop(int i) {
   RefCountedTensor* t = elements_ + i;
   int* count = t->count;
@@ -97,12 +105,6 @@ void TensorArray::Drop(int i) {
   (*count)--;
 }
 
-TensorArray::~TensorArray() {
-  Clear();
-  free(elements_);
-  elements_ = nullptr;
-}
-
 // `Drop`s each element in the list.
 void TensorArray::Clear() {
   for (int i = 0; i < num_elements_; ++i) {
@@ -112,7 +114,7 @@ void TensorArray::Clear() {
 
 void TensorArray::AssignBuffer(RefCountedTensor* dst) const {
   // Copy `this` underlying buffer.
-  memcpy(dst, elements_, sizeof(RefCountedTensor) * num_elements_);
+  std::memcpy(dst, elements_, sizeof(RefCountedTensor) * num_elements_);
   // Increment the reference count for each copied tensor.
   for (int i = 0; i < num_elements_; ++i) {
     if (dst[i].count == nullptr) {

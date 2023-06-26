@@ -2902,6 +2902,64 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditionalBufferReuseVerificationBug) {
   AssignMemorySpace(module.get());
 }
 
+TEST_P(MemorySpaceAssignmentTest, WhileInsideNestedConditionalVerificationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+
+  while_body {
+    p0 = (f32[3]{0}) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    negate0 = f32[3]{0} negate(gte0)
+    ROOT tuple = (f32[3]{0}) tuple(negate0)
+  }
+
+  true_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    tuple = (f32[3]{0}) tuple(gte)
+    while = (f32[3]{0}) while(tuple), condition=while_cond, body=while_body
+    while_gte0 = f32[3]{0} get-tuple-element(while), index=0
+    ROOT root = f32[3]{0} negate(while_gte0)
+  }
+
+  false_computation2 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg3 = f32[3]{0} negate(gte)
+  }
+
+  true_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    constant = pred[] constant(true)
+    tuple = (f32[3]{0}) tuple(gte)
+    ROOT conditional = f32[3]{0} conditional(constant, tuple, tuple), true_computation=true_computation2, false_computation=false_computation2
+  }
+
+  false_computation1 {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg3 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation1, false_computation=false_computation1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
 TEST_P(MemorySpaceAssignmentTest,
        ConditionalComputationBufferOverlapBeforeParam) {
   absl::string_view hlo_string = R"(
@@ -6933,6 +6991,87 @@ TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
   resource.RemoveCopy(copy6);
   EXPECT_EQ(resource.GetCurrentResources(),
             std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
+}
+
+TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckSuccess) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 1 3 6 7 3 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 3 7 2 2 4
+  //  1,10,4       +---------------+  OK
+  // resource:  0 0 0 3 7 3 7 2 2 4
+  //  0,6,4    +-----------+
+  //  4,6,3              +-+          2 copies OK; The 1,10 copy shifts.
+  // resource:  0 0 0 0 6 0 7 2 2 4
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 10, 4.0));
+  resource.AddCopy({1, 10, 4.0, alternate_mem_space, 1});
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 10, alternate_mem_space);
+
+  // We run the check in a loop to demonstrate that it is not modifying the
+  // underlying data structures.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(
+        resource.HasEnoughResourceMultiCheck({{0, 6, 4.0}, {4, 6, 3.0}}));
+  }
+}
+
+TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckFailure) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 1 3 6 7 3 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 3 7 2 2 4
+  //  1,10,4       +---------------+  OK
+  // resource:  0 0 0 3 7 3 7 2 2 4
+  //  0,6,4    +-----------+
+  //  4,6,4              +-+          Not-OK
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 10, 4.0));
+  resource.AddCopy({1, 10, 4.0, alternate_mem_space, 1});
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 10, alternate_mem_space);
+
+  EXPECT_FALSE(
+      resource.HasEnoughResourceMultiCheck({{0, 6, 4.0}, {4, 6, 4.0}}));
+}
+
+TEST_F(AsynchronousCopyResourceTest,
+       HasEnoughResourceMultiCheckRegressionTest) {
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({/*0:*/ 24.0f,
+                                     /*1:*/ 0.0f,
+                                     /*2:*/ 6.0f,
+                                     /*3:*/ 411.0f,
+                                     /*4:*/ 3479.0f,
+                                     /*5:*/ 0.0f,
+                                     /*6:*/ 0.0f,
+                                     /*7:*/ 1537.0f,
+                                     /*8:*/ 3095.0f,
+                                     /*9:*/ 0.0f,
+                                     /*10:*/ 26.7f});
+  AsynchronousCopy copy1({1, 8, 170.8f, alternate_mem_space, 1});
+  AsynchronousCopy copy2({2, 8, 170.8f, alternate_mem_space, 2});
+  resource.AddCopy(copy1);
+  resource.AddCopy(copy2);
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 11, alternate_mem_space);
+  // Under the  current AsynchronousCopyResource implementation, this
+  // HasEnoughResource check fails. Although, other designs could rearrange
+  // resources in a manner that fits the check.
+  EXPECT_FALSE(
+      resource.HasEnoughResourceMultiCheck({{0, 4, 170.8}, {1, 4, 170.8}}));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {

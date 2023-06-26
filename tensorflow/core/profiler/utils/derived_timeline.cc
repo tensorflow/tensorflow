@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
@@ -37,21 +36,24 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+using tsl::profiler::FindMutableTensorCorePlanes;
+
 inline std::string HloModuleEventName(const GpuEventStats& stats) {
-  return stats.program_id ? HloModuleNameWithProgramId(stats.hlo_module_name,
-                                                       *stats.program_id)
+  return stats.program_id ? tsl::profiler::HloModuleNameWithProgramId(
+                                stats.hlo_module_name, *stats.program_id)
                           : std::string(stats.hlo_module_name);
 }
 

@@ -891,6 +891,27 @@ typedef struct TfLiteContext {
   TfLiteStatus (*GetModelMetadata)(const struct TfLiteContext* context,
                                    const char* name, const char** ptr,
                                    size_t* bytes);
+
+  // Retrieves the corresponding TfLiteContext of a subgraph that the given
+  // subgraph_index points to and switches to the delegate context for that
+  // subgraph. If an invalid subgraph index is given, returns kTfLiteError.
+  // NOTE: This function is expected to be paired with ReleaseSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*AcquireSubgraphContext)(
+      struct TfLiteContext* context, int subgraph_index,
+      struct TfLiteContext** acquired_context);
+  // Releases the subgraph context by switching back to the TFLite kernel
+  // context for the subgraph that the given subgraph_index points to.
+  // NOTE: This function is expected to be used after AcquireSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*ReleaseSubgraphContext)(struct TfLiteContext* context,
+                                         int subgraph_index);
 } TfLiteContext;
 
 // `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
@@ -1171,6 +1192,7 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Creates an opaque delegate and returns its address.  The opaque delegate will
 // behave according to the provided 'opaque_delegate_builder'.  The lifetime of
 // the objects pointed to by any of the fields within the
@@ -1187,6 +1209,7 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Returns a pointer to the data associated with the provided opaque 'delegate'.
 //

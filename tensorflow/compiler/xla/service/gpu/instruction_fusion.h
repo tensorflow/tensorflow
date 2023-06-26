@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,9 +32,11 @@ namespace gpu {
 
 class GpuInstructionFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d)
+  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d,
+                                bool priority_fusion = false)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
-        device_info_(d) {}
+        device_info_(d),
+        priority_fusion_(priority_fusion) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -46,6 +49,8 @@ class GpuInstructionFusion : public InstructionFusion {
   }
 
  protected:
+  std::unique_ptr<FusionQueue> GetFusionQueue(
+      HloComputation* computation) override;
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
 
@@ -67,6 +72,7 @@ class GpuInstructionFusion : public InstructionFusion {
       fusion_node_evaluations_;
 
   const GpuDeviceInfo device_info_;
+  const bool priority_fusion_;
 };
 
 }  // namespace gpu

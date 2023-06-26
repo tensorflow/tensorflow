@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BACKEND_H_
 
 #include <functional>
-#include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -124,23 +123,26 @@ class Backend {
   // grabbing it from an internal pool, or by constructing/initializating it,
   // and returns the result to the caller.
   StatusOr<StreamPool::Ptr> BorrowStream(
-      int device_ordinal, stream_executor::StreamPriority priority =
-                              stream_executor::StreamPriority::Default);
+      int device_ordinal,
+      se::StreamPriority priority = se::StreamPriority::Default);
   StatusOr<StreamPool::Ptr> BorrowStream(
       se::StreamExecutor* executor,
-      stream_executor::StreamPriority priority =
-          stream_executor::StreamPriority::Default);
+      se::StreamPriority priority = se::StreamPriority::Default);
+  StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
+      int device_ordinal, int num_streams,
+      se::StreamPriority priority = se::StreamPriority::Default);
 
-  // Returns a function to borrow a stream with a given priority,
-  // as `BorrowStream` above does.
+  // Returns a function to borrow streams with a given priority,
+  // as `BorrowStreams` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPool::Ptr>(int, stream_executor::StreamPriority)>
+  std::function<StatusOr<std::vector<StreamPool::Ptr>>(int, int,
+                                                       se::StreamPriority)>
   StreamBorrowerWithPriority() {
-    return
-        [this](int device_ordinal, stream_executor::StreamPriority priority) {
-          return BorrowStream(device_ordinal, priority);
-        };
+    return [this](int device_ordinal, int num_streams,
+                  se::StreamPriority priority) {
+      return BorrowStreams(device_ordinal, num_streams, priority);
+    };
   }
 
   // Returns whether the given device ordinal of the backend is supported.

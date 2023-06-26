@@ -197,7 +197,6 @@ class XlaOp {
 
   friend class XlaBuilder;
   friend class ValueInference;
-  friend class MlirHloBuilder;
   friend struct internal::XlaBuilderFriend;
 
   // < 0 means "invalid handle".
@@ -1440,6 +1439,12 @@ class XlaBuilder {
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Shape>& shape_with_layout,
                          std::optional<bool> use_global_device_ids);
+  friend XlaOp AllReduceTuple(absl::Span<const XlaOp> operand,
+                              const XlaComputation& computation,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id,
+                              const std::optional<Shape>& shape_with_layout,
+                              std::optional<bool> use_global_device_ids);
   friend XlaOp ReduceScatter(XlaOp operand, const XlaComputation& computation,
                              int64_t scatter_dimension, int64_t shard_count,
                              absl::Span<const ReplicaGroup> replica_groups,
@@ -2446,6 +2451,13 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Shape>& shape_with_layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
+
+XlaOp AllReduceTuple(
+    absl::Span<const XlaOp> operand, const XlaComputation& computation,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Shape>& shape_with_layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
 
 XlaOp ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,

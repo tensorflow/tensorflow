@@ -25,6 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class BackendCompiler;
+
 enum class TfrtDeviceInfraTarget {
   kCpu,             // CPU only, no device support.
   kTpurt,           // Target TPURT dialect and kernels.
@@ -38,6 +40,7 @@ enum class TfrtDeviceInfraTarget {
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
+  std::string saved_model_dir;
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
   std::string variable_device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -65,6 +68,11 @@ struct TfrtCompileOptions {
   // The target device infrastructure to use. This will trigger target specific
   // compiler passes and runtime initialization.
   TfrtDeviceInfraTarget device_target = TfrtDeviceInfraTarget::kCpu;
+
+  // The custom compiler for device compilation. Instead of using the enum above
+  // to choose predefined device target, users can use this `backend_compiler`
+  // to inject their customized implementation.
+  BackendCompiler* backend_compiler = nullptr;
 
   // If true, use the fused TPU compile_and_execute kernel, which performs all
   // TPU inference related operations, e.g. core selection, h2d/d2h transfers,

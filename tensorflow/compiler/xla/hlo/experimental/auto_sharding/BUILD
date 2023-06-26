@@ -12,6 +12,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/...",
+        "//tensorflow/compiler/xla/service/gpu/...",
     ],
 )
 
@@ -122,7 +123,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",

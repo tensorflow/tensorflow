@@ -67,12 +67,6 @@ cc_library(
 )
 
 cc_library(
-    name = "format_utils",
-    hdrs = ["format_utils.h"],
-    deps = ["//tensorflow/tsl/profiler/utils:format_utils"],
-)
-
-cc_library(
     name = "html_utils",
     hdrs = ["html_utils.h"],
     deps = [
@@ -283,15 +277,15 @@ cc_library(
         ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
-        ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -391,17 +385,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "file_system_utils",
-    hdrs = ["file_system_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/utils:file_system_utils",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "parse_annotation",
     hdrs = ["parse_annotation.h"],
     copts = tf_profiler_copts(),
@@ -443,15 +426,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_xplane_utils",
-    hdrs = ["tpu_xplane_utils.h"],
-    deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
-    ],
-)
-
-cc_library(
     name = "hlo_proto_map",
     srcs = ["hlo_proto_map.cc"],
     hdrs = ["hlo_proto_map.h"],
@@ -462,8 +436,8 @@ cc_library(
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

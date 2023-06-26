@@ -97,7 +97,6 @@ py_strict_test(
     deps = [
         ":framework",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/framework:constant_op",
@@ -109,6 +108,7 @@ py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
@@ -125,7 +125,6 @@ py_strict_test(
         ":dumping_wrapper",
         ":framework",
         ":hooks",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/framework:constant_op",
@@ -136,6 +135,7 @@ py_strict_test(
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training",
     ],
 )
@@ -149,7 +149,6 @@ py_strict_test(
     deps = [
         ":local_cli_wrapper",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/debug/cli:cli_config",
         "//tensorflow/python/debug/cli:cli_shared",
@@ -168,6 +167,7 @@ py_strict_test(
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training",
         "//tensorflow/python/training:session_run_hook",
         "//third_party/py/numpy",
@@ -183,13 +183,13 @@ py_strict_test(
     deps = [
         ":dumping_wrapper",
         ":hooks",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training",
     ],
 )

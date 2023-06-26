@@ -688,7 +688,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation.from_node_def(
         ops._NodeDef("None", "op1"), g, [], [dtypes.float32_ref, dtypes.float32]
     )
-    self.assertIn("testTraceback", op1.traceback[-1])
+    self.assertIn("testTraceback", op1.traceback[-2])
 
   @test_util.run_deprecated_v1
   def testNoInputs(self):
@@ -3697,10 +3697,11 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     concrete_function = f.get_concrete_function()
     if pre_add_input_shapes:
       attr_value = attr_value_pb2.AttrValue(list=list_proto)
-      concrete_function = eager_function.ConcreteFunction(
+      concrete_function = eager_function.ConcreteFunction.from_func_graph(
           concrete_function.graph,
+          concrete_function.function_type,
           attrs={"_input_shapes": attr_value},
-          function_type=concrete_function.function_type)
+      )
 
     test_graph = ops.Graph()
     with test_graph.as_default():

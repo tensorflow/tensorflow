@@ -12,6 +12,7 @@ package_group(
     packages = [
         # Authorized users go here.
         "//tensorflow/compiler/xla/service/gpu/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
         # copybara:uncomment "//tensorflow_serving/...",
@@ -27,8 +28,10 @@ cc_library(
     hdrs = ["runtime.h"],
     deps = [
         ":work_queue_interface",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@tf_runtime//:core_runtime_alwayslink",

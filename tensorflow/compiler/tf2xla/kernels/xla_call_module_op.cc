@@ -24,11 +24,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -195,6 +197,10 @@ class XlaCallModuleOp : public XlaOpKernel {
              .ok()) {
       original_node_name_ = name();
     }
+
+    mlir::DialectRegistry registry;
+    mlir::func::registerAllExtensions(registry);
+    context_.appendDialectRegistry(registry);
   }
 
   void Compile(XlaOpKernelContext *ctx) override {

@@ -24,9 +24,9 @@ from tensorflow.python.util import compat
 
 class ConcreteFunctionTest(test.TestCase, parameterized.TestCase):
 
-  def setUp(self):
-    super().setUp()
-    self.func_graph = func_graph_module.FuncGraph("f")
+  def concrete_function_with_attrs(self, attrs):
+    func_graph = func_graph_module.FuncGraph("f")
+    return cf.ConcreteFunction.from_func_graph(func_graph, None, attrs=attrs)
 
   @parameterized.parameters(
       ({"api_implements": True}, attr_value_pb2.AttrValue(b=True)),
@@ -39,7 +39,7 @@ class ConcreteFunctionTest(test.TestCase, parameterized.TestCase):
   )
   def test_parses_func_attr_scalar_values(self, attrs, expected):
     self.assertEqual(
-        cf.ConcreteFunction(self.func_graph, attrs=attrs).function_def.attr[
+        self.concrete_function_with_attrs(attrs=attrs).function_def.attr[
             "api_implements"
         ],
         expected,
@@ -55,14 +55,14 @@ class ConcreteFunctionTest(test.TestCase, parameterized.TestCase):
             f: 1.0
         }
         """,
-        cf.ConcreteFunction(
-            self.func_graph, attrs={"api_implements": ["test", True, 1, 1.0]}
+        self.concrete_function_with_attrs(
+            attrs={"api_implements": ["test", True, 1, 1.0]}
         ).function_def.attr["api_implements"],
     )
 
   def test_raises_value_error_for_invalid_attr(self):
     with self.assertRaisesRegex(ValueError, "Attribute api_implements must be"):
-      cf.ConcreteFunction(self.func_graph, attrs={"api_implements": None})
+      self.concrete_function_with_attrs(attrs={"api_implements": None})
 
 
 if __name__ == "__main__":

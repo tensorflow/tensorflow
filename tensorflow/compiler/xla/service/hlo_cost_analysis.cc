@@ -162,6 +162,9 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return 0;
+  }
   return options_.shape_size(shape);
 }
 
@@ -789,8 +792,8 @@ int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
             std::min<int64_t>(
                 input_limits[spatial_dimension] + undilated_index_base,
                 output_limits[spatial_dimension]) -
-                std::max<int64_t>(undilated_index_base, 0l),
-            0l);
+                std::max<int64_t>(undilated_index_base, int64_t{0}),
+            int64_t{0});
         continue;
       }
       // Loop over each point in the output.

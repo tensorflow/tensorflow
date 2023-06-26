@@ -20,14 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 
 using xla::source_map_util::InvalidParameterArgument;
 

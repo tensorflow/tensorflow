@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -64,6 +65,19 @@ StatusOr<std::unique_ptr<Client>> GetClient() {
   auto factory = GetGlobalClientFactory().Get();
   CHECK(factory) << "Client factory has not been registered.";
   return factory();
+}
+
+void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
+  static constexpr absl::string_view kDefaultTestFilter = "*";
+#ifdef GTEST_FLAG_SET
+  if (GTEST_FLAG_GET(filter) == kDefaultTestFilter) {
+    GTEST_FLAG_SET(filter, custom_filter);
+  }
+#else
+  if (testing::GTEST_FLAG(filter) == kDefaultTestFilter) {
+    testing::GTEST_FLAG(filter) = custom_filter;
+  }
+#endif
 }
 
 }  // namespace test_util

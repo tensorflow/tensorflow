@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -156,6 +157,7 @@ static void ConfigureMlirContext(MLIRContext* context,
     // Call user-provided callback to register all required dialects.
     DialectRegistry dialects;
     opts.register_dialects(dialects);
+    mlir::func::registerAllExtensions(*dialects);
     context->appendDialectRegistry(*dialects);
     context->loadAllAvailableDialects();
   }

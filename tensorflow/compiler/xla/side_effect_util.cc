@@ -59,4 +59,6 @@ const char kXlaQuantizationLowValueAttr[] = "_xla_quantization_low_value";
 const char kXlaQuantizationNumBucketsValueAttr[] =
     "_xla_quantization_num_buckets_value";
 
+const char kXlaTableId[] = "_xla_table_id";
+
 }  // namespace xla

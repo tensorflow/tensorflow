@@ -155,8 +155,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
       mlir::mhlo::createFlattenTuplePass());
 
   // TF dialect passes
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateLegalizeHloToTfPass());
+  pass_manager->addPass(mlir::TF::CreateLegalizeHloToTfPass());
 
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF

@@ -1494,13 +1494,17 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   let hasVerifier = 1;
 }
 
-def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
-    [HLO_CompatibleOperandsAndResultType]> {
+def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
+    SameOperandsAndResultElementType,
+    SingleBlockImplicitTerminator<"ReturnOp">,
+    InferTensorType
+  ]> {
   let summary = "AllReduce operation";
   let description = [{
     Within each process group in the process grid, applies a reduction function
-    `computation` to the values of the `operand` tensor from each process and
-    produces a `result` tensor.
+    `computation` to the values of an operand tensor from each process and
+    produces a result tensor. The `computation` is applied separately for each
+    operand in `operands`, producing one result per operand.
 
     See:
     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#all_reduce
@@ -1521,17 +1525,28 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
   }];
 
   let arguments = (ins
-    MHLO_Tensor:$operand,
+    Variadic<MHLO_Tensor>:$operands,
     I64ElementsAttr:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
   let regions = (region SizedRegion<1>:$computation);
-  let results = (outs MHLO_Tensor);
-  let hasVerifier = 1;
+  let results = (outs Variadic<MHLO_Tensor>);
+
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
+      CArg<"bool", "false">:$use_global_device_ids)>,
+     OpBuilder<(ins
+      "::mlir::Value":$operand,
+      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
+      CArg<"bool", "false">:$use_global_device_ids)>,
+ ];
 
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",

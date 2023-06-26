@@ -419,15 +419,12 @@ cc_library(
     hdrs = ["stack_trace.h"],
     deps = [
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/tsl/platform:fingerprint",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

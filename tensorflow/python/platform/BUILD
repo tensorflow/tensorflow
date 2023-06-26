@@ -79,6 +79,7 @@ py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":benchmark",
         ":flags",

@@ -539,6 +539,66 @@ int PjRtCApiDevice::local_hardware_id() const {
   return args.local_hardware_id;
 }
 
+StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
+  PJRT_Device_MemoryStats_Args args;
+  args.struct_size = PJRT_Device_MemoryStats_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Device_MemoryStats(&args), api);
+
+  tsl::AllocatorStats result;
+  result.bytes_in_use = args.bytes_in_use;
+
+  // The PJRT C API supports optionally returning most fields, but only some
+  // fields in tsl::AllocatorStats are optional. Return -1 for unset,
+  // non-optional fields. We could change tsl::AllocatorStats to have all
+  // optional fields, but that requires changing a lot of callers.
+  if (args.peak_bytes_in_use_is_set) {
+    result.peak_bytes_in_use = args.peak_bytes_in_use;
+  } else {
+    result.peak_bytes_in_use = -1;
+  }
+  if (args.num_allocs_is_set) {
+    result.num_allocs = args.num_allocs;
+  } else {
+    result.num_allocs = -1;
+  }
+  if (args.largest_alloc_size_is_set) {
+    result.largest_alloc_size = args.largest_alloc_size;
+  } else {
+    result.largest_alloc_size = -1;
+  }
+  if (args.bytes_limit_is_set) {
+    result.bytes_limit = args.bytes_limit;
+  }
+  if (args.bytes_reserved_is_set) {
+    result.bytes_reserved = args.bytes_reserved;
+  } else {
+    result.bytes_reserved = -1;
+  }
+  if (args.peak_bytes_reserved_is_set) {
+    result.peak_bytes_reserved = args.peak_bytes_reserved;
+  } else {
+    result.peak_bytes_reserved = -1;
+  }
+  if (args.bytes_reservable_limit_is_set) {
+    result.bytes_reservable_limit = args.bytes_reservable_limit;
+  }
+  if (args.largest_free_block_bytes_is_set) {
+    result.largest_free_block_bytes = args.largest_free_block_bytes;
+  } else {
+    result.largest_free_block_bytes = -1;
+  }
+  if (args.pool_bytes_is_set) {
+    result.pool_bytes = args.pool_bytes;
+  }
+  if (args.peak_pool_bytes_is_set) {
+    result.peak_pool_bytes = args.peak_pool_bytes;
+  }
+  return result;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PjRtCApiExecutable::PjRtCApiExecutable(const PJRT_Api* c_api,
@@ -594,6 +654,23 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
   pjrt::LogFatalIfPjrtError(
       c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
   return args.size_in_bytes;
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtCApiExecutable::GetCostAnalysis() const {
+  // Initialize function call args
+  PJRT_Executable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  // Make PJRT C API call
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+
+  // Copy returned properties to output map
+  return pjrt::ConvertFromPjRtNamedValueList(args.properties,
+                                             args.num_properties);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -1152,24 +1229,6 @@ bool PjRtCApiLoadedExecutable::IsDeleted() {
   return args.is_deleted;
 }
 
-StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-PjRtCApiLoadedExecutable::GetCostAnalysis() const {
-  // Initialize function call args
-  PJRT_LoadedExecutable_GetCostAnalysis_Args args;
-  args.struct_size = PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.executable = c_loaded_executable();
-
-  // Make PJRT C API call
-  const PJRT_Api* c_api = pjrt_c_api();
-  RETURN_STATUS_IF_ERROR(c_api->PJRT_LoadedExecutable_GetCostAnalysis(&args),
-                         c_api);
-
-  // Copy returned properties to output map
-  return pjrt::ConvertFromPjRtNamedValueList(args.properties,
-                                             args.num_properties);
-}
-
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
@@ -1613,7 +1672,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
 }
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
-    absl::string_view device_type) {
+    absl::string_view device_type, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr for %s", device_type);
@@ -1622,6 +1682,12 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
+  init_args.create_options = c_options.data();
+  init_args.num_options = c_options.size();
+  init_args.topology_name = topology_name.data();
+  init_args.topology_name_size = topology_name.size();
   RETURN_STATUS_IF_ERROR(c_api->PJRT_TopologyDescription_Create(&init_args),
                          c_api);
   PJRT_TopologyDescription* c_topology = init_args.topology;

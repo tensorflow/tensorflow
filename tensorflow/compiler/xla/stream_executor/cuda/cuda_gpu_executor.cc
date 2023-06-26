@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_event.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/numbers.h"
@@ -77,27 +76,11 @@ bool FLAGS_prefer_cubin_to_ptx = true;
 namespace stream_executor {
 namespace gpu {
 
-// Hook that can be used to CUBIN-ate PTX before it is loaded into the driver.
-// It has been observed that loading both PTX and cubins into the driver library
-// can cause it to crash, but loading only CUBINs avoids those crashes;
-// therefore, it's useful to have this hook to hack in uniform CUBIN-ation of
-// PTX code.
-//
-// As this is an implementation-detail workaround, the usage is to declare this
-// variable with extern linkage and populate it from another translation unit.
-std::function<std::string(const std::string&)> g_cubinate;
-
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event->implementation());
 }
 
-// Given a platform-independent timer datatype, returns the internal CUDA
-// platform implementation pointer.
-static GpuTimer* AsGpuTimer(Timer* timer) {
-  DCHECK(timer != nullptr);
-  return static_cast<GpuTimer*>(timer->implementation());
-}
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
 // for passing directly to libcuda APIs.
@@ -131,58 +114,15 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
                               DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
-  auto status = GpuDriver::Init();
-  if (!status.ok()) {
-    return status;
-  }
-
-  status = GpuDriver::GetDevice(device_ordinal_, &device_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  status = GpuDriver::CreateContext(device_ordinal_, device_, device_options,
-                                    &context_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  return GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_);
+  TF_RETURN_IF_ERROR(GpuDriver::Init());
+  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
+  TF_RETURN_IF_ERROR(GpuDriver::CreateContext(device_ordinal_, device_,
+                                              device_options, &context_));
+  TF_RETURN_IF_ERROR(
+      GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
+  return tsl::OkStatus();
 }
 
-bool GpuExecutor::FindOnDiskForComputeCapability(
-    absl::string_view filename, absl::string_view canonical_suffix,
-    std::string* found_filename) const {
-  if (cc_major_ == 0 && cc_minor_ == 0) {
-    return false;
-  }
-
-  std::string cc_specific =
-      absl::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
-  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
-    VLOG(2) << "found compute-capability-specific file, using that: "
-            << cc_specific;
-    *found_filename = cc_specific;
-    return true;
-  }
-
-  VLOG(2) << "could not find compute-capability specific file at: "
-          << cc_specific;
-  if (tsl::Env::Default()->FileExists(std::string(filename)).ok()) {
-    *found_filename = std::string(filename);
-    return true;
-  }
-
-  return false;
-}
-
-bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
-                                          absl::string_view canonical_suffix,
-                                          std::string* found_filename) const {
-  LOG(ERROR)
-      << "Feature not supported on CUDA platform (FindOnDiskForISAVersion)";
-  return false;
-}
 // Returns the path to the running executable.
 // N.B. Derived from //knowledge/smalltalk/background_kb.cc
 // Arg: strip_exe: if true, remove the name of the executable itself from the
@@ -278,10 +218,8 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal("No method of loading CUDA kernel provided");
   }
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
-  if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
-                                    cuda_kernel->gpu_function_ptr())) {
-    return tsl::errors::Internal("Could not find function ", *kernelname);
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
+      context_, module, kernelname->c_str(), cuda_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -771,14 +709,6 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
   cuda_stream->Destroy();
 }
 
-bool GpuExecutor::AllocateTimer(Timer* timer) {
-  return AsGpuTimer(timer)->Init();
-}
-
-void GpuExecutor::DeallocateTimer(Timer* timer) {
-  AsGpuTimer(timer)->Destroy();
-}
-
 bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   CUevent other_completed_event = *AsGpuStream(other)->completed_event();
   bool ok = GpuDriver::RecordEvent(context_, other_completed_event,
@@ -792,14 +722,6 @@ bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
 
   return GpuDriver::WaitStreamOnEvent(context_, AsGpuStreamValue(dependent),
                                       other_completed_event);
-}
-
-bool GpuExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Start(AsGpuStream(stream));
-}
-
-bool GpuExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Stop(AsGpuStream(stream));
 }
 
 tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
@@ -902,20 +824,18 @@ bool GpuExecutor::GetSymbol(const std::string& symbol_name,
   return false;
 }
 
-bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
+tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
+                              BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
-    return false;
-  }
-
+  TF_RETURN_IF_ERROR(GpuDriver::GetGridLimits(&x, &y, &z, device));
   block_dim_limit->x = x;
   block_dim_limit->y = y;
   block_dim_limit->z = z;
-  return true;
+  return tsl::OkStatus();
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }
@@ -937,11 +857,6 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
-}
-
-std::unique_ptr<internal::TimerInterface>
-GpuExecutor::GetTimerImplementation() {
-  return std::unique_ptr<internal::TimerInterface>(new GpuTimer(this));
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
@@ -1018,17 +933,12 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
-  auto status = GpuDriver::GetDevice(device_ordinal, &device);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal, &device));
 
   int cc_major;
   int cc_minor;
-  status = GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_RETURN_IF_ERROR(
+      GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device));
 
   internal::DeviceDescriptionBuilder builder;
 
@@ -1105,7 +1015,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(device, &block_dim_limit);
+    TF_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
     builder.set_block_dim_limit(block_dim_limit);
   }
 

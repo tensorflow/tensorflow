@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -356,7 +355,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LinSpaceOp>(),
     TypeID::get<TF::LogicalOrOp>(),
-    TypeID::get<TF::MatrixDiagPartV3Op>(),
     TypeID::get<TF::MaxOp>(),
     TypeID::get<TF::MaximumOp>(),
     TypeID::get<TF::MaxPoolOp>(),
@@ -469,12 +467,10 @@ class Tf2XlaRewritePattern : public ConversionPattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
-                                bool prefer_tf2xla,
-                                bool use_tf2xla_hlo_importer)
+                                bool prefer_tf2xla)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
-        prefer_tf2xla_(prefer_tf2xla),
-        use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer) {}
+        prefer_tf2xla_(prefer_tf2xla) {}
 
   LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
@@ -492,8 +488,7 @@ class Tf2XlaRewritePattern : public ConversionPattern {
       return failure();
     }
 
-    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
-                                     use_tf2xla_hlo_importer_);
+    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 
  private:
@@ -592,11 +587,10 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           Tf2XlaTypeConverter& converter,
-                                          bool prefer_tf2xla,
-                                          bool use_tf2xla_hlo_importer) {
+                                          bool prefer_tf2xla) {
   patterns.add<TypePropagator>(ctx);
   patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
-                                     prefer_tf2xla, use_tf2xla_hlo_importer);
+                                     prefer_tf2xla);
 }
 
 }  // end namespace mhlo

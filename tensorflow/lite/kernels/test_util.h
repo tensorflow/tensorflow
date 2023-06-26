@@ -1259,6 +1259,14 @@ inline DimsAreMatcher DimsAre(std::initializer_list<int> dims_list) {
   return DimsAreMatcher(dims_list);
 }
 
+inline DimsAreMatcher DimsAre(const std::vector<int>& dims) {
+  return DimsAreMatcher(dims);
+}
+
+inline DimsAreMatcher DimsAre(absl::Span<int> dims) {
+  return DimsAreMatcher(std::vector<int>(dims.begin(), dims.end()));
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

@@ -56,6 +56,7 @@ def generate_non_chunked_model(non_chunked_dir: str):
 def generate_chunked_model(non_chunked_dir: str, chunked_dir: str):
   saved_model = loader_impl.parse_saved_model(non_chunked_dir)
   prefix = file_io.join(compat.as_str(chunked_dir), "saved_model")
+  file_io.write_string_to_file(f"{prefix}.pbtxt", str(saved_model))
   proto_splitter.SavedModelSplitter(saved_model).write(prefix)
 
 

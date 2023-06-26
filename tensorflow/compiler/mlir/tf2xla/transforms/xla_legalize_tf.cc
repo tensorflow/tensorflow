@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -78,7 +79,7 @@ auto *mlir_failed_legalization_count = tensorflow::monitoring::Counter<2>::New(
 
 class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
-  explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
+  explicit LegalizeTF(bool legalize_chlo,
                       std::optional<StringRef> tf2xla_fallback_device_type,
                       bool prefer_tf2xla) {
     legalize_chlo_ = legalize_chlo;
@@ -735,6 +736,10 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::FusedBatchNormGradV3Op>(),
     TypeID::get<TF::XlaReduceScatterOp>(),
     TypeID::get<TF::ModOp>(),
+    TypeID::get<TF::ConcatV2Op>(),
+
+    // MatrixDiagPartV3 should use the MLIR implementation due to performance.
+    TypeID::get<TF::MatrixDiagPartV3Op>(),
 
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
     TypeID::get<TF::AbsOp>(),
@@ -903,7 +908,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// not used.
 LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
                          std::optional<StringRef> tf2xla_fallback_device_type,
-                         bool prefer_tf2xla, bool use_tf2xla_hlo_importer) {
+                         bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
   RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
@@ -945,9 +950,9 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   Tf2XlaTypeConverter converter;
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
-    PopulateLegalizeTfWithTf2XlaPatterns(
-        tf2xla_fallback_device_type.value(), patterns, context, converter,
-        prefer_tf2xla, use_tf2xla_hlo_importer);
+    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
+                                         patterns, context, converter,
+                                         prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -971,14 +976,15 @@ void LegalizeTF::runOnOperation() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getOperation(), legalize_chlo_,
-                        tf2xla_fallback_device_type, prefer_tf2xla_,
-                        use_tf2xla_hlo_importer_))) {
+                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
 
 }  // end namespace
 
+// TODO(b/288094093): Migrate uniform quantization legalization in a separate
+// pass.
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
   patterns
@@ -991,11 +997,10 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
-    bool allow_partial_conversion, bool legalize_chlo,
-    std::optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
-  return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
-                                      tf2xla_fallback_device_type,
-                                      prefer_tf2xla);
+    bool legalize_chlo, std::optional<StringRef> tf2xla_fallback_device_type,
+    bool prefer_tf2xla) {
+  return std::make_unique<LegalizeTF>(
+      legalize_chlo, tf2xla_fallback_device_type, prefer_tf2xla);
 }
 
 }  // end namespace mhlo

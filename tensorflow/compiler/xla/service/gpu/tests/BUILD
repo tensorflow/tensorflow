@@ -220,7 +220,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
@@ -821,6 +820,7 @@ xla_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
         "no_pip",
@@ -889,4 +889,53 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
     ]),
+)
+
+xla_test(
+    name = "tensor_float_32_global_var_test",
+    srcs = ["tensor_float_32_global_var_test.cc"],
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm80-only",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_fused_mha_test",
+    srcs = ["gpu_fused_mha_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )

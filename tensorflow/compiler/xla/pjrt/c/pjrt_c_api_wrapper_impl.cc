@@ -65,7 +65,7 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
 // populates its cost analysis properties. After this returns successfully,
 // cost analysis properties of the executable can be accessed without mutex.
 static xla::Status PopulateExecutableCostAnalysisIfNeeded(
-    PJRT_LoadedExecutable* executable) {
+    PJRT_Executable* executable) {
   absl::MutexLock lock(&executable->mutex);
   if (!executable->cost_analysis_ran) {
     // Call GetCostAnalysis in the underlying PjRtExecutable
@@ -520,6 +520,54 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
+                        args->device->device->GetAllocatorStats());
+
+  args->bytes_in_use = stats.bytes_in_use;
+
+  args->peak_bytes_in_use_is_set = true;
+  args->peak_bytes_in_use = stats.peak_bytes_in_use;
+  args->num_allocs_is_set = true;
+  args->num_allocs = stats.num_allocs;
+  args->largest_alloc_size_is_set = true;
+  args->largest_alloc_size = stats.largest_alloc_size;
+
+  args->bytes_limit_is_set = stats.bytes_limit.has_value();
+  if (stats.bytes_limit) {
+    args->bytes_limit = *stats.bytes_limit;
+  }
+
+  args->bytes_reserved_is_set = true;
+  args->bytes_reserved = stats.bytes_reserved;
+  args->peak_bytes_reserved_is_set = true;
+  args->peak_bytes_reserved = stats.peak_bytes_reserved;
+
+  args->bytes_reservable_limit_is_set =
+      stats.bytes_reservable_limit.has_value();
+  if (stats.bytes_reservable_limit) {
+    args->bytes_reservable_limit = *stats.bytes_reservable_limit;
+  }
+
+  args->largest_free_block_bytes_is_set = true;
+  args->largest_free_block_bytes = stats.largest_free_block_bytes;
+
+  args->pool_bytes_is_set = stats.pool_bytes.has_value();
+  if (stats.pool_bytes) {
+    args->pool_bytes = *stats.pool_bytes;
+  }
+
+  args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
+  if (stats.peak_pool_bytes) {
+    args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
@@ -684,12 +732,11 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   }
 }
 
-PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args) {
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_LoadedExecutable_GetCostAnalysis_Args",
-      PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE,
-      args->struct_size));
+      "PJRT_Executable_GetCostAnalysis_Args",
+      PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
 
   PJRT_RETURN_IF_ERROR(
       PopulateExecutableCostAnalysisIfNeeded(args->executable));

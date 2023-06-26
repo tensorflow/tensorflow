@@ -113,7 +113,9 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   }
 }
 
-void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
+void CallGraphNode::AddCallSiteForInstruction(
+    HloInstruction* instruction,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK_EQ(instruction->parent(), computation());
   const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
@@ -125,7 +127,9 @@ void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
     // Update callee computations to include any new computations called by this
     // instruction.
     for (auto* callee : callsites_.back().called_computations()) {
-      if (!ContainsKey(callee_set_, callee)) {
+      if (HloInstruction::IsThreadIncluded(callee->execution_thread(),
+                                           execution_threads) &&
+          !ContainsKey(callee_set_, callee)) {
         callees_.push_back(callee);
         callee_set_.insert(callee);
       }
@@ -133,7 +137,10 @@ void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   }
 }
 
-CallGraph::CallGraph(const HloModule* module) : module_(module) {}
+CallGraph::CallGraph(
+    const HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads)
+    : module_(module), execution_threads_(execution_threads) {}
 
 const CallGraphNode& CallGraph::GetNode(
     const HloComputation* computation) const {
@@ -204,7 +211,8 @@ void CallGraph::SetCallContexts() {
 
   // Initialize worklist with all roots of the call graph (computations without
   // callers).
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation :
+       module_->computations(execution_threads_)) {
     CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
       node.set_context(CallContext::kControlFlow);
@@ -218,6 +226,10 @@ void CallGraph::SetCallContexts() {
 
     for (const CallSite& callsite : node->callsites()) {
       for (const HloComputation* callee : callsite.called_computations()) {
+        if (!HloInstruction::IsThreadIncluded(callee->execution_thread(),
+                                              execution_threads_)) {
+          continue;
+        }
         CallGraphNode& callee_node = GetNode(callee);
 
         // Update context of callee computation based on the callsite and its
@@ -242,7 +254,8 @@ void CallGraph::SetCallContexts() {
   }
 
   // No node should have a kNone calling context.
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation :
+       module_->computations(execution_threads_)) {
     CHECK_NE(GetNode(computation).context(), CallContext::kNone);
   }
 }
@@ -257,7 +270,8 @@ void CallGraph::SetNodeDepths() {
 
   // Initialize worklist with all roots of the call graph (computations without
   // callers).
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation :
+       module_->computations(execution_threads_)) {
     CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
       node.set_depth(0);
@@ -283,15 +297,18 @@ void CallGraph::SetNodeDepths() {
 }
 
 /* static */
-std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
+std::unique_ptr<CallGraph> CallGraph::Build(
+    const HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Constructor for CallGraph is private so std::make_unique can't be used.
-  auto call_graph = absl::WrapUnique<CallGraph>(new CallGraph(module));
+  auto call_graph =
+      absl::WrapUnique<CallGraph>(new CallGraph(module, execution_threads));
 
   VLOG(3) << "Building call graph for:";
   XLA_VLOG_LINES(3, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     auto it_added = call_graph->node_indices_.insert(
         {computation, call_graph->nodes_.size()});
     // All computations should be unique, so the computation should not already
@@ -301,15 +318,21 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
 
     // Add all callsites in this computation.
     for (HloInstruction* instruction : computation->instructions()) {
-      call_graph->nodes_.back().AddCallSiteForInstruction(instruction);
+      call_graph->nodes_.back().AddCallSiteForInstruction(instruction,
+                                                          execution_threads);
     }
   }
 
   // Add caller callsites to each node.
-  for (const HloComputation* computation : module->computations()) {
+  for (const HloComputation* computation :
+       module->computations(execution_threads)) {
     for (const CallSite& callsite :
          call_graph->GetNode(computation).callsites()) {
       for (auto* callee : callsite.called_computations()) {
+        if (!HloInstruction::IsThreadIncluded(callee->execution_thread(),
+                                              execution_threads)) {
+          continue;
+        }
         // Add caller callsites.
         call_graph->GetNode(callee).AddCallerCallSite(callsite);
       }

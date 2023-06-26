@@ -23,6 +23,7 @@ package_group(
         # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
+        "//tensorflow/core/common_runtime/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tpu/...",
@@ -41,6 +42,7 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -75,7 +77,10 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -115,14 +120,11 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":pjrt_client_factory_options",
-        ":pjrt_client_factory_registry",
-        ":pjrt_util",
+        ":global_state",
+        ":pjrt_state",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -138,6 +140,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/tfrt/common:pjrt_cpu_client_registration",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -250,6 +253,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["pjrt_gpu_client_registration_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "noasan",
         "nomsan",
         "notsan",
     ],

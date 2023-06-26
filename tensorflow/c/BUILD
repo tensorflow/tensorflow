@@ -307,6 +307,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/config:flag_defs",
+            "//tensorflow/core/config:flags",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
             "@com_google_absl//absl/strings",

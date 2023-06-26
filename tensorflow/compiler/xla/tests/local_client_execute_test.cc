@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <initializer_list>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
@@ -40,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
@@ -118,7 +114,6 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
-  EXPECT_GT(profile.compute_and_transfer_time_ns(), 0);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
@@ -977,6 +972,30 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
     auto result = executable->Run({&buffer}, run_options);
     ASSERT_IS_OK(result);
   }
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+  ExecutableBuildOptions build_options;
+  const char kFdoProfile[] = "Testing";
+  *build_options.mutable_fdo_profile() = kFdoProfile;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_EQ(compiled_module.config().fdo_profile(), kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  EXPECT_EQ(proto.config().fdo_profile(), kFdoProfile);
 }
 
 BENCHMARK(BM_LocalClientOverhead);

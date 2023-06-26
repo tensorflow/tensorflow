@@ -355,23 +355,13 @@ module @jit_f.0 {
                              platforms=platforms,
                              disabled_checks=disabled_checks)
 
-    # With empty platforms, there should be no platform_index argument
+    # With singleton `platforms`, there should be no platform_index argument
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Incorrect number of arguments passed to XlaCallModule: 1. '
         'The module takes 2 arguments of which 0 platform index arguments '
         'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    # Same with a single platform
-    platforms = ['CPU']
-    if self.testing_platform() == 'CPU':
-      with self.assertRaisesRegex(
-          errors.InvalidArgumentError,
-          'Incorrect number of arguments passed to XlaCallModule: 1. '
-          'The module takes 2 arguments of which 0 platform index arguments '
-          'and 0 dimension arguments.'):
-        self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
     with self.assertRaisesRegex(

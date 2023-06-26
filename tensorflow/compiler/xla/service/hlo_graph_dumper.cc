@@ -1312,6 +1312,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
+    } else if (absl::StartsWith(line, "feature_group_count=")) {
+      // Highlight the group count so it's obvious that it's a grouped
+      // convolution.
+      lines.push_back(StrFormat("<b>%s</b>", HtmlLikeStringSanitize(line)));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }

@@ -469,17 +469,22 @@ TEST_F(ConversionTest, CoralSettings) {
 
 TEST_F(ConversionTest, StableDelegateLoaderSettings) {
   const std::string kDelegatePath = "TEST_DELEGATE_PATH";
+  const std::string kDelegateName = "TEST_DELEGATE_NAME";
   settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
   settings_.tflite_settings->stable_delegate_loader_settings =
       std::make_unique<StableDelegateLoaderSettingsT>();
-
   settings_.tflite_settings->stable_delegate_loader_settings->delegate_path =
       kDelegatePath;
-  EXPECT_EQ(ConvertFromFlatbuffer(settings_)
-                .tflite_settings()
-                .stable_delegate_loader_settings()
-                .delegate_path(),
-            kDelegatePath);
+  settings_.tflite_settings->stable_delegate_loader_settings->delegate_name =
+      kDelegateName;
+
+  const proto::StableDelegateLoaderSettings output_settings =
+      ConvertFromFlatbuffer(settings_)
+          .tflite_settings()
+          .stable_delegate_loader_settings();
+
+  EXPECT_EQ(output_settings.delegate_path(), kDelegatePath);
+  EXPECT_EQ(output_settings.delegate_name(), kDelegateName);
 }
 
 TEST_F(ConversionTest, CPUSettings) {

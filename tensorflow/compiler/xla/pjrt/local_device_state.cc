@@ -35,7 +35,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                    AllocationModel allocation_model,
                                    int max_inflight_computations,
                                    bool allow_event_reuse,
-                                   bool use_callback_stream,
+                                   bool use_callback_stream, int device_ordinal,
                                    std::optional<StreamOptions> stream_options)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
@@ -46,6 +46,9 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
+  device_ordinal_ =
+      device_ordinal != -1 ? device_ordinal : executor->device_ordinal();
+
   int num_device_to_host_streams =
       stream_options.has_value() ? stream_options->num_device_to_host_streams
                                  : kNumDeviceToHostStreams;

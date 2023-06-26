@@ -85,11 +85,11 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
 }
 
 StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
-  return builder()->GetShape(Input(index));
+  return InputExpression(index).GetXlaShape();
 }
 
 StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(absl::string_view name) {
-  return builder()->GetShape(Input(name));
+  return InputExpression(name).GetXlaShape();
 }
 
 DataType XlaOpKernelContext::input_type(int index) const {

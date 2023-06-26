@@ -224,7 +224,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
@@ -449,8 +449,11 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
 
 // Creates a pass that adds pipelining to a graph that contains device
-// accelerated embeddings.
+// accelerated embeddings. The EmbeddingSequencingPass is a temporary fallback
+// while developing full pipelining capabilities.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
@@ -505,6 +508,13 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 // Creates a pass that rewrites partitioned calls with `_xla_compile_device
 // type` with `tf.XlaLaunch` ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
+
+// Creates a pass that rewrites partitioned calls with `tf._XlaCompile` op and
+// `tf.XlaRun` op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewriteV2Pass();
+
+// Create a pass that validates the input graph to the CPU/GPU bridge.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaValidateInputsPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -763,6 +773,8 @@ namespace TFDevice {
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_XLAINLINEDEVICEOPSPASS
 #define GEN_PASS_DECL_XLAREWRITEPASS
+#define GEN_PASS_DECL_XLAREWRITEV2PASS
+#define GEN_PASS_DECL_XLAVALIDATEINPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 }  // namespace TFDevice
 

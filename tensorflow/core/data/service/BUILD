@@ -1114,3 +1114,29 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ] + tf_protos_profiler_service(),
 )
+
+cc_library(
+    name = "auto_scaler",
+    srcs = ["auto_scaler.cc"],
+    hdrs = ["auto_scaler.h"],
+    deps = [
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "auto_scaler_test",
+    srcs = ["auto_scaler_test.cc"],
+    deps = [
+        ":auto_scaler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_absl//absl/time",
+    ],
+)

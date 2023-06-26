@@ -37,7 +37,7 @@ inline constexpr absl::string_view kOutputShardingAttr =
 
 // Parses "input_sharding_configuration" attribute and returns a list where i-th
 // element is a list of mlir::Value's which represent inputs for the TPU
-// computation correponding to i-th logical device. If the attribute does not
+// computation corresponding to i-th logical device. If the attribute does not
 // exist, the all inputs are placed on logical core 0.
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
@@ -78,6 +78,31 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
 // argument index.
 llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
     const tpu::TPUCompileMetadataProto& metadata);
+
+// Gets the proper tensor dimension from XLA OpSharding.
+// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
+// real Tensor dimensions when tiled.
+// For example:
+// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
+// also means a replicated tensor over all devices.
+//
+// See xla_data.proto for detailed explanations on the fields.
+int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding);
+
+// A sharding with OTHER type may be REPLICATED if:
+// 'replicate_on_last_tile_dim' is true OR
+// 'last_tile_dims' is not empty
+// AND
+// other than replicated last tile dims, all other dims are not sharded.
+bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding);
+
+// Returns whether the sharding is split sharding. i.e. A sharding with OTHER
+// type but not replicated.
+bool IsSplitSharding(const xla::OpSharding& sharding);
+
+// Returns whether the sharding is replicated. It includes sharding with
+// REPLICATED type and replicated OTHER type.
+bool IsReplicatedSharding(const xla::OpSharding& sharding);
 
 }  // namespace tensorflow
 

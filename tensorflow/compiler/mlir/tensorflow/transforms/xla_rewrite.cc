@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 #define DEBUG_TYPE "tf-xla-rewrite"
 
@@ -97,20 +97,6 @@ void XlaRewritePass::runOnOperation() {
   OpBuilder builder(&getContext());
   module.walk([&](tf_device::ClusterFuncOp cluster_func_op) {
     RewriteCall(cluster_func_op, symtab, builder);
-  });
-
-  // Verify that there are no nested XLA launch ops.
-  module.walk([&](TF::XlaLaunchOp xla_launch_op) {
-    llvm::SmallVector<mlir::Operation *> nested_launch_ops;
-    func::FuncOp root = symtab.lookup<func::FuncOp>(
-        xla_launch_op.getFunctionAttr().getRootReference());
-    if (failed(GetOutermostOpsOfType<TF::XlaLaunchOp>(root, symtab,
-                                                      nested_launch_ops)))
-      return signalPassFailure();
-    if (!nested_launch_ops.empty()) {
-      xla_launch_op.emitError() << "Nested XLA launch ops detected";
-      return signalPassFailure();
-    }
   });
 }
 

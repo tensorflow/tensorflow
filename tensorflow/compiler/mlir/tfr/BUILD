@@ -186,6 +186,7 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
@@ -194,6 +195,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],

@@ -103,6 +103,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::TFR::TFRDialect>();
   // clang-format on
+  mlir::func::registerAllExtensions(registry);
   mlir_ctx->appendDialectRegistry(registry);
   mlir_ctx->loadAllAvailableDialects();
 

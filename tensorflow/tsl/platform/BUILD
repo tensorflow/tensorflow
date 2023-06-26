@@ -105,6 +105,26 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -420,6 +440,7 @@ filegroup(
         "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -504,6 +525,7 @@ filegroup(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -641,6 +663,7 @@ exports_files(
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",

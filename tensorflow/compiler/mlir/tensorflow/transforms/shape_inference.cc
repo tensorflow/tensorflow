@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1213,6 +1214,13 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
       // Very old versions of the op have an empty platforms attribute.
       std::string loading_platform =
           (platforms.empty() ? "CPU" : platforms.front());
+
+      // It is a terrible idea to have local MLIR contexts so we need to
+      // register extensions here, again.
+      mlir::DialectRegistry registry;
+      registry.insert<mlir::func::FuncDialect>();
+      mlir::func::registerAllExtensions(registry);
+      xla_call_module_context_.appendDialectRegistry(registry);
 
       auto l = tensorflow::XlaCallModuleLoader::Create(
           &xla_call_module_context_, op.getVersion(), op.getModule().str(),

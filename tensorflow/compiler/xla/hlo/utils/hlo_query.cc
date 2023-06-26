@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -124,6 +126,27 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
 
 bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
+}
+
+bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
+  return instr.IsConstant() || ShapeUtil::IsScalar(instr.shape()) ||
+         (HloOpcode::kBroadcast == instr.opcode() &&
+          (instr.operand(0)->IsConstant() ||
+           ShapeUtil::IsScalar(instr.operand(0)->shape())));
+}
+
+bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBroadcast &&
+         IsScalarConstant(instr.operand(0));
+}
+
+HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
+                                              const HloOpcode opcode) {
+  auto instructions = computation.instructions();
+  auto it = absl::c_find_if(instructions, [&](HloInstruction* instr) {
+    return instr->opcode() == opcode;
+  });
+  return it == instructions.end() ? nullptr : *it;
 }
 
 bool ContainsInstrWithOpcode(const HloComputation* comp,

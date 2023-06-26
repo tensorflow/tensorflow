@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <functional>
@@ -273,7 +273,11 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReq) {
   // 178 * 1.00392 ~= 178.698 ~= 179
 
   Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 4}));
+#ifdef ENABLE_ONEDNN_V3
+  test::FillValues<quint8>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
+#else
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 184, 169, 234, 179});
+#endif  // ENABLE_ONEDNN_V3
 
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, output);
@@ -466,7 +470,11 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
   // 178 * 1.00392 ~= 178.698 ~= 179
 
   Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 4}));
+#ifdef ENABLE_ONEDNN_V3
+  test::FillValues<quint8>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
+#else
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 184, 169, 234, 179});
+#endif  // ENABLE_ONEDNN_V3
 
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, output);
@@ -543,4 +551,4 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL

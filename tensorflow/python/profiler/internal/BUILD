@@ -139,7 +139,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
-    visibility = ["//tensorflow/core/profiler:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/compiler/xla/python/profiler/internal:python_hooks",
         "//tensorflow/core:lib",
@@ -156,9 +158,7 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
-        # Do not change this visibility field.
-        # This library is referred in OSS world by github.com/pytorch/xla
-        "//tensorflow/compiler/xla:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/core:lib",
