@@ -110,7 +110,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
         absl::Status return_status;
         switch (return_code) {
           case 0:
-            return_status = OkStatus();
+            return_status = absl::OkStatus();
             break;
 #ifndef _WIN32
           case EAI_ADDRFAMILY:
@@ -175,7 +175,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 #endif
         }
 
-        return Status(return_status);
+        return FromAbslStatus(return_status);
       },
       retryConfig);
 
