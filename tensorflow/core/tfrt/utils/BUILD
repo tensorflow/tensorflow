@@ -338,3 +338,8 @@ cc_library(
         ":fallback_tensor",
     ],
 )
+
+cc_library(
+    name = "any_ptr",
+    hdrs = ["any_ptr.h"],
+)
