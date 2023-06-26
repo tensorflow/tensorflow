@@ -608,17 +608,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-    auto cuda_compute_capability_ =
-        std::get<se::CudaComputeCapability>(gpu_version_);
-=======
     bool supports_different_output_type =
         (std::holds_alternative<se::CudaComputeCapability>(gpu_version_) &&
          std::get<se::CudaComputeCapability>(gpu_version_)
              .IsAtLeast(se::CudaComputeCapability::VOLTA)) ||
         std::holds_alternative<se::RocmComputeCapability>(gpu_version_);
->>>>>>> google_upstream/master
     if (instr->GetModule()
             ->config()
             .debug_options()

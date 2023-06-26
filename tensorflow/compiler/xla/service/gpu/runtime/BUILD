@@ -81,11 +81,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
     ] + if_cuda_is_configured([
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-=======
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
->>>>>>> google_upstream/master
     ]),
 )
 

@@ -183,12 +183,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
-<<<<<<< HEAD
-        #"//tensorflow_serving/apis:model_cc_proto",
-        #"//tensorflow_serving/apis:predict_cc_proto",
-        #"//tensorflow_serving/apis:prediction_log_cc_proto",
-=======
->>>>>>> google_upstream/master
         "@tf_runtime//:hostcontext",
     ],
 )
