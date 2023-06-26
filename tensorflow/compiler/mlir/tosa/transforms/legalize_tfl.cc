@@ -2639,11 +2639,13 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
   auto tfl_slice_op = cast<TFL::SliceOp>(op);
 
   auto input = tfl_slice_op.getInput();
-  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
+  ShapedType input_type = dyn_cast<ShapedType>(input.getType());
   ShapedType output_type =
       tfl_slice_op.getResult().getType().dyn_cast<ShapedType>();
-  // Not a shaped tensor output
-  if (!output_type) return failure();
+
+  if (!input_type || !output_type) {
+    return rewriter.notifyMatchFailure(op, "shaped input/output required");
+  }
 
   ElementsAttr begin_elems, size_elems;
 
