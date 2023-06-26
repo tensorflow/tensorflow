@@ -995,8 +995,10 @@ Status PyArray::RegisterTypes(py::module& m) {
         return xla::ValueOrThrow(self.UnsafeBufferPointer());
       },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") = jax::property_readonly(
-      [](PyArray self) { return self.CudaArrayInterface(); });
+  type.attr("__cuda_array_interface__") =
+      jax::property_readonly([](PyArray self) {
+        return xla::ValueOrThrow(self.CudaArrayInterface());
+      });
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       py::is_method(type));

@@ -203,8 +203,17 @@ class EventForest {
   void ProcessTfDataSteps();
 
   // Processes the TF loops and registers the first TF executor event of each
-  // iteraton to `tf_loop_root_events_`.
+  // iteration to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
+
+  // Find the events of event_type which own ALL the given stat_types. If found,
+  // apply the given function to the node. The query predicates are
+  //     - The node's ContextStat contains stat_types(i.e. stat_types is a
+  //     subset of ContextStat) *AND*
+  //     - The node's event type in event_node_map_ is event_type.
+  void FindEventNodeAndApply(
+      int64_t event_type, const std::vector<int64_t>& stat_types,
+      const std::function<void(EventNode&, const std::vector<uint64>&)>& cb);
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;

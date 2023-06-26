@@ -28,10 +28,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
@@ -143,6 +145,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
+    tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
@@ -192,6 +195,12 @@ Status ConvertTfMlirToRuntimeExecutable(
         TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
       }
     }
+  } else if (options.backend_compiler != nullptr) {
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
+    }
+    TF_RETURN_IF_ERROR(
+        options.backend_compiler->CompileTensorflow(model_context, module));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -222,6 +231,7 @@ Status ConvertTfMlirToRuntimeExecutable(
 
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::ModelRuntimeContext& model_context,
                           tfrt_stub::FallbackState* fallback_state) {
   return ConvertTfMlirToRuntimeExecutable(
       options, module,
@@ -249,7 +259,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
         bef_buffer->shrink_to_fit();
         return OkStatus();
       },
-      fallback_state);
+      model_context, fallback_state);
 }
 
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(

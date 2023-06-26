@@ -310,61 +310,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
 }
 #endif
 
-struct ConvCacheStats {
-  int64_t cache_hits = 0;
-  int64_t cache_misses = 0;
-
-  void LogStats() {
-    VLOG(3) << "Cache hits: " << cache_hits;
-    VLOG(3) << "Cache misses: " << cache_misses;
-  }
-};
-
-absl::Mutex autotune_cache_mu(absl::kConstInit);
-auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new absl::flat_hash_map<AutotuneCacheKey, AutotuneResult>();
-auto& autotune_cache_stats ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new ConvCacheStats();
-
 }  // anonymous namespace
-
-void GpuConvAlgorithmPicker::ClearAutotuneResults() {
-  absl::MutexLock lock(&autotune_cache_mu);
-  autotune_cache.clear();
-}
-
-Status GpuConvAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-
-  for (const auto& [k, result] : autotune_cache) {
-    const auto& [model_str, hlo] = k;
-    auto& entry = *results->add_convs();
-    entry.set_device(model_str);
-    entry.set_hlo(hlo);
-    *entry.mutable_result() = result;
-  }
-
-  // Sort the results so they're deterministic.
-  std::sort(results->mutable_convs()->pointer_begin(),
-            results->mutable_convs()->pointer_end(),
-            [](const auto* a, const auto* b) {
-              return std::make_pair(absl::string_view(a->device()),
-                                    absl::string_view(a->hlo())) <
-                     std::make_pair(absl::string_view(b->device()),
-                                    absl::string_view(b->hlo()));
-            });
-  return OkStatus();
-}
-
-Status GpuConvAlgorithmPicker::LoadAutotuneResults(
-    const AutotuneResults& results) {
-  absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.convs()) {
-    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
-        result.result();
-  }
-  return OkStatus();
-}
 
 bool ShouldInitConvData(const HloModuleConfig& hlo_module_config) {
   const int32_t conv_autotune_level =
@@ -380,17 +326,14 @@ bool ShouldCheckConv(const HloModuleConfig& hlo_module_config) {
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
-  // If in deviceless mode, return the result from the autotune_cache.
-  if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
-    auto device_description_str = deviceless_config->model_str;
-    AutotuneCacheKey key =
-        AutotuneCacheKeyFromInstruction(instr, device_description_str);
-    absl::MutexLock autotune_lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      return it->second;
-    }
+  return AutotunerUtil::Autotune(
+      instr, config_, [&] { return PickBestAlgorithmNoCache(instr); });
+}
 
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
+    const HloCustomCallInstruction* instr) {
+  AutotuneCacheKey key(config_.GetModelStr(), *instr);
+  if (config_.IsDeviceless()) {
     // Return an autotune result with algo id -1, which means that we autotune
     // at runtime.
     AutotuneResult result;
@@ -398,7 +341,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     return result;
   }
 
-  se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
+  se::StreamExecutor* stream_exec = config_.GetExecutor();
   // Don't run this function concurrently on the same GPU.
   //
   // This is a bit of a hack and doesn't protect us against arbitrary concurrent
@@ -410,34 +353,16 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // will run PickBestAlgorithmImpl for a particular device.
   absl::MutexLock lock(&GetGpuMutex(stream_exec));
 
-  // We cache the autotuning results to avoid doing the duplicate work,
-  // which can greatly improve both stability (deterministic numeric results
-  // within a process for a given input) and performance (2x speedup on some
-  // models).
-  AutotuneCacheKey key = AutotuneCacheKeyFromInstruction(
-      instr, stream_exec->GetDeviceDescription().model_str());
-  {
-    absl::MutexLock autotune_lock(&autotune_cache_mu);
-    auto it = autotune_cache.find(key);
-    if (it != autotune_cache.end()) {
-      autotune_cache_stats.cache_hits++;
-      return it->second;
-    }
-    autotune_cache_stats.cache_misses++;
-  }
-
   // Make sure any previous activity on this executor is done. We don't want
   // other work still running on the GPU to interfere with autotuning.
   if (!stream_exec->SynchronizeAllActivity()) {
     return InternalError(
-        "Failed to synchronize GPU for autotuning conv instruction: %s",
-        std::get<1>(key) /* instr */);
+        "Failed to synchronize GPU for autotuning conv instruction");
   }
 
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec.
-  se::DeviceMemoryAllocator* device_allocator =
-      std::get<DeviceConfig>(config_).allocator;
+  se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
   se::DeviceMemoryAllocator* allocator;
   optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (device_allocator != nullptr) {
@@ -468,26 +393,16 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
         /*redzone_size=*/redzone_size);
 
-    AutotuneInstructionInfo instruction_info = AutotuneInstructionInfo(instr);
     TF_ASSIGN_OR_RETURN(
         AutotuneRuntimeArguments runtime_arguments,
         AutotuneRuntimeArguments::FromInstruction(instr, allocator, stream_exec,
                                                   &input_output_allocator));
-    result_or = PickBestAlgorithmNoCacheCuda(
-        instr, allocator, stream, instruction_info, runtime_arguments);
+    result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, stream, key,
+                                             runtime_arguments);
 #endif
   }
 
-  if (!result_or.ok()) {
-    return result_or;
-  }
-
-  // Insert our result into the cache.  After we released the lock on
-  // autotune_cache_mu, another autotuning job may have run for this same key on
-  // another GPU on the machine.  If so, use its result.
-  absl::MutexLock autotune_lock(&autotune_cache_mu);
-  auto [it, inserted] = autotune_cache.insert({key, result_or.value()});
-  return it->second;
+  return result_or;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -530,8 +445,9 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   initialize_buffer(result_buffer, result_shape);
 
   // Get canonical HLO.
-  std::string canonical_hlo = std::get<1>(AutotuneCacheKeyFromInstruction(
-      instr, stream_exec->GetDeviceDescription().model_str()));
+  std::string canonical_hlo(
+      AutotuneCacheKey(stream_exec->GetDeviceDescription().model_str(), *instr)
+          .GetHlo());
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
@@ -553,11 +469,11 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     MaybeFusedConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
     absl::Span<const AlgorithmDesc> disabled_algos,
-    std::optional<AutotuneInstructionInfo> instruction_info,
+    std::optional<AutotuneCacheKey> instruction_info,
     const AutotuneRuntimeArguments& runtime_arguments) {
   auto alg = runner->ToAlgorithmDesc();
 
-  se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
+  se::StreamExecutor* stream_exec = config_.GetExecutor();
   XLA_SCOPED_LOGGING_TIMER_LEVEL(
       absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                    alg.ToString()),
@@ -575,7 +491,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), std::nullopt);
 
   std::string instr_str = instruction_info.has_value()
-                              ? instruction_info->instr_str.c_str()
+                              ? instruction_info->GetHlo().data()
                               : "<unknown>";
 
   if (absl::c_linear_search(disabled_algos, alg_key)) {
@@ -769,7 +685,8 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
           << " vs " << alg.ToString();
       PrintPlatformInfo(stream);
       if (instruction_info.has_value()) {
-        VLOG(2) << "Full module on failure: \n" << instruction_info->module_str;
+        VLOG(2) << "Full module on failure: \n"
+                << instruction_info->GetModelStr();
       }
       auto* fail = result.mutable_failure();
       fail->set_kind(AutotuneResult::WRONG_RESULT);
@@ -794,12 +711,12 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
-    se::Stream* stream, std::optional<AutotuneInstructionInfo> instruction_info,
+    se::Stream* stream, std::optional<AutotuneCacheKey> instruction_info,
     const AutotuneRuntimeArguments& runtime_arguments) {
-  se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
+  se::StreamExecutor* stream_exec = config_.GetExecutor();
 
   std::string instr_str = instruction_info.has_value()
-                              ? instruction_info->instr_str.c_str()
+                              ? instruction_info->GetHlo().data()
                               : "<unknown>";
 
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -973,7 +890,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       [](int precision) { return precision <= PrecisionConfig::HIGH; });
   const se::NumericOptions numeric_options{deterministic_ops, allow_tf32};
 
-  se::StreamExecutor* stream_exec = std::get<DeviceConfig>(config_).stream_exec;
+  se::StreamExecutor* stream_exec = config_.GetExecutor();
   const auto device_ordinal = stream_exec->device_ordinal();
   std::vector<se::DeviceMemoryBase> operand_buffers;
 
@@ -1194,12 +1111,6 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
-
-  {
-    absl::MutexLock lock(&autotune_cache_mu);
-    autotune_cache_stats.LogStats();
-  }
-
   return changed;
 }
 

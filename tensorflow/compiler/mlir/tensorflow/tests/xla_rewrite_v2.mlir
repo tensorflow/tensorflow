@@ -70,3 +70,41 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
     func.return %arg1 : tensor<i32>
   }
 }
+
+// -----
+
+// CHECK-LABEL: func.func @outside_compilation_in_generic_pipeline
+module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"], tf.versions = {producer = 888 : i32}} {
+  func.func @outside_compilation_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK: tf_device.launch
+    // CHECK: "tf._XlaCompile"() {function = @func, must_compile = true, operand_segment_sizes = array<i32: 0, 0, 0>}
+    // CHECK: {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+    // CHECK: tf_device.parallel_execute
+    // CHECK: tf_device.launch
+    // CHECK: tf.B
+    // CHECK: tf._XlaSendFromHost
+    // CHECK: {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+    // CHECK: tf_device.launch
+    // CHECK: tf._XlaRun
+    // CHECK: {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+    %0 = "tf_device.parallel_execute"() ({
+      "tf_device.launch"() ({
+        %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+        %2 = "tf.B"() : () -> tensor<2xi32>
+        "tf._XlaSendFromHost"(%2, %1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_0_retvals"} : (tensor<2xi32>, tensor<3x!tf_type.string>) -> ()
+        tf_device.return
+      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+      tf_device.return
+    }, {
+      %0 = "tf_device.cluster_func"() {func = @func, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : () -> tensor<2xi32>
+      tf_device.return %0 : tensor<2xi32>
+    }) : () -> tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+  func.func @func() -> tensor<2xi32> {
+    %2 = "tf.A"() : () -> tensor<2xi32>
+    %3 = "tf._XlaHostComputeMlir"() {host_mlir_module = "", manual_sharding = false, recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : () -> tensor<2xi32>
+    %4 = "tf.C"(%3) : (tensor<2xi32>) -> tensor<2xi32>
+    func.return %4 : tensor<2xi32>
+  }
+}

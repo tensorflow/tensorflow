@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_UTIL_H_
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
@@ -25,6 +24,14 @@ namespace variants {
 // Creates a dims array from tensor whose data represents a shape
 // signature.
 IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape);
+
+// "Merges" two shape signature arrays if possible, returns nullptr otherwise.
+// Merging means to compute the most specified possible signature which
+// is compatible with both inputs.
+IntArrayUniquePtr MergeShapesOrNull(IntArrayUniquePtr l, IntArrayUniquePtr r);
+
+// Checks if array encodes a fully defined shape.
+bool IsShapeFullyDefined(const TfLiteIntArray& shape);
 
 }  // namespace variants
 }  // namespace tflite

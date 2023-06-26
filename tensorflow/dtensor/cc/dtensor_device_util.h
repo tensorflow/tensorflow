@@ -119,6 +119,10 @@ struct TranslatedFunction {
 struct ExecutionFunctions {
   // Stores information about all functions to execute for provided computation.
   std::vector<TranslatedFunction> function_list;
+
+  // The global output shapes of the functions.
+  std::vector<PartialTensorShape> global_output_shapes;
+
   // Number of device ids args added to translated functions.
   // During translation, we insert one device id arg node per mesh.
   // For a single mesh function, it equals 1.

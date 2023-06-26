@@ -860,8 +860,7 @@ std::optional<TransposeDescription> FindAnyTiledTranspose(
   return std::nullopt;
 }
 
-static bool IsIntermediate(const HloInstruction* instr,
-                           int allowed_operand_count = 1) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   return (
       instr->operand_count() > 0 &&
       instr->operand_count() <= allowed_operand_count &&

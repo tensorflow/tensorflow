@@ -193,16 +193,29 @@ class FusedMatMulOpTest : public OpsTestBase {
                 &fused_matmul);
   }
 
+<<<<<<< HEAD
   void VerifyBiasAddTensorsNear(int m, int k, int n, bool ta, bool tb,
+=======
+  void VerifyBiasAddTensorsNear(int m, int k, int n, bool transpose_a,
+                                bool transpose_b,
+>>>>>>> google_upstream/master
                                 const BiasAddGraphRunner& run_default,
                                 const BiasAddGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
+<<<<<<< HEAD
     Tensor lhs(dtype, {ta ? k : m, ta ? m : k});
     lhs.flat<T>() = lhs.flat<T>().setRandom();
 
     // Add some negative values to filter to properly test Relu.
     Tensor rhs(dtype, {tb ? n : k, tb ? k : n});
+=======
+    Tensor lhs(dtype, {transpose_a ? k : m, transpose_a ? m : k});
+    lhs.flat<T>() = lhs.flat<T>().setRandom();
+
+    // Add some negative values to filter to properly test Relu.
+    Tensor rhs(dtype, {transpose_b ? n : k, transpose_b ? k : n});
+>>>>>>> google_upstream/master
     rhs.flat<T>() = rhs.flat<T>().setRandom();
     rhs.flat<T>() -= rhs.flat<T>().constant(static_cast<T>(0.5f));
 
@@ -244,7 +257,12 @@ class FusedMatMulOpTest : public OpsTestBase {
                            /*allow_gpu_device=*/true);
         };
 
+<<<<<<< HEAD
     VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default, run_fused);
+=======
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
+>>>>>>> google_upstream/master
   }
 
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
@@ -270,7 +288,12 @@ class FusedMatMulOpTest : public OpsTestBase {
                        /*allow_gpu_device=*/activation == "Relu");
     };
 
+<<<<<<< HEAD
     VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default, run_fused);
+=======
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
+>>>>>>> google_upstream/master
   }
 };
 
@@ -295,12 +318,24 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
+<<<<<<< HEAD
   this->VerifyMatMulWithBias(4, 128, 256, false, false);
+=======
+  this->VerifyMatMulWithBias(1, 256, 256, true, false);
+  this->VerifyMatMulWithBias(1, 256, 256, false, true);
+  this->VerifyMatMulWithBias(1, 256, 256, true, true);
+>>>>>>> google_upstream/master
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
+<<<<<<< HEAD
   this->VerifyMatMulWithBias(256, 128, 4, false, false);
+=======
+  this->VerifyMatMulWithBias(256, 256, 1, true, false);
+  this->VerifyMatMulWithBias(256, 256, 1, false, true);
+  this->VerifyMatMulWithBias(256, 256, 1, true, true);
+>>>>>>> google_upstream/master
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {

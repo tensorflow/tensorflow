@@ -16,8 +16,14 @@
 from absl.testing import parameterized
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import concrete_function as cf
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -64,6 +70,88 @@ class ConcreteFunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "Attribute api_implements must be"):
       self.concrete_function_with_attrs(attrs={"api_implements": None})
 
+  def test_generate_from_atomic(self):
+    @polymorphic_function.function
+    def add_dicts(dict_a, dict_b):
+      result = {}
+      for key in dict_a.keys():
+        result[key] = dict_a[key] + dict_b[key]
+      return result
+
+    dict_a = {
+        "tensor": constant_op.constant(1),
+        "variable": variables.Variable(2),
+        "ragged_tensor": ragged_tensor.RaggedTensor.from_row_splits(
+            values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8]
+        ),
+        "python_int": 4,
+    }
+    dict_b = {
+        "tensor": constant_op.constant(2),
+        "variable": variables.Variable(5),
+        "ragged_tensor": ragged_tensor.RaggedTensor.from_row_splits(
+            values=[4, 2, 4, 1, 6, 9, 3, 6], row_splits=[0, 4, 4, 7, 8, 8]
+        ),
+        "python_int": 5,
+    }
+
+    original_concrete_fn = add_dicts.get_concrete_function(dict_a, dict_b)
+
+    # Get the atomic function and delete everything else.
+    atomic_fn = original_concrete_fn._inference_function
+    del add_dicts
+    del original_concrete_fn
+
+    # Regenerate the ConcreteFunction.
+    concrete_fn = cf.ConcreteFunction(atomic_fn)
+    result = concrete_fn(dict_a, dict_b)
+
+    # Call and check results.
+    self.assertEqual(result["tensor"].numpy(), 3)
+    self.assertEqual(result["variable"].numpy(), 7)
+    self.assertEqual(
+        result["ragged_tensor"].flat_values.numpy().tolist(),
+        [7, 3, 8, 2, 11, 18, 5, 12],
+    )
+    self.assertEqual(result["python_int"].numpy(), 9)
+
+  def test_generate_from_def(self):
+    @polymorphic_function.function
+    def add_dicts(dict_a, dict_b):
+      result = {}
+      for key in dict_a.keys():
+        result[key] = dict_a[key] + dict_b[key]
+      return result
+
+    dict_a = {
+        "tensor": constant_op.constant(1),
+        "variable": variables.Variable(2),
+        "python_int": 4,
+    }
+    dict_b = {
+        "tensor": constant_op.constant(2),
+        "variable": variables.Variable(5),
+        "python_int": 5,
+    }
+
+    original_concrete_fn = add_dicts.get_concrete_function(dict_a, dict_b)
+
+    # Get FunctionDef + FunctionType and delete everything else.
+    function_def = original_concrete_fn.function_def
+    function_type = original_concrete_fn.function_type
+    del add_dicts
+    del original_concrete_fn
+
+    # Regenerate the ConcreteFunction.
+    atomic_fn = atomic_function.from_function_def(function_def, function_type)
+    concrete_fn = cf.ConcreteFunction(atomic_fn)
+    result = concrete_fn(dict_a, dict_b)
+
+    # Call and check results.
+    self.assertEqual(result["tensor"].numpy(), 3)
+    self.assertEqual(result["variable"].numpy(), 7)
+    self.assertEqual(result["python_int"].numpy(), 9)
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

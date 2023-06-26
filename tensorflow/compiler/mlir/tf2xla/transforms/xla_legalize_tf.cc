@@ -738,6 +738,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::ModOp>(),
     TypeID::get<TF::ConcatV2Op>(),
 
+    // MatrixDiagPartV3 should use the MLIR implementation due to performance.
+    TypeID::get<TF::MatrixDiagPartV3Op>(),
+
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
     TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AtanOp>(),
@@ -905,7 +908,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// not used.
 LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
                          std::optional<StringRef> tf2xla_fallback_device_type,
-                         bool prefer_tf2xla, bool use_tf2xla_hlo_importer) {
+                         bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
   RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
@@ -947,9 +950,9 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   Tf2XlaTypeConverter converter;
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
-    PopulateLegalizeTfWithTf2XlaPatterns(
-        tf2xla_fallback_device_type.value(), patterns, context, converter,
-        prefer_tf2xla, use_tf2xla_hlo_importer);
+    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
+                                         patterns, context, converter,
+                                         prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -973,14 +976,15 @@ void LegalizeTF::runOnOperation() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getOperation(), legalize_chlo_,
-                        tf2xla_fallback_device_type, prefer_tf2xla_,
-                        use_tf2xla_hlo_importer_))) {
+                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
 
 }  // end namespace
 
+// TODO(b/288094093): Migrate uniform quantization legalization in a separate
+// pass.
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
   patterns

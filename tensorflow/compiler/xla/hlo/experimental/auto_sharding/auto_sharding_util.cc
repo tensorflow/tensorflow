@@ -174,8 +174,8 @@ HloSharding BroadcastSharding(const HloSharding& input_spec,
     target_tile_assignment_dimensions.push_back(
         input_spec.tile_assignment().dimensions().back());
   }
-  Array<int64_t> new_tile_assignment = input_spec.tile_assignment();
-  new_tile_assignment.Reshape(target_tile_assignment_dimensions);
+  auto new_tile_assignment =
+      input_spec.tile_assignment().Reshape(target_tile_assignment_dimensions);
 
   return input_spec.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(new_tile_assignment)
@@ -1182,11 +1182,11 @@ bool IsValidTileAssignment(const HloSharding& spec) {
   }
 
   // Check all tile dims
-  const Array<int64_t>& tile_assignment = spec.tile_assignment();
+  const auto& tile_assignment = spec.tile_assignment();
   for (int i = 0; i < tile_assignment.num_dimensions(); i++) {
     if (tile_assignment.dim(i) != 1) {
       std::vector<int64_t> device_ids =
-          GetValuesAlongOneDim(tile_assignment, i).value();
+          GetValuesAlongOneDim(tile_assignment.array(), i).value();
       auto status_or_delta = CheckArithmeticSequence(device_ids);
       if (!status_or_delta.ok()) {
         return false;
@@ -1243,7 +1243,7 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   do {
     auto transposed_mesh = Transpose(mesh, axes);
     if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
-                   spec.tile_assignment().begin())) {
+                   spec.tile_assignment().array().begin())) {
       found = true;
       break;
     }
@@ -1323,7 +1323,9 @@ Shape ComputeIntermediateShape(const HloSharding& src_sharding,
 
 void FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
-    const Array<int64_t>& device_mesh) {
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings) {
   HloInstruction* operand = inst->mutable_operand(0);
   auto input_tuple_sharding = operand->sharding();
   size_t index = inst->tuple_index();
@@ -1385,6 +1387,13 @@ void FixMixedMeshShapeReshardingGetTupleElement(
 
   for (auto user : inst_users) {
     TF_CHECK_OK(inst->ReplaceUseWith(user, replace_with));
+  }
+
+  CHECK_NE(preserve_shardings, nullptr);
+  if (preserve_shardings->contains(inst->name())) {
+    (*preserve_shardings)[replace_with->name()] =
+        preserve_shardings->at(inst->name());
+    preserve_shardings->erase(inst->name());
   }
 }
 
@@ -2134,6 +2143,43 @@ std::vector<std::vector<int64_t>> CreateDifferentMeshShapesToTry(
   }
 
   return result;
+}
+
+void ComputeInstructionExecutionCountsHelper(
+    const HloComputation* computation, int64_t computation_execution_count,
+    int64_t loop_iteration_count_estimate,
+    absl::flat_hash_map<const HloInstruction*, int64_t>*
+        instruction_execution_counts) {
+  for (auto instruction : computation->instructions()) {
+    (*instruction_execution_counts)[instruction] = computation_execution_count;
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      int64_t while_body_condition_execution_count =
+          computation_execution_count * loop_iteration_count_estimate;
+      ComputeInstructionExecutionCountsHelper(
+          instruction->while_body(),
+          /*computation_execution_count */
+          while_body_condition_execution_count,
+          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
+          instruction_execution_counts);
+      ComputeInstructionExecutionCountsHelper(
+          instruction->while_condition(),
+          /*computation_execution_count */
+          while_body_condition_execution_count,
+          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
+          instruction_execution_counts);
+    }
+  }
+}
+
+absl::flat_hash_map<const HloInstruction*, int64_t>
+ComputeInstructionExecutionCounts(const HloModule* module,
+                                  int64_t loop_iteration_count_estimate) {
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_execution_counts;
+  ComputeInstructionExecutionCountsHelper(module->entry_computation(), 1,
+                                          loop_iteration_count_estimate,
+                                          &instruction_execution_counts);
+  return instruction_execution_counts;
 }
 
 }  // namespace spmd

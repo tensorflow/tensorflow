@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
@@ -33,16 +33,13 @@ namespace gpu {
 // Find best tiling configuration for each triton fusion outlined.
 class TritonAutotuner : public HloModulePass {
  public:
-  explicit TritonAutotuner(const AutotuningConfig& config,
+  explicit TritonAutotuner(const AutotuneConfig& config,
                            tsl::thread::ThreadPool* thread_pool)
       : config_(config), thread_pool_(thread_pool) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
-  static void ClearAutotuneResults();
   static void ClearCompilationCache();
-  static Status WriteAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(const AutotuneResults& results);
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
@@ -50,7 +47,7 @@ class TritonAutotuner : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  AutotuningConfig config_;
+  AutotuneConfig config_;
   tsl::thread::ThreadPool* thread_pool_;
 };
 

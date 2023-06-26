@@ -533,7 +533,31 @@ message DebugOptions {
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
-  // Next id: 220
+  bool xla_gpu_enable_triton_softmax_fusion = 220;
+
+  bool xla_gpu_enable_priority_fusion = 221;
+
+  // File to write autotune results to. It will be a binary file unless the name
+  // ends with .txt or .textproto. Warning: The results are written at every
+  // compilation, possibly multiple times per process. This only works on CUDA.
+  string xla_gpu_dump_autotune_results_to = 222;
+
+  // File to load autotune results from. It will be considered a binary file
+  // unless the name ends with .txt or .textproto. At most one loading will
+  // happen during the lifetime of one process, even if the first one is
+  // unsuccessful or different file paths are passed here. This only works on
+  // CUDA.
+  string xla_gpu_load_autotune_results_from = 223;
+
+  // Memory budget in GB per device for AutoSharding.
+  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+
+  // See the definition of the
+  // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
+  // this field.
+  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+
+  // Next id: 226
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -930,18 +954,4 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
-}
-
-message ProfiledInstructionsProto {
-  message InstructionCost {
-    string name = 1;
-    double cost_us = 2;
-  }
-  message Latency {
-    string source = 1;
-    string target = 2;
-    double latency_us = 3;
-  }
-  repeated InstructionCost costs = 1;
-  repeated Latency latencies = 2;
 }

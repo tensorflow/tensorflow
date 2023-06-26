@@ -121,7 +121,7 @@ static absl::Status LaunchImpl(
   // stream provided by ConcurrentRegionStatus to execute the kernel.
   se::Stream* execution_stream = stream;
   if (region_status->IsInConcurrentRegion()) {
-    TF_ASSIGN_OR_RETURN(execution_stream, region_status->GetNextStream());
+    execution_stream = region_status->GetNextStream();
   }
 
   // Execute device kernel on the execution stream.

@@ -318,7 +318,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
         return writer->WriteScalar(
-            full_name(absl::StrCat(kInvocationResults, "_", kSize)), 0);
+            prefix(), absl::StrCat(kInvocationResults, "_", kSize), 0);
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -331,7 +331,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
+          prefix(), absl::StrCat(kInvocationResults, "_", kSize),
           invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
@@ -359,7 +359,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(kInvocationResults, "_", kSize)),
+          prefix(), absl::StrCat(kInvocationResults, "_", kSize),
           &invocation_results_size));
       DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {

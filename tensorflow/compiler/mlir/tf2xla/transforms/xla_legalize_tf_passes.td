@@ -42,11 +42,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
         /*default=*/"false",
         "Prioritize tf2xla fallback legalization over MLIR legalization "
         "patterns">,
-    Option<"use_tf2xla_hlo_importer_", "use-tf2xla-hlo-importer",
-       "bool", /*default=*/"true",
-        "Use the experimental HLO to MHLO importer for per-op fallback calls "
-        " from MLIR bridge to TF2XLA."
-        "Users should not set this flag and ideally this goes away.">
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
@@ -56,18 +51,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
                            "shape::ShapeDialect",
                            "func::FuncDialect",
                            "sparse_tensor::SparseTensorDialect"];
-}
-
-def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
-  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
-
-  let description = [{
-    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-    like int ops.
-  }];
-
-  let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
-  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
 }
 
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {

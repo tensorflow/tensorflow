@@ -44,8 +44,9 @@ _TENSORFLOW_DOC_SOURCES = {
         DocSource(docstring_module_name='util.compat'),
     'distribute':
         DocSource(docstring_module_name='distribute.distribute_lib'),
-    'distributions':
-        DocSource(docstring_module_name='ops.distributions.distributions'),
+    'distributions': DocSource(
+        docstring='Core module for TensorFlow distribution objects and helpers.'
+    ),
     'errors':
         DocSource(docstring_module_name='framework.errors'),
     'experimental.numpy':
@@ -67,13 +68,13 @@ _TENSORFLOW_DOC_SOURCES = {
     'math':
         DocSource(docstring_module_name='ops.math_ops'),
     'metrics':
-        DocSource(docstring_module_name='ops.metrics'),
+        DocSource(docstring='Evaluation-related metrics.'),
     'nest':
         DocSource(docstring_module_name='util.nest'),
     'nn':
         DocSource(docstring_module_name='ops.nn_ops'),
     'nn.rnn_cell':
-        DocSource(docstring_module_name='ops.rnn_cell'),
+        DocSource(docstring='Module for constructing RNN Cells.'),
     'python_io':
         DocSource(docstring_module_name='lib.io.python_io'),
     'ragged':
@@ -83,7 +84,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'sets':
         DocSource(docstring_module_name='ops.sets'),
     'signal':
-        DocSource(docstring_module_name='ops.signal.signal'),
+        DocSource(docstring_module_name='ops.signal'),
     'sparse':
         DocSource(docstring_module_name='ops.sparse_ops'),
     'strings':

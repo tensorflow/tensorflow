@@ -6993,6 +6993,87 @@ TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
             std::vector<float>({2.0, 2.0, 2.0, 2.0, 2.0}));
 }
 
+TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckSuccess) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 1 3 6 7 3 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 3 7 2 2 4
+  //  1,10,4       +---------------+  OK
+  // resource:  0 0 0 3 7 3 7 2 2 4
+  //  0,6,4    +-----------+
+  //  4,6,3              +-+          2 copies OK; The 1,10 copy shifts.
+  // resource:  0 0 0 0 6 0 7 2 2 4
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 10, 4.0));
+  resource.AddCopy({1, 10, 4.0, alternate_mem_space, 1});
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 10, alternate_mem_space);
+
+  // We run the check in a loop to demonstrate that it is not modifying the
+  // underlying data structures.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(
+        resource.HasEnoughResourceMultiCheck({{0, 6, 4.0}, {4, 6, 3.0}}));
+  }
+}
+
+TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckFailure) {
+  // time:      0 1 2 3 4 5 6 7 8 9
+  // resource:  2 1 3 6 7 3 7 2 2 4
+  // -1,3,5    +-----+                OK
+  // resource:  0 0 1 6 7 3 7 2 2 4
+  //  1,10,4       +---------------+  OK
+  // resource:  0 0 0 3 7 3 7 2 2 4
+  //  0,6,4    +-----------+
+  //  4,6,4              +-+          Not-OK
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource(
+      {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
+  EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
+  resource.AddCopy({-1, 3, 5.0, alternate_mem_space, 0});
+  EXPECT_TRUE(resource.HasEnoughResource(1, 10, 4.0));
+  resource.AddCopy({1, 10, 4.0, alternate_mem_space, 1});
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 10, alternate_mem_space);
+
+  EXPECT_FALSE(
+      resource.HasEnoughResourceMultiCheck({{0, 6, 4.0}, {4, 6, 4.0}}));
+}
+
+TEST_F(AsynchronousCopyResourceTest,
+       HasEnoughResourceMultiCheckRegressionTest) {
+  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  AsynchronousCopyResource resource({/*0:*/ 24.0f,
+                                     /*1:*/ 0.0f,
+                                     /*2:*/ 6.0f,
+                                     /*3:*/ 411.0f,
+                                     /*4:*/ 3479.0f,
+                                     /*5:*/ 0.0f,
+                                     /*6:*/ 0.0f,
+                                     /*7:*/ 1537.0f,
+                                     /*8:*/ 3095.0f,
+                                     /*9:*/ 0.0f,
+                                     /*10:*/ 26.7f});
+  AsynchronousCopy copy1({1, 8, 170.8f, alternate_mem_space, 1});
+  AsynchronousCopy copy2({2, 8, 170.8f, alternate_mem_space, 2});
+  resource.AddCopy(copy1);
+  resource.AddCopy(copy2);
+
+  LOG(INFO) << "AsynchronousCopyResource after setup:\n"
+            << resource.Dump(0, 11, alternate_mem_space);
+  // Under the  current AsynchronousCopyResource implementation, this
+  // HasEnoughResource check fails. Although, other designs could rearrange
+  // resources in a manner that fits the check.
+  EXPECT_FALSE(
+      resource.HasEnoughResourceMultiCheck({{0, 4, 170.8}, {1, 4, 170.8}}));
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   HloComputation::Builder builder(TestName());
 

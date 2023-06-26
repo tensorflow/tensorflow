@@ -180,7 +180,7 @@ def set_preinitialized_function_spec(concrete_fn, spec):
   )
   arg_specs, kwarg_specs = concrete_fn.structured_input_signature
 
-  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+  input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
       arg_specs,
       {
           function_type_lib.sanitize_arg_name(k): v
@@ -263,12 +263,6 @@ class RestoredFunction(def_function.Function):
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
-
-  def _compiler_with_scope(self, scope):
-    func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_type = self._function_type  # pylint: disable=protected-access
-    func._default_values = self._default_values  # pylint: disable=protected-access
-    return func
 
 
 def recreate_function(saved_function, concrete_functions):

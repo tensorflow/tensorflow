@@ -1797,9 +1797,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   auto desc = std::move(desc_status).value();
 
   std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
-  if (!stats) {
-    return errors::Internal("No allocator statistics");
-  }
+
   // 'memory_limit' is the required memory size, but if the allocator with
   // given tf_device_id was created before, we'll use it instead of creating a
   // new one (as TF gpu device is a shared resource), in which case the actual
@@ -1808,7 +1806,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   //
   // TODO(laigd): report error if memory_limit doesn't match
   // stats->bytes_limit.
-  int64_t bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
+  int64_t bytes_limit = (stats && stats->bytes_limit) ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
       tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),

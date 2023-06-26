@@ -243,8 +243,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     HloInstruction* folded_user = folded_instr->users()[0];
     if (!HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
                           HloOpcode::kPad, HloOpcode::kCollectivePermute,
-                          HloOpcode::kReshape, HloOpcode::kTranspose>(
-            folded_user) &&
+                          HloOpcode::kConvert, HloOpcode::kReshape,
+                          HloOpcode::kTranspose>(folded_user) &&
         !folded_user->IsCustomCall(
             DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
       break;

@@ -4,23 +4,19 @@
 func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 1, [0]>)
     attributes {ifrt.function} {
   // CHECK: %[[CTRL:.+]] = ifrt.Call @callee
-  %ctrl_0 = ifrt.Call @callee() {devices = array<i32: 0, 1>} : () -> ()
+  %ctrl_0 = ifrt.Call @callee() on devices [0,1] : () -> ()
   // CHECK: ifrt.Call @callee
   // CHECK-SAME: after %[[CTRL]]
-  %ctrl_1 = ifrt.Call @callee_dup() after %ctrl_0
-      {devices = array<i32: 2, 3>} : () -> ()
+  %ctrl_1 = ifrt.Call @callee_dup() after %ctrl_0 on devices [0,1] : () -> ()
   // CHECK-NOT: ifrt.Call @callee
   // CHECK: ifrt.Call @callee_different_body
-  %ctrl_2 = ifrt.Call @callee_different_body()
-      {devices = array<i32: 0, 1>} : () -> ()
+  %ctrl_2 = ifrt.Call @callee_different_body() on devices [0,1] : () -> ()
   // CHECK-NOT: ifrt.Call @callee
   // CHECK: ifrt.Call @callee_different_attr
-  %ctrl_3 = ifrt.Call @callee_different_attr()
-      {devices = array<i32: 0, 1>} : () -> ()
+  %ctrl_3 = ifrt.Call @callee_different_attr() on devices [0,1] : () -> ()
   // CHECK-NOT: ifrt.Call @callee
   // CHECK: ifrt.Call @callee_different_signature
-  %ctrl_4 = ifrt.Call @callee_different_signature(%arg0)
-      {devices = array<i32: 0, 1>}
+  %ctrl_4 = ifrt.Call @callee_different_signature(%arg0) on devices [0,1]
       : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 1, [0]>) -> ()
   return
 }

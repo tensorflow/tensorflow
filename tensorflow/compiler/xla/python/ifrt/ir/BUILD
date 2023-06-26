@@ -128,7 +128,6 @@ cc_library(
         ":ifrt_dialect_inc_gen",
         ":ifrt_interfaces_inc_gen",
         ":ifrt_ops_inc_gen",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

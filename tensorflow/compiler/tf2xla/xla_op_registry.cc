@@ -370,6 +370,7 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   std::vector<string> ops;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
+  ops.reserve(registry.ops_.size());
   for (const auto& pair : registry.ops_) {
     ops.push_back(pair.first);
   }
@@ -466,6 +467,7 @@ std::vector<string> XlaOpRegistry::BackendNames() {
   std::vector<string> names;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
+  names.reserve(registry.backends_.size());
   for (const auto& backend_pair : registry.backends_) {
     names.push_back(backend_pair.first);
   }

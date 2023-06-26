@@ -23,6 +23,11 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+)
+
+py_strict_library(
     name = "fft_ops",
     srcs = ["fft_ops.py"],
     deps = [
@@ -102,6 +107,7 @@ py_strict_library(
     name = "signal",
     srcs = ["signal.py"],
     deps = [
+        ":__init__",
         ":dct_ops",
         ":fft_ops",
         ":mel_ops",

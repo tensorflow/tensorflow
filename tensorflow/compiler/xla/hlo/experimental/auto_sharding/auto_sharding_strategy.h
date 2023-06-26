@@ -39,7 +39,7 @@ namespace xla {
 namespace spmd {
 
 // A constant to represent infinity cost.
-constexpr double kInfinityCost = 1e13;
+constexpr double kInfinityCost = 1e20;
 
 // Type alias
 template <typename Key, typename Value>

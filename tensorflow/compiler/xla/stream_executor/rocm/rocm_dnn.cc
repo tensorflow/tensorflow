@@ -4905,8 +4905,12 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
+<<<<<<< HEAD
         tsl::StatusOr<absl::Duration> elapsed =
                                   timer->GetElapsedDuration();
+=======
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> google_upstream/master
         if (!elapsed.ok()) {
           LOG(ERROR) << "Failed to get elapsed duration";
           return false;
@@ -5007,8 +5011,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
+<<<<<<< HEAD
         tsl::StatusOr<absl::Duration> elapsed =
                                   timer->GetElapsedDuration();
+=======
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> google_upstream/master
         if (!elapsed.ok()) {
           LOG(ERROR) << "Failed to get elapsed duration";
           return false;
@@ -5126,8 +5134,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
+<<<<<<< HEAD
         tsl::StatusOr<absl::Duration> elapsed =
                                   timer->GetElapsedDuration();
+=======
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> google_upstream/master
         if (!elapsed.ok()) {
           LOG(ERROR) << "Failed to get elapsed duration";
           return false;
@@ -5251,8 +5263,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
+<<<<<<< HEAD
         tsl::StatusOr<absl::Duration> elapsed =
                                   timer->GetElapsedDuration();
+=======
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> google_upstream/master
         if (!elapsed.ok()) {
           LOG(ERROR) << "Failed to get elapsed duration";
           return false;

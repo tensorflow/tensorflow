@@ -37,7 +37,7 @@ struct CpuPipelineOptions {
 #ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
   std::string cuda_triplet = "nvptx64-nvidia-cuda";
   std::string cuda_arch = "sm_80";
-  std::string cuda_features = "+ptx71+";
+  std::string cuda_features = "+ptx71";
 #endif
 
   // Enables math approximations that emit AVX2 intrinsics.

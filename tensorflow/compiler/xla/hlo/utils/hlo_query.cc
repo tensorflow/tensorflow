@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -34,15 +36,20 @@ bool IsCollectiveCommunicationOp(HloOpcode op) {
          op == HloOpcode::kCollectivePermuteStart;
 }
 
-bool IsAsyncCollectiveStartOp(HloOpcode op) {
+bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv) {
   return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart ||
-         op == HloOpcode::kAsyncStart;
+         op == HloOpcode::kAsyncStart ||
+         (include_send_recv &&
+          (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
-bool IsAsyncCollectiveDoneOp(HloOpcode op) {
+bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv) {
   return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
-         op == HloOpcode::kCollectivePermuteDone || op == HloOpcode::kAsyncDone;
+         op == HloOpcode::kCollectivePermuteDone ||
+         op == HloOpcode::kAsyncDone ||
+         (include_send_recv &&
+          (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
@@ -124,6 +131,18 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
 
 bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
+}
+
+bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
+  return instr.IsConstant() || ShapeUtil::IsScalar(instr.shape()) ||
+         (HloOpcode::kBroadcast == instr.opcode() &&
+          (instr.operand(0)->IsConstant() ||
+           ShapeUtil::IsScalar(instr.operand(0)->shape())));
+}
+
+bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBroadcast &&
+         IsScalarConstant(instr.operand(0));
 }
 
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,

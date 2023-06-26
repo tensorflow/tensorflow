@@ -95,10 +95,9 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
-    LOG(WARNING)
-        << "platform is already registered with name: \"" << platform->Name()
-        << "\". Please check if you linked the platform more than once.";
-    return ::tsl::OkStatus();
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "platform is already registered with name: \"" +
+                           platform->Name() + "\"");
   }
   Platform* platform_ptr = platform.get();
   CHECK(id_map_.emplace(platform->id(), platform_ptr).second);

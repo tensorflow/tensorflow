@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -269,23 +270,14 @@ void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
 }
 
 PJRT_Client* TF_GetPjRtCClient(const char* device_type, TF_Status* status) {
-  tsl::StatusOr<xla::PjRtClient*> pjrt_client =
-      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
-  if (!pjrt_client.ok()) {
-    tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
-    return nullptr;
-  }
-  auto* pjrt_c_api_client =
-      tensorflow::down_cast<xla::PjRtCApiClient*>(*pjrt_client);
-  if (pjrt_c_api_client == nullptr) {
-    tensorflow::Set_TF_Status_from_Status(
-        status,
-        absl::InternalError(absl::StrCat("PjRtClient for ", device_type,
-                                         " is not type PjRtCApiClient")));
+  tsl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+      tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+  if (!pjrt_c_api_client.ok()) {
+    tensorflow::Set_TF_Status_from_Status(status, pjrt_c_api_client.status());
     return nullptr;
   }
   TF_SetStatus(status, TF_OK, "");
-  return pjrt_c_api_client->pjrt_c_client();
+  return (*pjrt_c_api_client)->pjrt_c_client();
 }
 
 PJRT_Buffer* TF_GetPjRtCBuffer(TF_Tensor* c_tensor, TF_Status* status) {
@@ -295,24 +287,14 @@ PJRT_Buffer* TF_GetPjRtCBuffer(TF_Tensor* c_tensor, TF_Status* status) {
     tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
-  tensorflow::AsyncValueTensor* av_tensor =
-      tensorflow::AsyncValueTensor::FromTensor(&tensor);
-  if (av_tensor == nullptr || av_tensor->GetBuffer() == nullptr) {
-    tensorflow::Set_TF_Status_from_Status(
-        status, absl::InternalError("Input tensor does not have PjRtBuffer."));
-    return nullptr;
-  }
-  auto* c_api_buffer =
-      tensorflow::down_cast<xla::PjRtCApiBuffer*>(av_tensor->GetBuffer().get());
-  if (c_api_buffer == nullptr) {
-    tensorflow::Set_TF_Status_from_Status(
-        status,
-        absl::InternalError(
-            "The PjRtBuffer in the tensor is not type PjRtCApiBuffer."));
+  tsl::StatusOr<PJRT_Buffer*> c_buffer =
+      tensorflow::GetPjRtCBufferFromTensor(&tensor);
+  if (!c_buffer.ok()) {
+    tensorflow::Set_TF_Status_from_Status(status, c_buffer.status());
     return nullptr;
   }
   TF_SetStatus(status, TF_OK, "");
-  return c_api_buffer->c_buffer();
+  return *c_buffer;
 }
 
 void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
@@ -323,31 +305,13 @@ void TF_CreatePjRtBuffer(TF_Tensor* c_tensor, PJRT_Buffer* c_buffer,
     tensorflow::Set_TF_Status_from_Status(status, s);
     return;
   }
-  auto pjrt_client =
-      tensorflow::GetPjRtClient(tensorflow::DeviceType(device_type));
-  if (!pjrt_client.ok()) {
-    tensorflow::Set_TF_Status_from_Status(status, pjrt_client.status());
+  tsl::StatusOr<xla::PjRtCApiClient*> pjrt_c_api_client =
+      tensorflow::GetPjRtCApiClient(tensorflow::DeviceType(device_type));
+  if (!pjrt_c_api_client.ok()) {
+    tensorflow::Set_TF_Status_from_Status(status, pjrt_c_api_client.status());
     return;
   }
-  auto* pjrt_c_api_client =
-      tensorflow::down_cast<xla::PjRtCApiClient*>(*pjrt_client);
-  if (pjrt_c_api_client == nullptr) {
-    tensorflow::Set_TF_Status_from_Status(
-        status,
-        absl::InternalError(absl::StrCat("PjRtClient for ", device_type,
-                                         " is not type PjRtCApiClient")));
-    return;
-  }
-  tensorflow::AsyncValueTensor* av_tensor =
-      tensorflow::AsyncValueTensor::FromTensor(&tensor);
-  if (av_tensor == nullptr) {
-    tensorflow::Set_TF_Status_from_Status(
-        status,
-        absl::InternalError(
-            "The tensor to set PjRtBuffer is not an AsyncValueTensor."));
-    return;
-  }
-  av_tensor->SetBuffer(
-      std::make_unique<xla::PjRtCApiBuffer>(pjrt_c_api_client, c_buffer));
-  TF_SetStatus(status, TF_OK, "");
+  auto set_buffer_status =
+      SetPjRtCBufferToTensor(c_buffer, *pjrt_c_api_client, &tensor);
+  tensorflow::Set_TF_Status_from_Status(status, set_buffer_status);
 }

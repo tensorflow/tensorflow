@@ -160,7 +160,7 @@ class WeakRefCounted : public RefCounted {
     std::map<int, WeakNotifyFn> notifiers;
     int next_notifier_id;
 
-    // Notifies WeakPtr instansces that this object is being destructed.
+    // Notifies WeakPtr instances that this object is being destructed.
     void Notify() {
       mutex_lock ml(mu);
 
@@ -229,7 +229,8 @@ class WeakPtr {
  public:
   // Creates a weak reference.
   // When the object is being destroyed, notify_fn is called.
-  explicit WeakPtr(WeakRefCounted* ptr, WeakNotifyFn notify_fn = nullptr)
+  explicit WeakPtr(WeakRefCounted* ptr = nullptr,
+                   WeakNotifyFn notify_fn = nullptr)
       : data_(nullptr), notifier_id_(0) {
     if (ptr != nullptr) {
       ptr->data_->Ref();

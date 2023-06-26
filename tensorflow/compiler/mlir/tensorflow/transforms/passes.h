@@ -224,7 +224,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
@@ -453,6 +453,7 @@ CreateReplicaIDToDeviceOrdinalPass();
 // while developing full pipelining capabilities.
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.

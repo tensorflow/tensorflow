@@ -81,7 +81,6 @@ tool_names = [
     'json_to_flatbuffer',
     'kernel-gen-opt',
     'lhlo-tfrt-opt',
-    'mhlo-tosa-opt',
     'mlir-bisect',
     'mlir-hlo-opt',
     'mlir-interpreter-runner',

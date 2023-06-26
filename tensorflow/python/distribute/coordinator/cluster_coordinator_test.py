@@ -791,6 +791,13 @@ class ClusterCoordinatorTest(
       return var
 
     num_closures = 10
+    for ix in range(num_closures):
+      self.coordinator.schedule(worker_fn)
+      # Read the PWV many times to ensure result is up-to-date
+      self.coordinator.join()
+      result_sum = sum(var.read_all()).numpy()
+      self.assertEqual(result_sum, ix + 1)
+
     for _ in range(num_closures):
       self.coordinator.schedule(worker_fn)
     self.coordinator.join()
@@ -802,7 +809,7 @@ class ClusterCoordinatorTest(
     self.assertAllEqual(devices, expected_devices)
 
     result_sum = sum(var.read_all()).numpy()
-    self.assertEqual(result_sum, num_closures)
+    self.assertEqual(result_sum, num_closures * 2)
 
   def testDisallowRemoteValueAsInput(self):
     @def_function.function

@@ -50,7 +50,7 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "xla",
     srcs = ["xla.py"],
     srcs_version = "PY3",

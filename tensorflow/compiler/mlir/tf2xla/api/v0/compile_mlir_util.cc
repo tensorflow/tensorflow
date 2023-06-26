@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -187,7 +188,7 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
 
 // Calculates computation output shape and build OutputDescription for each
 // output based on static shapes in MLIR module. If an output is a resource
-// write, `resource_updates` is populated insead of `outputs` for that output.
+// write, `resource_updates` is populated instead of `outputs` for that output.
 Status GetOutputInfo(
     mlir::ModuleOp module, bool use_resource_updates_for_aliases,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
@@ -336,6 +337,13 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
       legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
 
+  // Until the native support quantization will be delivered on XLA, uniform
+  // quantization will be unpacked with integer operators.
+  // TODO(b/288214422): Add a verification pass for converting MHLO quant to
+  // MHLO int after this one.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createConvertMHLOQuantToIntPass(legalize_chlo));
+
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::CreateInfeedsOpsXlaAdjustLayoutPass());
@@ -381,7 +389,7 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
   // example, propagates constant arguments into callee functions.
-  // TOOD(hinsu): Investigate if we really need SCCP pass before shape inference
+  // TODO(hinsu): Investigate if we really need SCCP pass before shape inference
   // and can do with just one pass after the shape inference.
   pm.addPass(mlir::createSCCPPass());
   // Guarantee all functions have one use, which enables shape inference.
@@ -418,7 +426,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // Later on, this could be merged in the legalization pass when we migrate
   // bridge to StableHLO.
   // TODO(b/259459405): Avoid this peculiar use through some refactoring in
-  // the the caller.
+  // the caller.
   // This needs to happen before legalization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
@@ -431,7 +439,7 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
 
   // These passes are grouped together as they have to run in specific order.
-  // Passes before this can run relativley in any order, as long as they happen
+  // Passes before this can run relatively in any order, as long as they happen
   // before legalization.
   AddLegalizationPasses(pm, legalize_chlo, device_type, enable_op_fallback);
 

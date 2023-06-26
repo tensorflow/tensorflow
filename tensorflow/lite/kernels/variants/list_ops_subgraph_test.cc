@@ -19,10 +19,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/variants/list_ops_subgraph_test_util.h"
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 using ::tflite::variants::TensorArray;
 
@@ -30,6 +32,7 @@ namespace tflite {
 namespace {
 
 using UtilsTest = ListOpsSubgraphTest;
+
 // This test just validates the test fixture. It doesn't test any business
 // logic.
 TEST_F(UtilsTest, SimpleAddConst) {
@@ -73,10 +76,10 @@ TEST_P(ListReserveSubgraphTest, InterpreterOutputsTensorArray) {
   builder_.AddReserveSubgraph(&interpreter_.primary_subgraph(),
                               params.tensor_type);
 
-  ASSERT_THAT(interpreter_.ResizeInputTensor(0, params.element_shape_shape),
-              kTfLiteOk);
-  ASSERT_THAT(interpreter_.ResizeInputTensor(1, {}), kTfLiteOk);
-  ASSERT_THAT(interpreter_.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(0, params.element_shape_shape),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(1, {}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
 
   TfLiteTensor* element_shape = interpreter_.input_tensor(0);
   std::copy(params.element_shape_data.begin(), params.element_shape_data.end(),
@@ -85,7 +88,7 @@ TEST_P(ListReserveSubgraphTest, InterpreterOutputsTensorArray) {
   TfLiteTensor* num_elements = interpreter_.input_tensor(1);
   num_elements->data.i32[0] = params.num_elements;
 
-  ASSERT_THAT(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
 
   TfLiteTensor* output = interpreter_.output_tensor(0);
   ASSERT_EQ(output->type, kTfLiteVariant);
@@ -115,6 +118,75 @@ INSTANTIATE_TEST_SUITE_P(
             TensorType_FLOAT32, kTfLiteFloat32, {2}, {2, 2}, {2, 2}, 0},
         ListReserveSubgraphTestParams{
             TensorType_FLOAT32, kTfLiteFloat32, {2}, {2, -1}, {2, -1}, 10},
+    }));
+
+struct ListStackSubgraphDynamicTestParams {
+  // Reserve params.
+  const std::vector<int> element_shape_shape;
+  const std::vector<int> element_shape_data;
+  const int num_elements;
+  // Stack params.
+  const std::vector<int> stack_shape_shape;
+  const std::vector<int> stack_shape_data;
+  // Expected.
+  const std::vector<int> expected_shape;
+};
+
+class ListStackDynamicSubgraphTest
+    : public ListOpsSubgraphTest,
+      public ::testing::WithParamInterface<ListStackSubgraphDynamicTestParams> {
+};
+
+TEST_P(ListStackDynamicSubgraphTest,
+       InterpreterOutputsStackTensor_DynamicOutput) {
+  const ListStackSubgraphDynamicTestParams& params = GetParam();
+
+  builder_.AddReserveStackSubgraph(&interpreter_.primary_subgraph());
+
+  ASSERT_EQ(interpreter_.ResizeInputTensor(0, params.element_shape_shape),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(1, {}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(2, params.stack_shape_shape),
+            kTfLiteOk);
+  interpreter_.output_tensor(0)->allocation_type = kTfLiteDynamic;
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  TfLiteTensor* element_shape = interpreter_.input_tensor(0);
+  std::copy(params.element_shape_data.begin(), params.element_shape_data.end(),
+            element_shape->data.i32);
+
+  TfLiteTensor* num_elements = interpreter_.input_tensor(1);
+  num_elements->data.i32[0] = params.num_elements;
+
+  TfLiteTensor* stack_shape = interpreter_.input_tensor(2);
+  std::copy(params.stack_shape_data.begin(), params.stack_shape_data.end(),
+            stack_shape->data.i32);
+
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_.output_tensor(0);
+  ASSERT_EQ(output->type, kTfLiteInt32);
+  ASSERT_EQ(output->allocation_type, kTfLiteDynamic);
+
+  const int output_num_elements = NumElements(output);
+  ASSERT_TRUE((output_num_elements > 0 && output->data.data != nullptr) ||
+              (output_num_elements == 0 && output->data.data == nullptr));
+
+  ASSERT_THAT(output, DimsAre(params.expected_shape));
+  for (int i = 0; i < NumElements(output); ++i) {
+    EXPECT_EQ(output->data.i32[i], 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ListOpsSubgraphParamTests, ListStackDynamicSubgraphTest,
+    testing::ValuesIn({
+        ListStackSubgraphDynamicTestParams{{1}, {2}, 4, {}, {-1}, {4, 2}},
+        ListStackSubgraphDynamicTestParams{
+            {}, {-1}, 4, {3}, {2, 3, 4}, {4, 2, 3, 4}},
+        ListStackSubgraphDynamicTestParams{{1}, {2}, 4, {}, {-1}, {4, 2}},
+        ListStackSubgraphDynamicTestParams{{1}, {2}, 0, {}, {-1}, {0, 2}},
+        ListStackSubgraphDynamicTestParams{{1}, {1}, 2, {}, {-1}, {2}},
     }));
 
 }  // namespace
