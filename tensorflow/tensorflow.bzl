@@ -2165,7 +2165,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()
+    return []
 
 check_deps = rule(
     _check_deps_impl,
