@@ -2429,6 +2429,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
+      hlo->opcode() != HloOpcode::kOutfeed &&
       hlo->opcode() != HloOpcode::kAllReduce) {
     const bool has_manual_sharding =
         hlo->sharding().IsManual() ||
@@ -2438,14 +2439,24 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
              [](const HloSharding& sharding) { return sharding.IsManual(); }));
     if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
       visiting_hlo_sharding_ = hlo->sharding();
-      hlo->set_sharding(manual_to_onedevice(hlo->opcode(), hlo->shape(),
-                                            *visiting_hlo_sharding_));
+      auto get_sharding_shape = [](const HloInstruction* hlo) {
+        if (hlo->opcode() != HloOpcode::kOutfeed) {
+          return hlo->shape();
+        }
+        std::vector<Shape> operand_shapes(hlo->operand_count());
+        for (int i = 0; i < hlo->operand_count(); ++i) {
+          operand_shapes[i] = hlo->operand(i)->shape();
+        }
+        return ShapeUtil::MakeTupleShape(operand_shapes);
+      };
+      hlo->set_sharding(manual_to_onedevice(
+          hlo->opcode(), get_sharding_shape(hlo), *visiting_hlo_sharding_));
 
       visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
       for (HloInstruction* operand : hlo->unique_operands()) {
         visiting_hlo_operand_shardings_.push_back(operand->sharding());
         operand->set_sharding(manual_to_onedevice(
-            hlo->opcode(), operand->shape(), operand->sharding()));
+            hlo->opcode(), get_sharding_shape(operand), operand->sharding()));
         GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
       }
     } else {
@@ -4130,6 +4141,23 @@ Status SpmdPartitioningVisitor::HandleOptimizationBarrier(HloInstruction* hlo) {
 Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
+  }
+  if (hlo->sharding().IsManual()) {
+    auto clone_from_original = [&](const HloSharding& shared_sharding) {
+      std::vector<HloInstruction*> new_operands;
+      for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+        new_operands.push_back(
+            GetPartitionedHlo(hlo->operand(i)).Reshard(shared_sharding).hlo());
+      }
+      auto clone = b_.AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+      clone->set_sharding(shared_sharding);
+      return clone;
+    };
+
+    SetPartitionedHlo(hlo,
+                      [&] { return clone_from_original(hlo->sharding()); });
+    return OkStatus();
   }
 
   // TODO(b/260756663): Remove this fixup once this bug is fixed.
