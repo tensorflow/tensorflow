@@ -298,6 +298,19 @@ class AtomicFunction:
         pass  # 'NoneType' object has no attribute 'eager_mode' when context has
         # been unloaded. Will catch other module unloads as well.
 
+  def __str__(self):
+    return f"<AtomicFunction> {compat.as_str(self.name)}{self.function_type}"
+
+  def __repr__(self):
+    return (
+        f"AtomicFunction(name={self.name},\n"
+        f"bound_context={self._bound_context},\n"
+        f"function_type={self.function_type!r},\n"
+        f"children={self._children!s},\n"
+        f"call_options={self._call_options},\n"
+        f"cached_graph={self._cached_graph})"
+    )
+
 
 def _set_read_only_resource_inputs_attr(
     op: ops.Operation, func_graph: func_graph_module.FuncGraph
