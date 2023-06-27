@@ -1934,3 +1934,19 @@ func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// -----
+
+func.func @op_uniform_dequantize(%arg0: tensor<!quant.uniform<i8:f16, 34.0:16>>) -> tensor<f16> {
+  // expected-error@+1 {{'mhlo.uniform_dequantize' op result #0 must be tensor of 32-bit float or bfloat16 type values, but got 'tensor<f16>'}}
+  %0 = "stablehlo.uniform_dequantize"(%arg0) : (tensor<!quant.uniform<i8:f16, 34.0:16>>) -> tensor<f16>
+  func.return %0 : tensor<f16>
+}
+
+// -----
+
+func.func @op_uniform_quantize(%arg0: tensor<f16>) -> tensor<!quant.uniform<i8:f16, 34.0:16>> {
+  // expected-error@+1 {{'mhlo.uniform_quantize' op operand #0 must be tensor of 32-bit float or bfloat16 type or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<f16>'}}
+  %0 = "stablehlo.uniform_quantize"(%arg0) : (tensor<f16>) -> tensor<!quant.uniform<i8:f16, 34.0:16>>
+  func.return %0 : tensor<!quant.uniform<i8:f16, 34.0:16>>
+}
