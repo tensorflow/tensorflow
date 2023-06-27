@@ -300,7 +300,7 @@ HloModule MultipleContractingCheckGemm
 ENTRY AddDotsFunc {
   x = f32[3,4,2] parameter(0)
   y = f32[3,4,5] parameter(1)
-  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, operand_precision={highest,highest}
 }
 
 )";
@@ -328,7 +328,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -662,7 +662,7 @@ ENTRY AddDotsFunc {
   y = f32[2,2] parameter(1)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   ROOT dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
 }
 
@@ -687,7 +687,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -744,7 +744,7 @@ ENTRY AddDotsFunc {
   y = f32[2,2] parameter(1)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, dot_a)
 }
@@ -767,7 +767,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1294,7 +1294,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] negate(param_2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -1321,7 +1321,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1338,7 +1338,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   biased_out = f32[2,2] add(dot_a_multiplied, bias)
   ROOT out = f32[2,2] add(biased_out, bias)
@@ -1364,7 +1364,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1464,7 +1464,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -1492,7 +1492,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1973,7 +1973,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -2000,7 +2000,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2017,7 +2017,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   biased_out = f32[2,2] add(dot_a_multiplied, bias)
   ROOT out = f32[2,2] add(biased_out, bias)
@@ -2045,7 +2045,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2290,12 +2290,12 @@ ENTRY test {
   y = f32[4,4] parameter(1)
   z = f32[4] parameter(2)
   c = f32[] constant(5)
-  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[4,4] broadcast(z), dimensions={1}
   add_a = f32[4,4] add(dot_a, z_bcast)
   c_bcast = f32[4,4] broadcast(c), dimensions={}
-  dot_b = f32[4,4] dot(dot_a, c_bcast), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[4,4] dot(add_a, dot_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_b = f32[4,4] dot(dot_a, c_bcast), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  ROOT out = f32[4,4] dot(add_a, dot_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
 }
 
 )";
@@ -2327,7 +2327,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2348,7 +2348,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2365,7 +2365,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2380,7 +2380,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[3,5,6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
   ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
 }
@@ -2418,7 +2418,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2434,7 +2434,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={3}
   ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
 }
@@ -2472,7 +2472,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2892,7 +2892,7 @@ HloModule test
 ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   c = f32[] constant(0)
   c_bcast = f32[2,3,5,6] broadcast(c), dimensions={}
   ROOT out = f32[2,3,5,6] maximum(dot_a, c_bcast)
@@ -2922,7 +2922,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
@@ -3118,7 +3118,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[3,5,6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
   add = f32[2,3,5,6] add(dot_a, z_bcast)
   c = f32[] constant(0)
@@ -3158,7 +3158,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
@@ -4329,7 +4329,7 @@ ENTRY test {
   z = f32[4] parameter(2)
   k = f32[] constant(3.0)
   k_bcast = f32[2,4] broadcast(k), dimensions={}
-  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 4] multiply(dot_a, k_bcast)
   z_bcast = f32[2,4] broadcast(z), dimensions={1}
   add = f32[2,4] add(dot_a_multiplied, z_bcast)
@@ -4361,7 +4361,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"BIAS_RELU"
 ; CHECK:           }
