@@ -236,7 +236,10 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
 
     if (IsEmittingForAMDGPU() &&
-        (element_type == F32)) /* is atomic add supported? */ {
+        (element_type == F32 ||
+         (element_type == F16 &&
+          ir_emitter_context_->rocm_compute_capability()
+              .has_fp16_atomics_support()))) /* is atomic add supported? */ {
       EmitAMDGPUAtomicAdd(output_address, source);
       return true;
     }
