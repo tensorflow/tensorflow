@@ -56,7 +56,8 @@ class XlaCompileOptionsSerDes
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      const std::string& serialized) override {
+      const std::string& serialized,
+      std::unique_ptr<DeserializeOptions>) override {
     XlaCompileOptionsProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::DataLossError(
@@ -84,7 +85,7 @@ bool register_xla_compile_options_serdes = ([]{
 
 char XlaProgram::ID = 0;
 char XlaCompileOptions::ID = 0;
-char XlaDeserializeOptions::ID = 0;
+char XlaDeserializeExecutableOptions::ID = 0;
 
 StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options) {
@@ -95,13 +96,15 @@ StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
       static_cast<XlaCompileOptions*>(options.release()));
 }
 
-StatusOr<std::unique_ptr<XlaDeserializeOptions>> GetXlaDeserializeOptions(
-    std::unique_ptr<DeserializeOptions> options) {
-  if (!llvm::isa<XlaDeserializeOptions>(options.get())) {
-    return xla::InvalidArgument("options must be XlaDeserializeOptions");
+StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+GetXlaDeserializeExecutableOptions(
+    std::unique_ptr<DeserializeExecutableOptions> options) {
+  if (!llvm::isa<XlaDeserializeExecutableOptions>(options.get())) {
+    return xla::InvalidArgument(
+        "options must be XlaDeserializeExecutableOptions");
   }
-  return std::unique_ptr<XlaDeserializeOptions>(
-      static_cast<XlaDeserializeOptions*>(options.release()));
+  return std::unique_ptr<XlaDeserializeExecutableOptions>(
+      static_cast<XlaDeserializeExecutableOptions*>(options.release()));
 }
 
 }  // namespace ifrt

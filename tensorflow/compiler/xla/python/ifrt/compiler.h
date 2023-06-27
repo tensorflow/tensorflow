@@ -46,8 +46,8 @@ struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
 // options that are not included in the program.
 //
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
-struct DeserializeOptions
-    : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
+struct DeserializeExecutableOptions
+    : llvm::RTTIExtends<DeserializeExecutableOptions, DeserializeOptions> {
   static char ID;  // NOLINT
 };
 
@@ -73,8 +73,9 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // implementation specific.
   // TODO(hyeontaek): Move executable loading to `Client`.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>>
-  DeserializeLoadedExecutable(absl::string_view serialized,
-                              std::unique_ptr<DeserializeOptions> options) = 0;
+  DeserializeLoadedExecutable(
+      absl::string_view serialized,
+      std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 
   static char ID;  // NOLINT
 };

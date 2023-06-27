@@ -48,10 +48,11 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized, std::unique_ptr<DeserializeOptions> options) {
+    absl::string_view serialized,
+    std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
-                      GetXlaDeserializeOptions(std::move(options)));
+                      GetXlaDeserializeExecutableOptions(std::move(options)));
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executble,
       client_->pjrt_client()->DeserializeExecutable(

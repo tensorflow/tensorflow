@@ -295,6 +295,8 @@ xla_cc_test(
     deps = [
         ":serdes",
         ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

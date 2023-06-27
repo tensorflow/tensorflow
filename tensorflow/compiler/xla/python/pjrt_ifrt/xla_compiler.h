@@ -70,10 +70,11 @@ struct XlaCompileOptions
 //
 // TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
 // because deserialization (without loading) should not take them.
-struct XlaDeserializeOptions
-    : llvm::RTTIExtends<XlaDeserializeOptions, DeserializeOptions> {
-  XlaDeserializeOptions() = default;
-  explicit XlaDeserializeOptions(
+struct XlaDeserializeExecutableOptions
+    : llvm::RTTIExtends<XlaDeserializeExecutableOptions,
+                        DeserializeExecutableOptions> {
+  XlaDeserializeExecutableOptions() = default;
+  explicit XlaDeserializeExecutableOptions(
       std::optional<xla::CompileOptions> compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
           {})
@@ -85,9 +86,9 @@ struct XlaDeserializeOptions
   std::optional<xla::CompileOptions> compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
 
-  // DeserializeOptions implementation.
+  // DeserializeExecutableOptions implementation.
 
-  ~XlaDeserializeOptions() override = default;
+  ~XlaDeserializeExecutableOptions() override = default;
 
   static char ID;  // NOLINT
 };
@@ -96,9 +97,11 @@ struct XlaDeserializeOptions
 StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
-// Gets `xla::ifrt::XlaDeserializeOptions` from `xla::ifrt::DeserializeOptions`.
-StatusOr<std::unique_ptr<XlaDeserializeOptions>> GetXlaDeserializeOptions(
-    std::unique_ptr<DeserializeOptions> options);
+// Gets `xla::ifrt::XlaDeserializeExecutableOptions` from
+// `xla::ifrt::DeserializeExecutableOptions`.
+StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+GetXlaDeserializeExecutableOptions(
+    std::unique_ptr<DeserializeExecutableOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

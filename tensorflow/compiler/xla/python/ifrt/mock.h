@@ -121,7 +121,7 @@ class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
   MOCK_METHOD(StatusOr<std::unique_ptr<LoadedExecutable>>,
               DeserializeLoadedExecutable,
               (absl::string_view serialized,
-               std::unique_ptr<DeserializeOptions> options),
+               std::unique_ptr<DeserializeExecutableOptions> options),
               (final));
 
   static char ID;  // NOLINT

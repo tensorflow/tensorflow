@@ -69,7 +69,7 @@ class InvalidIfrtCompiler final
 
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
-      std::unique_ptr<ifrt::DeserializeOptions> options) override {
+      std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
   }
 
