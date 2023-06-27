@@ -125,7 +125,7 @@ struct PJRT_Error_GetCode_Args {
   const PJRT_Error* error;
   PJRT_Error_Code code;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, error);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
@@ -1386,7 +1386,8 @@ struct PJRT_CopyToDeviceStream_AddChunk_Args {
   PJRT_Chunk* chunk;
   PJRT_Event* transfer_complete;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args, chunk);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args,
+                          transfer_complete);
 
 // Emplaces a new chunk of data to copy to the device. The transfer is started
 // immediately, and the returned event is triggered when the transfer completes
