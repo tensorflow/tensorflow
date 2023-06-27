@@ -47,7 +47,7 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
       const Serializable& serializable) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      absl::string_view serialized) = 0;
+      const std::string& serialized) = 0;
 
   static char ID;  // NOLINT
 };

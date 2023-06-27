@@ -17,8 +17,8 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-// Wire format for objects serialized from `Serializable`.
-message Serialized {
-  string type_name = 1;
-  bytes data = 2;
+import "tensorflow/compiler/xla/pjrt/compile_options.proto";
+
+message XlaCompileOptionsProto {
+  xla.CompileOptionsProto compile_options = 1;
 }

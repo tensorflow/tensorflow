@@ -54,7 +54,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      absl::string_view serialized) override {
+      const std::string& serialized) override {
     int number;
     if (!absl::SimpleAtoi(serialized, &number)) {
       return absl::DataLossError("Unable to parse serialized TestNumber");

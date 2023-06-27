@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
@@ -35,7 +36,7 @@ namespace ifrt {
 // the MLIR module.
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
 // TODO(hyeontaek): Add `Serialize()`.
-struct CompileOptions : llvm::RTTIExtends<CompileOptions, llvm::RTTIRoot> {
+struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
   static char ID;  // NOLINT
 };
 
