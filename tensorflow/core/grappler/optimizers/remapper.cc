@@ -2909,6 +2909,9 @@ void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul,
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
   }
+  if (IsMKLEnabled()) {
+    (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
+  }
 }
 
 void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
@@ -2921,6 +2924,9 @@ void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
   (*attr)["T"] = src_attr.at("T");
   (*attr)["adj_x"] = src_attr.at("adj_x");
   (*attr)["adj_y"] = src_attr.at("adj_y");
+  if (IsMKLEnabled()) {
+    (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
+  }
 }
 
 void SetFusedOpAttributes(NodeDef* fused,
@@ -2960,6 +2966,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyMatMulAttributes(contraction, &fused_op);
   } else if (IsConv3D(contraction)) {
     fused_op.set_op(kFusedConv3D);
@@ -3065,6 +3072,7 @@ Status AddFusedContractionNode(
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyMatMulAttributes(contraction, &fused_op, &activation);
   } else if (IsConv3D(contraction)) {
     fused_op.set_op(kFusedConv3D);
@@ -3256,6 +3264,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
     AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &contraction_node);
   } else if (IsMatMul(contraction)) {
+    AddInputShapesAttr(*ctx, matched.contraction);
     contraction_node.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &contraction_node);
   } else if (IsConv3D(contraction)) {
@@ -4453,6 +4462,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
   const int num_nodes = item.graph.node_size();
   const int intra_op_parallelism_threads =
       item.optimization_options().intra_op_parallelism_threads;
+
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd
   // and Activation nodes that were fused into a Conv2D node.
   std::vector<bool> invalidated_nodes(num_nodes);
@@ -4492,7 +4502,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         IsDepthwiseConv2dNative(ctx.graph_view.graph()->node(i)) ||
         IsBiasAdd(ctx.graph_view.graph()->node(i)) ||
         IsTranspose(ctx.graph_view.graph()->node(i)) ||
-        IsSigmoid(ctx.graph_view.graph()->node(i))) {
+        IsSigmoid(ctx.graph_view.graph()->node(i)) ||
+        IsMatMul(ctx.graph_view.graph()->node(i))) {
       AddInputShapesAttr(ctx, i);
     }
 

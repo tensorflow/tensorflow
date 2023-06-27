@@ -1520,7 +1520,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
       VLOG(2) << "Rewriting MatMul to _MklMatMul";
+#ifdef DNNL_AARCH64_USE_ACL
+      return MatMulHeuristic(n);
+#else
       return true;
+#endif
     }
     return false;
   }
