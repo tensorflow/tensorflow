@@ -178,14 +178,16 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
   auto is_synchronous_op = [](const HloInstruction* instr) {
-    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode()) &&
+    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
+                                               /*include_send_recv=*/true) &&
            IsSyncCollective(*instr);
   };
   for (HloInstruction* instr : input.instructions()) {
     if (is_synchronous_op(instr)) {
       continue;
     }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode())) {
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode(),
+                                           /*include_send_recv=*/true)) {
       // Place the start op just before the done op if its synchronous.
       HloInstruction* start = instr->mutable_operand(0);
       if (is_synchronous_op(start)) {
@@ -210,12 +212,28 @@ StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
 
 // Latency hiding scheduler support.
 
+CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    case HloOpcode::kSend:
+      return {HloOpcode::kAsyncStart, HloOpcode::kSend};
+    case HloOpcode::kSendDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kSend};
+    case HloOpcode::kRecv:
+      return {HloOpcode::kAsyncStart, HloOpcode::kRecv};
+    case HloOpcode::kRecvDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kRecv};
+    default:
+      return DefaultGetCanonicalAsyncOp(hlo);
+  }
+}
+
 SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;
+  config.schedule_send_recvs = true;
 
   // Assume 75% of the total device memory is available for XLA.
   config.memory_limit = gpu_info.device_memory_size * 0.95;
@@ -234,14 +252,21 @@ class GpuAsyncTrackerBase : public AsyncTracker {
  public:
   using AsyncTracker::AsyncTracker;
 
+  explicit GpuAsyncTrackerBase(
+      const SchedulerConfig& config,
+      GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
+      : AsyncTracker(config, func) {}
+
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode()) &&
+    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
+                                              /*include_send_recv=*/true) &&
            !IsSyncCollective(*hlo.operand(0));
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode()) &&
+    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
+                                               /*include_send_recv=*/true) &&
            !IsSyncCollective(hlo);
   }
 };
@@ -254,7 +279,7 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 
   ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& instr) const override {
-    CanonicalAsyncOp op = DefaultGetCanonicalAsyncOp(instr);
+    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
     if (op.outer == HloOpcode::kAsyncStart ||
         op.outer == HloOpcode::kAsyncDone) {
       ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
@@ -342,6 +367,24 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
       return ApproximateLatencyEstimator::kMediumCost;
     }
     return ApproximateLatencyEstimator::NodeCost(instr);
+  }
+
+  LatencyEstimator::TimeCost GetLatencyBetween(
+      const HloGraphNode& from, const HloGraphNode& target) const override {
+    if (IsAsyncPair(from, target)) {
+      if (from.GetInstr().opcode() == HloOpcode::kRecv) {
+        // Recv -> RecvDone has a low latency.
+        return ApproximateLatencyEstimator::kLowLatency;
+      } else if (target.GetInstr().opcode() == HloOpcode::kSend) {
+        // Send -> SendDone has a very high latency.
+        return ApproximateLatencyEstimator::kHighLatency * 10;
+      }
+
+      return ApproximateLatencyEstimator::kHighLatency;
+    }
+    // Every other instruction we consider synchronous, which means the
+    // latency between each of them is always one unit.
+    return ApproximateLatencyEstimator::kLowLatency;
   }
 };
 
