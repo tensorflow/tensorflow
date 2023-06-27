@@ -39,10 +39,10 @@ TEST_P(BatchFunctionKernelTest, EnableAdaptiveScheduler) {
 
 INSTANTIATE_TEST_SUITE_P(Params, BatchFunctionKernelTest, ::testing::Bool());
 
-class BatchFunctionKernelParallelWarmupTest : public OpsTestBase {
+class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
  public:
   // Init test fixture with a batch kernel instance.
-  Status Init() {
+  Status Init(bool enable_splitting) {
     static auto *const cpu_device = []() {
       auto device =
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
@@ -84,7 +84,7 @@ class BatchFunctionKernelParallelWarmupTest : public OpsTestBase {
         }});
 
     TF_CHECK_OK(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                    .Attr("max_batch_size", 8)
+                    .Attr("max_batch_size", enable_splitting ? 16 : 8)
                     .Attr("num_batch_threads", 8)
                     .Attr("allowed_batch_sizes", {2, 4, 8})
                     .Attr("batch_timeout_micros", 1000000)
@@ -103,7 +103,10 @@ class BatchFunctionKernelParallelWarmupTest : public OpsTestBase {
   void TestBody() override {}
 };
 
-TEST(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
+class BatchFunctionKernelParallelWarmupTest
+    : public ::testing::TestWithParam<bool> {};
+
+TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   SessionMetadata session_metadata;
   session_metadata.set_name("test_model");
   session_metadata.set_version(123);
@@ -111,6 +114,9 @@ TEST(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
                                         session_metadata.version());
 
   int batch_size = 16;
+
+  bool enable_splitting = GetParam();
+
   {
     // Setting the state to warmup disables batching in the BatchFunction op. We
     // are checking this behavior by checking the tensor shape inside batch
@@ -120,9 +126,9 @@ TEST(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
     tsl::BlockingCounter blocking_counter(batch_size);
     for (int i = 0; i < batch_size; ++i) {
       Env::Default()->SchedClosure([&]() {
-        BatchFunctionKernelParallelWarmupTest test;
+        BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init());
+        TF_CHECK_OK(test.Init(enable_splitting));
         test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
         TF_CHECK_OK(test.RunOpKernel());
 
@@ -140,9 +146,9 @@ TEST(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   tsl::BlockingCounter blocking_counter(batch_size);
   for (int i = 0; i < batch_size; ++i) {
     Env::Default()->SchedClosure([&]() {
-      BatchFunctionKernelParallelWarmupTest test;
+      BatchFunctionKernelParallelWarmupTestState test;
       test.set_session_metadata(session_metadata);
-      TF_CHECK_OK(test.Init());
+      TF_CHECK_OK(test.Init(enable_splitting));
       test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
       // We expect requests to be batched together when the warm-up mode is
       // turned off, which will make the execution fail at `EnsureShape`.
@@ -154,5 +160,9 @@ TEST(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
 
   blocking_counter.Wait();
 }
+
+INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,
+                         BatchFunctionKernelParallelWarmupTest,
+                         ::testing::Bool());
 
 }  // namespace tensorflow

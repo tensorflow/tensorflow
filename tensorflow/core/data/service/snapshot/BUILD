@@ -183,6 +183,8 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

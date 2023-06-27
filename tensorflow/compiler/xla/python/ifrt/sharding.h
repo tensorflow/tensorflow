@@ -74,7 +74,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, llvm::RTTIRoot> {
 
 std::ostream& operator<<(std::ostream& os, const Shape& shape);
 
-// Single-device sharding. It does not support per-device disassembly.
+// Single-device sharding.
 //
 // TODO(hyeontaek): `SingleDeviceSharding` tends to be created or consumed in a
 // large quantity. It may be useful for performance optimization to special-case

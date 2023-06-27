@@ -106,7 +106,10 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_c_api_client(plugin_name: str, options: Optional[_NameValueMapping] = None) -> Client:
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[DistributedRuntimeClient] = None) -> Client:
   ...
 
 def pjrt_plugin_loaded(plugin_name: str) -> bool:

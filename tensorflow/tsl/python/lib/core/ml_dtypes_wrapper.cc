@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/tsl/python/lib/core/float8.h"
+#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
 
-PYBIND11_MODULE(_pywrap_float8, m) {
-  tsl::RegisterNumpyFloat8e4m3fn();
-  tsl::RegisterNumpyFloat8e5m2();
-
-  m.def("TF_float8_e4m3fn_type",
-        [] { return pybind11::handle(tsl::Float8e4m3fnDtype()); });
-
-  m.def("TF_float8_e5m2_type",
-        [] { return pybind11::handle(tsl::Float8e5m2Dtype()); });
+PYBIND11_MODULE(pywrap_ml_dtypes, m) {
+  tsl::ml_dtypes::RegisterTypes();
+  m.def("bfloat16",
+        [] { return pybind11::handle(tsl::ml_dtypes::GetBfloat16Dtype()); });
+  m.def("float8_e4m3b11fnuz", [] {
+    return pybind11::handle(tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype());
+  });
+  m.def("float8_e4m3fn", [] {
+    return pybind11::handle(tsl::ml_dtypes::GetFloat8E4m3fnDtype());
+  });
+  m.def("float8_e5m2",
+        [] { return pybind11::handle(tsl::ml_dtypes::GetFloat8E5m2Dtype()); });
 }

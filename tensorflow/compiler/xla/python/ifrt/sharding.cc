@@ -164,7 +164,10 @@ std::shared_ptr<const Sharding> SingleDeviceSharding::Create(Device* device) {
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  return InvalidArgument("Single-device sharding does not support disassembly");
+  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  result.reserve(1);
+  result.push_back({shape, SingleDeviceSharding::Create(devices_[0])});
+  return result;
 }
 
 StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(

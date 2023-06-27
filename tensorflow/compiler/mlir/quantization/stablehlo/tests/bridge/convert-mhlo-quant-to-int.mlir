@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt "-convert-mhlo-quant-to-int=legalize-chlo=false" -split-input-file %s -verify-diagnostics | FileCheck %s
+// RUN: stablehlo-quant-opt --mlir-print-ir-after-all "-convert-mhlo-quant-to-int=legalize-chlo=false" -split-input-file %s -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -263,11 +263,16 @@ func.func @uniform_quantize_dot_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor
 
 // -----
 
-func.func @uniform_quantize_dot_dequantize_result_storage_type_not_int8(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>> {
-  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  // expected-error@+2 {{DotOp result storage type must be int8}}
-  // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
-  %2 = "mhlo.dot" (%0, %1): (tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
-  return %2 : tensor<?x?x!quant.uniform<i16:f32, 1.000000e+00:3>>
+// CHECK-LABEL: func @uniform_quantize_dot_int4
+func.func @uniform_quantize_dot_int4(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) {
+  // CHECK: %[[VAL2:.*]] = "mhlo.dot"(%[[VAL0:.*]], %[[VAL1:.*]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3:.*]] : (tensor<?x?xf32>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[VAL5:.*]] = mhlo.constant dense<-8> : tensor<i32>
+  // CHECK-DAG: %[[VAL6:.*]] = mhlo.constant dense<7> : tensor<i32>
+  // CHECK: %[[VAL7:.*]] = mhlo.clamp %[[VAL5]], %[[VAL4]], %[[VAL6]] : (tensor<i32>, tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi32>
+  // CHECK: %[[VAL8:.*]] = mhlo.convert %[[VAL7]] : (tensor<?x?xi32>) -> tensor<?x?xi4>
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  %2 = "mhlo.dot" (%0, %1): (tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>, tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i4:f32, 1.000000e+00:3>>
+  return
 }

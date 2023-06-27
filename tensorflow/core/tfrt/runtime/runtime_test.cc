@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,24 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_
-
-#include <vector>
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
+#include <gtest/gtest.h>
 
 namespace tensorflow {
-namespace profiler {
+namespace tfrt_stub {
+namespace {
 
-using tsl::profiler::Annotation;            // NOLINT
-using tsl::profiler::HasMetadata;           // NOLINT
-using tsl::profiler::ParseAnnotation;       // NOLINT
-using tsl::profiler::ParseAnnotationStack;  // NOLINT
+TEST(RuntimeTest, GlobalRuntimeWorks) {
+  // Before SetGlobalRuntime, it is null.
+  EXPECT_EQ(GetGlobalRuntime(), nullptr);
+  // After SetGlobalRuntime, it is not null.
+  SetGlobalRuntime(Runtime::Create(/*num_inter_op_threads=*/4));
+  EXPECT_NE(GetGlobalRuntime(), nullptr);
+  // It is only allocated once.
+  EXPECT_EQ(GetGlobalRuntime(), GetGlobalRuntime());
+}
 
-}  // namespace profiler
+}  // namespace
+}  // namespace tfrt_stub
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_PARSE_ANNOTATION_H_

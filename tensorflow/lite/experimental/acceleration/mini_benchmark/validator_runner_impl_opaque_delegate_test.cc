@@ -53,7 +53,7 @@ class ValidatorRunnerImplTest : public ::testing::Test {
   static constexpr char kDelegateName[] = "test_xnnpack_delegate";
   static constexpr char kDelegateVersion[] = "1.0.0";
   static constexpr char kDelegateBinaryPath[] =
-      "third_party/tensorflow/lite/delegates/utils/experimental/"
+      "tensorflow/lite/delegates/utils/experimental/"
       "stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so";
 
   void SetUp() override {

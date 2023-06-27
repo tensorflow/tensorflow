@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Registers casts between custom types.  This is to help reduce dependencies
-// between the types themselves.
+syntax = "proto3";
 
-#ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_CUSTOM_CASTS_H_
-#define TENSORFLOW_TSL_PYTHON_LIB_CORE_CUSTOM_CASTS_H_
+package xla.ifrt;
 
-namespace tsl {
-
-bool RegisterCustomCasts();
-
-}  // namespace tsl
-
-#endif  // TENSORFLOW_TSL_PYTHON_LIB_CORE_CUSTOM_CASTS_H_
+// Wire format for objects serialized from `Serializable`.
+message Serialized {
+  string type_name = 1;
+  bytes data = 2;
+}

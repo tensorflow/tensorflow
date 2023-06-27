@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -111,6 +112,64 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
     executable->cost_analysis_ran = true;
   }
   return xla::OkStatus();
+}
+
+xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
+    PJRT_KeyValueGetCallback c_callback, void* user_arg) {
+  if (c_callback == nullptr) {
+    return nullptr;
+  }
+  return [c_callback, user_arg](
+             const std::string& key,
+             absl::Duration timeout) -> xla::StatusOr<std::string> {
+    PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
+                                           const char* message,
+                                           size_t message_size) {
+      return new PJRT_Error{xla::Status(static_cast<absl::StatusCode>(code),
+                                        std::string(message, message_size))};
+    };
+    PJRT_KeyValueGetCallback_Args args;
+    args.key = key.c_str();
+    args.key_size = key.size();
+    args.timeout_in_ms = timeout / absl::Milliseconds(1);
+    args.callback_error = &callback_error;
+    args.user_arg = user_arg;
+    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    if (error != nullptr) {
+      return error->status;
+    }
+    auto result = std::string(args.value, args.value_size);
+    args.value_deleter_callback(args.value);
+    return result;
+  };
+}
+
+xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
+    PJRT_KeyValuePutCallback c_callback, void* user_arg) {
+  if (c_callback == nullptr) {
+    return nullptr;
+  }
+  return [c_callback, user_arg](const std::string& key,
+                                const std::string& value) -> xla::Status {
+    PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
+                                           const char* message,
+                                           size_t message_size) {
+      return new PJRT_Error{xla::Status(static_cast<absl::StatusCode>(code),
+                                        std::string(message, message_size))};
+    };
+    PJRT_KeyValuePutCallback_Args args;
+    args.key = key.c_str();
+    args.key_size = key.size();
+    args.value = value.c_str();
+    args.value_size = value.size();
+    args.callback_error = &callback_error;
+    args.user_arg = user_arg;
+    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    if (error != nullptr) {
+      return error->status;
+    }
+    return xla::OkStatus();
+  };
 }
 
 // ---------------------------------- Errors -----------------------------------

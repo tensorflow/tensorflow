@@ -2046,7 +2046,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_single_outside_compilation_not_replicated_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])
@@ -2075,7 +2075,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   func.func @single_outside_compiled_output_device_type(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
-    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf.Const"() {value = dense<""> : tensor<3x!tf_type.string>} : () -> tensor<3x!tf_type.string>
+    // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
     // CHECK-NOT:        "tf._TPUDeviceOrdinalPlaceholder"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]], %[[PROGRAM_OUTPUT]])

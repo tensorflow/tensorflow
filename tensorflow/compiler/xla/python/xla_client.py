@@ -44,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 164
+_version = 165
 
 # Version number for MLIR:Python components.
-mlir_api_version = 50
+mlir_api_version = 51
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -133,6 +133,7 @@ def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
 def make_c_api_client(
     plugin_name: str,
     options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -142,13 +143,14 @@ def make_c_api_client(
   Args:
      plugin_name: the name of the PJRT plugin.
      options: extra platform-specific options.
+     distributed_client: distributed client.
 
   Returns:
      A PJRT C API client for plugin_name.
   """
   if options is None:
     options = {}
-  return _xla.get_c_api_client(plugin_name, options)
+  return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
 def _use_pjrt_c_api() -> bool:

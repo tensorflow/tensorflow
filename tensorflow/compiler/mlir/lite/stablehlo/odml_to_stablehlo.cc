@@ -392,6 +392,10 @@ void initAllPasses() {
 
 int main(int argc, char* argv[]) {
   tensorflow::InitMlir y(&argc, &argv);
+  LOG(INFO) << "odml_to_stablehlo is being deprecated, please use "
+               "TFlite converter with flag: "
+               "converter.target_spec.supported_ops = "
+               "[tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS] ";
 
   mlir::odml::initAllPasses();
   mlir::PassPipelineCLParser passPipeline("", "Add available compiler passes.");

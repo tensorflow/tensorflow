@@ -16,9 +16,72 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 
 #include <memory>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ExtensibleRTTI.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/serdes.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
+
+namespace {
+
+class XlaCompileOptionsSerDes
+    : public llvm::RTTIExtends<XlaCompileOptionsSerDes, SerDes> {
+ public:
+  absl::string_view type_name() const override {
+    return "xla::ifrt::XlaCompileOptions";
+  }
+
+  absl::StatusOr<std::string> Serialize(
+      const Serializable& serializable) override {
+    const XlaCompileOptions& options =
+        llvm::cast<XlaCompileOptions>(serializable);
+
+    XlaCompileOptionsProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                        options.compile_options.ToProto());
+    if (!options.loaded_host_callbacks.empty()) {
+      return absl::UnimplementedError(
+          "xla::ifrt::XlaCompileOptions with loaded_host_callbacks is not "
+          "serializable");
+    }
+    return proto.SerializeAsString();
+  }
+
+  absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
+      const std::string& serialized) override {
+    XlaCompileOptionsProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return absl::DataLossError(
+          "Unable to parse serialized XlaCompileOptionsProto");
+    }
+
+    auto options = std::make_unique<XlaCompileOptions>();
+    TF_ASSIGN_OR_RETURN(
+        options->compile_options,
+        xla::CompileOptions::FromProto(proto.compile_options()));
+    return options;
+  }
+
+  static char ID;  // NOLINT
+};
+
+char XlaCompileOptionsSerDes::ID = 0;  // NOLINT
+
+bool register_xla_compile_options_serdes = ([]{
+  RegisterSerDes<XlaCompileOptions>(
+      std::make_unique<XlaCompileOptionsSerDes>());
+}(), true);
+
+}  // namespace
 
 char XlaCompileOptions::ID = 0;
 char XlaDeserializeOptions::ID = 0;

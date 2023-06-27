@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,15 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
+#define TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
 
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
-PYBIND11_MODULE(pywrap_bfloat16, m) {
-  tsl::RegisterNumpyBfloat16();
+namespace tensorflow {
+namespace profiler {
 
-  m.def("bfloat16_type", [] { return pybind11::handle(tsl::Bfloat16Dtype()); });
+// Process Dcn Megascale TraceMe info.
+void ProcessMegascaleDcn(XSpace* space);
 
-  m.def("float8_e4m3b11_type",
-        [] { return pybind11::handle(tsl::Float8_E4M3B11Dtype()); });
-}
+}  // namespace profiler
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_

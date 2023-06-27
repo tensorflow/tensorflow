@@ -460,10 +460,6 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
       return rewriter.notifyMatchFailure(
           op, "Legalization failed: supports only per-tensor quantization.");
     }
-    if (!result_element_type.getStorageType().isInteger(8)) {
-      op->emitError("DotOp result storage type must be int8");
-      return failure();
-    }
 
     auto res_float32_tensor_type_or =
         GetSameShapeTensorType(op, op.getResult().getType().cast<TensorType>(),
@@ -555,7 +551,7 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
     // Convert results back to int8.
     auto res_final_tensor_type_or =
         GetSameShapeTensorType(op, res_int32_tensor_type_or->cast<TensorType>(),
-                               rewriter.getI8Type(), rewriter);
+                               result_element_type.getStorageType(), rewriter);
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
                                                  res_int32);
 

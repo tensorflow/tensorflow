@@ -44,8 +44,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/format_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
@@ -290,19 +290,21 @@ std::string InputOpCategoryString(InputOpCategory category) {
 inline bool IsInputOp(absl::string_view category) {
   // Do not include "IteratorGetNext*" here, because IteratorGetNext is an Op
   // that experiences the install stall, not an Op that causes the input stall.
-  return IsInfeedEnqueueOp(category) || IsDatasetOp(category) ||
-         IsMemcpyHToDOp(category);
+  return tsl::profiler::IsInfeedEnqueueOp(category) ||
+         tsl::profiler::IsDatasetOp(category) ||
+         tsl::profiler::IsMemcpyHToDOp(category);
 }
 
 // TODO(ckluk):
 //   Confirm with the tf.data team if the classification below is correct.
 InputOpCategory CategorizeInputOp(absl::string_view name,
                                   absl::string_view category) {
-  if (IsInfeedEnqueueOp(category) || IsMemcpyHToDOp(category)) {
+  if (tsl::profiler::IsInfeedEnqueueOp(category) ||
+      tsl::profiler::IsMemcpyHToDOp(category)) {
     // Ops for sending input from host to device.
     return InputOpCategory::kEnqueue;
   }
-  DCHECK(IsDatasetOp(category));
+  DCHECK(tsl::profiler::IsDatasetOp(category));
   if (absl::EndsWith(name, "::TFRecord") ||
       absl::EndsWith(name, "::TextLine") ||
       absl::EndsWith(name, "::FixedLengthRecord") ||

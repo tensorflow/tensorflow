@@ -30,16 +30,6 @@ package_group(
 )
 
 cc_library(
-    name = "tfrt_runtime",
-    srcs = ["tfrt_runtime.cc"],
-    hdrs = ["tfrt_runtime.h"],
-    deps = [
-        "//tensorflow/core/tfrt/runtime",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = [
         "utils.cc",
@@ -337,4 +327,9 @@ cc_library(
         ":device_variables_table",
         ":fallback_tensor",
     ],
+)
+
+cc_library(
+    name = "any_ptr",
+    hdrs = ["any_ptr.h"],
 )

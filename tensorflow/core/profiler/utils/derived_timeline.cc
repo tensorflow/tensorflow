@@ -29,11 +29,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
@@ -42,6 +40,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/tsl/util/stats_calculator.h"
 
@@ -96,11 +96,13 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
                       XPlaneBuilder& plane_builder,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder) {
-  TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
-  Category category = tf_op.category;
-  if (category == Category::kTensorFlow || category == Category::kJax) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(tf_op_full_name);
+  tsl::profiler::Category category = tf_op.category;
+  if (category == tsl::profiler::Category::kTensorFlow ||
+      category == tsl::profiler::Category::kJax) {
     tf_name_scope_line_builder.ExpandOrAddEvents(
-        plane_builder.GetOrCreateEventsMetadata(ParseTfNameScopes(tf_op)),
+        plane_builder.GetOrCreateEventsMetadata(
+            tsl::profiler::ParseTfNameScopes(tf_op)),
         event_span, group_id);
   }
   XEventMetadata* tf_op_event_metadata =
@@ -108,7 +110,7 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
   // Set the display name to op_type so that the events of the same op_type have
   // the same color in the trace viewer.
   if (tf_op_event_metadata->display_name().empty()) {
-    tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
+    tf_op_event_metadata->set_display_name(tsl::profiler::TfOpEventName(tf_op));
   }
   tf_op_line_builder.ExpandOrAddEvent(*tf_op_event_metadata, event_span,
                                       group_id);
@@ -232,8 +234,9 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
   }
 }
 
-void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
-                                XPlane* device_trace) {
+void DeriveStepEventsFromGroups(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    XPlane* device_trace) {
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(device_trace);
   const XStatMetadata* group_id_stat_metadata =
       plane_visitor.GetStatMetadataByType(StatType::kGroupId);
@@ -313,9 +316,10 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   RemoveEmptyLines(device_trace);
 }
 
-void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const GroupMetadataMap& group_metadata_map,
-                               std::vector<XPlane*> device_traces) {
+void DeriveEventsFromHostTrace(
+    const XPlane* host_trace,
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
     tsl::Stat<uint64_t> stat;
@@ -377,7 +381,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     for (const auto& kv : per_device_launch_info[i]) {
       int64_t group_id = kv.first;
       const GroupLaunchInfo& group_info = kv.second;
-      if (const GroupMetadata* group_metadata =
+      if (const tsl::profiler::GroupMetadata* group_metadata =
               gtl::FindOrNull(group_metadata_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
@@ -395,8 +399,8 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
   }
 }
 
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space) {
+void GenerateDerivedTimeLines(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map, XSpace* space) {
   HloModuleMap hlo_module_map;
   {
     HloProtoMap hlo_proto_map;

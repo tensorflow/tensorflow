@@ -973,6 +973,38 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }
 
+TEST(ShapeUtilTest, PrependMajorDimension) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
+  EXPECT_EQ(ShapeUtil::PrependMajorDimension(40, shape),
+            ShapeUtil::MakeShape(F32, {40, 10, 20, 30}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {1, 3, 2, 0}));
+}
+
+TEST(ShapeUtilTest, AppendMinorDimension) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShape(F32, {10, 20, 30, 40}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40},
+                                                       {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40},
+                                                       {3, 0, 2, 1}));
+}
+
 TEST(ShapeUtilTest, MoveDimToMajor) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
   Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);

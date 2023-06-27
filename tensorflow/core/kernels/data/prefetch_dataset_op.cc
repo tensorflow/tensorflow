@@ -263,7 +263,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
+          writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
         auto& buffer_element = buffer_[i];
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
@@ -362,7 +362,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       size_t buffer_size;
       {
         int64_t temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBufferSize), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBufferSize, &temp));
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {

@@ -30,8 +30,11 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import optional_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_loop
+from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_grad  # pylint: disable=unused-import
+from tensorflow.python.ops.signal import fft_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.util.tf_export import tf_export
 

@@ -21,13 +21,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -35,7 +35,7 @@ namespace {
 
 TEST(DerivedTimelineTest, EmptySpaceTest) {
   XSpace space;
-  GroupMetadataMap group_metadata_map;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
   GenerateDerivedTimeLines(group_metadata_map, &space);
   EXPECT_EQ(space.planes_size(), 0);
 }
@@ -45,7 +45,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   const absl::string_view kHloModuleName = "hlo_module";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  GroupMetadataMap group_metadata_map;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -75,7 +75,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  GroupMetadataMap group_metadata_map;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -110,7 +110,8 @@ TEST(DerivedTimelineTest, DependencyTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  GroupMetadataMap group_metadata_map({{0, {"train 0"}}, {1, {"train 1"}}});
+  tsl::profiler::GroupMetadataMap group_metadata_map(
+      {{0, {"train 0"}}, {1, {"train 1"}}});
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -139,7 +140,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  GroupMetadataMap group_metadata_map;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -179,7 +180,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
   {
     // Case 1: shirnk is possible.
     XSpace space;
-    GroupMetadataMap group_metadata_map;
+    tsl::profiler::GroupMetadataMap group_metadata_map;
     XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
     XPlaneBuilder plane_builder(plane);
     auto line_builder = plane_builder.GetOrCreateLine(0);
@@ -213,7 +214,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
   {
     // Case 2: shirnk is impossible due to top event is too small.
     XSpace space;
-    GroupMetadataMap group_metadata_map;
+    tsl::profiler::GroupMetadataMap group_metadata_map;
     XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
     XPlaneBuilder plane_builder(plane);
     auto line_builder = plane_builder.GetOrCreateLine(0);

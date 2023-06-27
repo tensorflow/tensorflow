@@ -124,12 +124,12 @@ func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x11
 // CHECK-LABEL: QuantizeBatchMatmulWithActConst
 // PerTensor-LABEL: QuantizeBatchMatmulWithActConst
 // MinElement-LABEL: QuantizeBatchMatmulWithActConst
-func.func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x12xf32> {
+func.func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x2xf32> {
   %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x512xf32>) -> tensor<1x3x3x512xf32>
   %w = arith.constant dense<127.0> : tensor<512x2xf32>
-  %mm = "tfl.batch_matmul"(%0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x12xf32>
-  %mm_s = "quantfork.stats"(%mm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x12xf32>) -> tensor<1x3x3x12xf32>
-  func.return %mm_s : tensor<1x3x3x12xf32>
+  %mm = "tfl.batch_matmul"(%0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x2xf32>
+  %mm_s = "quantfork.stats"(%mm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x2xf32>) -> tensor<1x3x3x2xf32>
+  func.return %mm_s : tensor<1x3x3x2xf32>
 
 // CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x2xf32>
 // CHECK: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x2x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
@@ -146,7 +146,7 @@ func.func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tens
 // PerTensor: return %[[mm:.*]]
 
 // MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x2xf32>
-// MinElement: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x12xf32>
+// MinElement: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x2xf32>
 // MinElement: return %[[mm:.*]]
 }
 
@@ -353,7 +353,7 @@ func.func @NotQuantizeConv3D(%arg0: tensor<?x28x28x28x8xf32>) -> tensor<?x26x26x
 // CHECK-LABEL: QuantizeMultiUses
 // PerTensor-LABEL: QuantizeMultiUses
 // Float16-LABEL: QuantizeMultiUses
-func.func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x122xf32> {
+func.func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x112xf32> {
   %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>
@@ -361,9 +361,9 @@ func.func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
   %dconv = "tfl.depthwise_conv_2d"(%0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<64x3x3x3xf32>, tensor<64xf32>) -> tensor<1x112x112x64xf32>
   %conv_s = "quantfork.stats"(%conv) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x112x112x64xf32>) -> tensor<1x112x112x64xf32>
   %dconv_s = "quantfork.stats"(%dconv) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x112x112x64xf32>) -> tensor<1x112x112x64xf32>
-  %bmm = "tfl.batch_matmul"(%conv_s, %dconv_s) {adj_x = false, adj_y = true} : (tensor<1x112x112x64xf32>, tensor<1x112x112x64xf32>) -> tensor<1x112x112x122xf32>
-  %bmm_s = "quantfork.stats"(%bmm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x112x112x122xf32>) -> tensor<1x112x112x122xf32>
-  func.return %bmm_s : tensor<1x112x112x122xf32>
+  %bmm = "tfl.batch_matmul"(%conv_s, %dconv_s) {adj_x = false, adj_y = true} : (tensor<1x112x112x64xf32>, tensor<1x112x112x64xf32>) -> tensor<1x112x112x112xf32>
+  %bmm_s = "quantfork.stats"(%bmm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x112x112x112xf32>) -> tensor<1x112x112x112xf32>
+  func.return %bmm_s : tensor<1x112x112x112xf32>
 
 // CHECK-DAG: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
 // CHECK-DAG: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>

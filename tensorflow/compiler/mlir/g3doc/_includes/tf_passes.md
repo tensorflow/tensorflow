@@ -217,11 +217,6 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
-
-#### Options
-```
--globally-unique-func-names : If true, the pass adds extra identifiers to make function names globally unique within a process, not just within a module.
-```
 ### `-tf-device-constant-sinking`
 
 _Sinks constants implicitly captured in a tf_device.cluster region._

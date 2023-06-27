@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/tsl/python/lib/core/custom_casts.h"
+#include "tensorflow/compiler/xla/python/ifrt/mock.h"
 
-PYBIND11_MODULE(_pywrap_custom_casts, m) {
-  m.def("TF_register_custom_casts", [] { return tsl::RegisterCustomCasts(); });
-}
+namespace xla {
+namespace ifrt {
+
+char MockArray::ID = 0;
+char MockClient::ID = 0;
+char MockCompiler::ID = 0;
+char MockExecutable::ID = 0;
+char MockLoadedExecutable::ID = 0;
+char MockHostCallback::ID = 0;
+char MockLoadedHostCallback::ID = 0;
+char MockSharding::ID = 0;
+
+}  // namespace ifrt
+}  // namespace xla

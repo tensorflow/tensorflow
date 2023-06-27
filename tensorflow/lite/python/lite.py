@@ -1040,6 +1040,9 @@ class TFLiteConverterBase:
     if not self._experimental_use_buffer_offset:
       # TODO(b/287476027): move this logic into c++
       try:
+        model_object = flatbuffer_utils.convert_bytearray_to_object(model)
+        if _check_model_use_buffer_offset(model_object):
+          return model
         model = _deduplicate_readonly_buffers(model)
       except Exception:  # pylint: disable=broad-except
         # Skip buffer deduplication when flatbuffer library is not ready to be

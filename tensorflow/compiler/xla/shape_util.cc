@@ -513,20 +513,37 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+// Prepend new major-most dimension sized `bound` to the shape.
+Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
+  Shape new_shape(shape.element_type(), {}, {}, {});
+  new_shape.add_dimensions(bound);
+  for (const int64_t dim : shape.dimensions()) {
+    new_shape.add_dimensions(dim);
+  }
+  if (shape.has_layout()) {
+    for (const int64_t dim : shape.layout().minor_to_major()) {
+      new_shape.mutable_layout()->add_minor_to_major(dim + 1);
+    }
+    new_shape.mutable_layout()->add_minor_to_major(0);
+  }
+  return new_shape;
+}
+
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
-
-  if (shape->has_layout()) {
-    // Bump up all values in the layout by one.
-    for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
-         dim_idx++) {
-      int layout_idx = shape->layout().minor_to_major(dim_idx);
-      shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
-    }
-    // Then we can safely add zero.
-    shape->mutable_layout()->add_minor_to_major(0);
-  }
   shape->add_dimensions(bound);
+  if (shape->has_layout()) {
+    // Append an empty field to the layout.
+    shape->mutable_layout()->add_minor_to_major(0);
+    // Shift by one position all values in the layout in the major direction.
+    for (int dim_idx = shape->layout().minor_to_major_size() - 2; dim_idx >= 0;
+         --dim_idx) {
+      int layout_idx = shape->layout().minor_to_major(dim_idx);
+      shape->mutable_layout()->set_minor_to_major(dim_idx + 1, layout_idx);
+    }
+    // Insert the newly added dimension at the minor-most position.
+    shape->mutable_layout()->set_minor_to_major(0, shape->rank() - 1);
+  }
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 

@@ -112,7 +112,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
       mlir::bufferization::createFinalizingBufferizePass());
   // Sparse GPU acceleration lowers to GPU dialect.
   if (gpu_codegen) {
-    pm.addPass(mlir::createSparseGPUCodegenPass());
+    pm.addPass(mlir::createSparseGPUCodegenPass(xla_cpu_sparse_cuda_threads));
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(

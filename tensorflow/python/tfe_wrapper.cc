@@ -15,6 +15,11 @@ limitations under the License.
 
 #include <memory>
 
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
+
 #include "Python.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
@@ -621,6 +626,9 @@ class EagerContextThreadLocalDataWrapper {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
+  // Numpy initialization code for array functions.
+  tsl::ImportNumpy();
+
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");

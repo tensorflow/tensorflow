@@ -1675,6 +1675,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // The attributes supported by the ApproxTopK custom_call are:
   //
   //  - called_computation : This indicates the comparator for scoring entries
+  //  - has_side_effect: always False
   //  - api_version : always 4, the typed FFI API
   //  - backend_config : The actual arguments to ApproxTopK. This includes
   //    + top_k:i64 : the number of results to return
@@ -1738,7 +1739,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     auto isSupportedAttrName = [](NamedAttribute attr) {
       auto name = attr.getName();
       return name == "call_target_name" || name == "backend_config" ||
-             name == "api_version" || name == "called_computations";
+             name == "api_version" || name == "called_computations" ||
+             name == "has_side_effect";
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))

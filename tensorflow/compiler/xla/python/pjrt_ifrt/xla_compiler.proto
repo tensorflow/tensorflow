@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,28 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/tfrt/utils/tfrt_runtime.h"
 
-#include <memory>
-#include <utility>
+syntax = "proto3";
 
-namespace tensorflow {
-namespace tfrt_stub {
+package xla.ifrt;
 
-TfrtRuntime& TfrtRuntime::GetGlobalTfrtRuntime() {
-  static TfrtRuntime* tfrt_runtime = new TfrtRuntime();
-  return *tfrt_runtime;
+import "tensorflow/compiler/xla/pjrt/compile_options.proto";
+
+message XlaCompileOptionsProto {
+  xla.CompileOptionsProto compile_options = 1;
 }
-
-void TfrtRuntime::SetRuntime(std::unique_ptr<Runtime> runtime) {
-  absl::MutexLock l(&m_);
-  runtime_ = std::move(runtime);
-}
-
-Runtime* TfrtRuntime::GetRuntime() {
-  absl::MutexLock l(&m_);
-  return runtime_.get();
-}
-
-}  // namespace tfrt_stub
-}  // namespace tensorflow
