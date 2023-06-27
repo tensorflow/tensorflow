@@ -22,11 +22,22 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
 
 namespace xla {
 namespace ifrt {
+
+struct XlaProgram : llvm::RTTIExtends<XlaProgram, Program> {
+  XlaProgram() = default;
+  explicit XlaProgram(mlir::ModuleOp mlir_module)
+      : mlir_module(std::move(mlir_module)) {}
+
+  mlir::ModuleOp mlir_module;
+
+  static char ID;  // NOLINT
+};
 
 // Wraps compilation options for an XLA computation.
 //

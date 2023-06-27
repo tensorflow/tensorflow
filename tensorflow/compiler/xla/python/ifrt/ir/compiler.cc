@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/ifrt/ir/compile_options.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/compiler.h"
 
 #include <memory>
 
 namespace xla {
 namespace ifrt {
 
+char IfrtIRProgram::ID = 0;
 char IfrtIRCompileOptions::ID = 0;
 
 StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(

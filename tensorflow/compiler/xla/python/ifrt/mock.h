@@ -116,8 +116,7 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
 class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
   MOCK_METHOD(StatusOr<std::unique_ptr<LoadedExecutable>>, Compile,
-              (mlir::ModuleOp mlir_module,
-               std::unique_ptr<CompileOptions> options),
+              (const Program& program, std::unique_ptr<CompileOptions> options),
               (final));
   MOCK_METHOD(StatusOr<std::unique_ptr<LoadedExecutable>>,
               DeserializeLoadedExecutable,

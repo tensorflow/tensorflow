@@ -75,7 +75,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
       build_options.set_device_assignment(device_assignment);
     }
   }
-  return compiler->Compile(*module, std::move(compile_options));
+  return compiler->Compile(XlaProgram(*module), std::move(compile_options));
 }
 
 TEST(LoadedExecutableImplTest, CompileAndExecute) {

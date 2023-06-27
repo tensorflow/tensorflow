@@ -82,6 +82,7 @@ bool register_xla_compile_options_serdes = ([]{
 
 }  // namespace
 
+char XlaProgram::ID = 0;
 char XlaCompileOptions::ID = 0;
 char XlaDeserializeOptions::ID = 0;
 

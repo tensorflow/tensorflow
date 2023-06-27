@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILE_OPTIONS_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILE_OPTIONS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILER_H_
 
 #include <memory>
 #include <string>
@@ -23,11 +23,22 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
 
 namespace xla {
 namespace ifrt {
+
+struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
+  IfrtIRProgram() = default;
+  explicit IfrtIRProgram(mlir::ModuleOp mlir_module)
+      : mlir_module(std::move(mlir_module)) {}
+
+  mlir::ModuleOp mlir_module;
+
+  static char ID;  // NOLINT
+};
 
 // CompileOptions for an IFRT IR program.
 struct IfrtIRCompileOptions
@@ -59,4 +70,4 @@ StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILE_OPTIONS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_COMPILER_H_

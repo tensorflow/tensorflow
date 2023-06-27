@@ -39,8 +39,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
   ~PjRtCompiler() override = default;
 
   StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
-      mlir::ModuleOp mlir_module,
-      std::unique_ptr<CompileOptions> options) override;
+      const Program& program, std::unique_ptr<CompileOptions> options) override;
 
   StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
