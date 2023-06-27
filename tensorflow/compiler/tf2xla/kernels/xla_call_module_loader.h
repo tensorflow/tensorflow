@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -34,7 +35,9 @@ class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
-      std::vector<std::string> dim_args_spec, int platform_index);
+      std::vector<std::string> dim_args_spec,
+      std::vector<std::string> disabled_checks,
+      std::vector<std::string> platforms, std::string loading_platform);
 
   int nr_outputs() { return main_.getNumResults(); }
   mlir::TypeRange output_types() { return main_.getResultTypes(); }
@@ -52,12 +55,25 @@ class XlaCallModuleLoader {
   // cause lifetime issues.
   tsl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
-  // Validate that the module represents a statically-shaped StableHLO program,
+  // Validates that the module only contains ops from valid dialects.
+  tsl::Status ValidateDialect();
+
+  // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
   // much easier to detect here.
-  tsl::Status ValidateModule();
+  tsl::Status ValidateStaticShapes();
 
+  // Lowers the StableHLO module to MHLO in place.
+  absl::Status LowerModuleToMhlo();
+
+  // Lowers the MHLO module to XlaComputation and returns it.
+  //
+  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
   tsl::StatusOr<xla::XlaComputation> ToXlaComputation();
+
+  // Returns the deserialized stablehlo module.
+  mlir::ModuleOp module() & { return *module_; }
+  mlir::OwningOpRef<mlir::ModuleOp> module() && { return std::move(module_); }
 
  private:
   XlaCallModuleLoader() = default;
@@ -66,7 +82,9 @@ class XlaCallModuleLoader {
   tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
                                       std::string module_str,
                                       std::vector<std::string> dim_args_spec,
-                                      int platform_index);
+                                      std::vector<std::string> disabled_checks,
+                                      std::vector<std::string> platforms,
+                                      std::string loading_platform);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.
@@ -75,6 +93,8 @@ class XlaCallModuleLoader {
   mlir::MLIRContext* context_;
   int version_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
+  // Index in platforms of the current platform, or -1 if module does not take
+  // a platform index arg.
   int platform_index_;
   std::vector<std::string> dim_args_spec_;
   mlir::func::FuncOp main_;

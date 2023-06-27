@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -43,9 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-
-// TODO(b/238999986): Remove this.
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -68,7 +66,7 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
 // populates its cost analysis properties. After this returns successfully,
 // cost analysis properties of the executable can be accessed without mutex.
 static xla::Status PopulateExecutableCostAnalysisIfNeeded(
-    PJRT_LoadedExecutable* executable) {
+    PJRT_Executable* executable) {
   absl::MutexLock lock(&executable->mutex);
   if (!executable->cost_analysis_ran) {
     // Call GetCostAnalysis in the underlying PjRtExecutable
@@ -114,6 +112,64 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
     executable->cost_analysis_ran = true;
   }
   return xla::OkStatus();
+}
+
+xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
+    PJRT_KeyValueGetCallback c_callback, void* user_arg) {
+  if (c_callback == nullptr) {
+    return nullptr;
+  }
+  return [c_callback, user_arg](
+             const std::string& key,
+             absl::Duration timeout) -> xla::StatusOr<std::string> {
+    PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
+                                           const char* message,
+                                           size_t message_size) {
+      return new PJRT_Error{xla::Status(static_cast<absl::StatusCode>(code),
+                                        std::string(message, message_size))};
+    };
+    PJRT_KeyValueGetCallback_Args args;
+    args.key = key.c_str();
+    args.key_size = key.size();
+    args.timeout_in_ms = timeout / absl::Milliseconds(1);
+    args.callback_error = &callback_error;
+    args.user_arg = user_arg;
+    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    if (error != nullptr) {
+      return error->status;
+    }
+    auto result = std::string(args.value, args.value_size);
+    args.value_deleter_callback(args.value);
+    return result;
+  };
+}
+
+xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
+    PJRT_KeyValuePutCallback c_callback, void* user_arg) {
+  if (c_callback == nullptr) {
+    return nullptr;
+  }
+  return [c_callback, user_arg](const std::string& key,
+                                const std::string& value) -> xla::Status {
+    PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
+                                           const char* message,
+                                           size_t message_size) {
+      return new PJRT_Error{xla::Status(static_cast<absl::StatusCode>(code),
+                                        std::string(message, message_size))};
+    };
+    PJRT_KeyValuePutCallback_Args args;
+    args.key = key.c_str();
+    args.key_size = key.size();
+    args.value = value.c_str();
+    args.value_size = value.size();
+    args.callback_error = &callback_error;
+    args.user_arg = user_arg;
+    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    if (error != nullptr) {
+      return error->status;
+    }
+    return xla::OkStatus();
+  };
 }
 
 // ---------------------------------- Errors -----------------------------------
@@ -428,20 +484,81 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
 
 // --------------------------------- Devices -----------------------------------
 
-PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
-                                                PJRT_Device_Id_Args_STRUCT_SIZE,
-                                                args->struct_size));
+PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceDescription_Id_Args",
+      PJRT_DeviceDescription_Id_Args_STRUCT_SIZE, args->struct_size));
 
-  args->id = args->device->device->id();
+  args->id = args->device_description->device_description->id();
   return nullptr;
 }
 
-PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args) {
+PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
+    PJRT_DeviceDescription_ProcessIndex_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_ProcessIndex_Args",
-      PJRT_Device_ProcessIndex_Args_STRUCT_SIZE, args->struct_size));
-  args->process_index = args->device->device->process_index();
+      "PJRT_DeviceDescription_ProcessIndex_Args",
+      PJRT_DeviceDescription_ProcessIndex_Args_STRUCT_SIZE, args->struct_size));
+  args->process_index =
+      args->device_description->device_description->process_index();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceDescription_Attributes(
+    PJRT_DeviceDescription_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceDescription_Attributes_Args",
+      PJRT_DeviceDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
+
+  // Returns the attributes that were initialized during PJRT_Device creation.
+  args->num_attributes = args->device_description->attributes.size();
+  args->attributes = args->device_description->attributes.data();
+
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceDescription_Kind(
+    PJRT_DeviceDescription_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceDescription_Kind_Args",
+      PJRT_DeviceDescription_Kind_Args_STRUCT_SIZE, args->struct_size));
+
+  args->device_kind =
+      args->device_description->device_description->device_kind().data();
+  args->device_kind_size =
+      args->device_description->device_description->device_kind().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceDescription_DebugString(
+    PJRT_DeviceDescription_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceDescription_DebugString_Args",
+      PJRT_DeviceDescription_DebugString_Args_STRUCT_SIZE, args->struct_size));
+
+  args->debug_string =
+      args->device_description->device_description->DebugString().data();
+  args->debug_string_size =
+      args->device_description->device_description->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_DeviceDescription_ToString(
+    PJRT_DeviceDescription_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_DeviceDescription_ToString_Args",
+      PJRT_DeviceDescription_ToString_Args_STRUCT_SIZE, args->struct_size));
+  args->to_string =
+      args->device_description->device_description->ToString().data();
+  args->to_string_size =
+      args->device_description->device_description->ToString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_GetDescription(PJRT_Device_GetDescription_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_GetDescription_Args",
+      PJRT_Device_GetDescription_Args_STRUCT_SIZE, args->struct_size));
+  args->device_description = &args->device->description;
   return nullptr;
 }
 
@@ -450,28 +567,6 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
       "PJRT_Device_IsAddressable_Args",
       PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
   args->is_addressable = args->device->device->IsAddressable();
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_Attributes_Args", PJRT_Device_Attributes_Args_STRUCT_SIZE,
-      args->struct_size));
-
-  // Returns the attributes that were initialized during PJRT_Device creation.
-  args->num_attributes = args->device->attributes.size();
-  args->attributes = args->device->attributes.data();
-
-  return nullptr;
-}
-
-PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_Kind_Args", PJRT_Device_Kind_Args_STRUCT_SIZE,
-      args->struct_size));
-
-  args->device_kind = args->device->device->device_kind().data();
-  args->device_kind_size = args->device->device->device_kind().size();
   return nullptr;
 }
 
@@ -484,22 +579,51 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
   return nullptr;
 }
 
-PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args) {
+PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_DebugString_Args", PJRT_Device_DebugString_Args_STRUCT_SIZE,
+      "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
       args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(tsl::AllocatorStats stats,
+                        args->device->device->GetAllocatorStats());
 
-  args->debug_string = args->device->device->DebugString().data();
-  args->debug_string_size = args->device->device->DebugString().size();
-  return nullptr;
-}
+  args->bytes_in_use = stats.bytes_in_use;
 
-PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_Device_ToString_Args", PJRT_Device_ToString_Args_STRUCT_SIZE,
-      args->struct_size));
-  args->to_string = args->device->device->ToString().data();
-  args->to_string_size = args->device->device->ToString().size();
+  args->peak_bytes_in_use_is_set = true;
+  args->peak_bytes_in_use = stats.peak_bytes_in_use;
+  args->num_allocs_is_set = true;
+  args->num_allocs = stats.num_allocs;
+  args->largest_alloc_size_is_set = true;
+  args->largest_alloc_size = stats.largest_alloc_size;
+
+  args->bytes_limit_is_set = stats.bytes_limit.has_value();
+  if (stats.bytes_limit) {
+    args->bytes_limit = *stats.bytes_limit;
+  }
+
+  args->bytes_reserved_is_set = true;
+  args->bytes_reserved = stats.bytes_reserved;
+  args->peak_bytes_reserved_is_set = true;
+  args->peak_bytes_reserved = stats.peak_bytes_reserved;
+
+  args->bytes_reservable_limit_is_set =
+      stats.bytes_reservable_limit.has_value();
+  if (stats.bytes_reservable_limit) {
+    args->bytes_reservable_limit = *stats.bytes_reservable_limit;
+  }
+
+  args->largest_free_block_bytes_is_set = true;
+  args->largest_free_block_bytes = stats.largest_free_block_bytes;
+
+  args->pool_bytes_is_set = stats.pool_bytes.has_value();
+  if (stats.pool_bytes) {
+    args->pool_bytes = *stats.pool_bytes;
+  }
+
+  args->peak_pool_bytes_is_set = stats.peak_pool_bytes.has_value();
+  if (stats.peak_pool_bytes) {
+    args->peak_pool_bytes = *stats.peak_pool_bytes;
+  }
+
   return nullptr;
 }
 
@@ -667,12 +791,11 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   }
 }
 
-PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args) {
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_LoadedExecutable_GetCostAnalysis_Args",
-      PJRT_LoadedExecutable_GetCostAnalysis_Args_STRUCT_SIZE,
-      args->struct_size));
+      "PJRT_Executable_GetCostAnalysis_Args",
+      PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
 
   PJRT_RETURN_IF_ERROR(
       PopulateExecutableCostAnalysisIfNeeded(args->executable));
@@ -987,6 +1110,73 @@ PJRT_Error* PJRT_SerializedExecutable_Data(
   return nullptr;
 }
 
+namespace {
+
+// Helper functions for copying data to possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
+template <typename Src, typename Dst, typename DstList>
+static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
+  dst->size = src.size();
+  if (dst->size > PJRT_C_API_MAX_INLINED) {
+    dst->heap = new Dst[dst->size];
+    std::copy(src.begin(), src.end(), dst->heap);
+  } else {
+    std::copy(src.begin(), src.end(), dst->inlined);
+  }
+}
+
+void CreateVector(const absl::Span<const int64_t> src, PJRT_Int64List* dst) {
+  return CreateVectorBase<const int64_t, int64_t, PJRT_Int64List>(src, dst);
+}
+void CreateVector(const absl::Span<const bool> src, PJRT_BoolList* dst) {
+  return CreateVectorBase<const bool, bool, PJRT_BoolList>(src, dst);
+}
+static void CreateVector(const absl::Span<const xla::DimLevelType> src,
+                         PJRT_IntList* dst) {
+  CreateVectorBase<const xla::DimLevelType, int, PJRT_IntList>(src, dst);
+}
+void CreateVector(const absl::Span<const bool> src, PJRT_IntList* dst) {
+  CreateVectorBase<const bool, int, PJRT_IntList>(src, dst);
+}
+
+void ToC(const xla::Tile& tile, PJRT_XLA_Tile* c_tile) {
+  CreateVector(tile.dimensions(), &c_tile->dimensions);
+}
+
+void CreateVector(const absl::Span<const xla::Tile> src,
+                  PJRT_XLA_TileList* dst) {
+  dst->size = src.size();
+  PJRT_XLA_Tile* c_tiles;
+  if (dst->size > PJRT_C_API_MAX_INLINED) {
+    dst->heap = new PJRT_XLA_Tile[dst->size];
+    c_tiles = dst->heap;
+  } else {
+    c_tiles = dst->inlined;
+  }
+  for (int i = 0; i < dst->size; ++i) {
+    ToC(src[i], &c_tiles[i]);
+  }
+}
+
+void ToC(const xla::Layout& layout, PJRT_XLA_Layout* c_layout) {
+  CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
+  CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
+  CreateVector(layout.dim_unique(), &c_layout->dim_unique);
+  CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
+  c_layout->index_primitive_type = layout.index_primitive_type();
+  c_layout->pointer_primitive_type = layout.pointer_primitive_type();
+  c_layout->element_size_in_bits = layout.element_size_in_bits();
+  c_layout->memory_space = layout.memory_space();
+  c_layout->dynamic_shape_metadata_prefix_bytes =
+      layout.dynamic_shape_metadata_prefix_bytes();
+  CreateVector(layout.tiles(), &c_layout->tiles);
+}
+
+}  // namespace
+
 // ---------------------------------- Buffers ----------------------------------
 // TODO(b/238999986): Replace this with decomposed shape methods.
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
@@ -1003,13 +1193,12 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     shape = args->buffer->buffer->on_device_shape();
   }
   args->element_type = shape.element_type();
-  ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
-  ApiConverter::CreateVector(shape.dynamic_dimensions(),
-                             &args->dynamic_dimensions);
+  CreateVector(shape.dimensions(), &args->dimensions);
+  CreateVector(shape.dynamic_dimensions(), &args->dynamic_dimensions);
 
   if (shape.has_layout()) {
     args->has_layout = true;
-    ApiConverter::ToC(shape.layout(), &args->layout);
+    ToC(shape.layout(), &args->layout);
   } else {
     args->has_layout = false;
   }
@@ -1295,6 +1484,13 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
+    PJRT_TopologyDescription_GetDeviceDescriptions_Args* args) {
+  args->descriptions = args->topology->description_pointers.data();
+  args->num_descriptions = args->topology->description_pointers.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
@@ -1325,21 +1521,22 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   return nullptr;
 }
 
-// Populates `c_device->attributes` with shallow copy of the vendor specific
-// attributes about the device.
-static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
-  CHECK(c_device != nullptr) << ": c device is null";
-  CHECK(c_device->device != nullptr) << ": cpp device is null";
+// Populates `c_device_description->attributes` with shallow copy of the vendor
+// specific attributes about the device.
+static void PopulatePjrtDeviceDescriptionAttributes(
+    PJRT_DeviceDescription* c_device_description) {
+  CHECK(c_device_description->device_description != nullptr)
+      << ": cpp device description is null";
 
   const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>& attributes =
-      c_device->device->Attributes();
+      c_device_description->device_description->Attributes();
 
-  c_device->attributes.resize(attributes.size());
+  c_device_description->attributes.resize(attributes.size());
   int ind = 0;
   // Doing shallow copy of attribute names and values when it's string or an
   // array.
   for (auto const& [name, value] : attributes) {
-    PJRT_NamedValue& cur_attribute = c_device->attributes[ind];
+    PJRT_NamedValue& cur_attribute = c_device_description->attributes[ind];
     cur_attribute.struct_size = PJRT_NamedValue_STRUCT_SIZE;
     cur_attribute.priv = nullptr;
     cur_attribute.name = name.c_str();
@@ -1379,9 +1576,10 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
       c_client->client->addressable_device_count());
 
   for (xla::PjRtDevice* device : cpp_devices) {
-    c_client->owned_devices.push_back(PJRT_Device{device});
+    c_client->owned_devices.push_back(
+        PJRT_Device{device, {&device->description()}});
     PJRT_Device* c_device = &c_client->owned_devices.back();
-    PopulatePjrtDeviceAttributes(c_device);
+    PopulatePjrtDeviceDescriptionAttributes(&c_device->description);
     c_client->devices.push_back(c_device);
     if (device->IsAddressable()) {
       c_client->addressable_devices.push_back(c_device);
@@ -1397,6 +1595,16 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
     std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
   PJRT_TopologyDescription* c_topology =
       new PJRT_TopologyDescription{std::move(cpp_topology)};
+  c_topology->cpp_descriptions = c_topology->topology->DeviceDescriptions();
+  c_topology->descriptions.reserve(c_topology->cpp_descriptions.size());
+  c_topology->description_pointers.reserve(c_topology->cpp_descriptions.size());
+  for (auto& description : c_topology->cpp_descriptions) {
+    c_topology->descriptions.emplace_back(
+        PJRT_DeviceDescription{description.get()});
+    c_topology->description_pointers.emplace_back(
+        &c_topology->descriptions.back());
+    PopulatePjrtDeviceDescriptionAttributes(&c_topology->descriptions.back());
+  }
   return c_topology;
 }
 

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 

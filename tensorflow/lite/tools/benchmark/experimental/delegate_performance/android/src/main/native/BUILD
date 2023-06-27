@@ -17,8 +17,8 @@ tflite_jni_binary(
     deps = [
         ":accuracy_benchmark",
         ":latency_benchmark",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
         "@flatbuffers",
@@ -37,7 +37,7 @@ cc_library(
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
@@ -53,15 +53,15 @@ cc_library(
     deps = [
         ":status_codes",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:stable_delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration:xnnpack_plugin",
+        "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration:stable_delegate_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:libjpeg_handle_static_link",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/c:c_api_in_process",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
         "@flatbuffers",
@@ -70,7 +70,7 @@ cc_library(
         # different binary, any TFLite delegates to be validated need to
         # include corresponding delegate plugins.
         clean_dep("//tensorflow:android"): [
-            "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
+            "//tensorflow/lite/acceleration/configuration:gpu_plugin",
         ],
         "//conditions:default": [],
     }) + accuracy_benchmark_extra_deps(),

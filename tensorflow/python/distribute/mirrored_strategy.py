@@ -31,7 +31,7 @@ from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
@@ -189,7 +189,7 @@ def all_local_devices(num_gpus=None):
 
 def all_devices():
   devices = []
-  tfconfig = TFConfigClusterResolver()
+  tfconfig = tfconfig_cluster_resolver.TFConfigClusterResolver()
   if tfconfig.cluster_spec().as_dict():
     devices = _cluster_spec_to_device_list(tfconfig.cluster_spec(),
                                            context.num_gpus())
@@ -317,7 +317,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         raise RuntimeError("In-graph multi-worker training with "
                            "`MirroredStrategy` is not supported in eager mode.")
       else:
-        if TFConfigClusterResolver().cluster_spec().as_dict():
+        if (
+            tfconfig_cluster_resolver.TFConfigClusterResolver()
+            .cluster_spec()
+            .as_dict()
+        ):
           # if you are executing in eager mode, only the single machine code
           # path is supported.
           logging.info("Initializing local devices since in-graph multi-worker "

@@ -517,47 +517,38 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
           const Rendezvous::Args& recv_args, const Tensor& val,
           const bool is_dead) {
         opts->ClearCancelCallback();
-        if (status.ok()) {
-          // DMA can only be used for Tensors that do not fall into
-          // the following three odd edge cases: 1) a zero-size
-          // buffer, 2) a dead tensor which has an uninit value, and
-          // 3) the tensor has the on_host allocation attribute,
-          // i.e. it's in CPU RAM *independent of its assigned
-          // device type*.
-          const bool on_host = send_args.alloc_attrs.on_host();
-          {
-            // Non-DMA cases.
-            if (src_dev->tensorflow_accelerator_device_info() && (!on_host)) {
-              DeviceContext* send_dev_context = send_args.device_context;
-              AllocatorAttributes alloc_attrs;
-              alloc_attrs.set_gpu_compatible(true);
-              alloc_attrs.set_on_host(true);
-              profiler::ScopedMemoryDebugAnnotation op_annotation(
-                  "GrpcWorker::RecvTensorAsync::consumer_callback",
-                  request->step_id(), "dynamic", val.dtype(),
-                  [shape = val.shape()]() { return shape.DebugString(); });
-              Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
-              Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
-              CHECK(send_dev_context)
-                  << "send dev name: " << src_dev->name() << " gpu_info: "
-                  << src_dev->tensorflow_accelerator_device_info();
-              // "val" is on an accelerator device. Uses the device_context to
-              // fill the copy on host.
-              StatusCallback copy_ready = [rendezvous_done, copy,
-                                           is_dead](const Status& s) {
-                // The value is now ready to be returned on the wire.
-                rendezvous_done(*copy, is_dead, s);
-                delete copy;
-              };
-
-              CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(),
-                               src_dev, copy, send_dev_context, copy_ready);
-              return;
-            }
-          }
+        if (!status.ok()) {
+          return rendezvous_done(val, is_dead, status);
         }
 
-        rendezvous_done(val, is_dead, status);
+        const bool on_host = send_args.alloc_attrs.on_host();
+        if (!src_dev->tensorflow_accelerator_device_info() || on_host) {
+          return rendezvous_done(val, is_dead, status);
+        }
+
+        DeviceContext* send_dev_context = send_args.device_context;
+        AllocatorAttributes alloc_attrs;
+        alloc_attrs.set_gpu_compatible(true);
+        alloc_attrs.set_on_host(true);
+        profiler::ScopedMemoryDebugAnnotation op_annotation(
+            "GrpcWorker::RecvTensorAsync::consumer_callback",
+            request->step_id(), "dynamic", val.dtype(),
+            [shape = val.shape()]() { return shape.DebugString(); });
+        Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
+        Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
+        CHECK(send_dev_context)
+            << "send dev name: " << src_dev->name()
+            << " gpu_info: " << src_dev->tensorflow_accelerator_device_info();
+
+        StatusCallback copy_ready = [rendezvous_done, copy,
+                                     is_dead](const Status& s) {
+          // The value is now ready to be returned on the wire.
+          rendezvous_done(*copy, is_dead, s);
+          delete copy;
+        };
+
+        CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(), src_dev,
+                         copy, send_dev_context, copy_ready);
       });
 }
 

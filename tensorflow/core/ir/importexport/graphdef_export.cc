@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/PointerUnion.h"

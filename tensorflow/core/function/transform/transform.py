@@ -195,7 +195,7 @@ def transform_function(
       if atomic_name in nested_functions:
         atomic_transform_fn = nested_fn_transforms.get(atomic_name, [])
         atomic_mlir_pipeline = nested_mlir_transforms.get(atomic_name, [])
-        transformed_atomic = transform_eager_defined_function(
+        transformed_atomic = transform_atomic_function(
             rt,
             nested_functions[atomic_name],
             atomic_transform_fn,
@@ -251,8 +251,8 @@ def transform_function(
 
   # pylint: disable=protected-access
   # Get the new ConcreteFunction.
-  updated_cf = function_lib.ConcreteFunction(
-      func_graph, attrs=fndef.attr, spec=cf._function_spec
+  updated_cf = function_lib.ConcreteFunction.from_func_graph(
+      func_graph, cf.function_type, attrs=fndef.attr
   )
 
   # Set arg_keywords and positional_args
@@ -272,7 +272,7 @@ def transform_function(
   return updated_cf
 
 
-def transform_eager_defined_function(
+def transform_atomic_function(
     rt: runtime_client.Runtime,
     f: function_lib.AtomicFunction,
     transform_fn: Union[
@@ -315,8 +315,6 @@ def transform_eager_defined_function(
   atomic = function_lib.from_func_graph(
       fndef.signature.name,
       func_graph,
-      func_graph.inputs,
-      func_graph.outputs,
       fndef.attr,
   )
   # pylint: enable=protected-access

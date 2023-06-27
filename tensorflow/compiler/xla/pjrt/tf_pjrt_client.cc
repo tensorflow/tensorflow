@@ -110,7 +110,11 @@ TfPjRtExecutable::ExecutePortable(
 }
 
 TfPjRtClient::TfPjRtClient(std::unique_ptr<PjRtClient> wrapped)
-    : wrapped_(std::move(wrapped)) {}
+    : wrapped_(std::move(wrapped)) {
+  LOG(INFO) << "TfPjRtClient created.";
+}
+
+TfPjRtClient::~TfPjRtClient() { LOG(INFO) << "TfPjRtClient destroyed."; }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
     StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
@@ -146,6 +150,7 @@ void TfPjRtClient::DestroyWrappedBuffersAndClient() {
   }
   mu_.Unlock();
   wrapped_.reset(nullptr);
+  LOG(INFO) << "TfPjRtClient::DestroyWrappedBuffersAndClient completed.";
 }
 
 std::unique_ptr<TfPjRtClient> TfPjRtClient::CreateTfPjRtClient(

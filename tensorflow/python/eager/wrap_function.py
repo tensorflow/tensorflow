@@ -17,11 +17,13 @@
 
 import weakref
 
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
@@ -225,7 +227,15 @@ class WrappedFunction(function.ConcreteFunction):
     for f in fn_graph.as_graph_def().library.function:
       context.context().add_function_def(f)
     self._signature = signature
-    super(WrappedFunction, self).__init__(fn_graph, attrs=attrs)
+    function_type = function_type_lib.from_structured_signature(
+        fn_graph.structured_input_signature,
+        fn_graph.structured_outputs,
+        fn_graph.function_captures.capture_types,
+    )
+    atomic_fn = atomic_function.from_func_graph(
+        function._inference_name(fn_graph.name), fn_graph, attrs, function_type
+    )
+    super().__init__(atomic_fn)
 
   def _call_impl(self, args, kwargs):
     if self._arg_keywords is None:
@@ -240,7 +250,7 @@ class WrappedFunction(function.ConcreteFunction):
             args[i] = ops.convert_to_tensor(arg, self._signature[i].dtype)
       return self._call_flat(args, self.captured_inputs)
     else:
-      return super(WrappedFunction, self)._call_impl(args, kwargs)
+      return super()._call_impl(args, kwargs)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     """Extract a subgraph of this function's underlying graph.

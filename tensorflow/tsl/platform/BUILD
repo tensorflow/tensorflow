@@ -105,6 +105,26 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -311,10 +331,6 @@ cc_library(
 
 cc_library(
     name = "statusor",
-    srcs = [
-        "statusor.cc",
-        "statusor_internals.h",
-    ],
     hdrs = ["statusor.h"],
     deps = [
         ":errors",
@@ -322,6 +338,7 @@ cc_library(
         ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -423,6 +440,7 @@ filegroup(
         "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -507,6 +525,7 @@ filegroup(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -552,9 +571,7 @@ filegroup(
         "stacktrace.h",
         "status.cc",
         "status.h",
-        "statusor.cc",
         "statusor.h",
-        "statusor_internals.h",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",
@@ -646,6 +663,7 @@ exports_files(
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",
@@ -1065,7 +1083,7 @@ cuda_cc_test(
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
+        "@local_config_cuda//cuda:cudart_static",
     ],
 )
 
@@ -1370,6 +1388,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/base:config",
     ],
 )
 
@@ -1510,6 +1529,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

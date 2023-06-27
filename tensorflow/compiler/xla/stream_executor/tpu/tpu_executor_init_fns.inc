@@ -33,10 +33,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuExecutor_PollForEventStatus);
   TFTPU_SET_FN(executor_fn, TpuExecutor_RecordEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_WaitForEvent);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_StartTimer);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_StopTimer);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyToHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronousMemcpyFromHost);
   TFTPU_SET_FN(executor_fn, TpuExecutor_MemcpyToHost);
@@ -63,11 +59,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(executor_fn, TpuEvent_New);
   TFTPU_SET_FN(executor_fn, TpuEvent_Free);
-
-  TFTPU_SET_FN(executor_fn, TpuTimer_New);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Free);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Nanoseconds);
-  TFTPU_SET_FN(executor_fn, TpuTimer_Microseconds);
 
   TFTPU_SET_FN(executor_fn, TpuStatus_New);
   TFTPU_SET_FN(executor_fn, TpuStatus_Create);

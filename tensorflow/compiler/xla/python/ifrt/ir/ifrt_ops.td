@@ -22,11 +22,12 @@ include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.td"
+include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_interfaces.td"
 
 class Ifrt_Op<string mnemonic, list<Trait> traits = []> :
     Op<Ifrt_Dialect, mnemonic, traits>;
 
-def Ifrt_ReshardOp : Ifrt_Op<"Reshard"> {
+def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let summary = "Reshards a host tensor or device array";
   let description = [{
     Copies the host tensor or device array to a new sharding.
@@ -39,14 +40,15 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard"> {
 
   let arguments = (ins
     Ifrt_ArrayType:$input,
-    Variadic<Ifrt_ControlType>:$controlInputs);
+    Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);
 
   let hasVerifier = 1;
 }
 
-def Ifrt_AssembleOp : Ifrt_Op<"Assemble", [AttrSizedOperandSegments]> {
+def Ifrt_AssembleOp
+    : Ifrt_Op<"Assemble", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
   let summary = "Assembles single device arrays to a sharded array";
   let description = [{
     Builds a larger array out of individual per-device arrays.
@@ -60,14 +62,14 @@ def Ifrt_AssembleOp : Ifrt_Op<"Assemble", [AttrSizedOperandSegments]> {
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs);
+    Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Ifrt_ArrayType:$output);
 
   let hasVerifier = 1;
 }
 
-def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble"> {
+def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble", [NestedInIfrtFunc]> {
   let summary = "Disassembles a sharded array to single device arrays";
   let description = [{
     Breaks an array up into per-device arrays.
@@ -88,8 +90,14 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble"> {
   let hasVerifier = 1;
 }
 
+def IoAliasesAttr : TypedArrayAttrBase<
+    ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<2>]>,
+    "Array of pairs of aliased input/output indices">;
+
 def Ifrt_CallOp : Ifrt_Op<"Call",
     [AttrSizedOperandSegments,
+     NestedInIfrtFunc,
+     IfrtCallLike<"::mlir::func::FuncOp">,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some function on a set of devices";
@@ -106,26 +114,35 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     The callee doesn't specify the device placement. It's specified at the
     `devices` attribute of this CallOp. Every input/output must be placed on
     a subset of these devices.
+
+    `io_aliases` represents pairs of inputs and outputs, where the input buffer
+    may be donated and used as the output buffer. The aliased pair must have the
+    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
+    hint or not.
   }];
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs,
+    Variadic<Ifrt_ControlType>:$control_inputs,
 
     SymbolRefAttr:$callee,
-    DenseI64ArrayAttr:$devices);
+    Ifrt_DevicesAttr:$devices,
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
-    Ifrt_ControlType:$controlOutput);
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $controlInputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs)
+    `on` `devices` $devices attr-dict `:` functional-type($inputs, $outputs)
   }];
   let hasVerifier = 1;
 }
 
 def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     [AttrSizedOperandSegments,
+     NestedInIfrtFunc,
+     IfrtCallLike<"LoadedExecutableOp">,
      DeclareOpInterfaceMethods<CallOpInterface>,
      DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Call some loaded executable";
@@ -136,20 +153,28 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
 
     The callee is placed on devices because it's loaded. Every input/output must
     be placed on a subset of these devices.
+
+    `io_aliases` represents pairs of inputs and outputs, where the input buffer
+    may be donated and used as the output buffer. The aliased pair must have the
+    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
+    hint or not.
   }];
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
-    Variadic<Ifrt_ControlType>:$controlInputs,
+    Variadic<Ifrt_ControlType>:$control_inputs,
 
-    SymbolRefAttr:$callee);
+    SymbolRefAttr:$callee,
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
-    Ifrt_ControlType:$controlOutput);
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    $callee `(` $inputs `)` oilist(`after` $controlInputs) attr-dict `:` functional-type($inputs, $outputs)
+    $callee `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
   }];
+  let hasVerifier = 1;
 }
 
 def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
@@ -163,18 +188,20 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
   let arguments = (ins
     SymbolNameAttr: $sym_name,
     TypeAttrOf<FunctionType>: $function_type,
-    DenseI64ArrayAttr:$devices
+    Ifrt_DevicesAttr:$devices
   );
 
-  let assemblyFormat = "$sym_name attr-dict `:` $function_type";
+  let assemblyFormat = [{
+    $sym_name `on` `devices` $devices attr-dict `:` $function_type
+  }];
   let hasVerifier = 1;
 }
 
-def Ifrt_AfterOp : Ifrt_Op<"After"> {
+def Ifrt_AfterOp : Ifrt_Op<"After", [NestedInIfrtFunc]> {
   let summary = "Get a control handle for array materialization.";
   let description = [{
-    When depending on the `controlOutput`, the op will be not be scheduled until
-    all `inputs` are materialized. For example, this could mean the data
+    When depending on the `control_output`, the op will be not be scheduled
+    until all `inputs` are materialized. For example, this could mean the data
     transfer is completed from a `Reshard` op.
 
     Moreover, this op provides fine-grained control dependency on `CallOp`'s
@@ -187,7 +214,7 @@ def Ifrt_AfterOp : Ifrt_Op<"After"> {
   }];
 
   let arguments = (ins Variadic<Ifrt_ArrayType>:$inputs);
-  let results = (outs Ifrt_ControlType:$controlOutput);
+  let results = (outs Ifrt_ControlType:$control_output);
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_OPS_TD_

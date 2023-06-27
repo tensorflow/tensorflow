@@ -715,7 +715,7 @@ class BroadcastOpToBroadcastConverter
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     rewriter.replaceOpWithNewOp<linalg::BroadcastOp>(
-        op, op.getOperand(), emptyTensor, dimensions,
+        op, adaptor.getOperand(), emptyTensor, dimensions,
         linalg::getPrunedAttributeList(op));
     return success();
   }
@@ -1369,6 +1369,21 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       return success();
     }
 
+    // Special case when the reshape is sparse-to-sparse: We generate the
+    // tensor::ReshapeOp to avoid allocating temp buffer.
+    if (sparse_tensor::getSparseTensorEncoding(operandType) &&
+        sparse_tensor::getSparseTensorEncoding(resultType) &&
+        resultType.hasStaticShape()) {
+      auto shape = DenseIntElementsAttr::get(
+          RankedTensorType::get(resultType.getRank(), rewriter.getI64Type()),
+          resultType.getShape());
+      auto constShape =
+          rewriter.create<arith::ConstantOp>(reshapeOp.getLoc(), shape);
+      rewriter.replaceOpWithNewOp<tensor::ReshapeOp>(
+          reshapeOp, resultType, operand, constShape.getResult());
+      return success();
+    }
+
     // Compute the reassociation maps for the linalg operation. This will
     // succeed if the reshape can be done with a single expand_shape or
     // collapse_shape.
@@ -1413,6 +1428,7 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       for (int i = 0; i < n; ++i) exprs.push_back(rewriter.getAffineDimExpr(i));
       return exprs;
     };
+
     // Otherwise, we need to first reduce all source dimensions into one and
     // then expand to the destination dimensions. If there is only a single
     // source dimension, the reduce step can be skipped. TensorCollapseShape
@@ -2330,6 +2346,15 @@ class RngBitGeneratorConverter
       return success();
     }
 
+    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::PHILOX ||
+        op.getRngAlgorithm() == mhlo::RngAlgorithm::DEFAULT) {
+      Value random;
+      if (generateLinalgPhilox(rewriter, loc, resultTy, state, random).failed())
+        return failure();
+      rewriter.replaceOp(op, {state, random});
+      return success();
+    }
+
     return failure();
   }
 };
@@ -2342,7 +2367,7 @@ struct SelectAndScatterNoOverlapConverter
   using OpConversionPattern<mhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SelectAndScatterOp op, OpAdaptor adaptor,
+      mhlo::SelectAndScatterOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     Location loc = op.getLoc();
     ImplicitLocOpBuilder b(loc, rewriter);

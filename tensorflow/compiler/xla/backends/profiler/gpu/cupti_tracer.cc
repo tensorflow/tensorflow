@@ -1304,6 +1304,17 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
             cbdata->symbolName, cbdata->context, cbdata->correlationId, params);
         break;
       }
+#if CUDA_VERSION >= 11000
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx: {
+        DCHECK_NE(cbdata->symbolName, nullptr);
+        const auto *params = static_cast<const cuLaunchKernelEx_params *>(
+            cbdata->functionParams);
+        *cbdata->correlationData = recorder->StartKernel<CUlaunchConfig>(
+            cbdata->symbolName, cbdata->context, cbdata->correlationId,
+            params->config);
+        break;
+      }
+#endif  // CUDA_VERSION >= 11000
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel: {
         DCHECK_NE(cbdata->symbolName, nullptr);
         const auto *params =
@@ -1397,6 +1408,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     tsl::uint64 start_tsc = 0;
     switch (cbid) {
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+#if CUDA_VERSION >= 11000
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
+#endif  // CUDA_VERSION >= 11000
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
         start_tsc = recorder->StopKernel(*cbdata->correlationData);
         break;
@@ -1538,6 +1552,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     const CUpti_CallbackData *cbdata) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+#if CUDA_VERSION >= 11000
+    case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
+#endif  // CUDA_VERSION >= 11000
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
       AddKernelEventUponApiExit(collector, device_id, cbdata, start_tsc,

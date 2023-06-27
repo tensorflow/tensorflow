@@ -12,10 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -47,9 +46,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
@@ -65,6 +64,8 @@ namespace {
 using QuantMethod =
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
 
+constexpr absl::string_view kQuantizeCompositeFunctionsStepName =
+    "_quantize_composite_functions";
 constexpr StringRef kQuantizeFuncName = "quantize_i8";
 constexpr StringRef kDequantizeFuncName = "dequantize_i8";
 constexpr StringRef kAttrMapAttribute = "attr_map";
@@ -85,9 +86,11 @@ class QuantizeCompositeFunctionsPass
       const QuantMethod quantization_method, const OpSet target_opset,
       const bool enable_per_channel_quantization,
       const int min_num_elements_for_weights,
-      const bool enable_legacy_weight_only)
+      const bool enable_legacy_weight_only,
+      std::optional<const std::string> mlir_dump_file_name)
       : enable_legacy_weight_only_(enable_legacy_weight_only),
-        min_num_elements_for_weights_(min_num_elements_for_weights) {
+        min_num_elements_for_weights_(min_num_elements_for_weights),
+        mlir_dump_file_name_(std::move(mlir_dump_file_name)) {
     quantization_method_ = quantization_method;
     target_opset_ = target_opset;
     enable_per_channel_quantization_ = enable_per_channel_quantization;
@@ -99,6 +102,7 @@ class QuantizeCompositeFunctionsPass
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
     min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
     enable_legacy_weight_only_ = other.enable_legacy_weight_only_;
+    mlir_dump_file_name_ = other.mlir_dump_file_name_;
   }
 
   StringRef getArgument() const final {
@@ -122,6 +126,7 @@ class QuantizeCompositeFunctionsPass
 
   bool enable_legacy_weight_only_;
   int min_num_elements_for_weights_;
+  std::optional<std::string> mlir_dump_file_name_;
 
   // These flags are only used for testing purpose.
   Option<QuantMethod> quantization_method_{
@@ -968,6 +973,79 @@ class QuantizeConstPattern
   OpSet target_opset_;
 };
 
+// To calculate per-channel scale and offset, weight of depthwise was reshaped
+// to [H, W, 1, InxMul]. After scale and offset has been calculated, this
+// pattern gets called and restores the weight of depthwise back
+// into [H, W, In, Mul]
+class RestoreWeightShapePattern
+    : public OpRewritePattern<TF::PartitionedCallOp> {
+  using OpRewritePattern<TF::PartitionedCallOp>::OpRewritePattern;
+
+ private:
+  LogicalResult addReshapeOpToDepthwiseWeight(TF::PartitionedCallOp op,
+                                              PatternRewriter& rewriter) const {
+    int weight_operand_idx = 1;
+    Operation* weight_op = op.getOperand(weight_operand_idx).getDefiningOp();
+
+    auto weight_type = weight_op->getResult(0).getType().dyn_cast<ShapedType>();
+    auto input_type = op.getOperand(0).getType().dyn_cast<ShapedType>();
+
+    llvm::ArrayRef<int64_t> weight_shape = weight_type.getShape();
+    llvm::ArrayRef<int64_t> input_shape = input_type.getShape();
+
+    // If weight_shape[2] != 1, it means weight shape was already restored.
+    if (weight_shape[2] != 1) return failure();
+
+    // Weight was reshaped into [H, W, 1, InxMul].
+    // Since we know in_channels from input_shape, we can derive multiplier.
+    int64_t in_channels = input_shape[3];
+    // If in_channels is 1, there is no need to restore weight shape.
+    if (in_channels == 1) return failure();
+    int64_t multiplier = weight_shape[3] / in_channels;
+
+    TensorType new_shape = RankedTensorType::get(
+        {weight_shape[0], weight_shape[1], in_channels, multiplier},
+        weight_type.getElementType());
+
+    int cur_rank = weight_type.getRank();
+
+    // Inserts a reshape op.
+    auto shape_spec_type =
+        RankedTensorType::get({cur_rank}, rewriter.getIntegerType(64));
+    auto new_shape_const_attr =
+        DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
+    rewriter.setInsertionPointAfter(weight_op);
+    auto new_shape_const = rewriter.create<TF::ConstOp>(
+        weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
+    auto reshape_op = rewriter.create<TF::ReshapeOp>(
+        weight_op->getLoc(), new_shape, weight_op->getResult(0),
+        new_shape_const);
+    op->setOperand(weight_operand_idx, reshape_op);
+
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
+                                PatternRewriter& rewriter) const override {
+    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    StringRef function_name = f_attr.getValue();
+    // TODO(b/228928859): Improve the getter function to match attributes rather
+    // than function name.
+    // If enable_legacy_weight_only is enabled, QuantizeFunctionsPattern
+    // does not get called and function remains as composite
+    if (!function_name.startswith("quantized_") &&
+        !function_name.startswith("composite_")) {
+      return failure();
+    }
+
+    if (function_name.contains("depthwise_conv2d")) {
+      return addReshapeOpToDepthwiseWeight(call_op, rewriter);
+    }
+
+    return failure();
+  }
+};
+
 // Prints a summary about the quantization results.
 class QuantizationSummary {
  public:
@@ -1133,10 +1211,12 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.enableVerifier(false);
 
   QuantizationSpecs quant_specs;
-  pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
-
   quant_specs.inference_type = tensorflow::DT_QINT8;
   quant_specs.disable_per_channel = !enable_per_channel_quantization_;
+
+  pm.addPass(CreatePreprocessOpPass(target_opset_, quantization_method_,
+                                    enable_per_channel_quantization_));
+
   // Apply activation-weight quantization.
   if (quantization_method_ ==
       tensorflow::quantization::QuantizationMethod::STATIC_RANGE) {
@@ -1157,7 +1237,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
         CreateQuantizePass(quant_specs, target_opset_));
     pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   }
-  if (failed(pm.run(module))) {
+
+  absl::Status pm_run_status = tensorflow::quantization::RunPassesOnModuleOp(
+      mlir_dump_file_name_, pm, module);
+  if (!pm_run_status.ok()) {
     signalPassFailure();
   }
 
@@ -1180,6 +1263,13 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   patterns_2.add<ReplaceQuantizePattern, ReplaceDequantizePattern>(
       ctx, target_opset_);
   patterns_2.add<QuantizeConstPattern>(ctx, target_opset_);
+
+  if (target_opset_ == OpSet::XLA && enable_per_channel_quantization_ &&
+      quantization_method_ ==
+          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+    patterns_2.add<RestoreWeightShapePattern>(ctx);
+  }
+
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns_2))) ||
       failed(verify(module))) {
     signalPassFailure();
@@ -1193,10 +1283,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     const QuantMethod quantization_method, const OpSet target_opset,
     const bool enable_per_channel_quantization,
     const int min_num_elements_for_weights,
-    const bool enable_legacy_weight_only) {
+    const bool enable_legacy_weight_only,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
+  std::optional<std::string> mlir_dump_file_name;
+  if (mlir_dump_file_prefix) {
+    mlir_dump_file_name = absl::StrCat(mlir_dump_file_prefix.value(),
+                                       kQuantizeCompositeFunctionsStepName);
+  }
   return std::make_unique<QuantizeCompositeFunctionsPass>(
       quantization_method, target_opset, enable_per_channel_quantization,
-      min_num_elements_for_weights, enable_legacy_weight_only);
+      min_num_elements_for_weights, enable_legacy_weight_only,
+      mlir_dump_file_name);
 }
 
 }  // namespace quant

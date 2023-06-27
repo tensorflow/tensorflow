@@ -122,6 +122,19 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
+// Same as above, except that it returns the flattened id in the replica groups
+// instead of device id.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Same as above, but take replica/partition count instead of device assignment.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode replica_group_mode, int replica_count,
+    int partition_count);
+
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
@@ -402,6 +415,9 @@ class Rendezvous {
   std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
+
+constexpr char kSendRecvSourceTargetPairsAttr[] =
+    "_xla_send_recv_source_target_pairs";
 
 }  // end namespace xla
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/Passes.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -34,7 +35,9 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -50,7 +53,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/memref/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
@@ -72,6 +74,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
                    mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
                    RuntimeDialect>();
 
+  mlir::func::registerAllExtensions(*dialects);
+
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);
   mlir::registerAMXDialectTranslation(*dialects);
@@ -82,17 +86,14 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 }
 
 static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
-                                            const CpuPipelineOptions& opts,
-                                            bool useRuntime) {
-  if (useRuntime) {
-    pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+                                            const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
-    // Convert entry function to the XLA entrypoint.
-    pm.addPass(CreateExportRuntimeFunctionsPass());
-    pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
-    pm.addPass(CreateConvertCustomCallsPass());
-    pm.addPass(CreateConvertAssertsPass());
-  }
+  // Convert entry function to the XLA entrypoint.
+  pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(cpu::createConvertXlaCpuToCpuRuntimePass());
+  pm.addPass(CreateConvertCustomCallsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -108,15 +109,13 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   // Canonicalize generated scf.parallel operations to remove single iterations.
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (useRuntime) {
-    // TODO(ecg,ezhulenev): add conversion of scf.parallel to async.
+  // TODO(ecg,ezhulenev): add conversion of scf.parallel to async.
 
-    // Lower from high level async operations to async runtime.
-    pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+  // Lower from high level async operations to async runtime.
+  pm.addPass(mlir::createAsyncToAsyncRuntimePass());
 
-    // Add async.runtime reference counting operations.
-    pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
-  }
+  // Add async.runtime reference counting operations.
+  pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
 
   // Expand math operations into std/arith dialect operations.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
@@ -130,26 +129,30 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
       xla::CreateAlignedAllocationsPass(opts.alignment));
 
   // Lower everything down to LLVM dialect.
-  if (useRuntime) {
-    // Convert runtime operations and custom calls to LLVM dialect.
-    const CompilationPipelineOptions& copts = opts.common_options;
-    ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
-        copts.populate_type_id_names, copts.populate_type_conversions,
-        copts.populate_arg_encodings, copts.populate_ret_encodings,
-        copts.populate_attr_encodings};
-    pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
+  // Convert runtime operations and custom calls to LLVM dialect.
+  const CompilationPipelineOptions& copts = opts.common_options;
+  ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
+      copts.populate_type_id_names, copts.populate_type_conversions,
+      copts.populate_arg_encodings, copts.populate_ret_encodings,
+      copts.populate_attr_encodings};
+  pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
-    // Convert async to LLVM once everything else is in the LLVM dialect.
-    pm.addPass(mlir::createConvertAsyncToLLVMPass());
-  } else {
-    pm.addPass(mlir::xla_framework::CreateLegalizeXLAFrameworkToLLVMPass());
-  }
+  // Convert async to LLVM once everything else is in the LLVM dialect.
+  pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
   mlir::GenericHostToLLVMPassOptions llvm_options;
   llvm_options.enableAvx2 = opts.math_avx2;
   pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
-
+  const bool gpuCodegen = opts.xla_cpu_sparse_cuda_threads > 0;
+  if (gpuCodegen) {
+#ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(
+        mlir::createGpuSerializeToCubinPass(opts.cuda_triplet, opts.cuda_arch,
+                                            opts.cuda_features));
+#endif
+    pm.addPass(mlir::createGpuToLLVMConversionPass());
+  }
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.
@@ -159,17 +162,12 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
 void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     PassManager& passes, const CpuPipelineOptions& opts) {
-  CreateXlaCpuCompilationPipeline(*passes, opts, /*useRuntime=*/true);
-}
-
-void CreateDefaultXlaCpuAOTCompilationPipeline(PassManager& passes,
-                                               const CpuPipelineOptions& opts) {
-  CreateXlaCpuCompilationPipeline(*passes, opts, /*useRuntime=*/false);
+  CreateXlaCpuCompilationPipeline(*passes, opts);
 }
 
 static void CreateDefaultCpuPipeline(mlir::OpPassManager& pm) {
   CpuPipelineOptions opts;
-  CreateXlaCpuCompilationPipeline(pm, opts, /*useRuntime=*/true);
+  CreateXlaCpuCompilationPipeline(pm, opts);
 }
 
 static mlir::PassPipelineRegistration<> kXlaRuntimePipeline(

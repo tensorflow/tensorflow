@@ -426,18 +426,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       concrete_fn = fn.get_concrete_function()
 
       op = op_def_library.apply_op("FuncAttr", f=concrete_fn, name="t")
-      self.assertProtoEquals("""
-        name: 't' op: 'FuncAttr'
-        attr {
-          key: 'f'
-          value {
-            func {
-              name: '%s'
-              attr { key: "_implements" value { i: 15 } }
-            }
-          }
-        }
-        """ % compat.as_str(concrete_fn.name), op.node_def)
+      self.assertEqual(15, op.node_def.attr["f"].func.attr["_implements"].i)
+      self.assertEqual(
+          compat.as_str(concrete_fn.name), op.node_def.attr["f"].func.name
+      )
 
   def testAttrFuncList(self):
     with ops.Graph().as_default():

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/case_op.h"
 
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"

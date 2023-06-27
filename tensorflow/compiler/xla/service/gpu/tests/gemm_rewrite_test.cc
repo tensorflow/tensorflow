@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -52,16 +51,6 @@ class GemmRewriteTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  void SetUp() override {
-    tf32_state_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
-  }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(tf32_state_);
-  }
-
- private:
-  bool tf32_state_;
 };
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
@@ -208,6 +197,7 @@ class ParameterizedGemmRewriteTest
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
   void MatchOptimizedHlo(absl::string_view hlo, const absl::string_view pattern,
@@ -247,21 +237,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -285,21 +275,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -327,21 +317,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[BITCAST1:%[^ ]+]] = f32[12,5]{1,0} bitcast([[P1]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5]{1,0} custom-call([[BITCAST0]], [[BITCAST1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -366,21 +356,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -405,21 +395,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -444,21 +434,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["1"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -484,21 +474,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} transpose([[P0]])
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[FUSION]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -520,24 +510,27 @@ ENTRY AddDotsFunc {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[20000,4,3,2], y: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[20000,4,2,4]{3,2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
+; CHECK:    [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
+; CHECK:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
+; CHECK:    [[BC1:%[^ ]+]] = f32[80000,3,4]{2,1,0} bitcast([[P1]])
+; CHECK:    [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} custom-call([[BC0]], [[BC1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\",\"1\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\",\"1\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK:           }"
+; CHECK:           }
+; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} bitcast([[OUT]])
 )");
 }
 
@@ -562,21 +555,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} custom-call([[P1]], [[P0]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -601,21 +594,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,0,1} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,5,4]{2,1,0} bitcast([[GEMM]])
 )");
 }
@@ -641,21 +634,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4,5]{2,1,0} [[OP:[^ ]+]]([[GEMM]])
 )");
 }
@@ -683,21 +676,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -724,21 +717,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = c64[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = c64[2,2]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":3
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":3
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -763,21 +756,21 @@ ENTRY AddDotsFunc {
                     R"(
 ; CHECK:    {{[^ ]+}} = f32[2,2]{1,0} custom-call({{[^,]+}}, {{[^)]+}}),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -803,21 +796,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -924,9 +917,9 @@ ENTRY int8gemm {
                       R"(
 ; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:       \"alpha_real\":1
-; CHECK-DAG:       \"alpha_imag\":0
+; CHECK:           backend_config={
+; CHECK-DAG:       "alpha_real":1
+; CHECK-DAG:       "alpha_imag":0
   )",
                       /*print_operand_shape=*/true);
   } else {
@@ -958,10 +951,10 @@ ENTRY int8gemm {
                       R"(
 ; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} [[A:%[^ ]+]], s8[4,8]{0,1} [[B:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:       \"alpha_real\":1
-; CHECK-DAG:       \"alpha_imag\":0
-; CHECK-DAG:       \"beta\":0
+; CHECK:           backend_config={
+; CHECK-DAG:       "alpha_real":1
+; CHECK-DAG:       "alpha_imag":0
+; CHECK-DAG:       "beta":0
   )",
                       /*print_operand_shape=*/true);
   } else {
@@ -1004,11 +997,19 @@ ENTRY int8gemm {
 
 TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
   std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
-      type_combinations = {
-          {"s8", "s32", true},    {"s8", "s8", true},   {"s32", "s32", true},
-          {"bf16", "bf16", true}, {"f16", "f16", true}, {"f32", "f32", true},
-          {"f64", "f64", true},   {"c64", "c64", true}, {"c128", "c128", true},
-      };
+      type_combinations = {{"s8", "s8", true},
+                           {"s32", "s32", true},
+                           {"bf16", "bf16", true},
+                           {"f16", "f16", true},
+                           {"f32", "f32", true},
+                           {"f64", "f64", true},
+                           {"c64", "c64", true},
+                           {"c128", "c128", true},
+                           // add mix type gemm
+                           {"s8", "s32", true},
+                           {"s8", "f32", true},
+                           {"f16", "f32", true},
+                           {"bf16", "f32", true}};
 
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     // For compute capabilities before volta, we always do upcasting, so it
@@ -1017,15 +1018,14 @@ TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
     std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
         more_type_combinations = {
             {"s8", "bf16", false},  {"s8", "f16", false},
-            {"s8", "f32", false},   {"s8", "f64", false},
-            {"s8", "c64", false},   {"s8", "c128", false},
+            {"s8", "f64", false},   {"s8", "c64", false},
+            {"s8", "c128", false},
 
             {"s32", "f32", false},  {"s32", "f64", false},
             {"s32", "c64", false},  {"s32", "c128", false},
 
-            {"f16", "bf16", false}, {"f16", "f32", false},
-            {"f16", "f64", false},  {"f16", "c64", false},
-            {"f16", "c128", false},
+            {"f16", "bf16", false}, {"f16", "f64", false},
+            {"f16", "c64", false},  {"f16", "c128", false},
 
             {"bf16", "f16", false}, {"bf16", "f64", false},
             {"bf16", "c64", false}, {"bf16", "c128", false},
@@ -1115,7 +1115,7 @@ HloModule test
 ENTRY test {
   Arg_0.1 = f16[4,3]{1,0} parameter(0)
   Arg_1.2 = f16[3,6]{1,0} parameter(1)
-  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest, highest}
 }
 )";
 
@@ -1175,6 +1175,94 @@ ENTRY test {
               GmockMatch(m::CustomCall({"__cublas$gemm"})));
 }
 
+TEST_P(ParameterizedGemmRewriteTest, SupportedMixTypeGemm) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Mixed type cublas calls are only used on Volta and above";
+  }
+
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  param_0 = f16[240,88]{1,0} parameter(0)
+  param_1 = f16[88,4]{1,0} parameter(1)
+  dot = f16[240,4]{1,0} dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  constant_255 = f16[] constant(255)
+  broadcast = f16[240,4]{1,0} broadcast(constant_255), dimensions={}
+  multiply = f16[240,4]{1,0} multiply(dot, broadcast)
+  ROOT result = f32[240,4]{1,0} convert(multiply)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // input fp16 and output fp32 combination is supported by legacy cublas and
+  // cublasLt, expect GemmRewriter to fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall({CustomCallTarget()})));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UnsupportedMixTypeGemm) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  param_0 = f32[240,88]{1,0} parameter(0)
+  param_1 = f32[88,4]{1,0} parameter(1)
+  dot = f32[240,4]{1,0} dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  constant_255 = f32[] constant(255)
+  broadcast = f32[240,4]{1,0} broadcast(constant_255), dimensions={}
+  multiply = f32[240,4]{1,0} multiply(dot, broadcast)
+  ROOT result = u8[240,4]{1,0} convert(multiply)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // u8 is not supported by legacy cublas and cublasLt, expect
+  // GemmRewriter to not fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, CheckIsGemmAliasedBeforeFusion) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  Arg_0.1 = f16[8,16]{1,0} parameter(0)
+  Arg_1.2 = f16[16,32]{1,0} parameter(1)
+  dot.8 = f16[8,32]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  Arg_2.3 = f16[8,32]{1,0} parameter(2)
+  constant.5 = f16[] constant(1)
+  broadcast.6 = f16[8,32]{1,0} broadcast(constant.5), dimensions={}
+  add.7 = f16[8,32]{1,0} add(Arg_2.3, broadcast.6)
+  add.9 = f16[8,32]{1,0} add(dot.8, add.7)
+  convert.10 = f32[8,32]{1,0} convert(add.9)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // input fp16 and output fp32 combination is supported by legacy cublas and
+  // cublasLt, but gemm output is already aliased with one of the input expect
+  // GemmRewriter to not fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+}
+
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
                          ParameterizedGemmRewriteTest, ::testing::Bool());
 
@@ -1222,21 +1310,21 @@ ENTRY AddDotsFunc {
 ; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1265,21 +1353,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1304,21 +1392,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1348,21 +1436,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]], [[BIAS_COPY]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1393,21 +1481,21 @@ ENTRY AddDotsFunc {
 ; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1434,21 +1522,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[1024,1024]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1480,21 +1568,21 @@ ENTRY BF16GemmWithBias {
 ; CHECK:        ROOT [[GEMM:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[X]], [[Y]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1527,21 +1615,21 @@ ENTRY test {
 ; CHECK:         ROOT [[GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], {{[^,)]+}}),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1571,40 +1659,221 @@ ENTRY test {
 ; CHECK-DAG:     [[P3:%[^ ]+]] = f32[3,4]{1,0} parameter(3)
 ; CHECK-NEXT:    [[FIRST_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[SECOND_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P2]], [[P3]], [[FIRST_GEMM]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
+}
+
+// Test gemm matrix bias add fusion with mix type
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixType) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = <<DType>>[16,16] negate(z)
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[16,16]{1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeBatched) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[4,16,32] parameter(0)
+  y = <<ABType>>[4,32,16] parameter(1)
+  z = <<DType>>[4,16,16] parameter(2)
+  dot_a = <<ABType>>[4,16,16] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  bias = <<DType>>[4,16,16] negate(z)
+  convert = <<DType>>[4,16,16] convert(dot_a)
+  ROOT out = <<DType>>[4,16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[4,16,32], y: <<ABType>>[4,32,16], z: <<DType>>[4,16,16]) -> <<DType>>[4,16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[4,16,32]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[4,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type that is not supported
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  z = f64[16,16] parameter(2)
+  dot_a = bf16[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = f64[16,16] negate(z)
+  convert = f64[16,16] convert(dot_a)
+  ROOT out = f64[16,16] add(convert, bias)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f64[16,16], [[DUMMY1:[^ ]+]]: bf16[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f64[16,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[16,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = f64[16,16]{1,0} negate([[P0]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} add([[C1]], [[N1]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: bf16[16,32], y: bf16[32,16], z: f64[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[16,16]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} fusion([[P2]], [[DOT]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+      )");
 }
 
 TEST_F(LegacyCublasGemmRewriteTest, MergeBitcastAndAdd) {
@@ -1689,6 +1958,7 @@ class CublasLtGemmRewriteTest : public GemmRewriteTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 };
@@ -1719,21 +1989,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[X]], [[Y]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1764,21 +2034,21 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[2,2]{1,0} custom-call([[P0]], [[P1]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK-NOT:       output_to_operand_aliasing
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1806,21 +2076,21 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[1024,1024]{1,0} parameter(2)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[1024,1024]{1,0} custom-call([[P0]], [[P1]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[1024,1024]{1,0} add([[GEMM]], [[BIAS]])
 )");
 }
@@ -1847,21 +2117,21 @@ ENTRY BF16GemmWithBias {
 ; CHECK-DAG:    [[BIAS:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
 ; CHECK-NEXT:   ROOT [[GEMM:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[X]], [[Y]], [[BIAS]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1888,21 +2158,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1932,39 +2202,39 @@ ENTRY test {
 ; CHECK-DAG:     [[P3:%[^ ]+]] = f32[3,4]{1,0} parameter(3)
 ; CHECK-NEXT:    [[FIRST_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[SECOND_GEMM:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P2]], [[P3]], [[FIRST_GEMM]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -1992,21 +2262,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 )");
 }
 
@@ -2046,59 +2316,59 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[MATMUL0:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[4,4]{1,0} fusion([[MATMUL0]], [[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(5)
 ; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[4,4]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[MATMUL1:%[^ ]+]] = f32[4,4]{1,0} custom-call([[MATMUL0]], [[C0_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,4]{1,0} custom-call([[FUSION]], [[MATMUL1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
@@ -2137,21 +2407,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
@@ -2191,21 +2461,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
@@ -2235,21 +2505,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{0,1} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
 )");
 }
@@ -2280,21 +2550,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} slice([[MATMUL]]), slice={[0:2], [0:3]}
       )");
 }
@@ -2338,59 +2608,59 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL0:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[2,2]{1,0} fusion([[P2]], [[MATMUL0]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
 ; CHECK-NEXT:    [[SLICE:%[^ ]+]] = f32[2,2]{1,0} slice([[MATMUL0]]), slice={[0:2], [0:2]}
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(5)
 ; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[2,2]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[MATMUL1:%[^ ]+]] = f32[2,2]{1,0} custom-call([[SLICE]], [[C0_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} custom-call([[FUSION]], [[MATMUL1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
@@ -2417,21 +2687,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2_BCAST:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2_BCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 )");
 }
 
@@ -2462,21 +2732,21 @@ ENTRY test {
 ; CHECK-DAG:     [[MATRIX_BIAS:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[MATRIX_BIAS]], [[VECTOR_BIAS]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 )");
 }
 
@@ -2505,20 +2775,20 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[32]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[16,32]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
+; CHECK-DAG:         "epilogue":"BIAS"
       )");
 }
 
@@ -2555,20 +2825,20 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[4]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
+; CHECK-DAG:         "epilogue":"BIAS"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[2,4]{1,0} slice([[MATMUL]]), slice={[0:2], [0:4]}
       )");
 }
@@ -2597,21 +2867,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -2641,21 +2911,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
@@ -2685,21 +2955,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} slice([[MATMUL]]), slice={[0:2], [0:2]}
       )");
 }
@@ -2731,21 +3001,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -2776,21 +3046,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,4]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -2822,21 +3092,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -2877,21 +3147,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
@@ -2925,21 +3195,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{0,1} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:       \"alpha_real\":1
-; CHECK-DAG:       \"alpha_imag\":0
-; CHECK-DAG:       \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:       "alpha_real":1
+; CHECK-DAG:       "alpha_imag":0
+; CHECK-DAG:       "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
       )");
 }
@@ -2975,21 +3245,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P3:%[^ ]+]] = f32[2,4]{1,0} parameter(3)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P3]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -3031,21 +3301,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"GELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"GELU"
+; CHECK:           }
       )");
 }
 
@@ -3128,21 +3398,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_GELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_GELU"
+; CHECK:           }
       )");
 }
 
@@ -3185,21 +3455,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"GELU_AUX\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"GELU_AUX"
+; CHECK:           }
       )");
 }
 
@@ -3246,21 +3516,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}) custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_GELU_AUX\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_GELU_AUX"
+; CHECK:           }
       )");
 }
 
@@ -3290,21 +3560,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
@@ -3334,21 +3604,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
       )");
 }
 
@@ -3383,21 +3653,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 ; CHECK-NEXT:    [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
@@ -3427,21 +3697,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -3475,21 +3745,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
@@ -3521,21 +3791,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -3568,21 +3838,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -3620,21 +3890,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         "beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -3664,21 +3934,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
@@ -3740,21 +4010,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
       )");
 }
 
@@ -3790,21 +4060,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
 ; CHECK-NEXT:    [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
@@ -3834,21 +4104,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
@@ -3883,21 +4153,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
@@ -3931,21 +4201,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -3984,21 +4254,21 @@ ENTRY test {
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
 }
@@ -4031,21 +4301,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -4080,21 +4350,21 @@ ENTRY test {
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
@@ -4178,6 +4448,249 @@ ENTRY main {
       )");
 }
 
+// Test gemm matrix bias add fusion with mix type and out of place update(C !=
+// D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlace) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, z)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type and out of place
+// update(C != D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlaceBatched) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[4,16,32] parameter(0)
+  y = <<ABType>>[4,32,16] parameter(1)
+  z = <<DType>>[4,16,16] parameter(2)
+  dot_a = <<ABType>>[4,16,16] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  convert = <<DType>>[4,16,16] convert(dot_a)
+  ROOT out = <<DType>>[4,16,16] add(convert, z)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[4,16,32], y: <<ABType>>[4,32,16], z: <<DType>>[4,16,16]) -> <<DType>>[4,16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[4,16,32]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[4,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test gemm matrix bias add fusion with mix type and in place update(C = D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeInPlace) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = <<DType>>[16,16] negate(z)
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[16,16]{1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test gemm matrix bias add fusion with mix type that is not supported
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  z = f64[16,16] parameter(2)
+  dot_a = bf16[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = f64[16,16] negate(z)
+  convert = f64[16,16] convert(dot_a)
+  ROOT out = f64[16,16] add(convert, bias)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f64[16,16], [[DUMMY1:[^ ]+]]: bf16[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f64[16,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[16,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = f64[16,16]{1,0} negate([[P0]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} add([[C1]], [[N1]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: bf16[16,32], y: bf16[32,16], z: f64[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[16,16]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} fusion([[P2]], [[DOT]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+      )");
+}
+
 class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -4233,6 +4746,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // Test with types unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
   // FP8 requires one of the operands to be F8E4M3FN.
   const char* hlo_text = R"(
@@ -4254,27 +4770,30 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 ; CHECK-NEXT:    [[P1_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P1]])
 ; CHECK-NEXT:    [[DOT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e5m2[16,16]{1,0} convert([[DOT]])
       )",
                                                 replacements_));
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4295,30 +4814,31 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[C1]], [[C1]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4347,32 +4867,33 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4405,35 +4926,34 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[31,17]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
 ; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[32,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]])
-; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C2_BCAST:%[^ ]+]] = f32[13,31]{1,0} broadcast([[C2]]), dimensions={}
-; CHECK-NEXT:    [[C3:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C2_BCAST_PADDED:%[^ ]+]] = f32[16,32]{1,0} pad([[C2_BCAST]], [[C3]]), padding=0_3x0_1
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C4:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,32]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[C2_BCAST_PADDED]], [[P2]], [[P3]], /*index=5*/[[C4]], [[C4]]),
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,32]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[P2]], [[P3]], [[C4]], /*index=5*/[[C4]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK-NEXT: ROOT [[OUT:%[^ ]+]] = f32[13,31]{1,0} slice([[DOT]]), slice={[0:13], [0:31]}
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4468,6 +4988,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4507,32 +5030,33 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
 ; CHECK-NEXT:    [[P0_U3:%[^ ]+]] = f8e4m3fn[16,32]{1,0} reshape([[P0_U2]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C1_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_U3]], [[P1_TRANSPOSE]], [[C1_BCAST]], [[P2]], [[P3]], /*index=5*/[[C2]], [[C2]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_U3]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C2]], /*index=5*/[[C2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4561,32 +5085,33 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[10,16,16]{2,1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4619,32 +5144,33 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":3
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":3
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4677,32 +5203,33 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4733,8 +5260,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4772,25 +5299,94 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[14,31] parameter(0)
+      y = f8e4m3fn[31,14] parameter(1)
+      b = f32[14,14] parameter(2)
+      x_f32 = f32[14,31] convert(x)
+      y_f32 = f32[31,14] convert(y)
+      x_scale = f32[] parameter(3)
+      y_scale = f32[] parameter(4)
+      x_scale_bcast = f32[14,31] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[31,14] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[14,31] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[31,14] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[14,14] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = add(dot_a, b)
+          }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[14,31], y: f8e4m3fn[31,14], b: f32[14,14], x_scale: f32[], y_scale: f32[]) -> f32[14,14] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[14,31]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f8e4m3fn[] constant(0)
+; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_1
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[31,14]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[14,31]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
+; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[14,14]{1,0} parameter(2)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[P2_PADDED:%[^ ]+]] = f32[16,16]{1,0} pad([[P2]], [[C2]]), padding=0_2x0_2
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[C3:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[P2_PADDED]], [[P3]], [[P4]], /*index=5*/[[C3]], [[C3]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+; CHECK-NEXT: ROOT [[OUT:%[^ ]+]] = f32[14,14]{1,0} slice([[DOT]]), slice={[0:14], [0:14]}
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4828,35 +5424,36 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4899,6 +5496,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4937,38 +5537,36 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5016,25 +5614,28 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 ; CHECK:         [[P4:%[^ ]+]] = f16[] parameter(5)
 ; CHECK:       ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5076,8 +5677,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
 ; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
@@ -5088,27 +5687,30 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[DV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
 ; CHECK-NEXT:    [[CV2:%[^ ]+]] = f32[] convert([[DV]])
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[CV]], [[CV1]], /*index=5*/[[C]], [[CV2]], [[VB]]),
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[C]], /*index=5*/[[CV2]], [[VB]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[] 
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5142,35 +5744,36 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[BC:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f32[16]{0} parameter(2)
 ; CHECK-NEXT:    [[VBC:%[^ ]+]] = bf16[16]{0} convert([[VB]])
-; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[P2]], [[P3]], /*index=5*/[[C]], [[C]], [[VBC]]),
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C]], /*index=5*/[[C]], [[VBC]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[] 
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDVectorBiasThenReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5204,39 +5807,37 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
 ; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
 ; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
 ; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[CV]], [[CV1]], /*index=5*/[[C]], [[C]], [[VB]]),
+; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[C]], /*index=5*/[[C]], [[VB]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"BIAS_RELU"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDMatrixBiasThenVectorBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5277,21 +5878,21 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK:         [[GEMMOUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[MB]], [[CV0]], [[CV1]], /*index=5*/[[C1]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":1
-; CHECK-DAG:         \"dot_dimension_numbers\":{ 
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{ 
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[] 
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
 ; CHECK:         [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
 ; CHECK:         [[VBC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[VB]]), dimensions={1}
 ; CHECK:         ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} add([[GEMMOUT]], [[VBC]])
@@ -5299,6 +5900,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5346,36 +5950,37 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDWithDAmaxF8WithF16Intermediates) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // This is the same as ScaledABScaledDWithDAmaxF8, but uses F16 intermediate
   // values instead of F32 intermediate values.
   const char* hlo_text = R"(
@@ -5425,8 +6030,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(2)
 ; CHECK-NEXT:    [[P2_CONVERT:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(3)
@@ -5436,28 +6039,31 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f16[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
 ; CHECK-NEXT:    [[P4_INV_CONVERT:%[^ ]+]] = f32[] convert([[P4_INV]])
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2_CONVERT]], [[P3_CONVERT]], /*index=5*/[[C1]], [[P4_INV_CONVERT]]),
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_CONVERT]], [[P3_CONVERT]], [[C1]], /*index=5*/[[P4_INV_CONVERT]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDReluActivationWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5507,35 +6113,36 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"RELU\"
-; CHECK:           }"
+; CHECK-DAG:         "epilogue":"RELU"
+; CHECK:           }
       )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5603,6 +6210,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDF8ParameterizedBatched) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
@@ -5668,6 +6278,9 @@ ENTRY f {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5686,8 +6299,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
           }
 
 )";
-  bool tf32_state_ = tsl::tensor_float_32_execution_enabled();
-  tsl::enable_tensor_float_32_execution(true);
 
   CheckFp8IfOnHopper(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
@@ -5696,7 +6307,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
                             R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
-  tsl::enable_tensor_float_32_execution(tf32_state_);
 }
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
@@ -5720,7 +6330,7 @@ ENTRY main.10 {
 })";
 
   MatchOptimizedHlo(hlo, R"(
-// CHECK: \"beta\":0
+// CHECK: "beta":0
   )");
 }
 

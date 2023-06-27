@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 

@@ -24,11 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/tsl/platform/errors.h"
-
-#ifdef PLATFORM_GOOGLE
-#include "file/logging/log_lines.h"
-#endif
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -51,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/validate_utils.h"
@@ -84,6 +80,12 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+
+// To reduce memory usage, defaults to restricting workers from processing more
+// than two snapshots at a time across all ongoing snapshots. Allowing two
+// concurrent streams, rather than one, helps minimize a worker's inactivity
+// between completing a stream and getting assigned a new one.
+constexpr int kDefaultWorkerMaxConcurrentSnapshots = 2;
 
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
@@ -164,6 +166,10 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
     new_config.set_worker_timeout_ms(
         absl::ToInt64Milliseconds(kDefaultWorkerTimeout));
   }
+  if (new_config.worker_max_concurrent_snapshots() == 0) {
+    new_config.set_worker_max_concurrent_snapshots(
+        kDefaultWorkerMaxConcurrentSnapshots);
+  }
   return new_config;
 }
 }  // namespace
@@ -172,6 +178,7 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const DispatcherConfig& config)
     : config_(ApplyConfigDefaults(config)),
       env_(Env::Default()),
+      snapshot_assignment_manager_(config_.worker_max_concurrent_snapshots()),
       state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = std::make_unique<MemoryDatasetStore>();
@@ -246,8 +253,9 @@ Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
 
   for (const auto& path : state_.ListSnapshotPaths()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                        SnapshotManager::Resume(path, env_));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SnapshotManager> snapshot_manager,
+        SnapshotManager::Resume(path, snapshot_assignment_manager_, env_));
     snapshots_.insert({path, std::move(snapshot_manager)});
   }
 
@@ -1048,14 +1056,14 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-
   if (snapshots_.contains(request->path())) {
-    return errors::InvalidArgument("a snapshot at ", request->path(),
-                                   " is already started or completed");
+    return errors::AlreadyExists("tf.data snapshot at ", request->path(),
+                                 " is already started or completed");
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                      SnapshotManager::Start(*request, env_));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(*request, snapshot_assignment_manager_, env_));
   snapshots_.insert({request->path(), std::move(snapshot_manager)});
 
   Update update;
@@ -1239,15 +1247,9 @@ Status DataServiceDispatcherImpl::GcOldIterations()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Iteration>> iterations =
       state_.ListIterations();
-  int64_t now = env_->NowMicros();
+  int64_t now_us = env_->NowMicros();
   for (const auto& iteration : iterations) {
-    if (iteration->job->processing_mode.sharding_policy() ==
-            ProcessingModeDef::DYNAMIC ||  // To preserve visitation guarantees.
-        iteration->finished ||
-        iteration->num_clients > 0 ||
-        iteration->last_client_released_micros < 0 ||
-        now < iteration->last_client_released_micros +
-                  (config_.job_gc_timeout_ms() * 1000)) {
+    if (!ShouldGcIteration(*iteration, now_us)) {
       continue;
     }
     Update update;
@@ -1257,6 +1259,21 @@ Status DataServiceDispatcherImpl::GcOldIterations()
     LOG(INFO) << "Garbage collected iteration " << iteration->DebugString();
   }
   return OkStatus();
+}
+
+bool DataServiceDispatcherImpl::ShouldGcIteration(const Iteration& iteration,
+                                                  int64_t now_us) const {
+  if (iteration.job->processing_mode.sharding_policy() ==
+          ProcessingModeDef::DYNAMIC &&
+      !config_.gc_dynamic_sharding_jobs()) {
+    // Jobs with dynamic sharding have visitation guarantees that are violated
+    // if they are garbage collected and later recreated.
+    return false;
+  }
+  return !(iteration.finished || iteration.num_clients > 0 ||
+           iteration.last_client_released_micros < 0 ||
+           now_us < iteration.last_client_released_micros +
+                        (config_.job_gc_timeout_ms() * 1000));
 }
 
 Status DataServiceDispatcherImpl::GetDatasetDef(

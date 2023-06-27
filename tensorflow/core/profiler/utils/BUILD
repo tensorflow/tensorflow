@@ -67,12 +67,6 @@ cc_library(
 )
 
 cc_library(
-    name = "format_utils",
-    hdrs = ["format_utils.h"],
-    deps = ["//tensorflow/tsl/profiler/utils:format_utils"],
-)
-
-cc_library(
     name = "html_utils",
     hdrs = ["html_utils.h"],
     deps = [
@@ -87,9 +81,9 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":math_utils",
-        ":tf_op_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -114,22 +108,13 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":op_metrics_db_utils",
-        ":tf_op_utils",
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "tf_op_utils",
-    hdrs = ["tf_op_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -137,10 +122,6 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/tsl/profiler/utils:__pkg__",
-    ],
     deps = ["//tensorflow/tsl/profiler/utils:timespan"],
 )
 
@@ -234,30 +215,11 @@ cc_library(
 )
 
 cc_library(
-    name = "group_events",
-    hdrs = ["group_events.h"],
-    copts = tf_profiler_copts(),
-    visibility = [":friends"],
-    deps = [
-        ":xplane_visitor",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:group_events",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
     name = "cost_utils",
     srcs = ["cost_utils.cc"],
     hdrs = ["cost_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
-        ":tf_op_utils",
         ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:framework",
@@ -267,6 +229,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:op_context",
         "//tensorflow/core/grappler/costs:op_level_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -278,28 +241,24 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/tsl/profiler/utils:__pkg__",
-    ],
     deps = [
         ":gpu_event_stats",
-        ":group_events",
         ":hlo_module_map",
         ":hlo_proto_map",
         ":math_utils",
-        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":timespan",
-        ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/utils:group_events",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -313,7 +272,6 @@ tf_cc_test(
     srcs = ["derived_timeline_test.cc"],
     deps = [
         ":derived_timeline",
-        ":group_events",
         ":tf_xplane_visitor",
         ":trace_utils",
         ":xplane_builder",
@@ -324,6 +282,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:group_events",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -399,28 +358,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "file_system_utils",
-    hdrs = ["file_system_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/utils:file_system_utils",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "parse_annotation",
-    hdrs = ["parse_annotation.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:friends"],
-    deps = [
-        "//tensorflow/tsl/profiler/utils:parse_annotation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "device_caps_utils",
     srcs = ["device_caps_utils.cc"],
     hdrs = ["device_caps_utils.h"],
@@ -451,15 +388,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_xplane_utils",
-    hdrs = ["tpu_xplane_utils.h"],
-    deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
-    ],
-)
-
-cc_library(
     name = "hlo_proto_map",
     srcs = ["hlo_proto_map.cc"],
     hdrs = ["hlo_proto_map.h"],
@@ -470,8 +398,8 @@ cc_library(
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -512,4 +440,10 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "hlo_module_utils",
+    hdrs = ["hlo_module_utils.h"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
 )

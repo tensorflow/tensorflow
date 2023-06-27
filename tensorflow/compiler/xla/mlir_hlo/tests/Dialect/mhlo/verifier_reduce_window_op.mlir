@@ -450,6 +450,7 @@ func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         tensor<2x2xf32> {
+  // expected-error @+2 {{'mhlo.reduce_window' op failed to infer returned types}}
   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>'}}
   %0 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
@@ -472,6 +473,7 @@ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<2x2xf32>, tensor<2x3xi32>) {
+  // expected-error @+2 {{'mhlo.reduce_window' op failed to infer returned types}}
   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>', 'tensor<2x3xi32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
@@ -494,6 +496,7 @@ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<2x2xi32>, tensor<2x2xi32>) {
+  // expected-error @+2 {{'mhlo.reduce_window' op failed to infer returned types}}
   // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xi32>', 'tensor<2x2xi32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,

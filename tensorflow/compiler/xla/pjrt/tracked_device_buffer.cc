@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"

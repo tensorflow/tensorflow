@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"

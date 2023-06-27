@@ -34,6 +34,7 @@ package(
         "//tensorflow/tsl/lib:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
+        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -1258,6 +1259,7 @@ cc_library(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1351,6 +1353,7 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
@@ -1385,7 +1388,7 @@ cc_library(
     visibility = ["//tensorflow/c:__pkg__"],
 )
 
-# All framewrok protos are self-contained, i.e. they only import other
+# All framework protos are self-contained, i.e. they only import other
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.
 
@@ -1878,7 +1881,6 @@ tf_cc_fuzz_test(
     srcs = ["tensor_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":tensor_testutil",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",

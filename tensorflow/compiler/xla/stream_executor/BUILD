@@ -43,6 +43,7 @@ cc_library(
         "kernel_cache_config.h",
         "kernel_spec.h",
         "launch_dim.h",
+        "numeric_options.h",
         "module_spec.h",
         "multi_platform_manager.h",
         "platform.h",
@@ -55,7 +56,6 @@ cc_library(
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     visibility = ["//visibility:public"],
@@ -260,6 +260,11 @@ cc_library(
 )
 
 cc_library(
+    name = "numeric_options",
+    hdrs = ["numeric_options.h"],
+)
+
+cc_library(
     name = "device_mem_allocator",
     hdrs = [
         "device_host_allocator.h",
@@ -442,7 +447,6 @@ tsl_gpu_library(
         ":stream_executor_internal",
         ":temporary_device_memory",
         ":temporary_memory_manager",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -489,7 +493,6 @@ cc_library(
         "plugin_registry.h",
         "stream_executor.h",
         "stream_executor_internal.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -530,14 +533,12 @@ cc_library(
     srcs = [
         "device_description.h",
         "kernel_cache_config.h",
-        "timer.cc",
     ],
     hdrs = [
         "blas.h",
         "kernel.h",
         "stream.h",
         "stream_executor.h",
-        "timer.h",
     ],
     deps = [
         ":data_type",
@@ -674,6 +675,7 @@ cc_library(
         ":device_description_proto_cc",
         ":device_memory",
         ":dnn_proto_cc",
+        ":numeric_options",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/lib/strings:proto_serialization",
@@ -758,7 +760,6 @@ cc_library(
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -783,7 +784,6 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_pimpl",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
@@ -890,7 +890,6 @@ cc_library(
         ":scratch_allocator",
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",

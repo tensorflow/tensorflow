@@ -26,10 +26,10 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.stateless_random_ops import Algorithm
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -68,8 +68,8 @@ PHILOX_STATE_SIZE = PHILOX_COUNTER_SIZE + PHILOX_KEY_SIZE
 THREEFRY_STATE_SIZE = THREEFRY_COUNTER_SIZE + THREEFRY_KEY_SIZE
 
 
-RNG_ALG_PHILOX = Algorithm.PHILOX.value
-RNG_ALG_THREEFRY = Algorithm.THREEFRY.value
+RNG_ALG_PHILOX = random_ops_util.Algorithm.PHILOX.value
+RNG_ALG_THREEFRY = random_ops_util.Algorithm.THREEFRY.value
 
 
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
@@ -137,11 +137,11 @@ def _make_1d_state(state_size, seed):
 
 
 def _get_counter_size(alg):
-  if alg == Algorithm.PHILOX.value:
+  if alg == random_ops_util.Algorithm.PHILOX.value:
     return PHILOX_COUNTER_SIZE
-  elif alg == Algorithm.THREEFRY.value:
+  elif alg == random_ops_util.Algorithm.THREEFRY.value:
     return THREEFRY_COUNTER_SIZE
-  elif alg == Algorithm.AUTO_SELECT.value:
+  elif alg == random_ops_util.Algorithm.AUTO_SELECT.value:
     # For AUTO_SELECT, we'll manage the counter as if it's for Philox.
     return PHILOX_COUNTER_SIZE
   else:
@@ -149,11 +149,11 @@ def _get_counter_size(alg):
 
 
 def _get_state_size(alg):
-  if alg == Algorithm.PHILOX.value:
+  if alg == random_ops_util.Algorithm.PHILOX.value:
     return PHILOX_STATE_SIZE
-  elif alg == Algorithm.THREEFRY.value:
+  elif alg == random_ops_util.Algorithm.THREEFRY.value:
     return THREEFRY_STATE_SIZE
-  elif alg == Algorithm.AUTO_SELECT.value:
+  elif alg == random_ops_util.Algorithm.AUTO_SELECT.value:
     # For AUTO_SELECT, we'll manage the state as if it's for Philox.
     return PHILOX_STATE_SIZE
   else:
@@ -190,7 +190,7 @@ def create_rng_state(seed, alg):
   Returns:
     a 1-D numpy array whose size depends on the algorithm.
   """
-  alg = stateless_random_ops.convert_alg_to_int(alg)
+  alg = random_ops_util.convert_alg_to_int(alg)
   return _make_state_from_seed(seed, alg)
 
 
@@ -365,7 +365,7 @@ class Generator(autotrackable.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     state = create_rng_state(seed, alg)
     return cls(state=state, alg=alg)
 
@@ -388,7 +388,7 @@ class Generator(autotrackable.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     state = non_deterministic_ints(shape=[_get_state_size(alg)],
                                    dtype=SEED_TYPE)
     return cls(state=state, alg=alg)
@@ -412,7 +412,7 @@ class Generator(autotrackable.AutoTrackable):
     """
     counter = _convert_to_state_tensor(counter)
     key = _convert_to_state_tensor(key)
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
     key.shape.assert_is_compatible_with([])
     key = array_ops.reshape(key, [1])
@@ -457,7 +457,7 @@ class Generator(autotrackable.AutoTrackable):
       self._alg = copy_from.algorithm
     else:
       assert alg is not None and state is not None
-      alg = stateless_random_ops.convert_alg_to_int(alg)
+      alg = random_ops_util.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
         self._state_var = state
@@ -571,7 +571,7 @@ class Generator(autotrackable.AutoTrackable):
         counter-based; otherwise it raises a ValueError.
     """
     alg = self.algorithm
-    if alg in (a.value for a in Algorithm):
+    if alg in (a.value for a in random_ops_util.Algorithm):
       return self._state_var[-1]
     else:
       raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
@@ -905,7 +905,7 @@ class Generator(autotrackable.AutoTrackable):
       A tensor of shape [2, count] and dtype int64.
     """
     alg = self.algorithm
-    if alg in (a.value for a in Algorithm):
+    if alg in (a.value for a in random_ops_util.Algorithm):
       keys = self._make_int64_keys(shape=[count])
       # The two seeds for stateless random ops don't have individual semantics
       # and are scrambled together, so setting one to zero is fine.
@@ -957,7 +957,7 @@ class Generator(autotrackable.AutoTrackable):
       return [0] * (_get_state_size(alg) - 1) + [key]
 
     alg = self.algorithm
-    if alg in (a.value for a in Algorithm):
+    if alg in (a.value for a in random_ops_util.Algorithm):
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
               for key in array_ops_stack.unstack(keys, num=count)]

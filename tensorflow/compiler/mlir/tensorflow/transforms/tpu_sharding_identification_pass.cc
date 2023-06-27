@@ -108,7 +108,7 @@ std::optional<StringRef> GetXlaShardingFromOperator(mlir::Operation* op) {
 }
 
 // Returns the sharding string from a op-sharding variant if it is available.
-llvm::Optional<StringRef> GetShardingStringFromVariant(
+std::optional<StringRef> GetShardingStringFromVariant(
     const OpShardingVariant& sharding_or_op) {
   return std::visit(
       [](auto&& sharding_or_op) -> std::optional<StringRef> {
@@ -123,7 +123,7 @@ llvm::Optional<StringRef> GetShardingStringFromVariant(
 }
 
 // Returns the sharding from a op-sharding variant if it is available and valid.
-llvm::Optional<xla::OpSharding> GetShardingFromVariant(
+std::optional<xla::OpSharding> GetShardingFromVariant(
     const OpShardingVariant& sharding_or_op) {
   xla::OpSharding sharding;
   const auto sharding_string = GetShardingStringFromVariant(sharding_or_op);

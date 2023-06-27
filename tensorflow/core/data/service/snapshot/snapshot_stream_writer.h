@@ -21,8 +21,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
@@ -39,6 +41,7 @@ namespace tensorflow {
 namespace data {
 
 constexpr int64_t kDefaultMaxChunkSizeBytes = 2 * (size_t{1} << 30);  // 2GB
+constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(20);
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter
@@ -57,6 +60,9 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  // How often should checkpoints be written.
+  absl::Duration checkpoint_interval = kDefaultCheckpointInterval;
 
   // If true, keep temporary files (e.g., checkpoints) after completing the
   // snapshot. Used only for unit testing.
@@ -156,6 +162,16 @@ class SnapshotStreamWriter {
   // Commits the current chunk.
   Status CommitChunk();
 
+  // Commits a chunk and deletes previously committed chunks. For example, when
+  // it commits `chunk_0_0_x`, it will deletes `chunk_0_0_y`.
+  Status ReplaceChunk(const std::string& uncommitted_chunk_filename,
+                      const std::string& committed_chunk_filename);
+  // Same as the above, except the prior committed chunks are passed in to avoid
+  // repeated enumeration of the chunks directory.
+  Status ReplaceChunk(const std::vector<std::string>& prior_chunks,
+                      const std::string& uncommitted_chunk_filename,
+                      const std::string& committed_chunk_filename);
+
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
   std::string GetCommittedChunkFilePath() const;
@@ -217,6 +233,8 @@ class SnapshotStreamWriter {
   int64_t chunk_size_bytes_ = 0;
   // Number of elements in current chunk.
   int64_t chunk_num_elements_ = 0;
+  // Timestamp when the last checkpoint is taken.
+  absl::Time last_checkpoint_time_ = absl::Now();
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

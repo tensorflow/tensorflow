@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_events_writer.h"
 
+#include <algorithm>
+#include <atomic>
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"

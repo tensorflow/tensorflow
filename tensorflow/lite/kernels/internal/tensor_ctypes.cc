@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
+#include <vector>
+
 namespace tflite {
 
 RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
@@ -26,6 +28,10 @@ RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
   const int dims_size = dims->size;
   const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
   return RuntimeShape(dims_size, dims_data);
+}
+
+RuntimeShape GetTensorShape(std::vector<int32_t> data) {
+  return RuntimeShape(data.size(), data.data());
 }
 
 }  // namespace tflite

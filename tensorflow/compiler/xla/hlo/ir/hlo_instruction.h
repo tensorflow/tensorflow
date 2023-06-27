@@ -553,6 +553,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
                                                     int64_t iota_dimension);
 
+  // Creates a Top-K instruction.
+  static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
+                                                    HloInstruction* input,
+                                                    int64_t k,
+                                                    HloComputation* compare);
+
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64_t index);
@@ -681,8 +687,8 @@ class HloInstruction {
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
   static std::unique_ptr<HloInstruction> CreateReducePrecision(
-      const Shape& shape, HloInstruction* operand, const int exponent_bits,
-      const int mantissa_bits);
+      const Shape& shape, HloInstruction* operand, int exponent_bits,
+      int mantissa_bits);
 
   // Creates an all-gather op, which concats the operands of all participants
   // along all_gather_dimension. The replica_groups, channel_id, and
@@ -1414,7 +1420,11 @@ class HloInstruction {
   //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  Status ReplaceAllUsesWith(HloInstruction* new_producer);
+  //
+  // trigger is a string used in the error message if the new and the
+  // current instruction don't have a compatible shape.
+  Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                            absl::string_view trigger = "");
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
@@ -1453,6 +1463,9 @@ class HloInstruction {
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  Status Visit(ConstDfsHloVisitor* visitor) const {
+    return const_cast<HloInstruction*>(this)->Visit(visitor);
+  }
 
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the

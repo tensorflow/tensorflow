@@ -92,28 +92,6 @@ class LegalizeTFPass : public impl::LegalizeTFPassBase<LegalizeTFPass> {
   void runOnOperation() override;
 };
 
-// Returns true if all tensor value in `values` has static shape and same shape.
-bool HasSameStaticShapes(Operation* op) {
-  auto values = op->getOperands();
-  int index = 0;
-  ArrayRef<int64_t> shape;
-  for (Value value : values) {
-    auto shaped_type = value.getType().dyn_cast<ShapedType>();
-    if (!shaped_type || !shaped_type.hasStaticShape()) {
-      return false;
-    }
-    if (index == 0) {
-      shape = shaped_type.getShape();
-    } else {
-      if (shape != shaped_type.getShape()) {
-        return false;
-      }
-    }
-    ++index;
-  }
-  return true;
-}
-
 // Util that casts 'val' to Int32 by adding a cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   IntegerType new_ele_type = rewriter.getIntegerType(32);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/tsl/platform/logging.h"
@@ -107,8 +108,9 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
       return Unimplemented("Bad type for device math call: %s",
                            PrimitiveType_Name(output_type));
   }
-  const std::string& munged_callee =
-      ObtainDeviceFunctionName(funcid, output_type, b());
+  const std::string& munged_callee = ObtainDeviceFunctionName(
+      funcid, output_type,
+      llvm::Triple(b()->GetInsertBlock()->getModule()->getTargetTriple()));
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
                             .value();

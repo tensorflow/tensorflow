@@ -18,6 +18,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -181,8 +182,6 @@ class ExtractImagePatchesGradTest(test.TestCase, parameterized.TestCase):
     self._VariableShapeGradient([None, None, None, None])
 
   def testJitCompile(self):
-    import tensorflow as tf
-
     with test_util.AbstractGradientTape(use_tape=True) as tape:
       shape = (4, 512, 512, 1)
       ksize = 5
@@ -193,7 +192,7 @@ class ExtractImagePatchesGradTest(test.TestCase, parameterized.TestCase):
       # Github issues: #59058, #59061
       # tf.image.extract_image_patches() does not support backward pass
       # when compiled with XLA.
-      extract_image_patches_jit = tf.function(
+      extract_image_patches_jit = polymorphic_function.function(
           array_ops.extract_image_patches, jit_compile=True
       )
       patches = extract_image_patches_jit(

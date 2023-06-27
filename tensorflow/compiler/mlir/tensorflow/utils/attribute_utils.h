@@ -35,6 +35,10 @@ namespace TF {
 // compilation device type.
 inline constexpr llvm::StringRef kCompileDeviceTypeAttr =
     "_xla_compile_device_type";
+// The attribute value speicifes the preferred outlined function name in
+// ClusterOutliningPass.
+inline constexpr llvm::StringRef kClusterOutlinedFunctionNameAttr =
+    "_cluster_outlined_function_name";
 // Marks a node for replication. The attribute value indicates the replication
 // metadata op.
 inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -165,24 +167,27 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
+  ::tensorflow::GraphdefToMlirOptions graphdef_conversion_options{
+      std::string(debug_info_file),
+      /*xla_compile_device_type=*/"",
+      /*prune_unused_nodes=*/specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false,
+      specs.upgrade_legacy,
+      /*enable_shape_inference=*/false,
+      /*unconditionally_use_set_output_shapes=*/true,
+      /*enable_soft_placement=*/false};
+
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-        input_arrays, input_dtypes, input_shapes, output_arrays,
-        control_output_arrays, specs.prune_unused_nodes,
-        /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, specs.upgrade_legacy,
-        /*enable_shape_inference=*/false,
-        /*unconditionally_use_set_output_shapes=*/true, context);
+        file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+        output_arrays, control_output_arrays, graphdef_conversion_options,
+        context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-      input_arrays, input_dtypes, input_shapes, output_arrays,
-      control_output_arrays, specs.prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, specs.upgrade_legacy,
-      /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/true, context);
+      file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, graphdef_conversion_options,
+      context);
 }
 
 // Applying post-training dynamic range quantization from the old TOCO quantizer
@@ -276,7 +281,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  if (export_to_mlir) {
+  // for now always output mlir
+  if (/*export_to_mlir*/ true) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return statusHandler.ConsumeStatus();
@@ -298,6 +304,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::optional<tensorflow::Session*> session, std::string* result) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
 
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(
@@ -321,12 +331,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::PassManager pass_manager(module.getContext());
   mlir::registerPassManagerCLOptions();
   if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
-    return tensorflow::FromAbslStatus(
-        absl::UnknownError("failed to apply MLIR pass manager CL options"));
+    return absl::UnknownError("failed to apply MLIR pass manager CL options");
   }
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
+  InitPassManager(pass_manager, toco_flags.debug_options());
 
   if (pass_config.enable_stablehlo_conversion) {
     // return to avoid adding TFL converter path

@@ -1,4 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
     name = "friends",
@@ -18,16 +19,66 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
         ":internal",
     ],
-    licenses = ["notice"],
 )
 
 exports_files([
     "BUILD",
 ])
+
+# TODO(hyeontaek): Move this target out of pjrt_ifrt.
+cc_library(
+    name = "xla_ifrt",
+    srcs = [
+        "xla_compiler.cc",
+    ],
+    hdrs = [
+        "xla_compiler.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/python/ifrt",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "xla_host_callback_proto",
+    srcs = ["xla_host_callback.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
+)
+
+# TODO(hyeontaek): Move this target out of pjrt_ifrt.
+cc_library(
+    name = "xla_executable_impl_test_lib",
+    testonly = 1,
+    srcs = ["xla_executable_impl_test_lib.cc"],
+    deps = [
+        ":xla_ifrt",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/python/ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:test_util",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+# TODO(hyeontaek): Move this target out of pjrt_ifrt.
+xla_cc_test(
+    name = "xla_executable_test_no_impl",
+    srcs = [],
+    deps = [
+        ":xla_executable_impl_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
 
 cc_library(
     name = "pjrt_ifrt",
@@ -36,6 +87,7 @@ cc_library(
         "pjrt_client.cc",
         "pjrt_compiler.cc",
         "pjrt_executable.cc",
+        "pjrt_host_callback.cc",
         "pjrt_tuple.cc",
     ],
     hdrs = [
@@ -43,17 +95,20 @@ cc_library(
         "pjrt_client.h",
         "pjrt_compiler.h",
         "pjrt_executable.h",
+        "pjrt_host_callback.h",
         "pjrt_tuple.h",
     ],
     deps = [
+        ":xla_ifrt",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
@@ -88,6 +143,8 @@ xla_cc_test(
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:array_impl_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -109,7 +166,9 @@ xla_cc_test(
     srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
     deps = [
         ":tfrt_cpu_client_test_lib",
-        "//tensorflow/compiler/xla/python/ifrt:executable_impl_test_lib",
+        ":xla_executable_impl_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -242,10 +242,10 @@ py_strict_test(
         ":asserts",
         ":functions",
         ":return_statements",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -256,9 +256,9 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":break_statements",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -270,8 +270,8 @@ py_strict_test(
     deps = [
         ":call_trees",
         ":functions",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -282,8 +282,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":conditional_expressions",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -294,9 +294,9 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":continue_statements",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -309,7 +309,6 @@ py_strict_test(
         ":break_statements",
         ":continue_statements",
         ":control_flow",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -317,6 +316,7 @@ py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -329,10 +329,10 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":directives",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -343,12 +343,12 @@ py_strict_test(
     deps = [
         ":functions",
         ":return_statements",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -359,8 +359,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":list_comprehensions",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -372,14 +372,14 @@ py_strict_test(
     deps = [
         ":directives",
         ":lists",
-        "//tensorflow/python:array_ops_stack",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -390,10 +390,10 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":logical_expressions",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -405,9 +405,9 @@ py_strict_test(
     deps = [
         ":functions",
         ":return_statements",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -419,12 +419,12 @@ py_strict_test(
     deps = [
         ":directives",
         ":slices",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:list_ops",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -435,7 +435,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":variables",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -1,4 +1,4 @@
-# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -614,7 +614,7 @@ class TFLiteConverterBase:
     self._saved_model_exported_names = []
     self._tflite_metrics = metrics.TFLiteConverterMetrics()
     self._collected_converter_params = {}
-    self._experimental_disable_batchmatmul_unfold = False
+    self.unfold_batchmatmul = False
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
@@ -634,6 +634,7 @@ class TFLiteConverterBase:
     self._experimental_enable_dynamic_update_slice = False
     self._experimental_preserve_assert_op = False
     self._experimental_guarantee_all_funcs_one_use = False
+    self._experimental_enable_hlo_to_tf_conversion = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
@@ -647,6 +648,13 @@ class TFLiteConverterBase:
 
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
+    self._experimental_use_buffer_offset = False
+
+    # Debug parameters
+    self.mlir_dump_dir = None
+    self.mlir_dump_pass_regex = None
+    self.mlir_dump_func_regex = None
+    self.mlir_enable_timing = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -754,7 +762,7 @@ class TFLiteConverterBase:
         "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
-        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
+        "unfold_batchmatmul": self.unfold_batchmatmul,
         "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
         "unfold_large_splat_constant": (
             self._experimental_unfold_large_splat_constant
@@ -776,6 +784,14 @@ class TFLiteConverterBase:
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
         "quantization_options": self._experimental_quantization_options,
+        "enable_hlo_to_tf_conversion": (
+            self._experimental_enable_hlo_to_tf_conversion
+        ),
+        "mlir_dump_dir": self.mlir_dump_dir,
+        "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
+        "mlir_dump_func_regex": self.mlir_dump_func_regex,
+        "mlir_enable_timing": self.mlir_enable_timing,
+        "use_buffer_offset": self._experimental_use_buffer_offset,
     }
 
     if self.saved_model_dir:
@@ -785,6 +801,14 @@ class TFLiteConverterBase:
           "saved_model_tags": self._saved_model_tags,
           "saved_model_exported_names": self._saved_model_exported_names,
       })
+
+    if self._experimental_quantization_options:
+      logging.warning(
+          "Configs from custom methods in experimental_quantization_options"
+          " may not produce a valid tflite model. Note that currently this"
+          " option only supports StableHLO path. Setting this option in TFLite"
+          " path will be a no-op."
+      )
 
     return args
 
@@ -1013,15 +1037,20 @@ class TFLiteConverterBase:
     if self._sparsify_model():
       model = _mlir_sparsify(model)
 
-    try:
-      model = _deduplicate_readonly_buffers(model)
-    except Exception:  # pylint: disable=broad-except
-      # Skip buffer deduplication when flatbuffer library is not ready to be
-      # utilized.
-      logging.warning(
-          "Buffer deduplication procedure will be skipped when flatbuffer "
-          "library is not properly loaded"
-      )
+    if not self._experimental_use_buffer_offset:
+      # TODO(b/287476027): move this logic into c++
+      try:
+        model_object = flatbuffer_utils.convert_bytearray_to_object(model)
+        if _check_model_use_buffer_offset(model_object):
+          return model
+        model = _deduplicate_readonly_buffers(model)
+      except Exception:  # pylint: disable=broad-except
+        # Skip buffer deduplication when flatbuffer library is not ready to be
+        # utilized.
+        logging.warning(
+            "Buffer deduplication procedure will be skipped when flatbuffer "
+            "library is not properly loaded"
+        )
 
     return model
 
@@ -1045,15 +1074,38 @@ class TFLiteConverterBase:
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
-    if self.exclude_conversion_metadata:
+    if self.exclude_conversion_metadata or self._experimental_use_buffer_offset:
       return result
+    # TODO(b/286886803): add support for adding user metadata with
+    # use_buffer_offset flags
     model_object = flatbuffer_utils.convert_bytearray_to_object(result)
+    if _check_model_use_buffer_offset(model_object):
+      return result
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
+
+
+def _check_model_use_buffer_offset(model_object):
+  """Checks if a model object uses buffer offsets to store constant buffers.
+
+  Args:
+    model_object: tflite model, a python object
+
+  Returns:
+    True of the model_object has the metadata entry "buffer_location"
+    False otherwise
+  """
+  if not model_object.metadata:
+    return False
+  for meta in model_object.metadata:
+    if meta.name.decode("utf-8") == "buffer_location":
+      return True
+
+  return False
 
 
 def _export_metrics(convert_func):
@@ -1144,6 +1196,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     Args:
       graph_def: The TensorFlow GraphDef.
       input_tensors: List of input tensors.
+
     Raise:
       ValueError: Input shape is not specified. Invalid quantization parameters.
     """
@@ -2016,9 +2069,19 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
 
-    # Default `serve` endpoint for `model.export`
-    if len(signature_keys) > 1 and hasattr(saved_model, "serve"):
-      signature_keys = ["serve"]
+    # Distinguishes SavedModel artifacts created by `model.export`
+    # from SavedModel created by `model.save`/`tf.saved_model.save`.
+    if (
+        len(signature_keys) > 1
+        and hasattr(saved_model, "serve")  # `model.export` default endpoint
+        and not hasattr(saved_model, "_default_save_signature")
+        # `_default_save_signature` does not exist for `model.export` artifacts.
+    ):
+      # Default `serve` endpoint for `model.export` should be copied
+      # to `serving_default` to prevent issues in TF Lite serving.
+      saved_model.serving_default = saved_model.serve
+      delattr(saved_model, "serve")
+      signature_keys = ["serving_default"]
 
     funcs = []
     for key in signature_keys:

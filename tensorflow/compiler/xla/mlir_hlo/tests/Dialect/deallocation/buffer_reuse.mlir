@@ -528,3 +528,15 @@ func.func @hoist_from_if(%cond: i1) {
 // CHECK-NEXT: some.op
 // CHECK-NEXT: else
 // CHECK-NEXT: some.op
+
+// -----
+
+func.func @propagate_alignment_attr() {
+  %alloc = memref.alloc() {alignment = 64 : i64} : memref<f32>
+  "test.use"(%alloc) : (memref<f32>) -> ()
+  memref.dealloc %alloc : memref<f32>
+  return
+}
+
+// CHECK-LABEL: @propagate_alignment_attr
+// CHECK-NEXT:  memref.alloca() {alignment = 64 : i64} : memref<f32>

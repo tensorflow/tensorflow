@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
@@ -288,8 +289,8 @@ Status CoordinationServiceAgentImpl::Connect() {
            // process of being enabled.
            (connect_status.GetPayload(CoordinationErrorPayloadKey()) ==
                 std::nullopt ||
-            errors::IsAborted(connect_status) ||
-            errors::IsInternal(connect_status)));
+            absl::IsAborted(connect_status) ||
+            absl::IsInternal(connect_status)));
   if (!connect_status.ok()) {
     SetError(connect_status);
     return connect_status;
@@ -444,7 +445,10 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
     if (!s.ok()) {
       LOG(ERROR) << "Encountered another error when reporting error to "
                     "coordination service: "
-                 << s;
+                 << s
+                 << "\nThis is usually caused by an earlier error during "
+                    "execution. Check the logs (this task or the leader) for "
+                    "an earlier error to debug further.";
     }
     n.Notify();
   });
@@ -484,7 +488,10 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     } else {
       LOG(ERROR)
           << "Failed to disconnect from coordination service with status: "
-          << status << ". Proceeding with agent shutdown anyway.";
+          << status
+          << "\nProceeding with agent shutdown anyway. This is usually caused "
+             "by an earlier error during execution. Check the logs (this task "
+             "or the leader) for an earlier error to debug further.";
     }
   }
 
@@ -497,7 +504,10 @@ Status CoordinationServiceAgentImpl::Shutdown() {
           "Shutdown() was called while coordination agent is in error state, "
           "implying that distributed execution failed. Note: agent will still "
           "shutdown anyway. Agent status: ",
-          status_.ToString());
+          status_.ToString(),
+          "\nThis is usually caused by an earlier error during execution. "
+          "Check the logs (this task or the leader) for an earlier error to "
+          "debug further.");
       status =
           MakeCoordinationError(errors::FailedPrecondition(status_message));
       LOG(ERROR) << status_message;
@@ -734,7 +744,7 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
   mutex_lock l(state_mu_);
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
 
-  LOG(ERROR) << "Coordination agent is in ERROR: " << error;
+  LOG(ERROR) << "Coordination agent is set to ERROR: " << error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = error;
   error_fn_(error);

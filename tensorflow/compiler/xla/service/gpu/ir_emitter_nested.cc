@@ -199,7 +199,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     if (instr->opcode() != HloOpcode::kConstant) {
       continue;
     }
-    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
+    const Literal& literal = instr->literal();
 
     // These globals will be looked up by name by GpuExecutable so we need to
     // give them an external linkage.  Not all of their uses are visible in

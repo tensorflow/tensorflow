@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -140,15 +141,15 @@ XlaComputationLaunchContext::PopulateInputs(
   std::vector<xla::ExecutionInput> arguments;
   arguments.reserve(compilation_result->xla_input_shapes.size());
 
-  for (int i = 0, end = compilation_result->xla_input_shapes.size(); i < end;
-       ++i) {
+  for (int i = 0; i < compilation_result->xla_input_shapes.size(); ++i) {
     int arg_num = compilation_result->input_mapping[i];
     CHECK_GE(arg_num, missing_ctx_input_prefix);
     const xla::Shape& device_shape = compilation_result->xla_input_shapes[i];
     const xla::Shape& host_shape =
         xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
 
-    bool is_resource_variable = resource_vars.count(arg_num);
+    auto resource_var_it = resource_vars.find(arg_num);
+    bool is_resource_variable = resource_var_it != resource_vars.end();
     bool is_updated_resource_variable =
         is_resource_variable &&
         absl::c_any_of(compilation_result->resource_updates,
@@ -160,7 +161,7 @@ XlaComputationLaunchContext::PopulateInputs(
                        });
 
     const Tensor* t = is_resource_variable
-                          ? resource_vars.at(arg_num)
+                          ? resource_var_it->second
                           : &(ctx->input(arg_num - missing_ctx_input_prefix));
     CHECK(t);
     bool donate_buffer =
@@ -586,43 +587,40 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   return out;
 }
 
-std::vector<xla::PjRtBuffer*> PreparePjRtExecutableArguments(
-    const std::vector<int>& input_mapping,
+void PreparePjRtExecutableArguments(
+    int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
-    const std::vector<VariableInfo>& variables) {
-  const auto& variable_lookup = CreateVariableLookup(variables);
-
-  std::vector<xla::PjRtBuffer*> args;
-  args.reserve(input_mapping.size());
-
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
+    std::vector<xla::PjRtBuffer*>* args,
+    absl::flat_hash_set<int>* non_donatable_input_indices) {
   for (auto arg_num : input_mapping) {
     const Tensor* tensor;
-    if (auto it = variable_lookup.find(arg_num); it != variable_lookup.end()) {
-      tensor = variables[it->second].var()->tensor();
+    if (auto it = variable_snapshots.find(arg_num);
+        it != variable_snapshots.end()) {
+      tensor = it->second;
     } else {
-      tensor = inputs[arg_num];
+      tensor = inputs[arg_num - num_missing_prefix_ctx_inputs];
     }
-    AsyncValueTensor* av_tensor = AsyncValueTensor::FromTensor(tensor);
+    if (!tensor->RefCountIsOne()) {
+      non_donatable_input_indices->insert(arg_num);
+    }
 
+    AsyncValueTensor* av_tensor = AsyncValueTensor::FromTensor(tensor);
     if (av_tensor->GetBuffer() == nullptr) {
       // TODO(b/260799971): verify size 0 argument is supported.
       CHECK_EQ(tensor->NumElements(), 0);  // Crash OK
       continue;
     }
-    args.push_back(av_tensor->GetBuffer().get());
+    args->push_back(av_tensor->GetBuffer().get());
   }
-
-  return args;
 }
 
 Status PopulateCtxOutputsFromPjRtExecutableOutputs(
-    const std::vector<const Tensor*>& inputs,
+    int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
     std::vector<std::unique_ptr<xla::PjRtBuffer>>& executable_outputs,
     OpKernelContext* ctx) {
-  const auto& variable_lookup = CreateVariableLookup(variables);
-
   // Copy XLA results to the OpOutputList.
   int output_num = 0;
   for (int i = 0, end = ctx->num_outputs(); i < end; ++i) {
@@ -635,7 +633,8 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
       TF_RETURN_IF_ERROR(SetOutputForConstant(ctx, requires_copy_to_device,
                                               &compilation_result, i));
     } else if (type == DT_RESOURCE) {
-      int input_index = compilation_result.outputs[i].input_index;
+      int input_index = compilation_result.outputs[i].input_index -
+                        num_missing_prefix_ctx_inputs;
       TF_RET_CHECK(input_index >= 0 && input_index < ctx->num_inputs())
           << "Invalid input for outputs " << i << ": " << input_index;
       ctx->set_output(i, *inputs[input_index]);
@@ -654,11 +653,11 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
   }
 
   // Apply variable updates, if any.
-  for (int i = 0, end = compilation_result.resource_updates.size(); i < end;
-       ++i) {
+  const auto& variable_lookup = CreateVariableLookup(variables);
+  for (int i = 0; i < compilation_result.resource_updates.size(); ++i) {
     const XlaCompiler::ResourceUpdate& write =
         compilation_result.resource_updates[i];
-    int actual_input_index = write.input_index;
+    int actual_input_index = write.input_index - num_missing_prefix_ctx_inputs;
     CHECK_GE(actual_input_index, 0);                  // Crash OK
     CHECK_LT(actual_input_index, ctx->num_inputs());  // Crash OK
     auto it = variable_lookup.find(actual_input_index);
@@ -687,7 +686,8 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
   return OkStatus();
 }
 
-xla::ExecuteOptions GetPjRtExecuteOptions() {
+xla::ExecuteOptions GetPjRtExecuteOptions(
+    absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
@@ -697,6 +697,7 @@ xla::ExecuteOptions GetPjRtExecuteOptions() {
   // [1]:
   // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
   options.use_major_to_minor_data_layout_for_callbacks = true;
+  options.non_donatable_input_indices = std::move(non_donatable_input_indices);
   return options;
 }
 
@@ -712,24 +713,45 @@ Status RunPjRtExecutable(
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx) {
+  absl::flat_hash_map<int, const Tensor*> variable_snapshots;
+  for (int i = 0; i < variables.size(); i++) {
+    variable_snapshots[variables[i].index()] = variables[i].var()->tensor();
+  }
+  return RunPjRtExecutable(pjrt_client, /*num_missing_prefix_ctx_inputs=*/0,
+                           inputs, variable_snapshots, variables,
+                           compilation_result, executable, ctx);
+}
+
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client, int num_missing_prefix_ctx_inputs,
+    const std::vector<const Tensor*>& inputs,
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
+    const std::vector<VariableInfo>& updated_variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx) {
+  std::vector<xla::PjRtBuffer*> executable_args;
+  executable_args.reserve(compilation_result.input_mapping.size());
+  absl::flat_hash_set<int> non_donatable_input_indices;
+  PreparePjRtExecutableArguments(
+      num_missing_prefix_ctx_inputs, compilation_result.input_mapping, inputs,
+      variable_snapshots, &executable_args, &non_donatable_input_indices);
+
   TF_ASSIGN_OR_RETURN(const int pjrt_device_id,
                       tsl::GetDeviceIdFromDeviceParsedName(
                           ctx->device()->parsed_name(), GetDeviceType(ctx)));
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client.LookupAddressableDevice(pjrt_device_id));
-
-  const std::vector<xla::PjRtBuffer*> executable_args =
-      PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
-                                     variables);
   // TODO(b/257548614): currently PJRT is compiled as portable (num_replica = 1
   // and num_partition = 1). Support multiple partitions case.
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
-      executable->ExecutePortable(executable_args, device,
-                                  GetPjRtExecuteOptions()));
+      executable->ExecutePortable(
+          executable_args, device,
+          GetPjRtExecuteOptions(std::move(non_donatable_input_indices))));
 
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      inputs, variables, compilation_result, execute_outputs, ctx));
+      num_missing_prefix_ctx_inputs, inputs, updated_variables,
+      compilation_result, execute_outputs, ctx));
   return OkStatus();
 }
 

@@ -50,6 +50,15 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    hdrs = ["//tensorflow/tsl/platform:criticality.h"],
+    textual_hdrs = ["criticality.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
+)
+
+cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],
@@ -557,13 +566,6 @@ cc_library(
     ],
     textual_hdrs = ["status.h"],
     visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
-    deps = [
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 bzl_library(

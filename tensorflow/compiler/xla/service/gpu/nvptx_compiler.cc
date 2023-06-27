@@ -34,9 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/float_normalization.h"
 #include "tensorflow/compiler/xla/service/float_support.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
@@ -44,13 +46,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -131,8 +133,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(
-      true);
+  algsimp_options.set_enable_scalar_multiply_reduction(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -143,8 +144,16 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes.
-  pipeline.AddPass<HloPassFix<ReshapeMover>>();
+  // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
+  // to a fixed point.  Include algsimp because ReshapeMover relies on it.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "reshape_mover_after_conv_canonicalization")] {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+  }();
+
   // The reshapes and transposes can possibly be eliminated using
   // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
   // ConvertMover wants to move some converts down the graph, but ReshapeMover
@@ -175,6 +184,27 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
+    HloPassPipeline mha_fusion_pipeline(
+        "nvptx cudnn multi-headed attention fusion");
+    // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
+    if (stream_exec) {
+      mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
+          cuda_compute_capability, stream_exec);
+    } else {
+      mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
+          cuda_compute_capability, gpu_target_config.dnn_version_info);
+    }
+    AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
+    algebraic_simplifier_options.set_enable_scalar_multiply_reduction(true);
+    mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
+        algebraic_simplifier_options);
+    mha_fusion_pipeline.AddPass<HloDCE>();
+
+    TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
+  }
+
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
                                             PrimitiveType::BF16,
@@ -232,6 +262,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
         return user_index.size() == 1 && user_index[0] == 0;
       }
       return false;
+    case HloOpcode::kFusion:
+      return GpuCompiler::FusionCanShareBufferHint(user, operand, user_index);
     default:
       return std::nullopt;
   }

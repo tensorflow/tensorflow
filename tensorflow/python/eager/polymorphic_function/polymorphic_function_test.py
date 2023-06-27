@@ -22,12 +22,12 @@ import platform
 import re
 import sys
 import time
-import unittest
 import weakref
 
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
@@ -41,7 +41,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -63,7 +62,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import data_flow_ops
@@ -1095,34 +1093,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(5., self.evaluate(concrete()))
     self.assertAllEqual(5., self.evaluate(tensor_init()))
 
-  def testFuncGraphCaptureByValue(self):
-    v = variables.Variable(1.0)
-
-    def trivial_function():
-      return v.read_value()
-
-    graph_function = tracing_compiler.TracingCompiler(
-        trivial_function, 'test', capture_by_value=True)
-
-    self.assertAllEqual(graph_function(), 1.0)
-    v.assign(2.0)
-    self.assertAllEqual(graph_function(), 1.0)
-
-  def testFuncGraphCaptureByValueNested(self):
-    v = variables.Variable(1.0)
-
-    def trivial_function():
-      return cond.cond(
-          array_ops.placeholder_with_default(True, ()), v.read_value,
-          v.read_value)
-
-    graph_function = tracing_compiler.TracingCompiler(
-        trivial_function, 'test', capture_by_value=True)
-
-    self.assertAllEqual(graph_function(), 1.0)
-    v.assign(2.0)
-    self.assertAllEqual(graph_function(), 1.0)
-
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
 
@@ -1465,7 +1435,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           1.0,  # epsilon,
           [1.0, 1.0, 1.0],  # grad
           False)  # use_locking
-      return None
+      return 1
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -1544,6 +1514,35 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return t
 
       self.assertEqual(1, int(self.evaluate(read())))
+
+  def testConcreteFunctionType(self):
+    y = constant_op.constant(1)
+
+    @polymorphic_function.function
+    def foo(x):
+      return {'input': x, 'capture': y}
+
+    cf = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+    x = constant_op.constant(2)
+    output = cf(x)
+    self.assertEqual(set(output.keys()), {'input', 'capture'})
+    self.assertEqual(output['input'].numpy(), 2)
+    self.assertEqual(output['capture'].numpy(), 1)
+
+    parameters = list(cf.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, 'x')
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32),
+    )
+
+    captures = cf.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(captures[id(y)], tensor_spec.TensorSpec([], dtypes.int32))
+
+    output = cf.function_type.output
+    self.assertEqual(output, trace_type.from_value({'input': x, 'capture': y}))
 
   def testSequenceInputs(self):
     clip_by_global_norm = polymorphic_function.function(
@@ -1709,11 +1708,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Invalid shapes.
     with self.assertRaisesRegex(
-        TypeError,
-        (
-            'Tensor conversion requested dtype float32 for Tensor with dtype'
-            ' int32.*'
-        ),
+        TypeError, r'Can not cast .*dtype=tf.int32.* to .*dtype=tf.float32.*'
     ):
       defined(array_ops.ones([3], dtype=dtypes.int32))
 
@@ -1731,7 +1726,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined()
 
     with self.assertRaisesRegex(
-        TypeError, '.*was expected to be of type.* but is.*'
+        TypeError, r'Can not cast .*shape=\(3,\).* to .*shape=\(2,\).*'
     ):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
@@ -1746,13 +1741,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return x
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(constant_op.constant(1))
 
       f.get_concrete_function(constant_op.constant(1))(1)
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(2)
 
     run_test()
@@ -2272,7 +2267,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'Can not cast TensorSpec\(shape=\(2,\).* to TensorSpec\(shape=\(1,\)',
+    ):
       g()
 
   @test_util.run_in_graph_and_eager_modes
@@ -2611,8 +2609,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
           call_args=lambda: (ragged_factory_ops.constant([[1.0]]), 5),
           error=(
-              r'Binding inputs .* failed .* dtype int32 for Tensor with dtype'
-              r' float32:'
+              r'Binding inputs .* failed.*dtype=tf.float32.* to'
+              r' .*dtype=tf.int32.*'
           ),
       ),
       dict(
@@ -2797,12 +2795,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     conc = func.get_concrete_function(*conc_args, **conc_kwargs)
-
-    # Remove _function_spec, to disable the structured signature.
-    conc._set_function_spec(None)  # pylint: disable=protected-access
-
     with self.assertRaisesRegex(exception, error):
-      self.evaluate(conc(*call_args, **call_kwargs))
+      self.evaluate(conc._call_with_flat_signature(call_args, call_kwargs))  # pylint: disable=protected-access
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionAmbiguousSignature(self):
@@ -3419,90 +3413,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
-
-  @unittest.expectedFailure
-  def testMethodAllowDynamicVariableWithoutGuards(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._var = 0
-
-      def __call__(self, val):
-        self.compute(val)
-        return self._var
-
-      @polymorphic_function.function
-      def compute(self, val):
-        self._var = variables.Variable(val)
-
-    polymorphic_function.set_dynamic_variable_creation(True)
-    foo = Foo()
-    self.assertAllEqual(foo(0.3), 0.3)
-    self.assertAllEqual(
-        foo(0.9), 0.9, 'https://github.com/tensorflow/tensorflow/issues/27120')
-
-  def testMethodAllowDynamicVariable(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._flag_keyed_vars = {}
-        self.trace_count = 0
-
-      def __call__(self, var_creation_flag):
-        self.compute(var_creation_flag)
-        return self._flag_keyed_vars[var_creation_flag]
-
-      @polymorphic_function.function
-      def compute(self, var_creation_flag):
-        self.trace_count += 1
-        if var_creation_flag not in self._flag_keyed_vars:
-          if var_creation_flag:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
-          else:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
-
-    polymorphic_function.set_dynamic_variable_creation(True)
-    foo = Foo()
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(False), 2.0)
-    self.assertEqual(foo.trace_count, 3)
-
-  def testMethodNotAllowDynamicVariable(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._flag_keyed_vars = {}
-        self.trace_count = 0
-
-      def __call__(self, var_creation_flag):
-        self.compute(var_creation_flag)
-        return self._flag_keyed_vars[var_creation_flag]
-
-      @polymorphic_function.function
-      def compute(self, var_creation_flag):
-        self.trace_count += 1
-        if var_creation_flag not in self._flag_keyed_vars:
-          if var_creation_flag:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
-          else:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
-
-    polymorphic_function.set_dynamic_variable_creation(False)
-    foo = Foo()
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    msg = 'singleton tf.Variable.*on the first call'
-    with self.assertRaisesRegex(ValueError, msg):
-      foo(False)
-    self.assertEqual(foo.trace_count, 3)
 
   def testMethodExtensionType(self):
 
@@ -4871,12 +4781,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast Tensor'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):
@@ -4931,7 +4841,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     # Index dtype mismatch int32 vs. int64.
     value = indexed_slices.IndexedSlices(
         constant_op.constant([1, 2]), constant_op.constant([0, 1]))
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       lazy_capture()
 
   @parameterized.parameters(

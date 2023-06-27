@@ -23,8 +23,8 @@ limitations under the License.
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
 static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 1 &&
-              FLATBUFFERS_VERSION_REVISION == 21,
+              FLATBUFFERS_VERSION_MINOR == 5 &&
+              FLATBUFFERS_VERSION_REVISION == 26,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -7933,6 +7933,7 @@ struct StridedSliceOptionsT : public ::flatbuffers::NativeTable {
   int32_t ellipsis_mask = 0;
   int32_t new_axis_mask = 0;
   int32_t shrink_axis_mask = 0;
+  bool offset = false;
 };
 
 struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -7943,7 +7944,8 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
     VT_END_MASK = 6,
     VT_ELLIPSIS_MASK = 8,
     VT_NEW_AXIS_MASK = 10,
-    VT_SHRINK_AXIS_MASK = 12
+    VT_SHRINK_AXIS_MASK = 12,
+    VT_OFFSET = 14
   };
   int32_t begin_mask() const {
     return GetField<int32_t>(VT_BEGIN_MASK, 0);
@@ -7960,6 +7962,9 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
   int32_t shrink_axis_mask() const {
     return GetField<int32_t>(VT_SHRINK_AXIS_MASK, 0);
   }
+  bool offset() const {
+    return GetField<uint8_t>(VT_OFFSET, 0) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_BEGIN_MASK, 4) &&
@@ -7967,6 +7972,7 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
            VerifyField<int32_t>(verifier, VT_ELLIPSIS_MASK, 4) &&
            VerifyField<int32_t>(verifier, VT_NEW_AXIS_MASK, 4) &&
            VerifyField<int32_t>(verifier, VT_SHRINK_AXIS_MASK, 4) &&
+           VerifyField<uint8_t>(verifier, VT_OFFSET, 1) &&
            verifier.EndTable();
   }
   StridedSliceOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7993,6 +7999,9 @@ struct StridedSliceOptionsBuilder {
   void add_shrink_axis_mask(int32_t shrink_axis_mask) {
     fbb_.AddElement<int32_t>(StridedSliceOptions::VT_SHRINK_AXIS_MASK, shrink_axis_mask, 0);
   }
+  void add_offset(bool offset) {
+    fbb_.AddElement<uint8_t>(StridedSliceOptions::VT_OFFSET, static_cast<uint8_t>(offset), 0);
+  }
   explicit StridedSliceOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8010,13 +8019,15 @@ inline ::flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(
     int32_t end_mask = 0,
     int32_t ellipsis_mask = 0,
     int32_t new_axis_mask = 0,
-    int32_t shrink_axis_mask = 0) {
+    int32_t shrink_axis_mask = 0,
+    bool offset = false) {
   StridedSliceOptionsBuilder builder_(_fbb);
   builder_.add_shrink_axis_mask(shrink_axis_mask);
   builder_.add_new_axis_mask(new_axis_mask);
   builder_.add_ellipsis_mask(ellipsis_mask);
   builder_.add_end_mask(end_mask);
   builder_.add_begin_mask(begin_mask);
+  builder_.add_offset(offset);
   return builder_.Finish();
 }
 
@@ -11876,6 +11887,8 @@ struct OperatorT : public ::flatbuffers::NativeTable {
   tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
   std::vector<bool> mutating_variable_inputs{};
   std::vector<int32_t> intermediates{};
+  uint64_t large_custom_options_offset = 0;
+  uint64_t large_custom_options_size = 0;
 };
 
 struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -11890,7 +11903,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_CUSTOM_OPTIONS = 14,
     VT_CUSTOM_OPTIONS_FORMAT = 16,
     VT_MUTATING_VARIABLE_INPUTS = 18,
-    VT_INTERMEDIATES = 20
+    VT_INTERMEDIATES = 20,
+    VT_LARGE_CUSTOM_OPTIONS_OFFSET = 22,
+    VT_LARGE_CUSTOM_OPTIONS_SIZE = 24
   };
   uint32_t opcode_index() const {
     return GetField<uint32_t>(VT_OPCODE_INDEX, 0);
@@ -12298,6 +12313,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<int32_t> *intermediates() const {
     return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_INTERMEDIATES);
   }
+  uint64_t large_custom_options_offset() const {
+    return GetField<uint64_t>(VT_LARGE_CUSTOM_OPTIONS_OFFSET, 0);
+  }
+  uint64_t large_custom_options_size() const {
+    return GetField<uint64_t>(VT_LARGE_CUSTOM_OPTIONS_SIZE, 0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -12315,6 +12336,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyVector(mutating_variable_inputs()) &&
            VerifyOffset(verifier, VT_INTERMEDIATES) &&
            verifier.VerifyVector(intermediates()) &&
+           VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_OFFSET, 8) &&
+           VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_SIZE, 8) &&
            verifier.EndTable();
   }
   OperatorT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12857,6 +12880,12 @@ struct OperatorBuilder {
   void add_intermediates(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates) {
     fbb_.AddOffset(Operator::VT_INTERMEDIATES, intermediates);
   }
+  void add_large_custom_options_offset(uint64_t large_custom_options_offset) {
+    fbb_.AddElement<uint64_t>(Operator::VT_LARGE_CUSTOM_OPTIONS_OFFSET, large_custom_options_offset, 0);
+  }
+  void add_large_custom_options_size(uint64_t large_custom_options_size) {
+    fbb_.AddElement<uint64_t>(Operator::VT_LARGE_CUSTOM_OPTIONS_SIZE, large_custom_options_size, 0);
+  }
   explicit OperatorBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -12878,8 +12907,12 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> custom_options = 0,
     tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> mutating_variable_inputs = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates = 0,
+    uint64_t large_custom_options_offset = 0,
+    uint64_t large_custom_options_size = 0) {
   OperatorBuilder builder_(_fbb);
+  builder_.add_large_custom_options_size(large_custom_options_size);
+  builder_.add_large_custom_options_offset(large_custom_options_offset);
   builder_.add_intermediates(intermediates);
   builder_.add_mutating_variable_inputs(mutating_variable_inputs);
   builder_.add_custom_options(custom_options);
@@ -12902,7 +12935,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
     const std::vector<uint8_t> *custom_options = nullptr,
     tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
     const std::vector<uint8_t> *mutating_variable_inputs = nullptr,
-    const std::vector<int32_t> *intermediates = nullptr) {
+    const std::vector<int32_t> *intermediates = nullptr,
+    uint64_t large_custom_options_offset = 0,
+    uint64_t large_custom_options_size = 0) {
   auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
   auto custom_options__ = custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0;
@@ -12918,7 +12953,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
       custom_options__,
       custom_options_format,
       mutating_variable_inputs__,
-      intermediates__);
+      intermediates__,
+      large_custom_options_offset,
+      large_custom_options_size);
 }
 
 ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -13054,21 +13091,33 @@ inline ::flatbuffers::Offset<SubGraph> CreateSubGraphDirect(
 struct BufferT : public ::flatbuffers::NativeTable {
   typedef Buffer TableType;
   std::vector<uint8_t> data{};
+  uint64_t offset = 0;
+  uint64_t size = 0;
 };
 
 struct Buffer FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef BufferT NativeTableType;
   typedef BufferBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_DATA = 4
+    VT_DATA = 4,
+    VT_OFFSET = 6,
+    VT_SIZE = 8
   };
   const ::flatbuffers::Vector<uint8_t> *data() const {
     return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_DATA);
+  }
+  uint64_t offset() const {
+    return GetField<uint64_t>(VT_OFFSET, 0);
+  }
+  uint64_t size() const {
+    return GetField<uint64_t>(VT_SIZE, 0);
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
            verifier.VerifyVector(data()) &&
+           VerifyField<uint64_t>(verifier, VT_OFFSET, 8) &&
+           VerifyField<uint64_t>(verifier, VT_SIZE, 8) &&
            verifier.EndTable();
   }
   BufferT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -13083,6 +13132,12 @@ struct BufferBuilder {
   void add_data(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> data) {
     fbb_.AddOffset(Buffer::VT_DATA, data);
   }
+  void add_offset(uint64_t offset) {
+    fbb_.AddElement<uint64_t>(Buffer::VT_OFFSET, offset, 0);
+  }
+  void add_size(uint64_t size) {
+    fbb_.AddElement<uint64_t>(Buffer::VT_SIZE, size, 0);
+  }
   explicit BufferBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -13096,20 +13151,28 @@ struct BufferBuilder {
 
 inline ::flatbuffers::Offset<Buffer> CreateBuffer(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> data = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> data = 0,
+    uint64_t offset = 0,
+    uint64_t size = 0) {
   BufferBuilder builder_(_fbb);
+  builder_.add_size(size);
+  builder_.add_offset(offset);
   builder_.add_data(data);
   return builder_.Finish();
 }
 
 inline ::flatbuffers::Offset<Buffer> CreateBufferDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<uint8_t> *data = nullptr) {
+    const std::vector<uint8_t> *data = nullptr,
+    uint64_t offset = 0,
+    uint64_t size = 0) {
   if (data) { _fbb.ForceVectorAlignment(data->size(), sizeof(uint8_t), 16); }
   auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
   return tflite::CreateBuffer(
       _fbb,
-      data__);
+      data__,
+      offset,
+      size);
 }
 
 ::flatbuffers::Offset<Buffer> CreateBuffer(::flatbuffers::FlatBufferBuilder &_fbb, const BufferT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -15191,6 +15254,7 @@ inline void StridedSliceOptions::UnPackTo(StridedSliceOptionsT *_o, const ::flat
   { auto _e = ellipsis_mask(); _o->ellipsis_mask = _e; }
   { auto _e = new_axis_mask(); _o->new_axis_mask = _e; }
   { auto _e = shrink_axis_mask(); _o->shrink_axis_mask = _e; }
+  { auto _e = offset(); _o->offset = _e; }
 }
 
 inline ::flatbuffers::Offset<StridedSliceOptions> StridedSliceOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StridedSliceOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -15206,13 +15270,15 @@ inline ::flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(::fl
   auto _ellipsis_mask = _o->ellipsis_mask;
   auto _new_axis_mask = _o->new_axis_mask;
   auto _shrink_axis_mask = _o->shrink_axis_mask;
+  auto _offset = _o->offset;
   return tflite::CreateStridedSliceOptions(
       _fbb,
       _begin_mask,
       _end_mask,
       _ellipsis_mask,
       _new_axis_mask,
-      _shrink_axis_mask);
+      _shrink_axis_mask,
+      _offset);
 }
 
 inline LogSoftmaxOptionsT *LogSoftmaxOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -17283,6 +17349,8 @@ inline void Operator::UnPackTo(OperatorT *_o, const ::flatbuffers::resolver_func
   { auto _e = custom_options_format(); _o->custom_options_format = _e; }
   { auto _e = mutating_variable_inputs(); if (_e) { _o->mutating_variable_inputs.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->mutating_variable_inputs[_i] = _e->Get(_i) != 0; } } else { _o->mutating_variable_inputs.resize(0); } }
   { auto _e = intermediates(); if (_e) { _o->intermediates.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intermediates[_i] = _e->Get(_i); } } else { _o->intermediates.resize(0); } }
+  { auto _e = large_custom_options_offset(); _o->large_custom_options_offset = _e; }
+  { auto _e = large_custom_options_size(); _o->large_custom_options_size = _e; }
 }
 
 inline ::flatbuffers::Offset<Operator> Operator::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -17302,6 +17370,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
   auto _custom_options_format = _o->custom_options_format;
   auto _mutating_variable_inputs = _o->mutating_variable_inputs.size() ? _fbb.CreateVector(_o->mutating_variable_inputs) : 0;
   auto _intermediates = _o->intermediates.size() ? _fbb.CreateVector(_o->intermediates) : 0;
+  auto _large_custom_options_offset = _o->large_custom_options_offset;
+  auto _large_custom_options_size = _o->large_custom_options_size;
   return tflite::CreateOperator(
       _fbb,
       _opcode_index,
@@ -17312,7 +17382,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
       _custom_options,
       _custom_options_format,
       _mutating_variable_inputs,
-      _intermediates);
+      _intermediates,
+      _large_custom_options_offset,
+      _large_custom_options_size);
 }
 
 inline SubGraphT::SubGraphT(const SubGraphT &o)
@@ -17382,6 +17454,8 @@ inline void Buffer::UnPackTo(BufferT *_o, const ::flatbuffers::resolver_function
   (void)_o;
   (void)_resolver;
   { auto _e = data(); if (_e) { _o->data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->data.begin()); } }
+  { auto _e = offset(); _o->offset = _e; }
+  { auto _e = size(); _o->size = _e; }
 }
 
 inline ::flatbuffers::Offset<Buffer> Buffer::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BufferT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -17394,9 +17468,13 @@ inline ::flatbuffers::Offset<Buffer> CreateBuffer(::flatbuffers::FlatBufferBuild
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const BufferT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   _fbb.ForceVectorAlignment(_o->data.size(), sizeof(uint8_t), 16);
   auto _data = _o->data.size() ? _fbb.CreateVector(_o->data) : 0;
+  auto _offset = _o->offset;
+  auto _size = _o->size;
   return tflite::CreateBuffer(
       _fbb,
-      _data);
+      _data,
+      _offset,
+      _size);
 }
 
 inline MetadataT *Metadata::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

@@ -71,7 +71,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.13.0"
+VERSION = "2.14.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -410,7 +410,6 @@ def tf_copts(
     android_copts = [
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
-        "-fomit-frame-pointer",
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
@@ -439,7 +438,7 @@ def tf_copts(
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
-        if_android_arm(["-mfpu=neon"]) +
+        if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
@@ -486,11 +485,17 @@ def tf_opts_nortti():
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ]
 
+def tf_opts_force_rtti():
+    return select({
+        clean_dep("//tensorflow:force_rtti"): ["-frtti"],
+        "//conditions:default": [],
+    })
+
 def tf_opts_nortti_if_android():
-    return if_android(tf_opts_nortti())
+    return if_android(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_opts_nortti_if_mobile():
-    return if_mobile(tf_opts_nortti())
+    return if_mobile(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_defines_nortti():
     return [
@@ -520,7 +525,7 @@ def tf_opts_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
         full = [],
         lite = tf_opts_nortti(),
-    )
+    ) + tf_opts_force_rtti()
 
 def tf_defines_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
@@ -1350,7 +1355,9 @@ def tf_gen_op_wrapper_py(
         api_def_srcs = [],
         compatible_with = [],
         testonly = False,
-        copts = []):
+        copts = [],
+        extra_py_deps = None,
+        py_lib_rule = native.py_library):
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1439,14 +1446,15 @@ def tf_gen_op_wrapper_py(
     # Make a py_library out of the generated python file.
     if not generated_target_name:
         generated_target_name = name
-    native.py_library(
+    py_deps = [clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2")]
+    if extra_py_deps:
+        py_deps += extra_py_deps
+    py_lib_rule(
         name = generated_target_name,
         srcs = [out],
         srcs_version = "PY3",
         visibility = visibility,
-        deps = [
-            clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
-        ],
+        deps = py_deps,
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
         # that wraps this one.
@@ -1724,6 +1732,11 @@ def tf_cc_tests(
             visibility = visibility,
             tags = tags,
         )
+
+register_extension_info(
+    extension = tf_cc_tests,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def tf_cc_test_mkl(
         srcs,
@@ -2152,7 +2165,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()
+    return []
 
 check_deps = rule(
     _check_deps_impl,
@@ -2237,26 +2250,6 @@ def tf_custom_op_library(
         }),
         **kwargs
     )
-
-# Placeholder to use until bazel supports py_strict_binary.
-def py_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_library.
-def py_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_binary.
-def pytype_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_library.
-def pytype_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_test.
-def py_strict_test(name, **kwargs):
-    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -2495,7 +2488,6 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         exec_properties = tf_exec_properties(kwargs)
 
     test_rule(
-        # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
@@ -3355,10 +3347,10 @@ def if_mlir(if_true, if_false = []):
 def tf_enable_mlir_bridge():
     return select({
         str(Label("//tensorflow:enable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_true",
+            "//tensorflow/python/framework:is_mlir_bridge_test_true",
         ],
         str(Label("//tensorflow:disable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_false",
+            "//tensorflow/python/framework:is_mlir_bridge_test_false",
         ],
         "//conditions:default": [],
     })

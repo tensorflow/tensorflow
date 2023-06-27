@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -26,8 +25,10 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
@@ -55,6 +56,11 @@ namespace tensorflow {
 
 DTensorMlirPassRunner::DTensorMlirPassRunner()
     : pass_manager_(&context_), logging_enabled_(false) {
+  mlir::DialectRegistry registry;
+  mlir::registerAllExtensions(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+  context_.appendDialectRegistry(registry);
+
   logging_enabled_ = dtensor::MaybeEnableLogging(&pass_manager_);
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
 
@@ -72,7 +78,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
-    const DeviceSet& device_set, bool is_func,
+    const DeviceSet& device_set, absl::string_view name, bool is_func,
     const dtensor::Mesh& default_mesh,
     const FunctionLibraryDefinition& flib_def, const Graph& graph,
     Fprint128 cache_key) {
@@ -102,9 +108,11 @@ DTensorMlirPassRunner::ImportGraphToMlir(
                   mlir::StringAttr::get(&context_, default_mesh.ToString()));
 
   // Tag the module for logging or not depending on flag.
-  if (!is_func && !dtensor::LogOpByOp())
+  if (!is_func && !dtensor::LogOpByOp(name))
     module->setAttr(dtensor::kDoNotLog, mlir::UnitAttr::get(&context_));
 
+  module->setAttr(dtensor::kEagerOperationName,
+                  mlir::StringAttr::get(&context_, name));
   // Set the cache key for the module as an attribute. This attribute will be
   // used to rename all private functions in the module (by appending the
   // cache key) so they have unique names.
@@ -112,6 +120,18 @@ DTensorMlirPassRunner::ImportGraphToMlir(
       dtensor::kCacheKey,
       mlir::StringAttr::get(&context_, absl::StrCat("_", cache_key.low64, "_",
                                                     cache_key.high64)));
+  // Set the all_reduce_combine_optimization environment variable as module
+  // attribute
+  int group_size = dtensor::AllReduceCombineOptimizationGroupSize();
+  module->setAttr(
+      dtensor::kAllReduceNumOpsInGroup,
+      mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
+                             group_size));
+
+  if (dtensor::EnableMultiDeviceMode()) {
+    module->setAttr(dtensor::kEnableMultiDeviceMode,
+                    mlir::BoolAttr::get(&context_, true));
+  }
 
   return module_ref;
 }

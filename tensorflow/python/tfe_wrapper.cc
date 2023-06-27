@@ -820,6 +820,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                     function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
+  m.def("TFE_ContextGetGraphDebugInfo",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetGraphDebugInfo(tensorflow::InputTFE_Context(ctx),
+                                       function_name, &buf, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
@@ -1118,7 +1126,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](const py::handle& context, const py::handle& handles) {
           return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
         });
-  m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
+  m.def("TFE_Py_SetEagerTensorProfiler", [](const py::handle& o) {
+    return tensorflow::PyoOrThrow(TFE_Py_SetEagerTensorProfiler(o.ptr()));
+  });
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));
   });

@@ -24,8 +24,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/tools/model_loader.h"

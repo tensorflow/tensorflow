@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 
+#include <string>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -70,9 +73,8 @@ static void IsSingleFloatValue(const Tensor& val, float expected_val) {
 
 static SessionOptions Options(const string& target, int placement_period) {
   SessionOptions options;
-  // NOTE(mrry): GrpcSession requires a grpc:// scheme prefix in the target
-  // string.
   options.target = strings::StrCat("grpc://", target);
+  options.config.set_isolate_session_state(false);
   options.config.set_placement_period(placement_period);
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -81,8 +83,12 @@ static SessionOptions Options(const string& target, int placement_period) {
 }
 
 static Session* NewRemote(const SessionOptions& options) {
+  LOG(INFO) << "Connecting to " << options.target;
   return CHECK_NOTNULL(NewSession(options));
 }
+
+using test::TestClusterConfig;
+using test::TestJob;
 
 TEST(GrpcSessionTest, BasicNonProtoAPI) {
   GraphDef graph;
@@ -91,19 +97,22 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
-
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
   ASSERT_TRUE(session != nullptr);
 
   for (int iters = 0; iters < 25; ++iters) {
-    TF_CHECK_OK(session->Create(graph));
+    TF_ASSERT_OK(session->Create(graph));
     {
       // Just run to target node
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<string> targets = {node_names[2]};
-      TF_CHECK_OK(session->Run(inputs, {}, targets, nullptr));
+      TF_ASSERT_OK(session->Run(inputs, {}, targets, nullptr));
     }
     {
       // Run to a target node and a real tensor
@@ -111,12 +120,12 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
       std::vector<string> names = {node_names[2] + ":0"};
       std::vector<string> targets = {node_names[1]};
       std::vector<Tensor> outputs;
-      TF_CHECK_OK(session->Run(inputs, names, targets, &outputs));
+      TF_ASSERT_OK(session->Run(inputs, names, targets, &outputs));
       ASSERT_TRUE(outputs[0].IsInitialized());
       ASSERT_EQ(4.0, outputs[0].flat<float>()(0));
     }
 
-    TF_CHECK_OK(session->Close());
+    TF_ASSERT_OK(session->Close());
   }
 }
 
@@ -127,22 +136,26 @@ TEST(GrpcSessionTest, BasicCallable) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
   ASSERT_TRUE(session != nullptr);
 
   for (int iters = 0; iters < 25; ++iters) {
-    TF_CHECK_OK(session->Create(graph));
+    TF_ASSERT_OK(session->Create(graph));
     {
       // Just run to target node
       CallableOptions opts;
       opts.add_target(node_names[2]);
       Session::CallableHandle handle;
-      TF_CHECK_OK(session->MakeCallable(opts, &handle));
-      TF_CHECK_OK(session->RunCallable(handle, {}, nullptr, nullptr));
-      TF_CHECK_OK(session->ReleaseCallable(handle));
+      TF_ASSERT_OK(session->MakeCallable(opts, &handle));
+      TF_ASSERT_OK(session->RunCallable(handle, {}, nullptr, nullptr));
+      TF_ASSERT_OK(session->ReleaseCallable(handle));
     }
     {
       // Run to a target node and a real tensor
@@ -150,16 +163,16 @@ TEST(GrpcSessionTest, BasicCallable) {
       opts.add_target(node_names[1]);
       opts.add_fetch(node_names[2] + ":0");
       Session::CallableHandle handle;
-      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      TF_ASSERT_OK(session->MakeCallable(opts, &handle));
       std::vector<Tensor> outputs;
-      TF_CHECK_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+      TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
       ASSERT_EQ(1, outputs.size());
       ASSERT_TRUE(outputs[0].IsInitialized());
       ASSERT_EQ(4.0, outputs[0].flat<float>()(0));
-      TF_CHECK_OK(session->ReleaseCallable(handle));
+      TF_ASSERT_OK(session->ReleaseCallable(handle));
     }
 
-    TF_CHECK_OK(session->Close());
+    TF_ASSERT_OK(session->Close());
   }
 }
 
@@ -172,16 +185,20 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(graph));
+  TF_ASSERT_OK(session->Create(graph));
 
   std::vector<DeviceAttributes> devices;
-  TF_CHECK_OK(session->ListDevices(&devices));
+  TF_ASSERT_OK(session->ListDevices(&devices));
   ASSERT_GT(devices.size(), 0);
   const string device_name = devices.back().name();
 
@@ -193,7 +210,7 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
   Session::CallableHandle handle;
   Status status = session->MakeCallable(opts, &handle);
   EXPECT_EQ(error::UNIMPLEMENTED, status.code());
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
@@ -203,7 +220,11 @@ TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
@@ -235,7 +256,11 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   SessionOptions options;
   options.target = strings::StrCat("grpc://", cluster->targets()[0]);
@@ -247,9 +272,9 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[0].name(), &graph_copy);
-    TF_CHECK_OK(session->Create(graph_copy));
-    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
-    TF_CHECK_OK(session->Close());
+    TF_ASSERT_OK(session->Create(graph_copy));
+    TF_ASSERT_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+    TF_ASSERT_OK(session->Close());
   }
   {
     GraphDef graph_copy(graph);
@@ -265,25 +290,29 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(graph));
+  TF_ASSERT_OK(session->Create(graph));
   const std::vector<std::pair<string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
   const string node = node_names[2] + ":0";
-  TF_CHECK_OK(session->Run(inputs, {node, node}, {}, &outputs));
+  TF_ASSERT_OK(session->Run(inputs, {node, node}, {}, &outputs));
   EXPECT_EQ(2, outputs.size());
   for (int i = 0; i < outputs.size(); ++i) {
     const Tensor& t = outputs[i];
     ASSERT_TRUE(t.IsInitialized()) << i;
     ASSERT_EQ(4.0, t.flat<float>()(0)) << i;
   }
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
@@ -292,7 +321,11 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   SessionOptions options = Options(cluster->targets()[0], 1);
   options.config.mutable_experimental()->set_disable_output_partition_graphs(
@@ -301,10 +334,10 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
   std::unique_ptr<Session> session(NewRemote(options));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(graph));
+  TF_ASSERT_OK(session->Create(graph));
   {
     // Just run to target node.
-    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+    TF_ASSERT_OK(session->Run({}, {}, {node_names[2]}, nullptr));
   }
   {
     // Attempting to get the partition graphs should fail.
@@ -318,7 +351,7 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
         absl::StrContains(s.message(), "disable_output_partition_graphs"));
   }
 
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 }
 
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
@@ -363,7 +396,7 @@ void FindMaxEigen(const string& target) {
 
   std::unique_ptr<Session> session(NewRemote(Options(target, 1)));
   ASSERT_TRUE(session != nullptr);
-  TF_CHECK_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   // Setup feeds and fetches.
   float lambda;
@@ -373,8 +406,8 @@ void FindMaxEigen(const string& target) {
 
   for (int i = 0; i < 25; ++i) {
     std::vector<Tensor> outputs;
-    TF_CHECK_OK(session->Run({{x->name(), feed_value}},
-                             {y->name(), y_normalized->name()}, {}, &outputs));
+    TF_ASSERT_OK(session->Run({{x->name(), feed_value}},
+                              {y->name(), y_normalized->name()}, {}, &outputs));
     const Tensor& y = outputs[0];
     const Tensor& y_normalized = outputs[1];
     // Print out lambda, x, and y.
@@ -392,7 +425,11 @@ void FindMaxEigen(const string& target) {
 
 TEST(FindMaxEigenTest, RemoteDevice) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
   FindMaxEigen(cluster->targets()[0]);
 }
 
@@ -410,7 +447,11 @@ void SetDevice(GraphDef* graph, const string& name, const string& dev) {
 // figure out why.
 TEST(GrpcSessionTest, DISABLED_MultiDevices) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   Graph graph(OpRegistry::Global());
   const int kSize = 1048576;
@@ -444,13 +485,13 @@ TEST(GrpcSessionTest, DISABLED_MultiDevices) {
         std::unique_ptr<Session> session(
             NewRemote(Options(cluster->targets()[0], 1000)));
         ASSERT_TRUE(session != nullptr);
-        TF_CHECK_OK(session->Create(def));
+        TF_ASSERT_OK(session->Create(def));
         {
           std::vector<Tensor> outputs;
           RunOptions options;
           options.set_trace_level(RunOptions::FULL_TRACE);
           RunMetadata metadata;
-          TF_CHECK_OK(
+          TF_ASSERT_OK(
               session->Run(options, {}, {c->name()}, {}, &outputs, &metadata));
           ASSERT_EQ(1, outputs.size());
           IsSingleFloatValue(outputs[0], 6.0 * kSize);
@@ -471,7 +512,7 @@ TEST(GrpcSessionTest, DISABLED_MultiDevices) {
           }
           ASSERT_TRUE(c_placed_correctly);
         }
-        TF_CHECK_OK(session->Close());
+        TF_ASSERT_OK(session->Close());
       }
     }
   }
@@ -479,7 +520,11 @@ TEST(GrpcSessionTest, DISABLED_MultiDevices) {
 
 TEST(GrpcSessionTest, LargeTensorSend) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   Graph graph(OpRegistry::Global());
 
@@ -515,19 +560,23 @@ TEST(GrpcSessionTest, LargeTensorSend) {
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1000)));
   ASSERT_TRUE(session != nullptr);
-  TF_CHECK_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
   {
     std::vector<Tensor> outputs;
-    TF_CHECK_OK(session->Run({}, {max_node->name()}, {}, &outputs));
+    TF_ASSERT_OK(session->Run({}, {max_node->name()}, {}, &outputs));
     ASSERT_EQ(1, outputs.size());
     IsSingleFloatValue(outputs[0], 1.0);
   }
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, MultiDevices_String) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 1), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 1))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1000)));
   ASSERT_TRUE(session != nullptr);
@@ -555,14 +604,14 @@ TEST(GrpcSessionTest, MultiDevices_String) {
       Status s = session->Create(def);
       if (s.ok()) {
         std::vector<Tensor> outputs;
-        TF_CHECK_OK(session->Run({}, {b->name()}, {}, &outputs));
+        TF_ASSERT_OK(session->Run({}, {b->name()}, {}, &outputs));
         ASSERT_EQ(1, outputs.size());
         ASSERT_EQ(outputs[0].dtype(), DT_STRING);
         ASSERT_EQ(outputs[0].NumElements(), 4);
         for (int i = 0; i < outputs[0].NumElements(); ++i) {
           EXPECT_EQ(outputs[0].flat<tstring>()(i), "hello, world");
         }
-        TF_CHECK_OK(session->Close());
+        TF_ASSERT_OK(session->Close());
       } else {
         LOG(ERROR) << "Error: " << s;
         ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
@@ -575,7 +624,11 @@ TEST(GrpcSessionTest, MultiDevices_String) {
 
 TEST(GrpcSessionTest, SendRecv_Node_Naming) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 3, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/3}}),
+      &cluster));
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
   ASSERT_TRUE(session != nullptr);
@@ -605,12 +658,12 @@ TEST(GrpcSessionTest, SendRecv_Node_Naming) {
   SetDevice(&def, a->name(), src.name());
   SetDevice(&def, b->name(), dst0.name());
   SetDevice(&def, c->name(), dst1.name());
-  TF_CHECK_OK(session->Create(def));
+  TF_ASSERT_OK(session->Create(def));
 
   // Run subgraph a -> b, and fetch b.
   {
     std::vector<Tensor> outputs;
-    TF_CHECK_OK(session->Run({}, {b->name()}, {}, &outputs));
+    TF_ASSERT_OK(session->Run({}, {b->name()}, {}, &outputs));
     ASSERT_EQ(1, outputs.size());
     IsSingleFloatValue(outputs[0], 100);
   }
@@ -618,18 +671,22 @@ TEST(GrpcSessionTest, SendRecv_Node_Naming) {
   // Run subgraph a -> c, and fetch c.
   {
     std::vector<Tensor> outputs;
-    TF_CHECK_OK(session->Run({}, {c->name()}, {}, &outputs));
+    TF_ASSERT_OK(session->Run({}, {c->name()}, {}, &outputs));
     ASSERT_EQ(1, outputs.size());
     IsSingleFloatValue(outputs[0], 100);
   }
 
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 }
 
 TEST(GrpcSessionTest, Error) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
-  const string& master = cluster->targets()[0];
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
+  auto master = cluster->targets()[0];
   const string& dev_a = cluster->devices()[0].name();
   const string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
@@ -668,7 +725,7 @@ TEST(GrpcSessionTest, Error) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
@@ -676,7 +733,7 @@ TEST(GrpcSessionTest, Error) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -685,8 +742,12 @@ TEST(GrpcSessionTest, Error) {
 
 TEST(GrpcSessionTest, ErrorStatusLog) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
-  const string& master = cluster->targets()[0];
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
+  auto master = cluster->targets()[0];
   const string& dev_a = cluster->devices()[0].name();
   const string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
@@ -725,7 +786,7 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
@@ -735,7 +796,7 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -744,8 +805,12 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
 
 TEST(GrpcSessionTest, LongErrorMessage) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
-  const string& master = cluster->targets()[0];
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
+  auto master = cluster->targets()[0];
   const string& dev_a = cluster->devices()[0].name();
   const string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
@@ -787,7 +852,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
@@ -795,7 +860,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -804,7 +869,11 @@ TEST(GrpcSessionTest, LongErrorMessage) {
 
 TEST(SessionTest, SharedVar) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/1}}),
+      &cluster));
   const string master = cluster->targets()[0];
   CHECK_EQ(cluster->devices().size(), 1);
 
@@ -829,10 +898,10 @@ TEST(SessionTest, SharedVar) {
   // Init a variable
   {
     Session* sess = NewRemote(Options(master, 1));
-    TF_CHECK_OK(sess->Create(gdef));
+    TF_ASSERT_OK(sess->Create(gdef));
     std::vector<std::pair<string, Tensor>> inp;
-    TF_CHECK_OK(sess->Run(inp, {}, {init_name}, nullptr));
-    TF_CHECK_OK(sess->Close());
+    TF_ASSERT_OK(sess->Run(inp, {}, {init_name}, nullptr));
+    TF_ASSERT_OK(sess->Close());
     delete sess;
   }
 
@@ -840,26 +909,104 @@ TEST(SessionTest, SharedVar) {
     // Update a variable
     {
       Session* sess = NewRemote(Options(master, 1));
-      TF_CHECK_OK(sess->Create(gdef));
+      TF_ASSERT_OK(sess->Create(gdef));
       std::vector<std::pair<string, Tensor>> inp;
-      TF_CHECK_OK(sess->Run(inp, {}, {inc_name}, nullptr));
-      TF_CHECK_OK(sess->Close());
+      TF_ASSERT_OK(sess->Run(inp, {}, {inc_name}, nullptr));
+      TF_ASSERT_OK(sess->Close());
       delete sess;
     }
 
     // Gets the variable's value.
     {
       Session* sess = NewRemote(Options(master, 1));
-      TF_CHECK_OK(sess->Create(gdef));
+      TF_ASSERT_OK(sess->Create(gdef));
       std::vector<std::pair<string, Tensor>> inp;
       std::vector<Tensor> ret;
-      TF_CHECK_OK(sess->Run(inp, {get_name}, {}, &ret));
+      TF_ASSERT_OK(sess->Run(inp, {get_name}, {}, &ret));
       ASSERT_EQ(ret.size(), 1);
       EXPECT_EQ(ret[0].scalar<float>()(), 1.0 * (1 + rep));
-      TF_CHECK_OK(sess->Close());
+      TF_ASSERT_OK(sess->Close());
       delete sess;
     }
   }
+}
+
+TEST(SessionTest, SharedVarWithMultipleLearnerReplicas) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"variable_server", /*num_tasks=*/1},
+                 TestJob{"learner", /*num_tasks=*/2, /*num_replicas=*/2}}),
+      &cluster));
+  for (const auto& device : cluster->devices()) {
+    LOG(INFO) << device.DebugString();
+  }
+
+  ASSERT_EQ(cluster->devices().size(), 3);
+
+  GraphDef gdef;
+  string init_name;
+  string inc_name;
+  string get_name;
+
+  std::string var_server_device = "/job:variable_server/replica:0/task:0";
+  std::string learner_0_device = "/job:learner/replica:0/task:0";
+  std::string learner_1_device = "/job:learner/replica:1/task:0";
+
+  LOG(INFO) << "Learners: " << absl::StrJoin(cluster->targets("learner"), "; ");
+  {
+    Graph g(OpRegistry::Global());
+    Tensor one(DT_FLOAT, TensorShape({}));
+    one.scalar<float>()() = 1.0;
+    Node* var = test::graph::Var(&g, DT_FLOAT, one.shape());
+    var->mutable_def()->set_device(var_server_device);
+    Node* init = test::graph::Assign(&g, var, test::graph::Constant(&g, one));
+    init_name = init->name();
+    Node* update = test::graph::Assign(
+        &g, var, test::graph::Add(&g, var, test::graph::Constant(&g, one)));
+    inc_name = update->name();
+    get_name = var->name();
+    test::graph::ToGraphDef(&g, &gdef);
+  }
+
+  // Initialize using learner 0, then learner 1. Each session should remain
+  // valid.
+  Session* learner0 = NewRemote(Options(cluster->targets("learner")[0], 1));
+
+  {
+    TF_ASSERT_OK(learner0->Create(gdef));
+    std::vector<std::pair<string, Tensor>> inp;
+    TF_ASSERT_OK(learner0->Run(inp, {}, {init_name}, nullptr));
+  }
+
+  // Increment with learner 0
+  for (int rep = 1; rep < 10; ++rep) {
+    std::vector<std::pair<string, Tensor>> inp;
+    TF_ASSERT_OK(learner0->Run(inp, {}, {inc_name}, nullptr));
+  }
+
+  Session* learner1 = NewRemote(Options(cluster->targets("learner")[1], 1));
+  TF_ASSERT_OK(learner1->Create(gdef));
+  // Increment with learner 1
+  for (int rep = 1; rep < 10; ++rep) {
+    std::vector<std::pair<string, Tensor>> inp;
+    TF_ASSERT_OK(learner1->Run(inp, {}, {inc_name}, nullptr));
+  }
+
+  // Fetch results with both and validate they are the same.
+  std::vector<std::pair<string, Tensor>> inp;
+  std::vector<Tensor> ret;
+  TF_ASSERT_OK(learner0->Run(inp, {get_name}, {}, &ret));
+  ASSERT_EQ(ret.size(), 1);
+  EXPECT_EQ(ret[0].scalar<float>()(), 1.0 * 19);
+
+  TF_ASSERT_OK(learner1->Run(inp, {get_name}, {}, &ret));
+  ASSERT_EQ(ret.size(), 1);
+  EXPECT_EQ(ret[0].scalar<float>()(), 1.0 * 19);
+
+  TF_ASSERT_OK(learner0->Close());
+  TF_ASSERT_OK(learner1->Close());
 }
 
 void CreateInvalidGraph(const string& graph_def_ascii,
@@ -868,7 +1015,11 @@ void CreateInvalidGraph(const string& graph_def_ascii,
   CHECK(protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph));
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
@@ -1008,11 +1159,15 @@ TEST(SessionTest, ExtendValidation) {
   ASSERT_TRUE(success);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
-  TF_CHECK_OK(session->Create(graph));
+  TF_ASSERT_OK(session->Create(graph));
 
   // 1. Fail with an unknown input name.
   GraphDef extension;
@@ -1042,7 +1197,7 @@ TEST(SessionTest, ExtendValidation) {
   )",
                                                   &extension);
   ASSERT_TRUE(success);
-  TF_CHECK_OK(session->Extend(extension));
+  TF_ASSERT_OK(session->Extend(extension));
 
   // 2. Fail with a duplicate node.
   success = protobuf::TextFormat::ParseFromString(R"(
@@ -1103,7 +1258,11 @@ TEST(SessionTest, CreateTimeoutWithRunOptions) {
 TEST(SessionTest, RunTimeoutWithSessionOptions) {
   // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/1}}),
+      &cluster));
   SessionOptions options = Options(cluster->targets()[0], 100);
   options.config.set_operation_timeout_in_ms(1);
   std::unique_ptr<Session> session(NewRemote(options));
@@ -1115,7 +1274,7 @@ TEST(SessionTest, RunTimeoutWithSessionOptions) {
   GraphDef gdef;
   test::graph::ToGraphDef(&graph, &gdef);
   RunOptions run_options;
-  TF_CHECK_OK(session->Create(run_options, gdef));
+  TF_ASSERT_OK(session->Create(run_options, gdef));
 
   // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
   std::vector<std::pair<string, Tensor>> inputs;
@@ -1129,7 +1288,11 @@ TEST(SessionTest, RunTimeoutWithSessionOptions) {
 // Tests that Run() with "timeout_in_ms" set times out.
 TEST(SessionTest, RunTimeoutWithRunOptions) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/1}}),
+      &cluster));
   SessionOptions options = Options(cluster->targets()[0], 1);
   std::unique_ptr<Session> session(NewRemote(options));
 
@@ -1139,7 +1302,7 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   Node* b_delay = test::graph::Delay(&graph, b, Microseconds(1000000));
   GraphDef gdef;
   test::graph::ToGraphDef(&graph, &gdef);
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
 
   // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
   std::vector<std::pair<string, Tensor>> inputs;
@@ -1155,7 +1318,11 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
 
 TEST(SessionTest, TestCompression) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 1, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/1}}),
+      &cluster));
   SessionOptions options = Options(cluster->targets()[0], 100);
   RPCOptions* rpc_options = options.config.mutable_rpc_options();
   rpc_options->set_compression_algorithm("deflate");
@@ -1171,20 +1338,24 @@ TEST(SessionTest, TestCompression) {
   GraphDef gdef;
   graph.ToGraphDef(&gdef);
   RunOptions run_options;
-  TF_CHECK_OK(session->Create(run_options, gdef));
+  TF_ASSERT_OK(session->Create(run_options, gdef));
 
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<Tensor> outputs;
-  TF_CHECK_OK(session->Run(inputs, {b->name()}, {}, &outputs));
+  TF_ASSERT_OK(session->Run(inputs, {b->name()}, {}, &outputs));
   ASSERT_EQ(1, outputs.size());
   IsSingleFloatValue(outputs[0], kTestValue);
 }
 
 TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
   auto& devs = cluster->devices();
-  const string& master = cluster->targets()[0];
+  auto master = cluster->targets()[0];
   // worker 1
   const string w1_dev1 = devs[0].name();
   // worker 2
@@ -1231,7 +1402,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
     Status status = session->Run({}, fetches, {}, &outputs);
@@ -1243,7 +1414,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -1252,9 +1423,13 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
 
 TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 2, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(2, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
+      &cluster));
   auto& devs = cluster->devices();
-  const string& master = cluster->targets()[0];
+  auto master = cluster->targets()[0];
   // worker 1
   const string w1_dev1 = devs[0].name();
   const string w1_dev2 = devs[1].name();
@@ -1310,7 +1485,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
     Status status = session->Run({}, fetches, targets, &outputs);
@@ -1324,7 +1499,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -1333,9 +1508,13 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
 
 TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 3, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(2, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/3}}),
+      &cluster));
   auto& devs = cluster->devices();
-  const string& master = cluster->targets()[0];
+  auto master = cluster->targets()[0];
   // worker 1
   const string w1_dev1 = devs[0].name();
   const string w1_dev2 = devs[1].name();
@@ -1405,7 +1584,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
     Status status = session->Run({}, fetches, targets, &outputs);
@@ -1420,7 +1599,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.
@@ -1429,9 +1608,13 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
 
 TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(2, 0), 3, &cluster));
+  TF_ASSERT_OK(test::TestCluster::MakeTestCluster(
+      TestClusterConfig()
+          .Options(Devices(2, 0))
+          .Jobs({TestJob{"localhost", /*num_tasks=*/3}}),
+      &cluster));
   auto& devs = cluster->devices();
-  const string& master = cluster->targets()[0];
+  auto master = cluster->targets()[0];
   // worker 1
   const string w1_dev1 = devs[0].name();
   const string w1_dev2 = devs[1].name();
@@ -1502,7 +1685,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
   std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
   ASSERT_TRUE(session != nullptr);
 
-  TF_CHECK_OK(session->Create(gdef));
+  TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
     Status status = session->Run({}, fetches, targets, &outputs);
@@ -1517,7 +1700,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
-  TF_CHECK_OK(session->Close());
+  TF_ASSERT_OK(session->Close());
 
   // Sleep a bit so that most of asynchronous works finishes before
   // the test process finishes.

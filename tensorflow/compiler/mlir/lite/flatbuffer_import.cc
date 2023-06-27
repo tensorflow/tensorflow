@@ -20,7 +20,9 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -46,6 +48,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -114,6 +117,14 @@ namespace {
 
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+
+// Check if the model is using custom_option_offset to store custom op
+// buffers.
+// when this field is not set by the user, then Flatbuffer will omit the
+// field and interpret this as 0, so to ensure this field is populated,
+// Exporter will always set it to 1, but it's also not valid. So it's only
+// valid when it's > 1
+inline bool IsValidBufferOffset(const uint64_t val) { return val > 1; }
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -812,7 +823,8 @@ StatusOr<Operation*> ConvertOp(
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
-    OpBuilder builder) {
+    OpBuilder builder,
+    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
@@ -927,8 +939,22 @@ StatusOr<Operation*> ConvertOp(
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
   if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    auto status = mlir::CustomOptionsToAttributes(
-        op_code.custom_code, op.custom_options, builder, loc, &attrs);
+    auto status = ::tensorflow::OkStatus();
+
+    std::vector<uint8_t> custom_options;
+
+    if (IsValidBufferOffset(op.large_custom_options_offset)) {
+      custom_options.resize(op.large_custom_options_size);
+      memcpy(custom_options.data(),
+             reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base()) +
+                 op.large_custom_options_offset,
+             op.large_custom_options_size);
+    } else {
+      custom_options = op.custom_options;
+    }
+
+    status = mlir::CustomOptionsToAttributes(
+        op_code.custom_code, custom_options, builder, loc, &attrs);
     if (!status.ok()) {
       return emitError(loc, status.ToString()), status;
     }
@@ -973,12 +999,19 @@ StatusOr<std::vector<int>> GetTensorIndices(
   return indices;
 }
 
+// Given a list of tensor indices, returns true if any of the tensors have
+// non-empty name strings.
+bool HasNonEmptyNames(const tflite::SubGraphT& subgraph,
+                      ArrayRef<int32_t> indices) {
+  return llvm::any_of(
+      indices, [&](int i) { return !subgraph.tensors.at(i)->name.empty(); });
+}
+
 // Given a list of tensor indices, returns a string of concatenated tensor names
 // wrapped in a NamedAttribute.
-template <typename ContainerType>
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
-    const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
-    const ContainerType indices) {
+    const tflite::SubGraphT& subgraph, Builder* builder,
+    const std::string& name, ArrayRef<int32_t> indices) {
   auto tensor_names = llvm::map_range(
       indices, [&](int i) { return subgraph.tensors.at(i)->name; });
   return builder->getNamedAttr(
@@ -1252,7 +1285,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally,
     const tflite::SignatureDefT* signature,
-    const tflite::ControlEdges& control_edges) {
+    const tflite::ControlEdges& control_edges,
+    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
   // Populate from metadata.
   ControlNodes control_nodes;
   for (const auto [from, to] : control_edges) {
@@ -1351,15 +1385,17 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Set tf.entry_function attribute
   if (is_entry_point) {
     llvm::SmallVector<mlir::NamedAttribute, 2> attributes;
-    if (!func_inputs.empty()) {
+    if (HasNonEmptyNames(subgraph, func_inputs)) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "inputs", func_inputs));
     }
-    if (!func_outputs.empty()) {
+    if (HasNonEmptyNames(subgraph, func_outputs)) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    if (!attributes.empty()) {
+      func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    }
   } else {
     func.setPrivate();
   }
@@ -1399,12 +1435,28 @@ StatusOr<FuncOp> ConvertSubgraph(
       } else if (!vals_map.at(input_num)) {
         auto& const_tensor = *subgraph.tensors[input_num];
         auto const_loc = TensorLoc(const_tensor, builder, base_loc);
-        auto op_or_err =
+        StatusOr<Operation*> op_or_err;
+        std::vector<uint8_t> buffer;
+        // Check if constant tensor is stored outside of the flatbuffers.
+        if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
+          const uint8_t* file_begin_ptr =
+              reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
+          buffer = std::vector<uint8_t>(
+              file_begin_ptr + buffers[const_tensor.buffer]->offset,
+              file_begin_ptr + buffers[const_tensor.buffer]->offset +
+                  buffers[const_tensor.buffer]->size);
+
+          auto shape = const_tensor.shape;
+
+        } else {
+          buffer = buffers[const_tensor.buffer]->data;
+        }
+        op_or_err =
             use_external_constant
                 ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                        op_builder, const_loc)
-                : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                               const_tensor.is_variable, op_builder, const_loc);
+                : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
+                               op_builder, const_loc);
         if (!op_or_err.ok()) {
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
@@ -1432,7 +1484,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
         ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
-                  op_codes, func_names, subgraph.tensors, op_loc, op_builder));
+                  op_codes, func_names, subgraph.tensors, op_loc, op_builder,
+                  model_ptr));
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used
@@ -1457,12 +1510,28 @@ StatusOr<FuncOp> ConvertSubgraph(
     if (!vals_map.at(index)) {
       auto& const_tensor = *subgraph.tensors[index];
       auto const_loc = TensorLoc(const_tensor, builder, base_loc);
-      auto op_or_err =
+      StatusOr<Operation*> op_or_err;
+      std::vector<uint8_t> buffer;
+      // Check if constant tensor is stored outside of the flatbuffers.
+      if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
+        const uint8_t* file_begin_ptr =
+            reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
+
+        buffer = std::vector<uint8_t>(
+            file_begin_ptr + buffers[const_tensor.buffer]->offset,
+            file_begin_ptr + buffers[const_tensor.buffer]->offset +
+                buffers[const_tensor.buffer]->size);
+
+        auto shape = const_tensor.shape;
+      } else {
+        buffer = buffers[const_tensor.buffer]->data;
+      }
+      op_or_err =
           use_external_constant
               ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                      op_builder, const_loc)
-              : BuildConstOp(const_tensor, buffers[const_tensor.buffer]->data,
-                             const_tensor.is_variable, op_builder, const_loc);
+              : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
+                             op_builder, const_loc);
       if (!op_or_err.ok()) {
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
@@ -1530,6 +1599,15 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
+  mlir::DialectRegistry registry;
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::quant::QuantizationDialect,
+              mlir::quantfork::QuantizationForkDialect,
+              mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  mlir::func::registerAllExtensions(registry);
+  context->appendDialectRegistry(registry);
+
   context->loadDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
                        mlir::quantfork::QuantizationForkDialect,
@@ -1609,7 +1687,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         subgraph_to_signature_map.contains(subgraph_index)
             ? subgraph_to_signature_map.at(subgraph_index)
             : nullptr,
-        model_control_dependencies[subgraph_index]);
+        model_control_dependencies[subgraph_index], model_ptr);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": " << func_or_error.status().message(),

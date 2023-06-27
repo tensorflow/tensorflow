@@ -70,7 +70,7 @@ struct CollectStatsPass : public impl::CollectStatsPassBase<CollectStatsPass> {
   void printStats() {
     llvm::outs() << "*** Tileable ops stats (detail level " << detailLevel
                  << ") ***\n";
-    for (auto it : map) {
+    for (const auto &it : map) {
       auto name = it.first;
       auto ops = it.second;
       llvm::outs() << ops.size() << "x " << name << "\n";

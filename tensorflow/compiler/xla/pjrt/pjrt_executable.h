@@ -27,9 +27,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -86,6 +89,10 @@ struct CompileOptions {
   using OptionOverride = std::variant<std::string, bool>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
 
+  // Used to indicate the precision configuration.
+  PrecisionConfig::Precision matrix_unit_operand_precision =
+      PrecisionConfig::DEFAULT;
+
   // Applies env_option_overrides to executable_build_options.debug_options().
   Status ApplyAllOptionOverrides();
 
@@ -97,6 +104,20 @@ struct CompileOptions {
 
   // Deserialize the CompileOptionsProto into a CompileOptions.
   static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
+};
+
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
+
+  // multi_slice_config to associate with the executable during load of a multi
+  // slice operation.
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 // Static device memory usage for a compiled program.
@@ -145,6 +166,12 @@ class PjRtExecutable {
     return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
   }
 
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const = 0;
+
   // Serialize this executable into a string and return the value.
   virtual StatusOr<std::string> SerializeExecutable() const {
     return Unimplemented("Serializing executable is not supported.");
@@ -158,6 +185,18 @@ class PjRtExecutable {
   virtual StatusOr<struct CompileOptions> GetCompileOptions() const {
     return Unimplemented("CompileOptions not available.");
   }
+};
+
+class PjRtExecutableUtil {
+ public:
+  static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  RunHloCostAnalysis(const PjRtExecutable& executable,
+                     HloCostAnalysis* hlo_cost_analysis);
+
+  static StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  RunHloCostAnalysis(
+      const std::vector<std::shared_ptr<xla::HloModule>>& hlo_modules,
+      HloCostAnalysis* hlo_cost_analysis);
 };
 
 }  // namespace xla

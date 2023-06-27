@@ -47,8 +47,7 @@ func.func @nested_if_op_else_1(%cond: tensor<i1>, %x: tensor<i32>, %y: tensor<i3
 // CHECK-LABEL: func private @merge_stateless_merged_if_0_0_then
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
 // CHECK: [[r0:%.*]] = "tf.AddV2"([[x]], [[y]])
-// CHECK: [[r1:%.*]] = "tf.AddV2"([[x]], [[y]])
-// CHECK: return [[r0]], [[r0]], [[r1]]
+// CHECK: return [[r0]], [[r0]], [[r0]]
 
 // CHECK-LABEL: func private @merge_stateless_merged_if_0_0_else
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
@@ -75,14 +74,12 @@ func.func @merge_stateless(%x: tensor<i32>, %y: tensor<i32>, %cond: tensor<i1>) 
 // CHECK-LABEL: func private @merge_nested_if_op_merged_if_0_0_then
 // CHECK-SAME: ([[cond:%.*]]: tensor<i1>, [[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
 // CHECK-NEXT: [[r0:%.*]] = "tf.AddV2"([[x]], [[y]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK-NEXT: [[r1:%.*]] = "tf.AddV2"([[x]], [[y]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK-NEXT: return [[r0]], [[r0]], [[r1]]
+// CHECK-NEXT: return [[r0]], [[r0]], [[r0]]
 
 // CHECK-LABEL: func private @merge_nested_if_op_merged_if_0_0_else_merged_if_1_0_then
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
 // CHECK-NEXT: [[r0:%.*]] = "tf.AddV2"([[x]], [[y]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK-NEXT: [[r1:%.*]] = "tf.AddV2"([[x]], [[y]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK-NEXT: return [[r0]], [[r0]], [[r1]]
+// CHECK-NEXT: return [[r0]], [[r0]], [[r0]]
 
 // CHECK-LABEL: func private @merge_nested_if_op_merged_if_0_0_else_merged_if_1_0_else
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
@@ -111,11 +108,12 @@ func.func @merge_nested_if_op(%x: tensor<i32>, %y: tensor<i32>, %cond: tensor<i1
   func.return %0, %1, %2 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
-// CHECK-LABEL: func @not_merge_side_effect
+// CHECK-LABEL: func @merge_side_effect
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>, [[cond:%.*]]: tensor<i1>)
-func.func @not_merge_side_effect(%x: tensor<i32>, %y: tensor<i32>, %cond: tensor<i1>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+func.func @merge_side_effect(%x: tensor<i32>, %y: tensor<i32>, %cond: tensor<i1>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   // CHECK-NEXT: tf.If
-  // CHECK-NEXT: tf.If
+  // CHECK-SAME: is_stateless = false
+  // CHECK-NEXT: return
   %0, %1 = "tf.If"(%cond, %x, %y) {else_branch = @no_side_effect_else_0, then_branch = @no_side_effect_then_0, is_stateless = true} : (tensor<i1>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
   %2 = "tf.If"(%cond, %x, %y) {else_branch = @no_side_effect_else_1, then_branch = @no_side_effect_then_1, is_stateless = false} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %0, %1, %2 : tensor<i32>, tensor<i32>, tensor<i32>

@@ -15,8 +15,8 @@
 """TensorArray: a dynamically sized array of Tensors."""
 # Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
-import contextlib
 
+import contextlib
 import traceback
 import weakref
 
@@ -42,6 +42,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.types import trace
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1307,6 +1308,9 @@ class TensorArray:
     """Close the current TensorArray."""
     return self._implementation.close(name=name)
 
+  def __tf_tracing_type__(self, _):
+    return TensorArrayTraceType(self)
+
 
 def build_ta_with_new_flow(old_ta, flow):
   """Builds a TensorArray with a new `flow` tensor."""
@@ -1487,6 +1491,46 @@ nested_structure_coder.register_codec(
         TensorArraySpec, struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC
     )
 )
+
+
+# TODO(b/147450234): TensorArray has inconsistent tf.function semantics.
+class TensorArrayTraceType(trace.TraceType):
+  """Represents TraceType of TensorArray."""
+
+  def __init__(self, value):
+    self._value = value
+
+  def is_subtype_of(self, other):
+    return self == other
+
+  def most_specific_common_supertype(self, types):
+    return self if all(self == other for other in types) else None
+
+  def placeholder_value(self, placeholder_context):
+    return self._value
+
+  def _flatten(self):
+    return [tensor_spec.TensorSpec([], dtypes.variant)]
+
+  def _from_tensors(self, tensors):
+    return next(tensors)
+
+  def __eq__(self, other):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, TensorArrayTraceType):
+      return False
+
+    # Retrace for each instance since equality between symbolic values is not
+    # defined.
+    return self._value is other._value
+
+  def __hash__(self):
+    return id(self._value)
+
+  def __repr__(self):
+    return f"{self.__class__.__name__}(value={self._value!r})"
 
 
 # Register the TypeSpec for TensorArray.  If TensorArray is updated to be a

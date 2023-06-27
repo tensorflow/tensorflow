@@ -170,16 +170,16 @@ class Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::full_name("i"), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::prefix(), "i", i_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(Iterator::full_name("iter_loc"), iter_.loc()));
+          writer->WriteScalar(Iterator::prefix(), "iter_loc", iter_.loc()));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          Iterator::full_name("next_non_empty_i_"), next_non_empty_i_));
+          Iterator::prefix(), "next_non_empty_i_", next_non_empty_i_));
       if (i_ <= next_non_empty_i_) {
-        TF_RETURN_IF_ERROR(writer->WriteTensor(
-            Iterator::full_name("next_indices_"), next_indices_));
-        TF_RETURN_IF_ERROR(writer->WriteTensor(
-            Iterator::full_name("next_values_"), next_values_));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(Iterator::prefix(),
+                                               "next_indices_", next_indices_));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(Iterator::prefix(),
+                                               "next_values_", next_values_));
       }
       return OkStatus();
     }
@@ -187,18 +187,18 @@ class Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::full_name("i"), &i_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::prefix(), "i", &i_));
       int64_t iter_loc;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(Iterator::full_name("iter_loc"), &iter_loc));
+          reader->ReadScalar(Iterator::prefix(), "iter_loc", &iter_loc));
       iter_ = group_iterable_.at(iter_loc);
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          Iterator::full_name("next_non_empty_i_"), &next_non_empty_i_));
+          Iterator::prefix(), "next_non_empty_i_", &next_non_empty_i_));
       if (i_ <= next_non_empty_i_) {
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            Iterator::full_name("next_indices_"), &next_indices_));
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            Iterator::full_name("next_values_"), &next_values_));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(Iterator::prefix(),
+                                              "next_indices_", &next_indices_));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(Iterator::prefix(),
+                                              "next_values_", &next_values_));
       }
       return OkStatus();
     }

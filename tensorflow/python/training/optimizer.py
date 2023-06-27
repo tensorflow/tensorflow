@@ -32,7 +32,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import slot_creator
@@ -925,7 +925,7 @@ class Optimizer(
               name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             initial_value, name=name, trainable=False,
             use_resource=resource_variable_ops.is_resource_variable(
                 colocate_with))

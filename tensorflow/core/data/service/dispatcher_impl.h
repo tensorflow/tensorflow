@@ -313,6 +313,9 @@ class DataServiceDispatcherImpl {
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,
@@ -353,10 +356,14 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  // Managers for all snapshot processes created or recovered during the
-  // lifetime of this dispatcher instance.
+  // TODO(mpcallanan): Don't recover completed snapshots.
+  // TODO(mpcallanan): Garbage collect completed snapshots.
+  // A manager for each snapshot resumed or started during the lifetime of this
+  // dispatcher instance.
   absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
       TF_GUARDED_BY(mu_);
+  // A single stream assignment manager shared by all managers in `snapshots_`.
+  SnapshotAssignmentManager snapshot_assignment_manager_;
 
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

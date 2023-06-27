@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 
-#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -60,6 +60,9 @@ class DeviceList {
  private:
   Devices devices_;
 };
+
+// Returns the id of each device in `device_list`.
+std::vector<int> GetDeviceIds(DeviceList device_list);
 
 }  // namespace ifrt
 }  // namespace xla

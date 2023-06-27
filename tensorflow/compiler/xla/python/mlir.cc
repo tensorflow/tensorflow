@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/python/refine_polymorphic_shapes.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -54,16 +56,21 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
   context->loadDialect<mlir::chlo::ChloDialect>();
   context->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context->appendDialectRegistry(registry);
+
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(str.data(), str.size()), context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return module;
 }
@@ -95,6 +102,10 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
+
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
   mlir::PassManager pm(&context);
@@ -220,6 +231,20 @@ void BuildMlirSubmodule(py::module& m) {
   mlir_module.def("deserialize_portable_artifact",
                   xla::ValueOrThrowWrapper(PyDeserializePortableArtifact),
                   py::arg("mlir_module"));
+  mlir_module.def(
+      "refine_polymorphic_shapes",
+      [](std::string mlir_module) -> py::bytes {
+        std::string buffer;
+        llvm::raw_string_ostream os(buffer);
+        xla::ThrowIfError(RefinePolymorphicShapes(mlir_module, os));
+        return py::bytes(buffer);
+      },
+      py::arg("mlir_module"),
+      R"(Refines the dynamic shapes for a module.
+        The "main" function must have static shapes and all the
+        intermediate dynamic shapes depend only on the input static
+        shapes.
+      )");
 }
 
 }  // namespace xla

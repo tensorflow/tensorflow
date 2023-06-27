@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -59,13 +58,6 @@ namespace gpu {
 static GpuEvent* AsGpuEvent(Event* event) {
   DCHECK(event != nullptr);
   return static_cast<GpuEvent*>(event->implementation());
-}
-
-// Given a platform-independent timer datatype, returns the internal ROCM
-// platform implementation pointer.
-static GpuTimer* AsGpuTimer(Timer* timer) {
-  DCHECK(timer != nullptr);
-  return static_cast<GpuTimer*>(timer->implementation());
 }
 
 // Given const GPU memory, returns a librocm device pointer datatype, suitable
@@ -179,40 +171,6 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
   return GpuDriver::GetGpuISAVersion(&version_, device_);
 }
 
-bool GpuExecutor::FindOnDiskForComputeCapability(
-    absl::string_view filename, absl::string_view canonical_suffix,
-    string* found_filename) const {
-  LOG(FATAL) << "Feature not supported on ROCM platform "
-                "(FindOnDiskForComputeCapability)";
-  return false;
-}
-
-bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
-                                          absl::string_view canonical_suffix,
-                                          string* found_filename) const {
-  if (version_ == 0) {
-    return false;
-  }
-
-  string cc_specific =
-      absl::StrCat(filename, ".cc", version_, canonical_suffix);
-  if (tsl::Env::Default()->FileExists(cc_specific).ok()) {
-    VLOG(2) << "found AMDGPU ISA version-specific file, using that: "
-            << cc_specific;
-    *found_filename = cc_specific;
-    return true;
-  }
-
-  VLOG(2) << "could not find AMDGPU ISA version-specific file at: "
-          << cc_specific;
-  if (tsl::Env::Default()->FileExists(string(filename)).ok()) {
-    *found_filename = string(filename);
-    return true;
-  }
-
-  return false;
-}
-
 // Returns the path to the running executable.
 // N.B. Derived from //knowledge/smalltalk/background_kb.cc
 // Arg: strip_exe: if true, remove the name of the executable itself from the
@@ -265,10 +223,8 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   }
 
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
-  if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
-                                    rocm_kernel->gpu_function_ptr())) {
-    return tsl::errors::Internal("Failed getting module function");
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
+      context_, module, kernelname->c_str(), rocm_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
@@ -619,14 +575,6 @@ void GpuExecutor::DeallocateStream(Stream* stream) {
   rocm_stream->Destroy();
 }
 
-bool GpuExecutor::AllocateTimer(Timer* timer) {
-  return AsGpuTimer(timer)->Init();
-}
-
-void GpuExecutor::DeallocateTimer(Timer* timer) {
-  AsGpuTimer(timer)->Destroy();
-}
-
 bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   GpuEventHandle other_completed_event = *AsGpuStream(other)->completed_event();
   bool ok = GpuDriver::RecordEvent(context_, other_completed_event,
@@ -640,14 +588,6 @@ bool GpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
 
   return GpuDriver::WaitStreamOnEvent(context_, AsGpuStreamValue(dependent),
                                       other_completed_event);
-}
-
-bool GpuExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Start(AsGpuStream(stream));
-}
-
-bool GpuExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return AsGpuTimer(timer)->Stop(AsGpuStream(stream));
 }
 
 tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
@@ -753,20 +693,19 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
   return false;
 }
 
-bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
+tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
+                              BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::GetGridLimits(&x, &y, &z, device));
 
   block_dim_limit->x = x;
   block_dim_limit->y = y;
   block_dim_limit->z = z;
-  return true;
+  return tsl::OkStatus();
 }
 
 bool GpuExecutor::SupportsBlas() const { return true; }
@@ -788,11 +727,6 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
-}
-
-std::unique_ptr<internal::TimerInterface>
-GpuExecutor::GetTimerImplementation() {
-  return std::unique_ptr<internal::TimerInterface>(new GpuTimer(this));
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }
@@ -915,6 +849,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
                                (int64_t(prop.memoryClockRate) * 1000);
     builder.set_memory_bandwidth(memory_bandwidth);
+
+    builder.set_l2_cache_size(prop.l2CacheSize);
   }
 
   {
@@ -929,7 +865,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(device, &block_dim_limit);
+    TF_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
     builder.set_block_dim_limit(block_dim_limit);
   }
 

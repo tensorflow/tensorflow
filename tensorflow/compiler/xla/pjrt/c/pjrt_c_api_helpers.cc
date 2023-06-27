@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -214,6 +215,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID;
     case xla::PrimitiveType::PRED:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
+    case xla::PrimitiveType::S4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S4;
     case xla::PrimitiveType::S8:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S8;
     case xla::PrimitiveType::S16:
@@ -222,6 +225,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U4;
     case xla::PrimitiveType::U8:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U8;
     case xla::PrimitiveType::U16:
@@ -238,6 +243,12 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_BF16;
     case xla::PrimitiveType::F64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
+    case xla::PrimitiveType::F8E5M2:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
+    case xla::PrimitiveType::F8E4M3FN:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
+    case xla::PrimitiveType::F8E4M3B11FNUZ:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -253,6 +264,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
   switch (type) {
     case PJRT_Buffer_Type::PJRT_Buffer_Type_PRED:
       return xla::PrimitiveType::PRED;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
+      return xla::PrimitiveType::S4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S8:
       return xla::PrimitiveType::S8;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S16:
@@ -261,6 +274,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
+      return xla::PrimitiveType::U4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U8:
       return xla::PrimitiveType::U8;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U16:
@@ -281,6 +296,12 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C64;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_C128:
       return xla::PrimitiveType::C128;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
+      return xla::PrimitiveType::F8E5M2;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN:
+      return xla::PrimitiveType::F8E4M3FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ:
+      return xla::PrimitiveType::F8E4M3B11FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -560,6 +581,99 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
       [deleter_arg = chunk.deleter_arg, deleter = chunk.deleter](void* data) {
         deleter(data, deleter_arg);
       });
+}
+
+PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
+                                             PJRT_Device* device) {
+  PJRT_Device_GetDescription_Args args;
+  args.struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
+  return args.device_description;
+}
+
+static void PjRtValueDeleterCallback(char* value) { delete[] value; }
+
+static PJRT_KeyValueGetCFunc ToKVGetCFunc(
+    const xla::PjRtClient::KeyValueGetCallback& cpp_kv_get) {
+  return [&cpp_kv_get](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
+    xla::StatusOr<std::string> output =
+        cpp_kv_get(std::string(args->key, args->key_size),
+                   absl::Milliseconds(args->timeout_in_ms));
+    if (!output.ok()) {
+      absl::string_view message = output.status().message();
+      return (*args->callback_error)(
+          StatusCodeToPjrtErrorCode(output.status().code()), message.data(),
+          message.size());
+    }
+    args->value = new char[output->size()];
+    std::copy(output->begin(), output->end(), args->value);
+    args->value_size = output->size();
+    args->value_deleter_callback = &PjRtValueDeleterCallback;
+    return nullptr;
+  };
+}
+
+static PJRT_KeyValuePutCFunc ToKVPutCFunc(
+    const xla::PjRtClient::KeyValuePutCallback& cpp_kv_put) {
+  return [&cpp_kv_put](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
+    xla::Status status = cpp_kv_put(std::string(args->key, args->key_size),
+                                    std::string(args->value, args->value_size));
+    if (!status.ok()) {
+      absl::string_view message = status.message();
+      return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
+                                     message.data(), message.size());
+    }
+    return nullptr;
+  };
+}
+
+static PJRT_KeyValueGetCallback ToCKVGetCallback(
+    PJRT_KeyValueGetCFunc* kv_get_c_func) {
+  return [](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
+    PJRT_KeyValueGetCFunc* kv_get_c_func =
+        reinterpret_cast<PJRT_KeyValueGetCFunc*>(args->user_arg);
+    if (kv_get_c_func == nullptr) {
+      xla::Status status = xla::InvalidArgument(
+          "got nullptr for PJRT_KeyValueGet_Args.user_arg");
+      return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
+                                     status.message().data(),
+                                     status.message().size());
+    }
+    return (*kv_get_c_func)(args);
+  };
+}
+
+static PJRT_KeyValuePutCallback ToCKVPutCallback(
+    PJRT_KeyValuePutCFunc* kv_put_c_func) {
+  return [](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
+    PJRT_KeyValuePutCFunc* kv_put_c_func =
+        reinterpret_cast<PJRT_KeyValuePutCFunc*>(args->user_arg);
+    if (kv_put_c_func == nullptr) {
+      xla::Status status = xla::InvalidArgument(
+          "got nullptr for PJRT_KeyValuePut_Args.user_arg");
+      return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
+                                     status.message().data(),
+                                     status.message().size());
+    }
+    return (*kv_put_c_func)(args);
+  };
+}
+
+std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
+    xla::PjRtClient::KeyValueGetCallback kv_get,
+    xla::PjRtClient::KeyValuePutCallback kv_put) {
+  auto kv_callback_data = std::make_unique<PJRT_KeyValueCallbackData>();
+  kv_callback_data->kv_get = std::move(kv_get);
+  kv_callback_data->kv_put = std::move(kv_put);
+  kv_callback_data->kv_get_c_func = ToKVGetCFunc(kv_callback_data->kv_get);
+  kv_callback_data->kv_put_c_func = ToKVPutCFunc(kv_callback_data->kv_put);
+  kv_callback_data->c_kv_get =
+      ToCKVGetCallback(&kv_callback_data->kv_get_c_func);
+  kv_callback_data->c_kv_put =
+      ToCKVPutCallback(&kv_callback_data->kv_put_c_func);
+  return kv_callback_data;
 }
 
 }  // namespace pjrt

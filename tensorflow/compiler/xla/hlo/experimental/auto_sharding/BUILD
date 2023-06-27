@@ -12,6 +12,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/...",
+        "//tensorflow/compiler/xla/service/gpu/...",
     ],
 )
 
@@ -32,6 +33,7 @@ cc_library(
         ":cluster_environment",
         ":matrix",
         ":metrics",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:dump",
@@ -43,7 +45,6 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -122,7 +123,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
@@ -171,7 +171,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        #"//tensorflow/core:test",
         "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_ortools//ortools/linear_solver",
     ],

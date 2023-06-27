@@ -133,12 +133,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError, "Iterating.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*not allowed.*Graph mode"):
       next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         next(iter(t))
 
@@ -147,15 +150,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*not allowed.*Graph mode"):
       bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         bool(t)
 
@@ -685,7 +688,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation.from_node_def(
         ops._NodeDef("None", "op1"), g, [], [dtypes.float32_ref, dtypes.float32]
     )
-    self.assertIn("testTraceback", op1.traceback[-1])
+    self.assertIn("testTraceback", op1.traceback[-2])
 
   @test_util.run_deprecated_v1
   def testNoInputs(self):
@@ -3694,10 +3697,11 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     concrete_function = f.get_concrete_function()
     if pre_add_input_shapes:
       attr_value = attr_value_pb2.AttrValue(list=list_proto)
-      concrete_function = eager_function.ConcreteFunction(
+      concrete_function = eager_function.ConcreteFunction.from_func_graph(
           concrete_function.graph,
+          concrete_function.function_type,
           attrs={"_input_shapes": attr_value},
-          spec=concrete_function._pre_initialized_function_spec)
+      )
 
     test_graph = ops.Graph()
     with test_graph.as_default():

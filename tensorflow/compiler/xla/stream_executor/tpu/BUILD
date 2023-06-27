@@ -142,7 +142,6 @@ cc_library(
         "tpu_executor.h",
         "tpu_platform.h",
         "tpu_stream.h",
-        "tpu_timer.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -195,7 +194,6 @@ cc_library(
         "tpu_platform_interface.h",
         "tpu_stream.h",
         "tpu_stream_interface.h",
-        "tpu_timer.h",
     ],
     deps = [
         ":c_api_conversions",
@@ -233,7 +231,6 @@ cc_library(
         "tpu_executor.h",
         "tpu_platform.h",
         "tpu_stream.h",
-        "tpu_timer.h",
     ],
     deps = [
         ":c_api_conversions",
@@ -264,7 +261,10 @@ cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
-    deps = [":tpu_executor_init_fns"],
+    deps = [
+        ":tpu_executor_init_fns",
+        ":tpu_ops_c_api_hdrs",
+    ],
 )
 
 cc_library(

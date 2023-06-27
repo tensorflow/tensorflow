@@ -27,16 +27,6 @@ limitations under the License.
 
 namespace xla {
 
-// Backward compatibility for vectorcalls in Python 3.8. Remove this after
-// dropping support for Python 3.8.
-#if PY_VERSION_HEX < 0x03090000
-#define JAX_PyObject_Vectorcall _PyObject_Vectorcall
-#define JAX_TPFLAGS_HAVE_VECTORCALL _Py_TPFLAGS_HAVE_VECTORCALL
-#else  // PY_VERSION_HEX < 0x30900000
-#define JAX_PyObject_Vectorcall PyObject_Vectorcall
-#define JAX_TPFLAGS_HAVE_VECTORCALL Py_TPFLAGS_HAVE_VECTORCALL
-#endif  // PY_VERSION_HEX < 0x30900000
-
 template <typename T>
 bool is_pybind_reinterpret_cast_ok(pybind11::handle h) {
   static pybind11::detail::type_info* const type_info = []() {

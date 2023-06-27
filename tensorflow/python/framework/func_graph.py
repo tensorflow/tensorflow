@@ -1000,6 +1000,10 @@ def func_graph_from_py_func(name,
 
     input_trace_types = trace_type.from_value([func_args, func_kwargs])
     func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+
+    # Reset variables watched while deconstructing inputs.
+    func_graph._watched_variables = object_identity.ObjectIdentityWeakSet()  # pylint: disable=protected-access
+
     for arg in func_graph.inputs:
       if arg.dtype == dtypes.resource:
         func_graph._resource_tensor_inputs.add(arg)  # pylint:disable=protected-access
@@ -1231,10 +1235,9 @@ def _create_placeholders(args, kwargs, arg_names=None):
   arg_trace_types = trace_type.from_value(tuple(args), signature_context)
   kwarg_trace_types = trace_type.from_value(kwargs, signature_context)
 
-  handledata_mapping = signature_context.get_handledata_mapping()
   placeholder_mapping = signature_context.get_placeholder_mapping()
   placeholder_context = trace_type.InternalPlaceholderContext(
-      ops.get_default_graph(), handledata_mapping, placeholder_mapping)
+      ops.get_default_graph(), placeholder_mapping)
 
   if arg_names is None:
     arg_names = [None] * len(arg_trace_types.components)

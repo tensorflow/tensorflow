@@ -45,11 +45,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -92,7 +92,8 @@ static bool HasFp8(const HloModule& hlo_module) {
   for (const HloComputation* computation : hlo_module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ)) {
         return true;
       }
     }
@@ -114,6 +115,8 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
 
   GpuPipelineOpts opts;
   opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
+  opts.enable_concurrent_region =
+      debug_options.xla_gpu_cuda_graph_enable_concurrent_region();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
@@ -231,10 +234,33 @@ Status CompileModuleToLlvmIrImpl(
     HloPredicate is_nop =
         HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
                          HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
-    pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
+    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("remat-pipeline");
+
+    HloRematerialization::RematerializationSizes sizes;
+    pipeline.AddPass<HloRematerialization>(
+        [pointer_size](const Shape& shape) {
+          return GetSizeOfShape(shape, pointer_size);
+        },
+        // Assume 75% of the total device memory is available for XLA.
+        /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
+        /*sizes=*/&sizes,
+        HloRematerialization::RematerializationPass::kPostFusion,
+        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+        /*compact_shape_function=*/nullptr,
+        HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+
+    TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(hlo_module));
+    if (changed) {
+      VLOG(1) << "HloRematerialization saved "
+              << sizes.before_bytes - sizes.after_bytes << " bytes";
+    }
   }
 
   auto buffer_size_bytes_function =
@@ -242,23 +268,6 @@ Status CompileModuleToLlvmIrImpl(
     return GetSizeOfShape(buffer_value.shape(), pointer_size);
   };
 
-  HloRematerialization::RematerializationSizes sizes;
-  HloRematerialization remat(
-      [pointer_size](const Shape& shape) {
-        return GetSizeOfShape(shape, pointer_size);
-      },
-      // Assume 75% of the total device memory is available for XLA.
-      /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
-      /*sizes=*/&sizes,
-      HloRematerialization::RematerializationPass::kPostFusion,
-      /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-      /*compact_shape_function=*/nullptr,
-      HloRematerialization::RematerializationMode::kRecomputeAndCompress);
-  TF_ASSIGN_OR_RETURN(bool changed, remat.Run(hlo_module));
-  if (changed) {
-    VLOG(1) << "HloRematerialization saved "
-            << sizes.before_bytes - sizes.after_bytes << " bytes";
-  }
 
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,

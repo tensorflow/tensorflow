@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -367,12 +368,6 @@ class StreamExecutor {
   // platform that underlies this interface.
   bool SupportsDnn() const;
 
-  // Returns the list of supported algorithms for the specified convolution
-  // operation.
-  bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
-                             dnn::DataType input_type,
-                             std::vector<dnn::AlgorithmDesc>* out_algorithms);
-
   // Returns the supported algorithms / execution plans for a convolution.
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -384,6 +379,7 @@ class StreamExecutor {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   tsl::Status GetFusedConvolveRunners(
@@ -397,6 +393,7 @@ class StreamExecutor {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   tsl::Status GetFusedMatmulRunners(
@@ -405,6 +402,7 @@ class StreamExecutor {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
@@ -435,8 +433,8 @@ class StreamExecutor {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io);
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -566,7 +564,6 @@ class StreamExecutor {
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  friend class Timer;
   template <typename... Params>
   friend class TypedKernel;
   template <typename... Args>
@@ -647,19 +644,6 @@ class StreamExecutor {
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream* dependent, Stream* other);
-
-  // Allocates timer resources on the underlying platform and initializes its
-  // internals.
-  bool AllocateTimer(Timer* timer);
-
-  // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer* timer);
-
-  // Records a start event for an interval timer.
-  bool StartTimer(Stream* stream, Timer* timer);
-
-  // Records a stop event for an interval timer.
-  bool StopTimer(Stream* stream, Timer* timer);
 
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.

@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -36,11 +36,12 @@ struct TfMetricsDbData {
   HostOpMetricsDbBuilder tf_metrics_db_builder{&tf_metrics_db};
 };
 
-absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
-    const XPlane& host_trace);
+absl::flat_hash_map<int64_t, tsl::profiler::TfOp>
+CollectTfOpsFromHostThreadsXPlane(const XPlane& host_trace);
 
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
-    const XLineVisitor& line, const absl::flat_hash_map<int64_t, TfOp>& tf_ops);
+    const XLineVisitor& line,
+    const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops);
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
