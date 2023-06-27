@@ -382,6 +382,46 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   }
 }
 
+TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  std::vector<tsl::RCReference<Array>> arrays({array});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
+                          client->AssembleArrayFromSingleDeviceArrays(
+                              shape, sharding, absl::MakeSpan(arrays),
+                              ArrayCopySemantics::kAlwaysCopy));
+
+  ASSERT_EQ(assembled_array->dtype(), array->dtype());
+  ASSERT_EQ(assembled_array->shape(), array->shape());
+  ASSERT_THAT(assembled_array->sharding().devices().devices(),
+              ElementsAreArray(array->sharding().devices().devices()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kAlwaysCopy));
+
+  ASSERT_THAT(single_device_arrays, SizeIs(1));
+  ASSERT_EQ(single_device_arrays[0]->dtype(), array->dtype());
+  ASSERT_EQ(single_device_arrays[0]->shape(), array->shape());
+  EXPECT_THAT(single_device_arrays[0]->sharding().devices().devices(),
+              ElementsAreArray(array->sharding().devices().devices()));
+}
+
 TEST(ArrayImplTest, ReshardToSameSharding) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
