@@ -2659,10 +2659,11 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
   assert(begin_elems.getNumElements() == rank);
   assert(size_elems.getNumElements() == rank);
 
+  const int64_t to_end = -1;
   for (int i = 0; i < rank; i++) {
     int64_t begin = begin_elems.getValues<APInt>()[i].getSExtValue();
     int64_t size = size_elems.getValues<APInt>()[i].getSExtValue();
-    size = (size == -1) ? shape[i] - begin : size;
+    size = (size == to_end) ? shape[i] - begin : size;
     begin_vals.push_back(begin);
     size_vals.push_back(size);
   }
