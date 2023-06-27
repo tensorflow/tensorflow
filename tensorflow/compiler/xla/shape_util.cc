@@ -513,6 +513,22 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+// Prepend new major-most dimension sized `bound` to the shape.
+Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
+  Shape new_shape(shape.element_type(), {}, {}, {});
+  new_shape.add_dimensions(bound);
+  for (const int64_t dim : shape.dimensions()) {
+    new_shape.add_dimensions(dim);
+  }
+  if (shape.has_layout()) {
+    for (const int64_t dim : shape.layout().minor_to_major()) {
+      new_shape.mutable_layout()->add_minor_to_major(dim + 1);
+    }
+    new_shape.mutable_layout()->add_minor_to_major(0);
+  }
+  return new_shape;
+}
+
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
   shape->add_dimensions(bound);
