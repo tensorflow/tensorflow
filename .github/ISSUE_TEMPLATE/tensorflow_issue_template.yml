@@ -1,5 +1,5 @@
-name: TensorFlow Issue Template
-description: Use this template to report TensorFlow-related issues
+name: Tensorflow Issue Template
+description: Please report security related issue using [Google Bug Hunters reporting form](https://bughunters.google.com/). To report any other TensorFlow related issue please use this template.
 body:
   - type: dropdown
     id: issue-type
@@ -21,46 +21,48 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please make sure that this is a bug. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub.
+        Please make sure that this is a bug. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub.
 
   - type: dropdown
     id: tf-nightly
     attributes:
-      label: Have You Reproduced the Bug With TensorFlow Nightly?
-      description: It is strongly suggested that you reproduce the bug with [TensorFlow Nightly](https://www.tensorflow.org/install/pip#nightly)
+      label: Have you reproduced the bug with TF nightly?
+      description: It is strongly suggested that you have reproduced the bug with [TF nightly](https://www.tensorflow.org/install/pip#nightly)
       options:
         - "Yes"
         - "No"
     validations:
       required: true
-
+          
   - type: markdown
     attributes:
-      value: |
-        You can collect some of this information using our [environment capture script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh). You can also obtain the TensorFlow version with the following: <br> 1. TensorFlow 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TensorFlow 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
+      value: | 
+        You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)  You can also obtain the TensorFlow version with: <br> 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
 
   - type: dropdown
     id: source
     attributes:
       label: Source
-      description: TensorFlow installed from
+      description: Tensorflow installed from
       options:
         - source
         - binary
     validations:
       required: true
-
+      
   - type: input
     id: tfversion
     attributes:
-      label: TensorFlow Version
-      placeholder: e.g., tf 2.8
+      label: Tensorflow Version
+      description: 
+      placeholder: ex,. tf 2.8
     validations:
       required: true
   - type: dropdown
     id: Code
     attributes:
       label: Custom Code
+      description: 
       options:
         - "Yes"
         - "No"
@@ -70,57 +72,80 @@ body:
     id: OS
     attributes:
       label: OS Platform and Distribution
+      description: 
       placeholder: e.g., Linux Ubuntu 16.04
+    validations:
+      required: false
   - type: input
     id: Mobile
     attributes:
-      label: Mobile Device
+      label: Mobile device
+      description: 
       placeholder: e.g., Linux Ubuntu 16.04
+    validations:
+      required: false
   - type: input
     id: Python
     attributes:
-      label: Python Version
+      label: Python version
+      description: 
       placeholder: e.g., 3.9
+    validations:
+      required: false
   - type: input
     id: Bazel
     attributes:
-      label: Bazel Version
-      description: If compiling from source
+      label: Bazel version
+      description: if compiling from source
+      placeholder: 
+    validations:
+      required: false
   - type: input
     id: Compiler
     attributes:
-      label: GCC/Compiler Version
-      description: If compiling from source
+      label: GCC/Compiler version
+      description: if compiling from source
+      placeholder: 
+    validations:
+      required: false
   - type: input
     id: Cuda
     attributes:
-      label: CUDA/cuDNN Version
+      label: CUDA/cuDNN version
+      description:
+      placeholder: 
+    validations:
+      required: false
   - type: input
     id: Gpu
     attributes:
-      label: GPU Model and Memory
-      description: If compiling from source
+      label: GPU model and memory
+      description: if compiling from source
+      placeholder: 
+    validations:
+      required: false
   - type: textarea
     id: what-happened
     attributes:
-      label: Current Behavior?
+      label: Current Behaviour?
       description: Also tell us, what did you expect to happen?
       placeholder: Tell us what you see!
+      value: "A bug happened!"
     validations:
       required: true
   - type: textarea
     id: code-to-reproduce
     attributes:
-      label: Standalone Code to Reproduce the Issue
-      description: Provide a reproducible test case at the bare minimum necessary to generate the problem. Please share a link to Colab, Jupyter, or any notebook.
+      label: Standalone code to reproduce the issue
+      description: Provide a reproducible test case that is the bare minimum necessary to generate the problem. If possible, please share a link to Colab/Jupyter/any notebook.
       placeholder: Tell us what you see!
-      value:
+      value: 
       render: shell
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Relevant Log Output
+      label: Relevant log output
       description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
       render: shell
