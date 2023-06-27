@@ -79,7 +79,7 @@ def make_sin_tests(options):
 def make_log_tests(options):
   """Make a set of tests to do log."""
   return _make_elementwise_tests(tf.math.log, allow_fully_quantize=True,
-                                 min_value=.1, max_value=1)(options)
+                                 min_value=.1, max_value=100)(options)
 
 
 @register_make_test_function()
