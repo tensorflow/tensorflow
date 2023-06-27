@@ -58,18 +58,20 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
+  TF_ASSIGN_OR_RETURN(auto transfer_manager, TransferManager::GetForPlatform(
+                                                 stream->parent()->platform()));
   auto device_ordinal = stream_exec->device_ordinal();
   VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
           << " shape = " << ShapeUtil::HumanStringWithLayout(shape);
-  auto update_layout = [this](xla::Shape* subshape,
-                              const xla::ShapeIndex& index) {
+  auto update_layout = [&transfer_manager](xla::Shape* subshape,
+                                           const xla::ShapeIndex& index) {
     if (subshape->IsArray()) {
       CHECK(subshape->has_layout());
       if (!subshape->layout().tiles().empty()) {
         // Already in device shape.
         return;
       }
-      *subshape = HostShapeToDeviceShape(*subshape);
+      *subshape = transfer_manager->HostShapeToDeviceShape(*subshape);
     }
   };
   Shape device_shape = shape;
