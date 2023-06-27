@@ -1,5 +1,5 @@
 name: TensorFlow Issue Template
-description: Use this template to report TensorFlow-related issues.
+description: Use this template to report TensorFlow-related issues
 body:
   - type: dropdown
     id: issue-type
