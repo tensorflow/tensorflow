@@ -43,8 +43,7 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   // qualified type name of the class that implements `Serializable`.
   virtual absl::string_view type_name() const = 0;
 
-  virtual absl::StatusOr<std::string> Serialize(
-      const Serializable& serializable) = 0;
+  virtual absl::StatusOr<std::string> Serialize(Serializable& serializable) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized) = 0;
@@ -74,7 +73,7 @@ void RegisterSerDes(std::unique_ptr<SerDes> serdes) {
 //
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(const Serializable& serializable);
+absl::StatusOr<Serialized> Serialize(Serializable& serializable);
 
 // Deserializes the given proto message produced by `Serialize()` back to a
 // `Serializable` object of the original type.

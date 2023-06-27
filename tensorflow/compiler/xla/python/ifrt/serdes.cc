@@ -78,7 +78,7 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   serdes.release();
 }
 
-absl::StatusOr<Serialized> Serialize(const Serializable& serializable) {
+absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
   SerDes* serdes;
   {
     Registry* const r = registry();

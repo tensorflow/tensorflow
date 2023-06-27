@@ -40,8 +40,7 @@ class XlaCompileOptionsSerDes
     return "xla::ifrt::XlaCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(
-      const Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
     const XlaCompileOptions& options =
         llvm::cast<XlaCompileOptions>(serializable);
 

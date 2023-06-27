@@ -47,8 +47,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
     return "xla::ifrt::TestNumber";
   }
 
-  absl::StatusOr<std::string> Serialize(
-      const Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
     const TestNumber& obj = llvm::cast<TestNumber>(serializable);
     return absl::StrCat(obj.number);
   }
