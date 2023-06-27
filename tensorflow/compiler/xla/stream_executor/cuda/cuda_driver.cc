@@ -1238,26 +1238,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
-  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
-    // cuMemcpyPeerAsync is not supported during graph capture, so we use
-    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
-
-    // Check if UVA is enabled.
-    for (int i = 0; i < GetDeviceCount(); ++i) {
-      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
-      auto result = GetDeviceAttribute(attribute, i);
-      if (!result.ok()) {
-        LOG(ERROR) << "Failed to get device attribute";
-        return false;
-      }
-
-      if (result.value() == 0) {
-        LOG(ERROR) << "Unified addressing is not enabled";
-        return false;
-      }
-    }
-
-    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
     CUcontext dst_context =
@@ -1279,8 +1259,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       }
     }
 
-    result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context, size,
-                               stream);
+    if (dst_context == src_context) {
+      // Since the CUDA context is the same, the src and dst are within the same
+      // GPU. So we can use cuMemcpyDtoD.
+      result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+    } else {
+      result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context,
+                                 size, stream);
+    }
   }
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
