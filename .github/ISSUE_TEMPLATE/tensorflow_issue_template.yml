@@ -103,7 +103,7 @@ body:
   - type: textarea
     id: what-happened
     attributes:
-      label: Current Behaviour?
+      label: Current Behavior?
       description: Also tell us, what did you expect to happen?
       placeholder: Tell us what you see!
     validations:
