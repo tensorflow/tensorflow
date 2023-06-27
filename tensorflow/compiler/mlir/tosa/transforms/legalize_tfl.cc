@@ -2638,14 +2638,10 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_slice_op = cast<TFL::SliceOp>(op);
 
-  auto input = tfl_slice_op.getInput();
-  ShapedType input_type = dyn_cast<ShapedType>(input.getType());
   ShapedType output_type =
       tfl_slice_op.getResult().getType().dyn_cast<ShapedType>();
-
-  if (!input_type || !output_type) {
-    return rewriter.notifyMatchFailure(op, "shaped input/output required");
-  }
+  // Not a shaped tensor output
+  if (!output_type) return failure();
 
   ElementsAttr begin_elems, size_elems;
 
@@ -2656,19 +2652,19 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
     return failure();
   }
 
-  if (input_type.hasRank()) {
-    ArrayRef<int64_t> shape = input_type.getShape();
-    size_t rank = shape.size();
-    assert(begin_elems.getNumElements() == rank);
-    assert(size_elems.getNumElements() == rank);
+  auto input = tfl_slice_op.getInput();
+  RankedTensorType input_type = cast<RankedTensorType>(input.getType());
+  ArrayRef<int64_t> shape = input_type.getShape();
+  size_t rank = shape.size();
+  assert(begin_elems.getNumElements() == rank);
+  assert(size_elems.getNumElements() == rank);
 
-    for (int i = 0; i < rank; i++) {
-      int64_t begin = begin_elems.getValues<APInt>()[i].getSExtValue();
-      int64_t size = size_elems.getValues<APInt>()[i].getSExtValue();
-      size = (size == -1) ? shape[i] - begin : size;
-      begin_vals.push_back(begin);
-      size_vals.push_back(size);
-    }
+  for (int i = 0; i < rank; i++) {
+    int64_t begin = begin_elems.getValues<APInt>()[i].getSExtValue();
+    int64_t size = size_elems.getValues<APInt>()[i].getSExtValue();
+    size = (size == -1) ? shape[i] - begin : size;
+    begin_vals.push_back(begin);
+    size_vals.push_back(size);
   }
 
   DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
