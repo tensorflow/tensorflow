@@ -268,6 +268,8 @@ void ListOpsSubgraphBuilder::BuildWhileSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kListIn, kTfLiteVariant);
   SetupTensor(subgraph, kListOut, kTfLiteVariant);
 
+  // `subgraph` takes ownership of `TfLiteWhileParams` and will `free`,
+  // so `malloc` is required.
   TfLiteWhileParams* params =
       reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
 
