@@ -557,7 +557,9 @@ message DebugOptions {
   // this field.
   float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
-  // Next id: 226
+  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+
+  // Next id: 227
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
