@@ -1176,10 +1176,6 @@ ENTRY test {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, SupportedMixTypeGemm) {
-  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    GTEST_SKIP() << "Mixed type cublas calls are only used on Volta and above";
-  }
-
   const char* hlo_text = R"(
 HloModule test
 
@@ -1751,12 +1747,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -1815,12 +1806,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -4503,12 +4489,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -4566,12 +4547,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -4630,12 +4606,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
