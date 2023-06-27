@@ -1259,14 +1259,6 @@ py_strict_library(
     deps = ["//tensorflow/python/platform:test"],
 )
 
-py_strict_library(
-    name = "learning_rate_decay",
-    # This rule depends on a target that only python:__pkg__ has visibility for.
-    srcs = ["//tensorflow/python/training:learning_rate_decay.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
-)
-
 # copybara:uncomment_begin(google-only)
 # # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(

@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,12 +12,6 @@ package(
 exports_files(
     # Used in a pybind extension whose rule must be in tensorflow/python
     ["quantize_training_wrapper.cc"],
-    visibility = ["//tensorflow/python:__pkg__"],
-)
-
-exports_files(
-    # Used in a rule which visibility limits to tensorflow/python
-    ["learning_rate_decay.py"],
     visibility = ["//tensorflow/python:__pkg__"],
 )
 
@@ -90,6 +85,7 @@ py_library(
         ":ftrl",
         ":gradient_descent",
         ":input",
+        ":learning_rate_decay",
         ":momentum",
         ":monitored_session",
         ":moving_averages",
@@ -109,7 +105,6 @@ py_library(
         ":sync_replicas_optimizer",
         ":training_util",
         ":warm_starting_util",
-        "//tensorflow/python:learning_rate_decay",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/checkpoint:checkpoint_view",
         "//tensorflow/python/ops:sdca_ops",
@@ -865,6 +860,13 @@ py_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
+)
+
+py_strict_library(
+    name = "learning_rate_decay",
+    srcs = ["learning_rate_decay.py"],
+    srcs_version = "PY3",
+    deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
 
 py_library(
