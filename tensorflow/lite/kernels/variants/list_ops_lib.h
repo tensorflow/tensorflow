@@ -33,6 +33,8 @@ TfLiteRegistration* Register_LIST_RESERVE();
 
 TfLiteRegistration* Register_LIST_STACK();
 
+TfLiteRegistration* Register_LIST_SET_ITEM();
+
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite
