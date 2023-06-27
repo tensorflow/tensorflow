@@ -3458,16 +3458,16 @@ def MHLO_XlaRngGetAndUpdateStateOp: MHLO_Op<"xla.rng_get_and_update_state", [Dec
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
-      [Pure], TensorOf<[F32, BF16, MHLO_QuantizedInt]>,
+      [Pure], TensorOf<[HLO_Float, MHLO_QuantizedInt]>,
       MHLO_QuantizedIntTensor> {
   let summary = "UniformQuantize operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/588.
+    Performs element-wise conversion of floating-point tensor or quantized
+    tensor `operand` to a quantized tensor `result` according to the
+    quantization parameters defined by the `result` type.
 
-    Informally, this operation converts floating point tensors or uniform
-    quantized tensors to uniform quantized tensors according to the quantization
-    parameters defined by the result type.
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#uniform_quantize
 
     Example:
     ```mlir
@@ -3481,15 +3481,15 @@ def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
 }
 
 def MHLO_UniformDequantizeOp : MHLO_UnaryElementwiseOp<"uniform_dequantize",
-      [InferTensorType, Pure], MHLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
+      [InferTensorType, Pure], MHLO_QuantizedIntTensor, HLO_FpTensor> {
   let summary = "UniformDequantize operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/588.
+    Performs element-wise conversion of quantized tensor `operand` to a
+    floating-point tensor `result` according to the quantization parameters
+    defined by the `operand` type.
 
-    Informally, this operation converts uniform quantized tensors to floating
-    point tensors according to the quantization parameters defined by the
-    operand type.
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#uniform_dequantize
 
     Example:
     ```mlir
