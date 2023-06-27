@@ -313,6 +313,17 @@ struct SparseReshapeCallRewriter {
   }
 };
 
+struct SparseSelectRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 3 && "Need three input tensors");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the operation.
+    rewriter.replaceOpWithNewOp<mhlo::SelectOp>(op, op.getResults().getTypes(),
+                                                op.getInputs());
+    return success();
+  }
+};
+
 struct SparseSliceCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getInputs().size() == 4 &&
@@ -543,6 +554,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_reduce_xor",
                      SparseReduceCallRewriter<mhlo::XorOp>()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_select_n", SparseSelectRewriter()),
       std::make_pair("sparse_tensor_sinh",
                      SparseUnaryChloCallRewriter<chlo::SinhOp>()),
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
