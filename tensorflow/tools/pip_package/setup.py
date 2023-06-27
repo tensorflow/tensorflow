@@ -90,6 +90,7 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
+    'ml_dtypes >= 0.2.0',
     'numpy >= 1.22',
     'opt_einsum >= 2.3.2',
     'packaging',

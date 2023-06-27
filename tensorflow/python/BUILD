@@ -568,7 +568,7 @@ py_strict_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = ["//tensorflow/tsl/python/lib/core:bfloat16.so"] + select({
+    dynamic_deps = ["//tensorflow/tsl/python/lib/core:ml_dtypes.so"] + select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
@@ -854,9 +854,7 @@ filegroup(
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
-        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
-        "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
+        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "//tensorflow/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile

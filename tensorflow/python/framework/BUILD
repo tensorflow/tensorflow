@@ -468,12 +468,10 @@ py_strict_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/types:trace",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python/lib/core:_pywrap_bfloat16",
-        "//tensorflow/python/lib/core:_pywrap_custom_casts",
-        "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "//tensorflow/tsl/python/lib/core:pywrap_ml_dtypes",
         "@ml_dtypes",
     ],
 )
