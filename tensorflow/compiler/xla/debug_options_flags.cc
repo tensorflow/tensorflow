@@ -119,7 +119,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_enable_highest_priority_async_stream(false);
-  opts.set_xla_gpu_enable_data_parallel_collective_optimizer(false);
+  opts.set_xla_gpu_enable_pipelined_all_reduce(false);
+  opts.set_xla_gpu_enable_pipelined_all_gather(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -1028,11 +1029,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_highest_priority_async_stream(),
       "Enable async stream to have the highest priority."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_data_parallel_collective_optimizer",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_enable_data_parallel_collective_optimizer),
-      debug_options->xla_gpu_enable_data_parallel_collective_optimizer(),
-      "Enable data parallel collective optimizer."));
+      "xla_gpu_enable_pipelined_all_reduce",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
+      debug_options->xla_gpu_enable_pipelined_all_reduce(),
+      "Enable pipelinling of all-reduce instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_all_gather",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_gather),
+      debug_options->xla_gpu_enable_pipelined_all_gather(),
+      "Enable pipelinling of all-gather instructions."));
   flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
