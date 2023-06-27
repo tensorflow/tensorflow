@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -65,7 +67,7 @@ cc_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
     python_version = "PY3",
