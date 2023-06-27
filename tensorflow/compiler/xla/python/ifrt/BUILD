@@ -65,6 +65,7 @@ cc_library(
         "value.h",
     ],
     deps = [
+        ":serdes",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",

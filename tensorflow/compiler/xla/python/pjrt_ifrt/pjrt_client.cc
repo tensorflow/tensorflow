@@ -80,11 +80,20 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
-  if (!llvm::isa<const OpaqueSharding>(sharding.get()) &&
-      !llvm::isa<const ShardingParamSharding>(sharding.get())) {
+  if (llvm::isa<const SingleDeviceSharding>(sharding.get())) {
+    // Assemble with SingleDeviceSharding is No-op.
+    if (arrays.size() != 1) {
+      return InvalidArgument(
+          "When the sharding is SingleDeviceSharding, the input arrays size "
+          "must be one, but the actual size is %d",
+          arrays.size());
+    }
+    return arrays[0];
+  } else if (!llvm::isa<const OpaqueSharding>(sharding.get()) &&
+             !llvm::isa<const ShardingParamSharding>(sharding.get())) {
     return InvalidArgument(
-        "Only OpaqueSharding and ShardingParamSharding are supported: "
-        "sharding=%s",
+        "Only SingleDeviceSharding, OpaqueSharding and ShardingParamSharding "
+        "are supported: sharding=%s",
         sharding->DebugString());
   }
   if (sharding->devices().size() != arrays.size()) {

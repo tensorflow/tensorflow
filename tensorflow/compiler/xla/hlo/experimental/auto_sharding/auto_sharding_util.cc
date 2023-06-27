@@ -1621,6 +1621,8 @@ AliasMap BuildAliasMap(const HloModule* module) {
     output_tuple = output_tuple->operand(0);
   }
 
+  absl::flat_hash_map<int64_t, absl::flat_hash_map<int64_t, HloInstruction*>>
+      parameter_index_to_operand_map;
   alias_config.ForEachAlias([&](const ShapeIndex& output_index,
                                 const HloInputOutputAliasConfig::Alias& alias) {
     CHECK_LT(alias.parameter_index.size(), 2)
@@ -1629,16 +1631,42 @@ AliasMap BuildAliasMap(const HloModule* module) {
     CHECK_EQ(output_index.size(), 1)
         << "Do not support alias with output_index that is larger than 1D: "
         << output_index.ToString();
+    if (!alias.parameter_index.empty()) {
+      for (size_t i = 0;
+           i < parameter_instructions[alias.parameter_number]->users().size();
+           ++i) {
+        auto user = parameter_instructions[alias.parameter_number]->users()[i];
+        if (user->opcode() == HloOpcode::kGetTupleElement) {
+          parameter_index_to_operand_map[alias.parameter_number]
+                                        [user->tuple_index()] = user;
+        }
+      }
+    }
+  });
+
+  alias_config.ForEachAlias([&](const ShapeIndex& output_index,
+                                const HloInputOutputAliasConfig::Alias& alias) {
+    // We skip some checks here as they have been performed above already.
     const HloInstruction* dst_ins = output_tuple->operand(output_index.front());
-    HloInstruction* src_ins;
+    HloInstruction* src_ins = nullptr;
     if (alias.parameter_index.empty()) {
       src_ins = parameter_instructions[alias.parameter_number];
     } else {
       // alias.parameter_index.size() == 1 per the CHECK_LT statement.
-      src_ins = parameter_instructions[alias.parameter_number]->users().at(
-          alias.parameter_index.front());
+      auto outer_iter =
+          parameter_index_to_operand_map.find(alias.parameter_number);
+      if (outer_iter != parameter_index_to_operand_map.end()) {
+        auto tuple_index_to_operand_map = outer_iter->second;
+        auto inner_iter =
+            tuple_index_to_operand_map.find(alias.parameter_index.front());
+        if (inner_iter != tuple_index_to_operand_map.end()) {
+          src_ins = inner_iter->second;
+        }
+      }
     }
-    alias_map[dst_ins] = src_ins;
+    if (src_ins != nullptr) {
+      alias_map[dst_ins] = src_ins;
+    }
   });
 
   return alias_map;
