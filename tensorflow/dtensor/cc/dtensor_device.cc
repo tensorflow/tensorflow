@@ -487,8 +487,8 @@ class DTensorDevice {
 
   // Executes a multi-device function.
   void ExecuteMultiDeviceOperation(
-      TFE_Context* context, const ExecutionFunctions* execution_functions,
-      const TFE_OpAttrs* attributes, const TranslatedFunction& function,
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const TranslatedFunction& function,
       const std::vector<TensorWithLayoutTf*>& inputs,
       std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
       TF_Status* status);
@@ -1864,8 +1864,8 @@ void DTensorDevice::ParallelExecuteRegularOperation(
 }
 
 void DTensorDevice::ExecuteMultiDeviceOperation(
-    TFE_Context* context, const ExecutionFunctions* execution_functions,
-    const TFE_OpAttrs* attributes, const TranslatedFunction& function,
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const TranslatedFunction& function,
     const std::vector<TensorWithLayoutTf*>& inputs,
     std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
     TF_Status* status) {
@@ -1877,7 +1877,6 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
 
   int num_outputs = function.local_output_shapes.size();
   int num_output_layouts = function.output_layouts.size();
-  const auto& global_output_shapes = execution_functions->global_output_shapes;
 
   std::vector<TensorHandlePtr> eager_outputs(num_outputs);
   ExecuteSingleDeviceOperation(
@@ -1887,9 +1886,6 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
 
   int output_offset = 0;
   for (int i = 0; i < num_output_layouts; i++) {
-    const auto& dim_sizes = global_output_shapes[i].dim_sizes();
-    std::vector<int64_t> output_shape =
-        std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
     const Layout& output_layout = function.output_layouts[i];
     std::vector<TensorHandlePtr> layout_outputs;
     const int num_devices = output_layout.num_devices();
@@ -1900,8 +1896,7 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
     output_offset += num_devices;
     ASSIGN_OR_RETURN_C_STATUS(
         auto local_output,
-        CreateTensorWithLayout(std::move(layout_outputs), output_layout,
-                               output_shape),
+        CreateTensorWithLayout(std::move(layout_outputs), output_layout),
         status);
     outputs[i] = std::move(local_output);
   }
@@ -2304,8 +2299,8 @@ void DTensorDevice::ExecuteRegularOperation(
     VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
 
     if (multi_device_mode) {
-      ExecuteMultiDeviceOperation(context, execution_functions, attributes,
-                                  function, inputs_tf, typed_outputs, status);
+      ExecuteMultiDeviceOperation(context, attributes, function, inputs_tf,
+                                  typed_outputs, status);
     } else if (mesh.IsSingleDevice()) {
       ExecuteEagerOperation(context, attributes, function, inputs_tf,
                             output_with_layout, status);
