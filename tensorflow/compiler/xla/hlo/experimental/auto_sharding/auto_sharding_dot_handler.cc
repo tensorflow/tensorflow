@@ -976,14 +976,6 @@ class ConvHandler {
                                     device_mesh_.num_dimensions());
     }
 
-    // Support only 2 shardable dimensions for now
-    if (shardable_mesh_dims.size() > 2) {
-      return absl::InternalError(
-          "This function does not support 3D mesh shape with convolution ops "
-          "yet.");
-    }
-    CHECK_EQ(shardable_mesh_dims.size(), 2);
-
     if ((ins_->feature_group_count() ==
              lhs_->shape().dimensions(lhs_in_channel_dim_) &&
          ins_->feature_group_count() ==
@@ -991,8 +983,12 @@ class ConvHandler {
       // for depthwise conv
       // SS = SS x S
       // Split batch dim and channel dim
-      SplitDepthwise(shardable_mesh_dims[0], shardable_mesh_dims[1], true);
-      SplitDepthwise(shardable_mesh_dims[1], shardable_mesh_dims[0], true);
+      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+          SplitDepthwise(shardable_mesh_dims[i], shardable_mesh_dims[j], true);
+          SplitDepthwise(shardable_mesh_dims[j], shardable_mesh_dims[i], true);
+        }
+      }
     } else if ((ins_->batch_group_count() ==
                     lhs_->shape().dimensions(lhs_batch_dim_) &&
                 ins_->batch_group_count() ==
@@ -1000,26 +996,46 @@ class ConvHandler {
       // for depthwise conv filter_backward
       // SS = SS x S
       // Split batch dim and channel dim
-      SplitDepthwise(shardable_mesh_dims[0], shardable_mesh_dims[1], false);
-      SplitDepthwise(shardable_mesh_dims[1], shardable_mesh_dims[0], false);
+      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+          SplitDepthwise(shardable_mesh_dims[i], shardable_mesh_dims[j], false);
+          SplitDepthwise(shardable_mesh_dims[j], shardable_mesh_dims[i], false);
+        }
+      }
     }
 
     // SS = SR x RS
     // Split lhs batch dim and rhs out_channel dim.
-    SplitLhsBatchRhsOutchannel(shardable_mesh_dims[0], shardable_mesh_dims[1]);
-    SplitLhsBatchRhsOutchannel(shardable_mesh_dims[1], shardable_mesh_dims[0]);
+    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+        SplitLhsBatchRhsOutchannel(shardable_mesh_dims[i],
+                                   shardable_mesh_dims[j]);
+        SplitLhsBatchRhsOutchannel(shardable_mesh_dims[j],
+                                   shardable_mesh_dims[i]);
+      }
+    }
 
     // SR = SS x SR
     // Split lhs batch dim and both in_channel dims.
-    SplitLhsBatchBothInchannel(shardable_mesh_dims[0], shardable_mesh_dims[1]);
-    SplitLhsBatchBothInchannel(shardable_mesh_dims[1], shardable_mesh_dims[0]);
+    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+        SplitLhsBatchBothInchannel(shardable_mesh_dims[i],
+                                   shardable_mesh_dims[j]);
+        SplitLhsBatchBothInchannel(shardable_mesh_dims[j],
+                                   shardable_mesh_dims[i]);
+      }
+    }
 
     // RS = RS x SS
     // Split rhs out_channel dim and both in_channel dims.
-    SplitRhsOutchannelBothInchannel(shardable_mesh_dims[0],
-                                    shardable_mesh_dims[1]);
-    SplitRhsOutchannelBothInchannel(shardable_mesh_dims[1],
-                                    shardable_mesh_dims[0]);
+    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+        SplitRhsOutchannelBothInchannel(shardable_mesh_dims[i],
+                                        shardable_mesh_dims[j]);
+        SplitRhsOutchannelBothInchannel(shardable_mesh_dims[j],
+                                        shardable_mesh_dims[i]);
+      }
+    }
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
