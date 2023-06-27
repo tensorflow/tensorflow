@@ -245,13 +245,13 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // Note that tf.C is moved before tf_device.launch.
-        // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
+        // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]])
 
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
-        %4 = "tf.C"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+        %4 = "tf.C"(%arg0) {is_stateless = true} : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[A_OUTPUT]], %[[B_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -273,6 +273,78 @@ module {
 
 // -----
 
+// Side effecting ops
+
+module {
+  // CHECK-LABEL: func @sideeffect
+  // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
+  func.func @sideeffect(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = tf_executor.graph {
+      %1:2 = tf_executor.island {
+
+        // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
+        %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+
+        // CHECK: %[[TPU0_OUTPUT0:[0-9]*]] = "tf_device.launch"
+        // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
+        // CHECK: tf_device.return %[[B_OUTPUT]]
+        %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+
+        // tf.B and tf.D cannot be merged because of tf.C, which is assumed to have a side effect.
+        // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
+
+        %4 = "tf.C"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+
+        // CHECK: %[[TPU0_OUTPUT1:[0-9]*]] = "tf_device.launch"
+        // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[A_OUTPUT]], %[[TPU0_OUTPUT0]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+        // CHECK: tf_device.return %[[D_OUTPUT]]
+        %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+
+        // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+
+        // CHECK: %[[E_OUTPUT:[0-9]*]] = "tf.E"(%[[C_OUTPUT]], %[[TPU0_OUTPUT1]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+        %6 = "tf.E"(%4, %5) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+
+        // CHECK: tf_executor.yield %[[E_OUTPUT]]
+        tf_executor.yield %6 : tensor<?xi32>
+      }
+      tf_executor.fetch %1#0 : tensor<?xi32>
+    }
+    func.return %0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Cluster formation that requires reordering users of the cluster op.
+
+module {
+  // CHECK-LABEL: func @dominanceorder
+  // CHECK-SAME: (%[[ARG0:.*]]: tensor<?xi32>)
+  func.func @dominanceorder(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
+    %0:2 = tf_executor.graph {
+      %1:3 = tf_executor.island {
+        %2 = "tf.A"(%arg0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+        %3 = "tf.B"(%2) {is_stateless = true} : (tensor<?xi32>) -> tensor<?xi32>
+        %4 = "tf.C"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+        tf_executor.yield %3, %4 : tensor<?xi32>, tensor<?xi32>
+
+        // CHECK: %[[TPU0_OUTPUT:.*]]:2 = "tf_device.launch"
+        // CHECK: %[[A:.*]] = "tf.A"(%[[ARG0]])
+        // CHECK: %[[C:.*]] = "tf.C"(%[[A]])
+        // CHECK: tf_device.return %[[A]], %[[C]]
+
+        // CHECK: %[[B:.*]] = "tf.B"(%[[TPU0_OUTPUT]]#0)
+        // CHECK: tf_executor.yield %[[B]], %[[TPU0_OUTPUT]]#1
+      }
+      tf_executor.fetch %1#0, %1#1 : tensor<?xi32>, tensor<?xi32>
+    }
+    func.return %0#0, %0#1 : tensor<?xi32>, tensor<?xi32>
+  }
+}
+
+// -----
+
 // Multiple device clusters with intertwined instructions in original block.
 
 module {
@@ -286,7 +358,7 @@ module {
         %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[GPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
-        // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]]) : (tensor<?xi32>) -> tensor<?xi32>
+        // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[ARG_0]])
         // CHECK: tf_device.return %[[C_OUTPUT]]
         // CHECK: {device = "gpu0"} : () -> tensor<?xi32>
 
@@ -294,7 +366,7 @@ module {
         // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
         %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
 
-        %4 = "tf.C"(%arg0) {device = "gpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+        %4 = "tf.C"(%arg0) {device = "gpu0", is_stateless = true} : (tensor<?xi32>) -> tensor<?xi32>
 
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[A_OUTPUT]], %[[B_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
         %5 = "tf.D"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>

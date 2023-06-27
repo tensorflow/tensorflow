@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_generic.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
@@ -1429,7 +1430,7 @@ absl::Status TestLinkingConvElem2InputAddElemsOp(
 
       TensorFloat32 dst_tensor_v1;
       RETURN_IF_ERROR(env->ExecuteGpuModel(
-          {src1_tensor, src0_tensor},
+          {src0_tensor, src1_tensor},
           std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
 
       OperationDef op_def;
@@ -1500,8 +1501,6 @@ absl::Status TestLinkingConvElem2InputAddElemsOp(
 //     input1
 //       |
 //     slice
-//       |
-//      cast
 //       |
 //      cast
 //       |
@@ -1606,7 +1605,8 @@ absl::Status TestLinkingSliceCastOp(TestExecutionEnvironment* env) {
 //        Mul
 //         |
 //       output
-absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
+absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env,
+                                    bool use_second_input_add) {
   GraphFloat32 graph;
   auto input = graph.NewValue();
   input->tensor.type = DataType::FLOAT32;
@@ -1623,17 +1623,21 @@ absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
   auto add_left_node = graph.NewNode();
   add_left_node->operation.type = ToString(tflite::gpu::OperationType::ADD);
   add_left_node->operation.attributes = add_attr;
-  auto add_right_node = graph.NewNode();
-  add_right_node->operation.type = ToString(tflite::gpu::OperationType::ADD);
-  add_right_node->operation.attributes = add_attr;
   tflite::gpu::Value* reshape_output = nullptr;
   RETURN_IF_ERROR(
       ConnectTwoNodes(&graph, reshape_node, add_left_node, &reshape_output));
   reshape_output->tensor.type = DataType::FLOAT32;
   reshape_output->tensor.shape = BHWC(1, 1, 1, 20);
-  RETURN_IF_ERROR(
-      ConnectTwoNodes(&graph, reshape_node, add_right_node, &reshape_output));
 
+  Node* second_input_node = reshape_node;
+  if (use_second_input_add) {
+    auto add_right_node = graph.NewNode();
+    add_right_node->operation.type = ToString(tflite::gpu::OperationType::ADD);
+    add_right_node->operation.attributes = add_attr;
+    RETURN_IF_ERROR(
+        ConnectTwoNodes(&graph, reshape_node, add_right_node, &reshape_output));
+    second_input_node = add_right_node;
+  }
   auto mul_node = graph.NewNode();
   mul_node->operation.type = ToString(tflite::gpu::OperationType::MUL);
   tflite::gpu::Value* add_left_output = nullptr;
@@ -1641,12 +1645,16 @@ absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
       ConnectTwoNodes(&graph, add_left_node, mul_node, &add_left_output));
   add_left_output->tensor.type = DataType::FLOAT32;
   add_left_output->tensor.shape = BHWC(1, 1, 1, 20);
-  tflite::gpu::Value* add_right_output = nullptr;
-  RETURN_IF_ERROR(
-      ConnectTwoNodes(&graph, add_right_node, mul_node, &add_right_output));
-  add_right_output->tensor.type = DataType::FLOAT32;
-  add_right_output->tensor.shape = BHWC(1, 1, 1, 20);
-
+  if (use_second_input_add) {
+    tflite::gpu::Value* add_right_output = nullptr;
+    RETURN_IF_ERROR(ConnectTwoNodes(&graph, second_input_node, mul_node,
+                                    &add_right_output));
+    add_right_output->tensor.type = DataType::FLOAT32;
+    add_right_output->tensor.shape = BHWC(1, 1, 1, 20);
+  } else {
+    RETURN_IF_ERROR(
+        ConnectTwoNodes(&graph, second_input_node, mul_node, &reshape_output));
+  }
   tflite::gpu::Value* mul_output = nullptr;
   RETURN_IF_ERROR(AddOutput(&graph, mul_node, &mul_output));
   mul_output->tensor.type = DataType::FLOAT32;
@@ -1670,9 +1678,6 @@ absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
       GpuModel gpu_model;
       RETURN_IF_ERROR(
           GraphToGpuModel(graph, create_info, env->GetGpuInfo(), &gpu_model));
-      if (gpu_model.nodes.size() != 1) {
-        return absl::InternalError("Expected model with one node");
-      }
       TensorFloat32 dst_tensor_v1;
       RETURN_IF_ERROR(env->ExecuteGpuModel(
           {src_tensor}, std::vector<TensorFloat32*>{&dst_tensor_v1},
@@ -1700,13 +1705,118 @@ absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env) {
           {intermediate, ones},
           std::make_unique<GPUOperation>(std::move(add_operation)),
           add_left_output->tensor.shape, &add));
-
+      TensorFloat32 second_input = intermediate;
+      if (use_second_input_add) {
+        second_input = add;
+      }
       TensorFloat32 dst_tensor_v0;
       GPUOperation mul_operation = CreateElementwiseTwoInput(
           op_def, OperationType::MUL, add_left_output->tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {add, add}, std::make_unique<GPUOperation>(std::move(mul_operation)),
+          {add, second_input},
+          std::make_unique<GPUOperation>(std::move(mul_operation)),
           add_left_output->tensor.shape, &dst_tensor_v0));
+      RETURN_IF_ERROR(
+          PointWiseNear(dst_tensor_v0.data, dst_tensor_v1.data, 0.0f));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status TestLinkingConcatAndCosOp(TestExecutionEnvironment* env) {
+  GraphFloat32 graph;
+  auto input0 = graph.NewValue();
+  input0->tensor.type = DataType::FLOAT32;
+  input0->tensor.shape = BHWC(1, 32, 32, 21);
+  auto input1 = graph.NewValue();
+  input1->tensor.type = DataType::FLOAT32;
+  input1->tensor.shape = BHWC(1, 32, 32, 7);
+
+  auto concat_node = graph.NewNode();
+  concat_node->operation.type = ToString(tflite::gpu::OperationType::CONCAT);
+
+  ConcatAttributes concat_attr;
+  concat_attr.axis = Axis::CHANNELS;
+
+  concat_node->operation.attributes = concat_attr;
+  RETURN_IF_ERROR(graph.AddConsumer(concat_node->id, input0->id));
+  RETURN_IF_ERROR(graph.AddConsumer(concat_node->id, input1->id));
+
+  auto cos_node = graph.NewNode();
+  cos_node->operation.type = ToString(OperationType::COS);
+  tflite::gpu::Value* concat_output = nullptr;
+  RETURN_IF_ERROR(
+      ConnectTwoNodes(&graph, concat_node, cos_node, &concat_output));
+  concat_output->tensor.type = DataType::FLOAT32;
+  concat_output->tensor.shape = BHWC(1, 32, 32, 28);
+
+  tflite::gpu::Value* cos_output = nullptr;
+  RETURN_IF_ERROR(AddOutput(&graph, cos_node, &cos_output));
+  cos_output->tensor.type = DataType::FLOAT32;
+  cos_output->tensor.shape = BHWC(1, 32, 32, 28);
+
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&graph));
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      CreateGpuModelInfo create_info;
+      create_info.precision = precision;
+      create_info.storage_type = storage;
+
+      GpuModel gpu_model;
+      RETURN_IF_ERROR(
+          GraphToGpuModel(graph, create_info, env->GetGpuInfo(), &gpu_model));
+
+      if (gpu_model.nodes.size() != 1) {
+        return absl::InternalError("Expected model with one node.");
+      }
+
+      TensorFloat32 src_tensor0;
+      src_tensor0.shape = input0->tensor.shape;
+      src_tensor0.data.resize(src_tensor0.shape.DimensionsProduct());
+      for (int i = 0; i < src_tensor0.data.size(); ++i) {
+        src_tensor0.data[i] = std::sin(i * 0.12345f);
+      }
+      TensorFloat32 src_tensor1;
+      src_tensor1.shape = input1->tensor.shape;
+      src_tensor1.data.resize(src_tensor1.shape.DimensionsProduct());
+      for (int i = 0; i < src_tensor1.data.size(); ++i) {
+        src_tensor1.data[i] = std::sin(i * 0.12345f);
+      }
+
+      TensorFloat32 dst_tensor_v1;
+      RETURN_IF_ERROR(env->ExecuteGpuModel(
+          {src_tensor0, src_tensor1},
+          std::vector<TensorFloat32*>{&dst_tensor_v1}, &gpu_model));
+
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      OperationDef op_def_two_input;
+      op_def_two_input.precision = precision;
+      op_def_two_input.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def_two_input.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def_two_input.dst_tensors.push_back({data_type, storage, Layout::HWC});
+
+      GPUOperation concat_operation =
+          CreateConcatZ(op_def_two_input, {21, 7}, env->GetGpuInfo());
+      TensorFloat32 intermediate;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {src_tensor0, src_tensor1},
+          std::make_unique<GPUOperation>(std::move(concat_operation)),
+          concat_output->tensor.shape, &intermediate));
+
+      GPUOperation cos_operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::COS);
+      TensorFloat32 dst_tensor_v0;
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          intermediate,
+          std::make_unique<GPUOperation>(std::move(cos_operation)),
+          cos_output->tensor.shape, &dst_tensor_v0));
+
       RETURN_IF_ERROR(
           PointWiseNear(dst_tensor_v0.data, dst_tensor_v1.data, 0.0f));
     }

@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -27,7 +30,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -112,7 +117,7 @@ static Status VerifyMemrefArgument(
     llvm::raw_string_ostream os(err);
 
     auto dim = [](int64_t d) -> std::string {
-      return d == MemrefType::kDynamicSize ? "?" : std::to_string(d);
+      return d == MemrefType::kDynamic ? "?" : std::to_string(d);
     };
 
     auto print_shaped = [&](std::optional<absl::Span<const int64_t>> dims,
@@ -254,6 +259,115 @@ Status VerifyMemrefArgument(unsigned index, const Type& type,
     return InvalidArgumentError(StrCat("argument #", index, " ", st.message()));
   return absl::OkStatus();
 }
+
+//===----------------------------------------------------------------------===//
+// AsyncTokenArg.
+//===----------------------------------------------------------------------===//
+
+Status AsyncTokenArg::Verify(const Type& type) const {
+  if (isa<AsyncTokenType>(type)) return absl::OkStatus();
+  return InvalidArgumentError(
+      absl::StrCat("expected async token type, got: ", type.ToString()));
+}
+
+void AsyncTokenArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&storage_));
+}
+
+std::string AsyncTokenArg::ToString() const { return "Async token argument"; }
+
+//===----------------------------------------------------------------------===//
+// AsyncScalarArg.
+//===----------------------------------------------------------------------===//
+
+absl::Status AsyncScalarArg::Verify(const Type& type) const {
+  auto* value_type = llvm::dyn_cast<AsyncValueType>(&type);
+  if (!value_type)
+    return absl::InvalidArgumentError(
+        absl::StrCat("expected async value type, got: ", type.ToString()));
+
+  auto* scalar = llvm::dyn_cast<ScalarType>(&value_type->value_type());
+  if (scalar && scalar->type() == type_) return absl::OkStatus();
+  return absl::InvalidArgumentError(
+      absl::StrCat("unsupported scalar argument type: ", type.ToString()));
+}
+
+void AsyncScalarArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&storage_));
+}
+
+std::string AsyncScalarArg::ToString() const {
+  return absl::StrFormat("Async value type: %s",
+                         primitive_util::LowercasePrimitiveTypeName(type_));
+}
+
+//===----------------------------------------------------------------------===//
+// AsyncMemrefArg.
+//===----------------------------------------------------------------------===//
+
+AsyncMemrefArg::AsyncMemrefArg(tsl::AsyncValueRef<MemrefDesc> value)
+    : value_(value) {
+  struct MemrefDescriptor {
+    void* allocated_ptr;
+    void* aligned_ptr;
+    int64_t offset;
+    int64_t dims[];
+  };
+
+  auto size_and_alignment =
+      [](const MemrefDesc* desc) -> std::pair<size_t, size_t> {
+    size_t size = 3 * sizeof(int64_t) + 2 * desc->rank() * sizeof(int64_t);
+    return std::make_pair(size, alignof(std::max_align_t));
+  };
+
+  auto write = [](const MemrefDesc* v, std::byte* store) {
+    MemrefDescriptor* store_t = reinterpret_cast<MemrefDescriptor*>(store);
+    auto rank = v->rank();
+    for (unsigned i = 0; i < rank; ++i) {
+      store_t->dims[i] = v->size(i);
+      store_t->dims[i + rank] = v->stride(i);
+    }
+
+    store_t->allocated_ptr = v->data();
+    store_t->aligned_ptr = v->data();
+    store_t->offset = 0;
+  };
+
+  storage_ =
+      AsyncRuntime::AsValue<MemrefDesc>(value_, size_and_alignment, write);
+}
+
+Status AsyncMemrefArg::Verify(const Type& type) const {
+  auto* value_type = llvm::dyn_cast<AsyncValueType>(&type);
+  if (!value_type)
+    return InvalidArgumentError(
+        absl::StrCat("expected async value type, got: ", type.ToString()));
+  auto* memref = llvm::dyn_cast<MemrefType>(&value_type->value_type());
+  if (!memref)
+    return InvalidArgumentError(
+        absl::StrCat("expected async memref type, got ",
+                     value_type->value_type().ToString()));
+  value_.AndThen([memref](absl::StatusOr<MemrefDesc*> status_or) {
+    if (!status_or.ok()) {
+      llvm::errs() << status_or.status().message();
+      assert(false && "async memref argument is in error state");
+    } else {
+      auto status = VerifyMemrefArgument(memref->element_type(),
+                                         memref->sizes(), **status_or);
+      if (!status.ok()) {
+        llvm::errs() << status.message();
+        assert(false && "failed to verify memref argument");
+      }
+    }
+  });
+  return absl::OkStatus();
+}
+
+void AsyncMemrefArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&storage_));
+}
+
+std::string AsyncMemrefArg::ToString() const { return "Async memref argument"; }
 
 }  // namespace runtime
 }  // namespace xla

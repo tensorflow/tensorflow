@@ -16,11 +16,12 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_utils.h"
@@ -88,7 +89,7 @@ void CreateXEvent(
     XStatValueVisitor stat_value_visitor(
         &event_builder,
         plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(stat_type)));
-    absl::visit(stat_value_visitor, stat_value);
+    std::visit(stat_value_visitor, stat_value);
   }
 }
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -688,6 +688,29 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
   EXPECT_THAT(
       root->fused_expression_root(),
       op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
+}
+
+class FusionDecisionTest : public HloTestBase {};
+
+TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
+  FusionDecision a = {};
+  FusionDecision b = "not possible";
+  EXPECT_TRUE(!a || !b);
+  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
+
+  a = "not possible";
+  b = {};
+  EXPECT_TRUE(!a || !b);
+  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
+
+  a = "impossible";
+  b = "very impossible";
+  EXPECT_TRUE(!a || !b);
+  EXPECT_EQ((!(!a || !b)).Explain(), "impossible");
+
+  a = {};
+  b = {};
+  EXPECT_FALSE(!a || !b);
 }
 
 }  // namespace xla

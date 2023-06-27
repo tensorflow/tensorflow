@@ -24,19 +24,19 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -52,7 +52,7 @@ class HloComputationDeduplicatorTest : public HloTestBase {
     EXPECT_EQ(changed, expect_true);
     std::vector<std::string> computation_names;
     for (auto comp : module->computations()) {
-      computation_names.push_back(comp->name());
+      computation_names.emplace_back(comp->name());
     }
     return computation_names;
   }
@@ -251,7 +251,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionsWithDifferentSubcomp) {
 
   auto computation_names = RunDeduplicatePass(text, /*expect_true=*/true);
   // Region_X has a multiply() instead of add(). This one change should just
-  // mark region_a, region_b and region_Y as duplicates of eachother.
+  // mark region_a, region_b and region_Y as duplicates of each other.
   int region_x_count = 0;
   int region_y_count = 0;
   int main_16_count = 0;

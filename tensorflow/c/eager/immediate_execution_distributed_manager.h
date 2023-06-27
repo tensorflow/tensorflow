@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 class CoordinationServiceAgent;
+}
+
+namespace tensorflow {
 class ImmediateExecutionContext;
 class ServerDef;
 class WorkerEnv;
@@ -32,19 +35,19 @@ class ImmediateExecutionDistributedManager {
   virtual ~ImmediateExecutionDistributedManager() {}
 
   // Set up distributed execution environment on local and remote tasks.
-  // When `reset_context` is true, initialize new cluster context state based on
-  // cluster configurations provided in `server_def`; otherwise, update existing
-  // context state with the provided `server_def`.
-  // Contexts created on remote tasks will be considered stale and garbage
-  // collected after `keep_alive_secs` of inactivity.
+  // When `reset_context` is true, initialize new cluster context state based
+  // on cluster configurations provided in `server_def`; otherwise, update
+  // existing context state with the provided `server_def`. Contexts created
+  // on remote tasks will be considered stale and garbage collected after
+  // `keep_alive_secs` of inactivity.
   virtual Status SetOrUpdateServerDef(const ServerDef& server_def,
                                       bool reset_context,
                                       int keep_alive_secs) = 0;
 
-  // Set up a multi-client distributed execution environment. Must be called on
-  // all tasks in the cluster.
-  // This call internally coordinates with other tasks to initialize the eager
-  // context and TF server for multi-client execution.
+  // Set up a multi-client distributed execution environment. Must be called
+  // on all tasks in the cluster. This call internally coordinates with other
+  // tasks to initialize the eager context and TF server for multi-client
+  // execution.
   virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
 
   // Check if the remote task is alive.
@@ -52,7 +55,7 @@ class ImmediateExecutionDistributedManager {
                                   bool* is_alive) = 0;
 
   // Get pointer to the coordination service agent instance.
-  virtual CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
+  virtual tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
 };
 }  // namespace tensorflow
 

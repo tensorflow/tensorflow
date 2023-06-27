@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -93,7 +98,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
     if (!status.ok()) {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
-                << status.ToString();
+                << status;
     }
   }
 }
@@ -236,6 +241,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
     options.xla_compile_device_type = xla_compile_device_type_.value();
   }
 
+  options.allow_soft_placement = allow_soft_placement_;
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
@@ -266,7 +273,7 @@ Status KernelAndDeviceOp::Run(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent) {
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
@@ -328,7 +335,7 @@ Status KernelAndDeviceOp::Run(
 
   Status s = context.status();
   if (TF_PREDICT_FALSE(!s.ok())) {
-    if (errors::IsUnavailable(s) && !is_distributed_communication_op_) {
+    if (absl::IsUnavailable(s) && !is_distributed_communication_op_) {
       s = errors::ReplaceErrorFromNonCommunicationOps(s, kernel_->name());
     }
     return s;
@@ -354,7 +361,8 @@ KernelAndDeviceFunc::PrepareForRun(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent,
+    tsl::core::RefCountPtr<Rendezvous>* rendezvous) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (eager_func_params.has_value()) {
     const EagerFunctionParams& params = eager_func_params.value();
@@ -382,8 +390,8 @@ KernelAndDeviceFunc::PrepareForRun(
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = rendezvous_creator_(opts->step_id);
-  opts->rendezvous = rendezvous;
+  TF_CHECK_OK(rendezvous_factory_(opts->step_id, nullptr, rendezvous));
+  opts->rendezvous = rendezvous->get();
   opts->create_rendezvous = false;
 
   // Create a cancellation manager to be used by FLR options if caller does not
@@ -415,7 +423,7 @@ Status KernelAndDeviceFunc::Run(
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
-    CoordinationServiceAgent* coordination_service_agent) {
+    tsl::CoordinationServiceAgent* coordination_service_agent) {
   profiler::TraceMe activity("KernelAndDeviceFunc::Run",
                              profiler::TraceMeLevel::kInfo);
   // Don't try to handle packed or remote inputs synchronously.
@@ -431,9 +439,10 @@ Status KernelAndDeviceFunc::Run(
     n.WaitForNotification();
     return status;
   }
-  std::shared_ptr<FunctionLibraryRuntime::Options> opts =
-      PrepareForRun(step_container, outputs, cancellation_manager,
-                    eager_func_params, stack_trace, coordination_service_agent);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
+  std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
+      step_container, outputs, cancellation_manager, eager_func_params,
+      stack_trace, coordination_service_agent, &created_rendezvous);
 
   std::vector<Tensor> rets;
   Status s;
@@ -446,7 +455,6 @@ Status KernelAndDeviceFunc::Run(
   if (cancellation_manager == nullptr) {
     delete opts->cancellation_manager;
   }
-  static_cast<Rendezvous*>(opts->rendezvous)->Unref();
   outputs->reserve(rets.size());
   for (auto& v : rets) {
     outputs->push_back(std::move(v));
@@ -459,21 +467,27 @@ void KernelAndDeviceFunc::RunAsync(
     std::vector<EagerKernelRet>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerFunctionParams>& eager_func_params,
-    CoordinationServiceAgent* coordination_service_agent,
+    tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
-  profiler::TraceMe activity("KernelAndDeviceFunc::RunAsync",
-                             profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [] {
+        return profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
+                                       {{"_r", 1}});
+      },
+      profiler::TraceMeLevel::kInfo);
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,
-      absl::nullopt, coordination_service_agent);
+      std::nullopt, coordination_service_agent, &created_rendezvous);
 
   pflr_->Run(
       *opts, handle_, inputs, outputs,
-      [opts, cancellation_manager, done = std::move(done)](const Status& s) {
+      [opts, cancellation_manager, done = std::move(done),
+       created_rendezvous = created_rendezvous.release()](const Status& s) {
         if (cancellation_manager == nullptr) {
           delete opts->cancellation_manager;
         }
-        static_cast<Rendezvous*>(opts->rendezvous)->Unref();
+        created_rendezvous->Unref();
         done(s);
       });
 }

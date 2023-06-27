@@ -1,201 +1,141 @@
-diff --git a/BUILD b/BUILD
-index dbae719ff..4e276c854 100644
---- a/BUILD
-+++ b/BUILD
-@@ -23,7 +23,7 @@ config_setting(
- # ZLIB configuration
- ################################################################################
- 
--ZLIB_DEPS = ["@zlib//:zlib"]
-+ZLIB_DEPS = ["@zlib"]
- 
- ################################################################################
- # Protobuf Runtime Library
-@@ -100,6 +100,7 @@ LINK_OPTS = select({
- 
- load(
-     ":protobuf.bzl",
-+    "adapt_proto_library",
-     "cc_proto_library",
-     "py_proto_library",
-     "internal_copied_filegroup",
-@@ -143,6 +144,7 @@ cc_library(
+diff --git a/BUILD.bazel b/BUILD.bazel
+--- a/BUILD.bazel	(revision 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66)
++++ b/BUILD.bazel	(date 1670471682469)
+@@ -68,6 +68,7 @@
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,
 +    alwayslink = 1,
      visibility = ["//visibility:public"],
  )
- 
-@@ -213,6 +215,7 @@ cc_library(
+
+@@ -135,6 +136,7 @@
      copts = COPTS,
      includes = ["src/"],
      linkopts = LINK_OPTS,
 +    alwayslink = 1,
      visibility = ["//visibility:public"],
-     deps = [":protobuf_lite"] + PROTOBUF_DEPS,
- )
-@@ -255,13 +258,15 @@ filegroup(
-     visibility = ["//visibility:public"],
- )
+     deps = [":protobuf_lite"] + select({
+         "//build_defs:config_msvc": [],
+diff --git a/python/google/protobuf/pyext/descriptor.cc b/python/google/protobuf/pyext/descriptor.cc
+index 162531226..e93ec4809 100644
+--- a/python/google/protobuf/pyext/descriptor.cc
++++ b/python/google/protobuf/pyext/descriptor.cc
+@@ -58,6 +58,37 @@
+               : 0)                                               \
+        : PyBytes_AsStringAndSize(ob, (charpp), (sizep)))
  
--cc_proto_library(
-+adapt_proto_library(
-+    name = "cc_wkt_protos_genproto",
-+    deps = [proto + "_proto" for proto in WELL_KNOWN_PROTO_MAP.keys()],
-+    visibility = ["//visibility:public"],
-+)
++#if PY_VERSION_HEX < 0x030900B1 && !defined(PYPY_VERSION)
++static PyCodeObject* PyFrame_GetCode(PyFrameObject *frame)
++{
++    Py_INCREF(frame->f_code);
++    return frame->f_code;
++}
 +
-+cc_library(
-     name = "cc_wkt_protos",
--    srcs = WELL_KNOWN_PROTOS,
--    include = "src",
--    default_runtime = ":protobuf",
--    internal_bootstrap_hack = 1,
--    protoc = ":protoc",
-+    deprecation = "Only for backward compatibility. Do not use.",
-     visibility = ["//visibility:public"],
- )
- 
-@@ -978,10 +983,10 @@ cc_library(
- 
- proto_lang_toolchain(
-     name = "cc_toolchain",
-+    blacklisted_protos = [proto + "_proto" for proto in WELL_KNOWN_PROTO_MAP.keys()],
-     command_line = "--cpp_out=$(OUT)",
-     runtime = ":protobuf",
-     visibility = ["//visibility:public"],
--    blacklisted_protos = [":_internal_wkt_protos_genrule"],
- )
- 
- proto_lang_toolchain(
-diff --git a/protobuf.bzl b/protobuf.bzl
-index e0653321f..4156a1275 100644
---- a/protobuf.bzl
-+++ b/protobuf.bzl
-@@ -1,4 +1,5 @@
- load("@bazel_skylib//lib:versions.bzl", "versions")
-+load("@rules_proto//proto:defs.bzl", "ProtoInfo")
- 
- def _GetPath(ctx, path):
-     if ctx.label.workspace_root:
-@@ -85,6 +86,8 @@ def _proto_gen_impl(ctx):
-     for dep in ctx.attr.deps:
-         import_flags += dep.proto.import_flags
-         deps += dep.proto.deps
-+    import_flags = depset(import_flags).to_list()
-+    deps = depset(deps).to_list()
- 
-     if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
-         return struct(
-@@ -222,6 +225,29 @@ Args:
-   outs: a list of labels of the expected outputs from the protocol compiler.
- """
- 
-+def _adapt_proto_library_impl(ctx):
-+    deps = [dep[ProtoInfo] for dep in ctx.attr.deps]
-+
-+    srcs = [src for dep in deps for src in dep.direct_sources]
-+    return struct(
-+        proto = struct(
-+            srcs = srcs,
-+            import_flags = ["-I{}".format(path) for dep in deps for path in dep.transitive_proto_path.to_list()],
-+            deps = srcs,
-+        ),
-+    )
-+
-+adapt_proto_library = rule(
-+    implementation = _adapt_proto_library_impl,
-+    attrs = {
-+        "deps": attr.label_list(
-+            mandatory = True,
-+            providers = [ProtoInfo],
-+        ),
-+    },
-+    doc = "Adapts `proto_library` from `@rules_proto` to be used with `{cc,py}_proto_library` from this file.",
-+)
-+
- def cc_proto_library(
-         name,
-         srcs = [],
-@@ -229,7 +255,6 @@ def cc_proto_library(
-         cc_libs = [],
-         include = None,
-         protoc = "@com_google_protobuf//:protoc",
--        internal_bootstrap_hack = False,
-         use_grpc_plugin = False,
-         default_runtime = "@com_google_protobuf//:protobuf",
-         **kargs):
-@@ -247,41 +272,17 @@ def cc_proto_library(
-           cc_library.
-       include: a string indicating the include path of the .proto files.
-       protoc: the label of the protocol compiler to generate the sources.
--      internal_bootstrap_hack: a flag indicate the cc_proto_library is used only
--          for bootstraping. When it is set to True, no files will be generated.
--          The rule will simply be a provider for .proto files, so that other
--          cc_proto_library can depend on it.
-       use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
-           when processing the proto files.
-       default_runtime: the implicitly default runtime which will be depended on by
-           the generated cc_library target.
-       **kargs: other keyword arguments that are passed to cc_library.
--
-     """
- 
-     includes = []
-     if include != None:
-         includes = [include]
- 
--    if internal_bootstrap_hack:
--        # For pre-checked-in generated files, we add the internal_bootstrap_hack
--        # which will skip the codegen action.
--        proto_gen(
--            name = name + "_genproto",
--            srcs = srcs,
--            deps = [s + "_genproto" for s in deps],
--            includes = includes,
--            protoc = protoc,
--            visibility = ["//visibility:public"],
--        )
--
--        # An empty cc_library to make rule dependency consistent.
--        native.cc_library(
--            name = name,
--            **kargs
--        )
--        return
--
-     grpc_cpp_plugin = None
-     if use_grpc_plugin:
-         grpc_cpp_plugin = "//external:grpc_cpp_plugin"
-diff --git a/python/google/protobuf/pyext/message.cc b/python/google/protobuf/pyext/message.cc
-index 3530a9b37..c31fa8fcc 100644
---- a/python/google/protobuf/pyext/message.cc
-+++ b/python/google/protobuf/pyext/message.cc
-@@ -2991,8 +2991,12 @@ bool InitProto2MessageModule(PyObject *m) {
-         reinterpret_cast<PyObject*>(
-             &RepeatedCompositeContainer_Type));
- 
--    // Register them as collections.Sequence
-+    // Register them as MutableSequence.
-+#if PY_MAJOR_VERSION >= 3
-+    ScopedPyObjectPtr collections(PyImport_ImportModule("collections.abc"));
-+#else
-     ScopedPyObjectPtr collections(PyImport_ImportModule("collections"));
++static PyFrameObject* PyFrame_GetBack(PyFrameObject *frame)
++{
++    Py_XINCREF(frame->f_back);
++    return frame->f_back;
++}
 +#endif
-     if (collections == NULL) {
-       return false;
-     }
-diff --git a/python/google/protobuf/pyext/unknown_fields.cc b/python/google/protobuf/pyext/unknown_fields.cc
-index c3679c0d3..e80a1d97a 100755
---- a/python/google/protobuf/pyext/unknown_fields.cc
-+++ b/python/google/protobuf/pyext/unknown_fields.cc
-@@ -221,7 +221,7 @@ const UnknownField* GetUnknownField(PyUnknownFieldRef* self) {
-                  "The parent message might be cleared.");
-     return NULL;
++
++#if PY_VERSION_HEX < 0x030B00A7 && !defined(PYPY_VERSION)
++static PyObject* PyFrame_GetLocals(PyFrameObject *frame)
++{
++    if (PyFrame_FastToLocalsWithError(frame) < 0) {
++        return NULL;
++    }
++    Py_INCREF(frame->f_locals);
++    return frame->f_locals;
++}
++
++static PyObject* PyFrame_GetGlobals(PyFrameObject *frame)
++{
++    Py_INCREF(frame->f_globals);
++    return frame->f_globals;
++}
++#endif
++
+ namespace google {
+ namespace protobuf {
+ namespace python {
+@@ -96,48 +127,66 @@ bool _CalledFromGeneratedFile(int stacklevel) {
+   // This check is not critical and is somewhat difficult to implement correctly
+   // in PyPy.
+   PyFrameObject* frame = PyEval_GetFrame();
++  PyCodeObject* frame_code = nullptr;
++  PyObject* frame_globals = nullptr;
++  PyObject* frame_locals = nullptr;
++  bool result = false;
++
+   if (frame == nullptr) {
+-    return false;
++    goto exit;
    }
--  ssize_t total_size = fields->field_count();
-+  Py_ssize_t total_size = fields->field_count();
-   if (self->index >= total_size) {
-     PyErr_Format(PyExc_ValueError,
-                  "UnknownField does not exist. "
++  Py_INCREF(frame);
+   while (stacklevel-- > 0) {
+-    frame = frame->f_back;
++    PyFrameObject* next_frame = PyFrame_GetBack(frame);
++    Py_DECREF(frame);
++    frame = next_frame;
+     if (frame == nullptr) {
+-      return false;
++      goto exit;
+     }
+   }
+ 
+-  if (frame->f_code->co_filename == nullptr) {
+-    return false;
++  frame_code = PyFrame_GetCode(frame);
++  if (frame_code->co_filename == nullptr) {
++    goto exit;
+   }
+   char* filename;
+   Py_ssize_t filename_size;
+-  if (PyString_AsStringAndSize(frame->f_code->co_filename,
++  if (PyString_AsStringAndSize(frame_code->co_filename,
+                                &filename, &filename_size) < 0) {
+     // filename is not a string.
+     PyErr_Clear();
+-    return false;
++    goto exit;
+   }
+   if ((filename_size < 3) ||
+       (strcmp(&filename[filename_size - 3], ".py") != 0)) {
+     // Cython's stack does not have .py file name and is not at global module
+     // scope.
+-    return true;
++    result = true;
++    goto exit;
+   }
+   if (filename_size < 7) {
+     // filename is too short.
+-    return false;
++    goto exit;
+   }
+   if (strcmp(&filename[filename_size - 7], "_pb2.py") != 0) {
+     // Filename is not ending with _pb2.
+-    return false;
++    goto exit;
+   }
+ 
+-  if (frame->f_globals != frame->f_locals) {
++  frame_globals = PyFrame_GetGlobals(frame);
++  frame_locals = PyFrame_GetLocals(frame);
++  if (frame_globals != frame_locals) {
+     // Not at global module scope
+-    return false;
++    goto exit;
+   }
+ #endif
+-  return true;
++  result = true;
++exit:
++  Py_XDECREF(frame_globals);
++  Py_XDECREF(frame_locals);
++  Py_XDECREF(frame_code);
++  Py_XDECREF(frame);
++  return result;
+ }
+ 
+ // If the calling code is not a _pb2.py file, raise AttributeError.

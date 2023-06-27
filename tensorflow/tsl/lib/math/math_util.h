@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_TSL_LIB_MATH_MATH_UTIL_H_
 
+#include <limits>
+
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
 
@@ -82,29 +84,6 @@ class MathUtil {
   // Input validity is DCHECKed.
   template <typename T>
   static T IPow(T base, int exp);
-
-  // Retrieves the sign of `x`:
-  //  nan if x is nan.
-  //   -1 if x < 0,
-  //   +1 if x > 0,
-  //    0 if x = 0.
-  template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
-  static T Sign(const T x) {
-    return SignHelper<T>(x);
-  }
-  template <typename T, absl::enable_if_t<!std::is_integral<T>::value, int> = 0>
-  static T Sign(const T x) {
-    return std::isnan(x) ? x : SignHelper<T>(x);
-  }
-
- private:
-  // A helper function to reduce duplication between two MathUtil::Sign
-  // functions, which are required to be split to avoid ambiguity for integral
-  // types with std::isnan for some builds.
-  template <typename T>
-  static T SignHelper(const T x) {
-    return x == T(0) ? T(0) : (x > T(0) ? T(1) : T(-1));
-  }
 };
 
 // ---- CeilOrFloorOfRatio ----

@@ -191,7 +191,7 @@ class DynamicMultidimOp : public OpKernel {
     TensorShape output_shape;
     auto vec = ctx->input(0).flat<int32>();
     for (int i = 0; i < vec.size(); i++) {
-      output_shape.AddDim(vec(i));
+      OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(vec(i)));
     }
     Tensor* out_tensor = nullptr;
     OP_REQUIRES_OK(ctx,
@@ -263,6 +263,10 @@ class TestTfMustBeConstantOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
 
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(1).DebugString()));
     int constant_to_add = ctx->input(1).scalar<int>()();
     size_t allocated_size = input.AllocatedBytes();
 

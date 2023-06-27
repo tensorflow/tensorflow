@@ -3,7 +3,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 exports_files(
     ["flags_api_wrapper.cc"],
@@ -13,6 +16,15 @@ exports_files(
 cc_library(
     name = "flags_headers",
     textual_hdrs = [
+        "flag_defs.h",
+        "flags.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+)
+
+filegroup(
+    name = "flags_headers_filegroup",
+    srcs = [
         "flag_defs.h",
         "flags.h",
     ],
@@ -72,6 +84,6 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":flags_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

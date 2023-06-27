@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -195,6 +196,42 @@ TEST(SpecializeType, VarExpandsFromSingleAttribute) {
   attr.set_type(DT_INT32);
   NodeDef ndef;
   (*ndef.mutable_attr())["T"] = attr;
+
+  AttrSlice attrs(ndef);
+
+  FullTypeDef ft;
+  TF_ASSERT_OK(SpecializeType(attrs, op, ft));
+
+  EXPECT_EQ(ft.type_id(), TFT_PRODUCT);
+  EXPECT_EQ(ft.args_size(), 1);
+
+  const FullTypeDef& t_actual = ft.args(0);
+  EXPECT_EQ(t_actual.type_id(), TFT_ARRAY);
+  EXPECT_EQ(t_actual.args_size(), 1);
+  EXPECT_EQ(t_actual.args(0).type_id(), TFT_TENSOR);
+  EXPECT_EQ(t_actual.args(0).args_size(), 1);
+  EXPECT_EQ(t_actual.args(0).args(0).type_id(), TFT_INT32);
+  EXPECT_EQ(t_actual.args(0).args(0).args_size(), 0);
+}
+
+TEST(SpecializeType, VarExpandsFromDefaultForSingleAttribute) {
+  OpDef op;
+  FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();
+  t->set_type_id(TFT_ARRAY);
+  t->add_args()->set_type_id(TFT_TENSOR);
+  t->mutable_args(0)->add_args()->set_type_id(TFT_VAR);
+  t->mutable_args(0)->mutable_args(0)->set_s("T");
+
+  AttrValue attr;
+  attr.set_type(DT_INT32);
+
+  // Create a default for attribute "T"
+  OpDef::AttrDef* attr_with_default = op.add_attr();
+  attr_with_default->set_name("T");
+  (*attr_with_default->mutable_default_value()) = attr;
+
+  NodeDef ndef;
+  // ndef does not specify the "T" attribute, so default value is used
 
   AttrSlice attrs(ndef);
 
@@ -516,6 +553,18 @@ TEST(SpecializeType, ForEachRejectsMalformedInput) {
   t->set_type_id(TFT_FOR_EACH);
   t->add_args()->set_type_id(TFT_PRODUCT);
 
+  NodeDef ndef;
+  AttrSlice attrs(ndef);
+
+  FullTypeDef ft;
+  EXPECT_FALSE(SpecializeType(attrs, op, ft).ok());
+}
+
+TEST(SpecializeType, VarShouldHaveNoArgs) {
+  OpDef op;
+  FullTypeDef* t = op.add_output_arg()->mutable_experimental_full_type();
+  t->set_type_id(TFT_VAR);
+  t->add_args()->set_type_id(TFT_PRODUCT);
   NodeDef ndef;
   AttrSlice attrs(ndef);
 

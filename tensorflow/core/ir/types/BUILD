@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_compatible_with = get_compatible_with_cloud(),
     default_visibility = ["//tensorflow/core:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
@@ -24,7 +25,6 @@ td_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-        "@llvm-project//mlir:SubElementInterfacesTdFiles",
     ],
 )
 
@@ -98,9 +98,7 @@ cc_library(
     textual_hdrs = [
         "types.def",
     ],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":AttributesIncGen",
         ":DialectIncGen",
@@ -109,6 +107,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
     ],
 )

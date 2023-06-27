@@ -15,20 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/numbers.h"
-#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -150,6 +149,12 @@ TokKind HloLexer::LexToken() {
         return TokKind::kColon;
       case '*':
         return TokKind::kAsterisk;
+      case '#':
+        return TokKind::kOctothorp;
+      case '+':
+        return TokKind::kPlus;
+      case '~':
+        return TokKind::kTilde;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -236,7 +241,7 @@ std::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
   uint64_t payload_value;
-  if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
+  if (tsl::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
       return std::nullopt;
@@ -507,6 +512,46 @@ TokKind HloLexer::LexString() {
   return TokKind::kError;
 }
 
+TokKind HloLexer::LexJsonDict() {
+  // We require that you've already lexed the open curly brace.
+  if (GetKind() != TokKind::kLbrace) return TokKind::kError;
+
+  absl::string_view orig = StringViewFromPointers(token_state_.token_start,
+                                                  buf_.data() + buf_.size());
+  absl::string_view str = orig;
+
+  int64_t object_depth = 0;
+  if (str.empty()) return TokKind::kError;
+
+  if (str.front() != '{') return TokKind::kError;
+  ++object_depth;
+  str = str.substr(1);
+
+  while (!str.empty()) {
+    if (object_depth == 0) break;
+
+    if (str.front() == '"') {
+      static LazyRE2 string_pattern = {R"("([^"\\]|\\.)*")"};
+      if (!RE2::Consume(&str, *string_pattern)) {
+        return TokKind::kError;
+      }
+      continue;
+    }
+
+    if (str.front() == '{') ++object_depth;
+    if (str.front() == '}') --object_depth;
+    str = str.substr(1);
+  }
+  if (object_depth != 0) {
+    return TokKind::kError;
+  }
+  current_ptr_ = str.data();
+  token_state_.current_kind = TokKind::kString;
+  token_state_.str_val =
+      std::string(orig.substr(0, orig.length() - str.length()));
+  return TokKind::kString;
+}
+
 std::string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
@@ -514,13 +559,19 @@ std::string TokKindToString(TokKind kind) {
     case TokKind::kError:
       return "kError";
     case TokKind::kEqual:
-      return "kEqaul";
+      return "kEqual";
     case TokKind::kComma:
       return "kComma";
     case TokKind::kColon:
       return "kColon";
     case TokKind::kAsterisk:
       return "kAsterisk";
+    case TokKind::kOctothorp:
+      return "kOctothorp";
+    case TokKind::kPlus:
+      return "kPlus";
+    case TokKind::kTilde:
+      return "kTilde";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:
@@ -582,6 +633,13 @@ std::string TokKindToString(TokKind kind) {
     case TokKind::kDots:
       return "kDots";
   }
+}
+
+bool LexesAsJsonDict(absl::string_view str) {
+  HloLexer lexer(str);
+  return lexer.Lex() == TokKind::kLbrace &&
+         lexer.LexJsonDict() == TokKind::kString &&
+         lexer.Lex() == TokKind::kEof;
 }
 
 }  // namespace xla

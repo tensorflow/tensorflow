@@ -34,6 +34,8 @@ class EventsWriter {
   // Prefix of version string present in the first entry of every event file.
   static constexpr const char* kVersionPrefix = "brain.Event:";
   static constexpr const int kCurrentVersion = 2;
+  static constexpr const char* kWriterSourceMetadata =
+      "tensorflow.core.util.events_writer";
 #endif
 
   // Events files typically have a name of the form

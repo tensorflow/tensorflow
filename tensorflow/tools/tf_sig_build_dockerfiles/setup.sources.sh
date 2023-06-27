@@ -35,6 +35,9 @@ apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F23C5A6CF475977595C89F5
 apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
 apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
+# LLVM/Clang: https://apt.llvm.org/
+apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
+
 # Set up custom sources
 cat >/etc/apt/sources.list.d/custom.list <<SOURCES
 # Nvidia CUDA packages: 18.04 has more available than 20.04, and we use those
@@ -43,4 +46,8 @@ deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1
 # More Python versions: Deadsnakes
 deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
+
+# LLVM/Clang repository
+deb http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main
+deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main
 SOURCES

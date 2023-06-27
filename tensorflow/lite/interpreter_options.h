@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Provides options to an interpreter.
 ///
 #ifndef TENSORFLOW_LITE_INTERPRETER_OPTIONS_H_

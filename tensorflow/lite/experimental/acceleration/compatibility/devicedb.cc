@@ -35,9 +35,11 @@ std::vector<const DeviceDecisionTreeEdge*> Find(
       found.push_back(possible);
     }
   } else {
-    // Minimum: value should be at least item's value.
+    // Minimum/Maximum: value should be at least / at most item's value.
     for (const DeviceDecisionTreeEdge* item : *(root->items())) {
-      if (value >= item->value()->str()) {
+      if ((root->comparison() == Comparison_MINIMUM)
+              ? value >= item->value()->str()
+              : value <= item->value()->str()) {
         found.push_back(item);
       }
     }

@@ -1,16 +1,14 @@
 """Build macros for TF Lite."""
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "if_oss",
-    "tf_binary_additional_srcs",
-    "tf_cc_shared_object",
-)
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
+
+def register_extension_info(**kwargs):
+    pass
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -20,6 +18,9 @@ def tflite_copts():
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
         ],
+        # copybara:uncomment_begin(google-only)
+        # clean_dep("//tensorflow:chromiumos_x86_64"): [],
+        # copybara:uncomment_end
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
@@ -28,8 +29,13 @@ def tflite_copts():
         ],
         clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
+            # copybara:uncomment_begin(no MSVC flags in google)
+            # "-DTFL_COMPILE_LIBRARY",
+            # "-Wno-sign-compare",
+            # copybara:uncomment_end_and_comment_begin
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
+            # copybara:comment_end
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
@@ -53,6 +59,9 @@ def tflite_copts():
         "//conditions:default": [],
     }) + select({
         clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
         "//conditions:default": [],
     })
 
@@ -141,7 +150,16 @@ def tflite_linkopts_no_undefined():
     report errors for undefined symbols at runtime.
     """
     return if_oss(
-        ["-Wl,--no-undefined"],
+        select({
+            # macOS/iOS linker uses "--undefined error" instead of "--no-undefined".
+            "//tensorflow:ios": [
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
+                "-Wl,-undefined,error",
+            ],
+            "//conditions:default": ["-Wl,--no-undefined"],
+        }),
         select({
             # Can't enable errors for undefined symbols for asan/msan/tsan mode,
             # since undefined symbols in shared libraries (references to symbols
@@ -150,6 +168,12 @@ def tflite_linkopts_no_undefined():
             "//tools/cpp:asan_build": [],
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
+            "//tensorflow:ios": [
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
+                "-Wl,-undefined,error",
+            ],
             "//conditions:default": ["-Wl,--no-undefined"],
         }),
     )
@@ -184,6 +208,9 @@ def tflite_jni_binary(
         clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end
             "-Wl,-soname," + name,
         ],
     })
@@ -381,18 +408,28 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
+def gen_model_coverage_test(
+        src,
+        name,
+        data,
+        failure_type,
+        tags,
+        size = "medium",
+        extra_deps = None):
     """Generates Python test targets for testing TFLite models.
 
     Args:
       src: Main source file.
-      model_name: Name of the model to test (must be also listed in the 'data'
+      name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
       failure_type: List of failure types (none, toco, crash, inference, evaluation)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
       tags: List of strings of additional tags.
+      size: String determining test size for filtering and resource allocation.
+      extra_deps: List of dependencies needed only by the specific src as opposed to the generic
+        dependencies listed below.
     """
     i = 0
     for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
@@ -401,15 +438,26 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
             args.append("--failure_type=%s" % failure_type[i])
         i = i + 1
 
+        # Construct list of dependencies
+        full_deps = [
+            "//third_party/py/tensorflow",
+            "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
+            "//tensorflow/lite/python:lite",
+            "//tensorflow/python/framework:errors",
+            "//tensorflow/python/platform:client_testlib",
+        ] + flex_dep(target_op_sets)
+        if extra_deps:
+            full_deps += extra_deps
+
         # Avoid coverage timeouts for large/enormous tests.
         coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
-        native.py_test(
-            name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
+        py_strict_test(
+            name = "model_coverage_test_%s_%s" % (name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
             size = size,
             args = [
-                "--model_name=%s" % model_name,
+                "--model_name=%s" % name,
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
@@ -424,12 +472,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "nomsan",
                 "notsan",
             ] + tags + coverage_tags,
-            deps = [
-                "//third_party/py/tensorflow",
-                "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
-                "//tensorflow/lite/python:lite",
-                "//tensorflow/python:client_testlib",
-            ] + flex_dep(target_op_sets),
+            deps = full_deps,
         )
 
 def tflite_custom_cc_library(
@@ -465,7 +508,7 @@ def tflite_custom_cc_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
         real_srcs.append(":%s_registration" % name)
         real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
@@ -491,6 +534,7 @@ def tflite_custom_cc_library(
         deps = depset([
             framework,
             "//tensorflow/lite/kernels:builtin_ops",
+            "//tensorflow/lite/core:private_create_op_resolver_header",
         ] + real_deps),
         visibility = visibility,
         **kwargs
@@ -600,7 +644,7 @@ def tflite_custom_c_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
 
         if experimental:
@@ -616,6 +660,7 @@ def tflite_custom_c_library(
             hdrs = ["//tensorflow/lite:create_op_resolver.h"],
             copts = tflite_copts(),
             deps = [
+                "//tensorflow/lite/core:private_create_op_resolver_header",
                 "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
                 framework,
@@ -639,6 +684,7 @@ def tflite_custom_c_library(
         ]
         experimental_deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [
@@ -651,24 +697,31 @@ def tflite_custom_c_library(
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
-            "//tensorflow/lite/c:common",
-            "//tensorflow/lite/core/c:private_c_api",
-            "//tensorflow/lite/c:c_api_types",
-            "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
-            "//tensorflow/lite/core:private_headers",
             "//tensorflow/lite:builtin_ops",
+            "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
+            # TODO(bekzhan): Remove this dependency after we move c_api_opaque.h to tflite/core/.
+            "//tensorflow/lite/core/c:private_c_api_types",
+            "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_common",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ] + experimental_deps,
         **kwargs
     )
 
+# TODO(b/254126721): Move tflite_combine_cc_tests macro to lite/testing/build_def.bzl.
 def tflite_combine_cc_tests(
         name,
         deps_conditions,
         extra_cc_test_tags = [],
         extra_build_test_tags = [],
+        generate_cc_library = False,
         **kwargs):
-    """Combine all certain cc_tests into a single cc_test and a build_test.
+    """Combine certain cc_tests into a single cc_test and a build_test.
+
+    This rule should normally be placed at the bottom of a package.
+    Any cc_test rules that appear after the call to this rule will not
+    be included in the combined cc_test rule, even if they meet the
+    other conditions.
 
     Args:
       name: the name of the combined cc_test.
@@ -678,6 +731,10 @@ def tflite_combine_cc_tests(
           combined cc_test.
       extra_build_test_tags: the list of extra tags appended to the created
           corresponding build_test for the combined cc_test.
+      generate_cc_library: if set to True, additionally generates a combined
+          cc_library containing all kernel tests. The generated cc_library
+          will exclude all dependencies in `deps_conditions`, so that users
+          can plugin their own test driver and entry point.
       **kwargs: kwargs to pass to the cc_test rule of the test suite.
     """
     combined_test_srcs = {}
@@ -725,6 +782,15 @@ def tflite_combine_cc_tests(
                 "tflite_portable_build_test",
             ] + extra_build_test_tags,
         )
+        if generate_cc_library:
+            native.cc_library(
+                name = "%s_lib" % name,
+                srcs = list(combined_test_srcs),
+                deps = [d for d in combined_test_deps if d not in deps_conditions],
+                testonly = 1,
+                alwayslink = 1,
+                **kwargs
+            )
 
 def tflite_self_contained_libs_test_suite(name):
     """Indicate that cc_library rules in this package *should* be self-contained.
@@ -797,21 +863,30 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
     for hdr in hdrs:
         label = _label(hdr)
         basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        compatible_with = kwargs.pop("compatible_with", [])
         native.genrule(
             name = "%s_gen" % basename,
             outs = ["%s.c" % basename],
+            compatible_with = compatible_with,
             cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
             visibility = ["//visibility:private"],
             testonly = True,
         )
+        kwargs.pop("visibility", None)
+        kwargs.pop("deps", [])
+        kwargs.pop("srcs", [])
+        kwargs.pop("tags", [])
+        kwargs.pop("testonly", [])
         native.cc_library(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
             deps = [":" + name],
-            copts = kwargs.get("copts", []),
+            compatible_with = compatible_with,
+            copts = kwargs.pop("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
             tags = ["allow_undefined_symbols"],
+            **kwargs
         )
         build_test(
             name = "%s_build_test" % basename,
@@ -824,3 +899,8 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
         name = name + "_self_contained_c_build_tests",
         tests = build_tests,
     )
+
+register_extension_info(
+    extension = tflite_cc_library_with_c_headers_test,
+    label_regex_for_dep = "{extension_name}",
+)

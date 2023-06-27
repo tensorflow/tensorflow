@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -83,11 +84,10 @@ class TestDataServiceContext : public DataServiceContext {
         Env::Default()->StartThread({}, name, std::move(fn)));
   }
 
-  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
-  // MOCK_METHOD<N> instead)
-  MOCK_METHOD1(RecordBufferEnqueue, void(const std::vector<Tensor>& element));
-  MOCK_METHOD1(RecordBufferDequeue, void(const std::vector<Tensor>& element));
-  // NOLINTEND
+  MOCK_METHOD(void, RecordBufferEnqueue, (const std::vector<Tensor>& element),
+              (override));
+  MOCK_METHOD(void, RecordBufferDequeue, (const std::vector<Tensor>& element),
+              (override));
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {
@@ -189,6 +189,22 @@ TEST(DataServiceClientTest, RecordBufferEvents) {
     return std::move(mock_context);
   }));
   client.Cancel();
+}
+
+TEST(DataServiceClientTest, Cancel) {
+  TestCluster test_cluster(/*num_workers=*/1);
+  TF_ASSERT_OK(test_cluster.Initialize());
+  DatasetClient<int64_t> dataset_client(test_cluster);
+  TF_ASSERT_OK_AND_ASSIGN(std::string dataset_id,
+                          dataset_client.RegisterDataset(RangeDataset(10)));
+
+  DataServiceParams params = GetDataServiceParams(
+      dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
+  DataServiceClient client(params);
+  TF_ASSERT_OK(client.Initialize());
+  client.Cancel();
+  EXPECT_THAT(client.GetNext(GetTestDataServiceContext),
+              StatusIs(error::CANCELLED));
 }
 
 TEST(DataServiceClientTest, ValidationError) {

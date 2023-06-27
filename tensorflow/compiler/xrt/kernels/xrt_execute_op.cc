@@ -16,13 +16,14 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -174,7 +175,7 @@ Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
   TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
       stream, *metadata_literal, metadata_buffer));
   // Retain the literal until the end of the transfer.
-  stream->ThenDoHostCallback([metadata_literal]() { return OkStatus(); });
+  stream->ThenDoHostCallback([keep_alive = std::move(metadata_literal)] {});
   return OkStatus();
 }
 

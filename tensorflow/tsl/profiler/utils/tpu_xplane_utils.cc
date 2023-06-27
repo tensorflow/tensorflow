@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 

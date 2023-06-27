@@ -15,6 +15,9 @@ limitations under the License.
 
 // Native XLA implementations of simple binary Ops
 
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -212,7 +215,24 @@ XLA_MAKE_BINARY(
     xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
              lhs, extend_dimensions));
 
-XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
+// Implementation of TruncateDiv.
+//
+// For floating-point values, returns trunc(x / y).  For integers, simply
+// returns x / y.
+static xla::XlaOp TruncateDivImpl(xla::XlaBuilder* b, DataType dtype,
+                                  xla::XlaOp x, xla::XlaOp y,
+                                  const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  if (!DataTypeIsFloating(dtype)) {
+    return xla::Div(x, y);
+  }
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto x_div_y = xla::Div(x, y);
+  auto round_up = xla::Lt(x_div_y, zero);
+  return xla::Select(round_up, xla::Ceil(x_div_y), xla::Floor(x_div_y));
+}
+XLA_MAKE_BINARY(TruncateDiv,
+                TruncateDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
 
 // Comparison ops

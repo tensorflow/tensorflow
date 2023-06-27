@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 #include <optional>
 #include <set>
@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -816,8 +816,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
@@ -858,13 +858,15 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  HloSharding tuple_sharding =
+      HloSharding::SingleTuple(tuple->shape(), sharding);
+  tuple->set_sharding(tuple_sharding);
   // Compatible with original shape as tuple tree structure and leaf ranks are
   // identical
   auto clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
   auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
-  EXPECT_EQ(tuple_clone->sharding(), sharding);
+  EXPECT_EQ(tuple_clone->sharding(), tuple_sharding);
 }
 
 TEST_F(HloInstructionTest,
@@ -878,7 +880,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
   clone_shape =
@@ -898,7 +900,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
@@ -1178,7 +1180,8 @@ TEST_F(HloInstructionTest, FullyElementwise) {
 
 TEST_F(HloInstructionTest, MapIsElementwise) {
   auto module = CreateNewVerifiedModule();
-  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  const Shape r2f32 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10}, {1, 0});
   HloComputation::Builder builder(TestName());
   HloComputation::Builder map_builder("id");
   map_builder.AddInstruction(
@@ -1743,9 +1746,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+  ROOT %custom-call-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", custom_call_target="foo"
 }
 
 )";
@@ -1760,9 +1763,108 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", calls=%AsyncOp
+  ROOT %custom-call-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+}
+
+)";
+  auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
+  EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
+}
+
+TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
+  const Shape rs_input_shape = ShapeUtil::MakeShape(F32, {20});
+  const Shape rs_output_shape = ShapeUtil::MakeShape(F32, {10});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> async_computation;
+  {
+    HloComputation::Builder async_builder("AsyncOp");
+    HloInstruction* param = async_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
+    async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
+        rs_output_shape, {param}, add_computation.get(), {}, false,
+        std::nullopt, false, 0));
+    async_computation = async_builder.Build();
+  }
+
+  const Shape async_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({rs_input_shape}), rs_output_shape});
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rs_input_shape, "pentry"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          async_start_shape, {entry_param}, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
+          async_start_shape, async_start, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
+      rs_output_shape, async_update, async_computation.get(),
+      /*async_group_id=*/std::nullopt,
+      /*async_execution_thread=*/"parallel_thread"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+  module->AddEmbeddedComputation(std::move(add_computation));
+
+  const std::string expected_with_syntax_sugar =
+      R"(HloModule StringifyAsyncOpsWithReduceScatter, entry_computation_layout={(f32[20]{0})->f32[10]{0}}
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}, execution_thread="parallel_thread"
+
+ENTRY %Entry (pentry: f32[20]) -> f32[10] {
+  %pentry = f32[20]{0} parameter(0)
+  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) reduce-scatter-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) reduce-scatter-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+  ROOT %reduce-scatter-done = f32[10]{0} reduce-scatter-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+}
+
+)";
+  EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
+
+  const std::string expected_without_syntax_sugar =
+      R"(HloModule StringifyAsyncOpsWithReduceScatter, entry_computation_layout={(f32[20]{0})->f32[10]{0}}
+
+%add (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}, execution_thread="parallel_thread"
+
+%AsyncOp (pasync: f32[20]) -> f32[10] {
+  %pasync = f32[20]{0} parameter(0)
+  ROOT %reduce-scatter = f32[10]{0} reduce-scatter(f32[20]{0} %pasync), replica_groups={}, dimensions={0}, to_apply=%add
+}, execution_thread="parallel_thread"
+
+ENTRY %Entry (pentry: f32[20]) -> f32[10] {
+  %pentry = f32[20]{0} parameter(0)
+  %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) async-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) async-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", calls=%AsyncOp
+  ROOT %reduce-scatter-done = f32[10]{0} async-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", calls=%AsyncOp
 }
 
 )";

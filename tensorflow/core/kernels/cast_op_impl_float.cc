@@ -24,6 +24,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromFloat(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, float);
+  CAST_CASE(CPUDevice, float, float8_e5m2);
+  CAST_CASE(CPUDevice, float, float8_e4m3fn);
   return nullptr;
 }
 
@@ -35,6 +37,8 @@ CastFunctorType GetGpuCastFromFloat(DataType dst_dtype) {
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, float);
 #endif
+  CAST_CASE(GPUDevice, float, float8_e5m2);
+  CAST_CASE(GPUDevice, float, float8_e4m3fn);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

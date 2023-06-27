@@ -83,7 +83,7 @@ Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   if (stat.is_directory) {
     return OkStatus();
   }
-  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
 Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
@@ -198,7 +198,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       Status directory_status = IsDirectory(current_entry);
       if (directory_status.ok()) {
         break;  // We need to start creating directories from here.
-      } else if (directory_status.code() == tsl::error::UNIMPLEMENTED) {
+      } else if (directory_status.code() == absl::StatusCode::kUnimplemented) {
         return directory_status;
       } else {
         return errors::FailedPrecondition(remaining_dir, " is not a directory");
@@ -222,7 +222,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
     Status status = CreateDir(this->CreateURI(scheme, host, built_path));
-    if (!status.ok() && status.code() != tsl::error::ALREADY_EXISTS) {
+    if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
       return status;
     }
   }

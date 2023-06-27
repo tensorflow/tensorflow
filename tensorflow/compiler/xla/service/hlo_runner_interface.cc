@@ -109,7 +109,7 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   for (const auto& argument : arguments) {
     argument_pointers.push_back(&argument);
   }
-  return ExecuteWithExecutable(executable, argument_pointers, nullptr);
+  return ExecuteWithExecutable(executable, argument_pointers, profile);
 }
 
 }  // namespace xla

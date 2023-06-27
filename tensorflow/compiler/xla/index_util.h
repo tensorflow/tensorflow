@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -34,8 +35,77 @@ class IndexUtil {
   // Converts a multidimensional index (eg {x, y, z}) into a linear index based
   // on the shape and its layout. The first index in the multi_index is
   // dimension 0.
-  static int64_t MultidimensionalIndexToLinearIndex(
-      const Shape& shape, absl::Span<const int64_t> multi_index);
+  static inline int64_t MultidimensionalIndexToLinearIndex(
+      const Shape& shape, absl::Span<const int64_t> multi_index) {
+    return MultidimensionalIndexToLinearIndex(
+        shape, LayoutUtil::MinorToMajor(shape), multi_index);
+  }
+
+  // Converts a multidimensional index (eg {x, y, z}) into a linear index based
+  // on the shape and its layout. The first index in the multi_index is
+  // dimension 0.
+  //
+  // This version can be used when the caller already has the minor_to_major
+  // array for shape available (and can therefore be faster).
+  //
+  // REQUIRES: minor_to_major provided is equal to
+  // shape.layout().minor_to_major()
+  static inline int64_t MultidimensionalIndexToLinearIndex(
+      const Shape& shape, absl::Span<const int64_t> minor_to_major,
+      absl::Span<const int64_t> multi_index) {
+    // Let the array be sized like so for dimensions i from 0 to n-1:
+    //
+    //   [D{n-1} x D{n-2} x .. x D{0}]
+    //
+    // Let the order of the dimensions in the minor_to_major field in
+    // Layout be:
+    //
+    //   L(0), L(1), ... , L(n-1)
+    //
+    // where L(0) is the most-minor dimension and L(n-1) the most-major. The
+    // multidimensional index:
+    //
+    //   [I{0}, I{1}, ... , I{n-1}]
+    //
+    // then corresponds to the following linear index:
+    //
+    // linear_index =
+    //   (((  ... + I{L(2)}) * D{L(1)} + I{L(1)}) * D{L(0)} + I{L(0)}
+    //
+    // or equivalently:
+    //
+    // linear_index =
+    //   I{L(n-1)} * (D{L(n-2)} * D{L(n-3)} * D{L(n-4)} *     ....    D{L(0)}) +
+    //   I{L(n-2)} *             (D{L(n-3)} * D{L(n-4)} *     ....    D{L(0)}) +
+    //   I{L(n-3)} *                         (D{L(n-4)} *     ....    D{L(0)}) +
+    //                                   ...                                   +
+    //   I{L(2)} *                                         (D{L(1)} * D{L(0)}) +
+    //   I{L(1)} *                                                    D{L(0)}  +
+    //   I{L(0)}
+    //
+    // We compute the linear index value by accumulating the terms above from
+    // I{L(0)} up to I{L(n-1)}. Scale accumulates the product term D{L(0}} *
+    // D{L(1)} * ...
+
+    // Scale factor holding the growing product of D{L(i)} terms.
+    for (size_t i = 0; i < multi_index.size(); ++i) {
+      DCHECK_GE(multi_index[i], 0);
+      DCHECK_LT(multi_index[i], shape.dimensions(i))
+          << "indexing beyond extent in dimension " << i << ":"
+          << "\n\tindex: " << absl::StrJoin(multi_index, ",")
+          << "\n\tshape: " << ShapeUtil::HumanString(shape);
+    }
+    if (minor_to_major.empty()) {
+      return 0;
+    }
+    int64_t linear_index = multi_index[minor_to_major[0]];
+    int64_t scale = 1;
+    for (int i = 1; i < minor_to_major.size(); ++i) {
+      scale *= shape.dimensions(minor_to_major[i - 1]);
+      linear_index += scale * multi_index[minor_to_major[i]];
+    }
+    return linear_index;
+  }
 
   // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional

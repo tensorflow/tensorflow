@@ -16,26 +16,37 @@
 
 import six
 
-from tensorflow.python.feature_column import feature_column_v2 as fc_lib
-from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
+from tensorflow.python.feature_column import feature_column_v2_types as fc_types
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
+    """
+
+_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'when training a Keras model.')
+
+_FEATURE_COLUMNS = [init_ops.TruncatedNormal]
 
 
-_FEATURE_COLUMNS = [
-    fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
-    fc_lib.HashedCategoricalColumn, fc_lib.IdentityCategoricalColumn,
-    fc_lib.IndicatorColumn, fc_lib.NumericColumn,
-    fc_lib.SequenceCategoricalColumn, fc_lib.SequenceDenseColumn,
-    fc_lib.SharedEmbeddingColumn, fc_lib.VocabularyFileCategoricalColumn,
-    fc_lib.VocabularyListCategoricalColumn, fc_lib.WeightedCategoricalColumn,
-    init_ops.TruncatedNormal, sfc_lib.SequenceNumericColumn
-]
-
-
-@tf_export('__internal__.feature_column.serialize_feature_column', v1=[])
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
+@tf_export(
+    '__internal__.feature_column.serialize_feature_column',
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 
@@ -78,12 +89,13 @@ def serialize_feature_column(fc):
   """
   if isinstance(fc, six.string_types):
     return fc
-  elif isinstance(fc, fc_lib.FeatureColumn):
+  elif isinstance(fc, fc_types.FeatureColumn):
     return {'class_name': fc.__class__.__name__, 'config': fc.get_config()}
   else:
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('__internal__.feature_column.deserialize_feature_column', v1=[])
 def deserialize_feature_column(config,
                                custom_objects=None,
@@ -115,18 +127,18 @@ def deserialize_feature_column(config,
   # A dict from class_name to class for all FeatureColumns in this module.
   # FeatureColumns not part of the module can be passed as custom_objects.
   module_feature_column_classes = {
-      cls.__name__: cls for cls in _FEATURE_COLUMNS}
+      cls.__name__: cls for cls in _FEATURE_COLUMNS
+  }
   if columns_by_name is None:
     columns_by_name = {}
 
-  (cls,
-   cls_config) = _class_and_config_for_serialized_keras_object(
-       config,
-       module_objects=module_feature_column_classes,
-       custom_objects=custom_objects,
-       printable_module_name='feature_column_v2')
+  (cls, cls_config) = _class_and_config_for_serialized_keras_object(
+      config,
+      module_objects=module_feature_column_classes,
+      custom_objects=custom_objects,
+      printable_module_name='feature_column_v2')
 
-  if not issubclass(cls, fc_lib.FeatureColumn):
+  if not issubclass(cls, fc_types.FeatureColumn):
     raise ValueError(
         'Expected FeatureColumn class, instead found: {}'.format(cls))
 
@@ -254,9 +266,7 @@ def _deserialize_keras_object(identifier,
 
       if 'custom_objects' in arg_spec.args:
         return cls.from_config(
-            cls_config,
-            custom_objects=dict(
-                list(custom_objects.items())))
+            cls_config, custom_objects=dict(list(custom_objects.items())))
       return cls.from_config(cls_config)
     else:
       # Then `cls` may be a function returning a class.
@@ -271,8 +281,8 @@ def _deserialize_keras_object(identifier,
     else:
       obj = module_objects.get(object_name)
       if obj is None:
-        raise ValueError(
-            'Unknown ' + printable_module_name + ': ' + object_name)
+        raise ValueError('Unknown ' + printable_module_name + ': ' +
+                         object_name)
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -297,8 +307,8 @@ def _class_and_config_for_serialized_keras_object(
     raise ValueError('Improper config format: ' + str(config))
 
   class_name = config['class_name']
-  cls = _get_registered_object(class_name, custom_objects=custom_objects,
-                               module_objects=module_objects)
+  cls = _get_registered_object(
+      class_name, custom_objects=custom_objects, module_objects=module_objects)
   if cls is None:
     raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
 
@@ -336,3 +346,8 @@ def _get_registered_object(name, custom_objects=None, module_objects=None):
     return module_objects[name]
   return None
 
+
+def register_feature_column(fc):
+  """Decorator that registers a FeatureColumn for serialization."""
+  _FEATURE_COLUMNS.append(fc)
+  return fc

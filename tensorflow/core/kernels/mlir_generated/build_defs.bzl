@@ -148,6 +148,7 @@ def _gen_kernel_bin_impl(ctx):
         arguments = cmd_args + [
             "--tile_sizes=%s" % ctx.attr.tile_size,
             "--max-supported-rank=%s" % ctx.attr.max_supported_rank,
+            "--host-triple=%s" % ctx.attr.host_triple,
             "--arch=%s" % ",".join(ctx.attr.gpu_archs),
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
@@ -183,6 +184,7 @@ _gen_kernel_bin_rule = rule(
         "tile_size": attr.string(mandatory = True),
         "unroll_factors": attr.string(),
         "max_supported_rank": attr.int(),
+        "host_triple": attr.string(mandatory = True),
         "gpu_archs": attr.string_list(),
         "jit": attr.bool(),
         "jit_i64_indexed_for_large_tensors": attr.bool(),
@@ -308,7 +310,7 @@ def _gen_kernel_library(
 
     # Partially JIT-compiled kernels
     true_i64jits = [True for i in jit_i64_indexed_for_large_tensors_types]
-    false_jits = [True for i in jit_i64_indexed_for_large_tensors_types]
+    false_jits = [False for i in jit_i64_indexed_for_large_tensors_types]
     all_paratial_jit_kernels = zip(
         jit_i64_indexed_for_large_tensors_types,
         output_jit_i64_indexed_for_large_tensors_types,
@@ -335,6 +337,12 @@ def _gen_kernel_library(
                 platform = platform,
                 type = type,
             )
+
+            host_triple = select({
+                "@platforms//cpu:aarch64": "aarch64-unknown-linux-gnu",  # copybara:comment_replace "//third_party/bazel_platforms/cpu:aarch64": "aarch64-unknown-linux-gnu",
+                "//conditions:default": "x86_64-unknown-linux-gnu",
+            })
+
             _gen_kernel_bin_rule(
                 name = "{op}_{name}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
@@ -345,6 +353,7 @@ def _gen_kernel_library(
                 ),
                 data_type = type,
                 extra_args = extra_args,
+                host_triple = host_triple,
                 gpu_archs = gpu_archs,
                 jit = jit,
                 max_supported_rank = max_supported_rank,

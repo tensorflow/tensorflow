@@ -125,6 +125,10 @@ def _get_tensorrt_static_path(repository_ctx):
     """Returns the path for TensorRT static libraries."""
     return get_host_environ(repository_ctx, _TF_TENSORRT_STATIC_PATH, None)
 
+def _get_tensorrt_full_version(repository_ctx):
+    """Returns the full version for TensorRT."""
+    return get_host_environ(repository_ctx, _TF_TENSORRT_VERSION, None)
+
 def _create_local_tensorrt_repository(repository_ctx):
     # Resolve all labels before doing any real work. Resolving causes the
     # function to be restarted with all previous state being lost. This
@@ -139,8 +143,11 @@ def _create_local_tensorrt_repository(repository_ctx):
         "plugin.BUILD": _tpl_path(repository_ctx, "plugin.BUILD"),
     }
 
-    config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
+    config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda", "tensorrt"])
+    cuda_version = config["cuda_version"]
+    cuda_library_path = config["cuda_library_dir"] + "/"
     trt_version = config["tensorrt_version"]
+    trt_full_version = _get_tensorrt_full_version(repository_ctx)
     cpu_value = get_cpu_value(repository_ctx)
 
     # Copy the library and header files.
@@ -167,21 +174,29 @@ def _create_local_tensorrt_repository(repository_ctx):
     tensorrt_static_path = _get_tensorrt_static_path(repository_ctx)
     if tensorrt_static_path:
         tensorrt_static_path = tensorrt_static_path + "/"
-        if _at_least_version(trt_version, "8"):
+        if _at_least_version(trt_full_version, "8.4.1") and _at_least_version(cuda_version, "11.4"):
             raw_static_library_names = _TF_TENSORRT_LIBS
+            nvrtc_ptxjit_static_raw_names = ["nvrtc", "nvrtc-builtins", "nvptxcompiler"]
+            nvrtc_ptxjit_static_names = ["%s_static" % name for name in nvrtc_ptxjit_static_raw_names]
+            nvrtc_ptxjit_static_libraries = [lib_name(lib, cpu_value, trt_version, static = True) for lib in nvrtc_ptxjit_static_names]
+        elif _at_least_version(trt_version, "8"):
+            raw_static_library_names = _TF_TENSORRT_LIBS
+            nvrtc_ptxjit_static_libraries = []
         else:
             raw_static_library_names = _TF_TENSORRT_LIBS + ["nvrtc", "myelin_compiler", "myelin_executor", "myelin_pattern_library", "myelin_pattern_runtime"]
+            nvrtc_ptxjit_static_libraries = []
         static_library_names = ["%s_static" % name for name in raw_static_library_names]
         static_libraries = [lib_name(lib, cpu_value, trt_version, static = True) for lib in static_library_names]
-        if tensorrt_static_path != None:
-            copy_rules = copy_rules + [
-                make_copy_files_rule(
-                    repository_ctx,
-                    name = "tensorrt_static_lib",
-                    srcs = [tensorrt_static_path + library for library in static_libraries],
-                    outs = ["tensorrt/lib/" + library for library in static_libraries],
-                ),
-            ]
+        copy_rules = copy_rules + [
+            make_copy_files_rule(
+                repository_ctx,
+                name = "tensorrt_static_lib",
+                srcs = [tensorrt_static_path + library for library in static_libraries] +
+                       [cuda_library_path + library for library in nvrtc_ptxjit_static_libraries],
+                outs = ["tensorrt/lib/" + library for library in static_libraries] +
+                       ["tensorrt/lib/" + library for library in nvrtc_ptxjit_static_libraries],
+            ),
+        ]
 
     # Set up config file.
     repository_ctx.template(

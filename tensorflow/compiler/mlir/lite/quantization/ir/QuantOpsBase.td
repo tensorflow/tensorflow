@@ -27,8 +27,6 @@ include "mlir/IR/OpBase.td"
 def QuantizationFork_Dialect : Dialect {
   let name = "quantfork";
   let cppNamespace = "::mlir::quantfork";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // QUANT_FORK_BASE

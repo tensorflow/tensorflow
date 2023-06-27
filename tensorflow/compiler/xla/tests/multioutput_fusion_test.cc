@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -62,9 +62,9 @@ class MultiOutputFusionTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewVerifiedModule();
 
-    const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
+    const Shape elem_shape0 = ShapeUtil::MakeShapeWithDenseLayout(F32, {}, {});
     const Shape elem_shape2 =
-        ShapeUtil::MakeShapeWithLayout(F32, {size, size}, {1, 0});
+        ShapeUtil::MakeShapeWithDenseLayout(F32, {size, size}, {1, 0});
 
     auto const0 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(8.0f)));
@@ -238,6 +238,34 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
       gte1 = f32[4] get-tuple-element(fusion), index=1
       const = f32[4] constant({0, 0, 0, 0})
       ROOT select = f32[4] select(gte0, gte1, const)
+    })";
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
+  auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
+  Literal result = ExecuteNoHloPasses(std::move(module), {&param});
+  LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           MultiOutputLoopFusionBitcastCompatibleShapes) {
+  const char* testcase = R"(
+    HloModule m, is_scheduled=true
+
+    fused_computation {
+      p = f32[4] parameter(0)
+      multiply = f32[4] multiply(p, p)
+      less-than = pred[4] compare(p, multiply), direction=LT
+      bitcast = pred[1, 4] bitcast(less-than)
+      ROOT tuple = (pred[1,4], f32[4]) tuple(bitcast, multiply)
+    }
+
+    ENTRY PredFloatMOF {
+      p0 = f32[4] parameter(0)
+      fusion = (pred[1,4], f32[4]) fusion(p0), kind=kLoop, calls=fused_computation
+      gte0 = pred[1,4] get-tuple-element(fusion), index=0
+      bitcast0 = pred[4] bitcast(gte0)
+      gte1 = f32[4] get-tuple-element(fusion), index=1
+      const = f32[4] constant({0, 0, 0, 0})
+      ROOT select = f32[4] select(bitcast0, gte1, const)
     })";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, -1.0});

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -25,13 +28,15 @@ namespace tfrt_stub {
 StatusOr<TfrtSavedModelMLIRImportInput> TfrtSavedModelMLIRImportInput::Create(
     const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
     const GraphDebugInfo& debug_info,
-    bool run_placer_grappler_on_nested_functions, bool enable_tfrt_gpu) {
+    bool run_placer_grappler_on_nested_functions, bool enable_tfrt_gpu,
+    bool use_bridge_for_gpu) {
   DCHECK(meta_graph_def);
 
   TfrtGraphExecutionState::Options options;
   options.run_placer_grappler_on_functions =
       run_placer_grappler_on_nested_functions;
   options.enable_tfrt_gpu = enable_tfrt_gpu;
+  options.use_bridge_for_gpu = use_bridge_for_gpu;
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(options, meta_graph_def->graph_def(),

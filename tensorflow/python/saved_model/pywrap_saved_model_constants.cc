@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/constants.h"
 
 namespace tensorflow {
@@ -52,8 +52,14 @@ void DefineConstantsModule(py::module main_module) {
   m.attr("TRAIN_OP_SIGNATURE_KEY") =
       py::str(tensorflow::kSavedModelTrainOpSignatureKey);
 
+  m.attr("SAVED_MODEL_FILENAME_PREFIX") =
+      py::str(tensorflow::kSavedModelFilenamePrefix);
+
   m.attr("SAVED_MODEL_FILENAME_PB") =
       py::str(tensorflow::kSavedModelFilenamePb);
+
+  m.attr("SAVED_MODEL_FILENAME_CPB") =
+      py::str(tensorflow::kSavedModelFilenameCpb);
 
   m.attr("SAVED_MODEL_FILENAME_PBTXT") =
       py::str(tensorflow::kSavedModelFilenamePbTxt);

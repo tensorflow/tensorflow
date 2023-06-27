@@ -168,7 +168,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
         ArrayRef<Value>{},
         ArrayRef<NamedAttribute>{
             builder.getNamedAttr("device", device_attr),
-            builder.getNamedAttr("container", variable_v2_op.containerAttr()),
+            builder.getNamedAttr("container",
+                                 variable_v2_op.getContainerAttr()),
             builder.getNamedAttr("shared_name",
                                  builder.getStringAttr(variable_name))});
     for (Operation *user :

@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -123,6 +124,9 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     ADD_LAYER(REDUCE)
     ADD_LAYER(TOPK)
     ADD_LAYER(GATHER)
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    ADD_LAYER(GRID_SAMPLE)
+#endif
     ADD_LAYER(MATRIX_MULTIPLY)
     ADD_LAYER(RAGGED_SOFTMAX)
     ADD_LAYER(CONSTANT)
@@ -142,12 +146,30 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
     ADD_LAYER(QUANTIZE)
     ADD_LAYER(DEQUANTIZE)
-#else
+#endif
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    ADD_LAYER(CONDITION)
+    ADD_LAYER(CONDITIONAL_INPUT)
+    ADD_LAYER(CONDITIONAL_OUTPUT)
+    ADD_LAYER(SCATTER)
+    ADD_LAYER(EINSUM)
+    ADD_LAYER(ASSERTION)
+#endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    ADD_LAYER(ONE_HOT)
+    ADD_LAYER(NON_ZERO)
+    ADD_LAYER(NMS)
+#endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    ADD_LAYER(REVERSE_SEQUENCE)
+#endif
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     // The TRT IRNNv2Layer has been deprecated in favor of the loop API.
     ADD_LAYER(RNN)
 #endif
+    default:
+      return "UNKNOWN_LAYER";
   }
-  return "UNKNOWN_LAYER";
 }
 
 #undef ADD_LAYER
@@ -190,7 +212,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    LOG(INFO) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape at node: " << node->name();
     *dtype = node->output_type(out_port);
   }
 }
@@ -988,11 +1010,11 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
                                              &tensor_or_weights);
     if (!status.ok()) {
       VLOG(2) << "Failed to convert input `" << src_def.name() << "` to a "
-              << "TRT_TensorOrWeights: " << status.error_message();
+              << "TRT_TensorOrWeights: " << status.message();
 
       return errors::Internal(
           "Failed to convert at least one input to a TRT_TensorOrWeights: ",
-          status.error_message());
+          status.message());
     }
     inputs.push_back(tensor_or_weights);
   }
@@ -1109,11 +1131,10 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
             << output.DebugString();
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
-      return errors::Create(
-          status.code(),
-          StrCat("Failed to add output for node: ", node_def.name(), ": ",
-                 status.error_message()),
-          errors::GetPayloads(status));
+      return errors::Create(static_cast<absl::StatusCode>(status.code()),
+                            StrCat("Failed to add output for node: ",
+                                   node_def.name(), ": ", status.message()),
+                            errors::GetPayloads(status));
     }
   }
   return OkStatus();
@@ -1129,7 +1150,7 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
     status = MaybeUpdateBatchSize(batch_size);
     if (!status.ok()) {
       return errors::CreateWithUpdatedMessage(
-          status, batch_size_error(name, status.error_message()));
+          status, batch_size_error(name, status.message()));
     }
   }
   ITensorProxyPtr tensor = network()->addInput(name.c_str(), dtype, dims);
@@ -1140,8 +1161,8 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   status = AddTensorOrWeights(name, TRT_TensorOrWeights(tensor));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input tensor ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input tensor ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1151,8 +1172,8 @@ Status Converter::AddInputResource(const string& name,
   Status status = AddTensorOrWeights(name, TRT_TensorOrWeights(resource));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input resource ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input resource ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1269,8 +1290,51 @@ Status Converter::BuildCudaEngine(
   }
 
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
-  builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-  VLOG(1) << "Setting sparsity for TensorRT8!";
+  enum class SparseComputeMode { DISABLED, ENABLED, SIMULATED };
+
+  static SparseComputeMode sparse_compute_mode = []() {
+    SparseComputeMode _sparse_compute_mode;
+    int64 _sparse_mode;
+    /*TF_TRT_SPARSE_MODE environment variable controls if sparse compute is
+    enabled. It also allows to simulate the performance benefits of training a
+    model with sparse compute in mind.
+    Possible Values:
+    - 1 [Default]: Sparse compute is enabled if the model was trained with
+    sparse weights. Otherwise it has no effect.
+    - < 1: Sparse compute is explicitly disabled regardless on how the model was
+    trained.
+    - > 1: Sparse compute is forced. This mode is only to be used for
+    benchmarking or debugging purpose. This feature artificially introduces a
+    sparse weight pattern compatible with Sparse TensorCores introduced in
+    NVIDIA Ampere GPU architecture. As a side effect, it will completely corrupt
+    the numerical values of the computation. Therefore shall only be used to
+    evaluate the benefit of using sparse computation for inference.*/
+    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_SPARSE_MODE",
+                                                /*default_val=*/1,
+                                                &_sparse_mode));
+
+    string sparse_log_msg = "[TF-TRT] Sparse compute capability: ";
+    if (_sparse_mode == 1) {
+      sparse_log_msg = StrCat(sparse_log_msg, "enabled.");
+      _sparse_compute_mode = SparseComputeMode::ENABLED;
+    } else if (_sparse_mode < 1) {
+      sparse_log_msg = StrCat(sparse_log_msg, "disabled.");
+      _sparse_compute_mode = SparseComputeMode::DISABLED;
+    } else {
+      sparse_log_msg = StrCat(
+          sparse_log_msg, "simulated.",
+          "It shall only be used for sparse computing benchmark and debug.");
+      _sparse_compute_mode = SparseComputeMode::SIMULATED;
+    }
+    LOG(INFO) << sparse_log_msg;
+
+    return _sparse_compute_mode;
+  }();
+
+  if (sparse_compute_mode == SparseComputeMode::ENABLED ||
+      sparse_compute_mode == SparseComputeMode::SIMULATED) {
+    builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+  }
 #endif
 
   if (tensorflow::tensor_float_32_execution_enabled()) {
@@ -1311,7 +1375,7 @@ Status Converter::BuildCudaEngine(
     auto cache = registry->LookUp("default_cache", builder_config.get());
     if (!cache.ok()) {
       LOG(WARNING) << "failed to create a timing cache: "
-                   << cache.status().error_message();
+                   << cache.status().message();
     } else {
       timing_cache = std::move(*cache);
       builder_config->setTimingCache(*timing_cache, /*ignoreMismatch*/ false);
@@ -1332,6 +1396,23 @@ Status Converter::BuildCudaEngine(
       "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
       ", ", "Max-Batch-Size:", max_batch_size, ", ",
       "Max-Workspace-Size:", max_workspace_size_bytes);
+
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  trt_network_name = StrCat(trt_network_name, ", Sparse Compute: ");
+
+  switch (sparse_compute_mode) {
+    case SparseComputeMode::SIMULATED:
+      trt_network_name = StrCat(trt_network_name, "Simulated");
+      break;
+    case SparseComputeMode::ENABLED:
+      trt_network_name = StrCat(trt_network_name, "Enabled");
+      break;
+    case SparseComputeMode::DISABLED:
+      trt_network_name = StrCat(trt_network_name, "Disabled");
+      break;
+  }
+#endif
+
   VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
   network()->setName(trt_network_name.c_str());
 
@@ -2016,7 +2097,11 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   if (params->use_explicit_precision) {
     TRT_ENSURE(inputs.at(1).is_tensor());
 
-    conv_layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *inputs.at(1).tensor()->trt_tensor());
+    layer->setFirstTranspose({3, 2, 0, 1});
+    layer->setReshapeDimensions({4, {0, 0, 0, 0}});
+    conv_layer->setInput(1, *layer->getOutput(0));
   }
 
   params->converter->SetLayerName(conv_layer, node_def, "conv");
@@ -2451,7 +2536,7 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
   // Reshape tensor.
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(input), DimsAdapter(*input_dims),
-      /*validation_only=*/false, output, params->node_def));
+      /*validation_only=*/false, output, params->node_def, op_instance));
   return OkStatus();
 }
 
@@ -3565,6 +3650,24 @@ Status ConvertIdentity(const OpConverterParams* params) {
     params->outputs->push_back(params->inputs.at(i));
   }
   return OkStatus();
+}
+
+// This converter is a debug-only feature designed to allow graph segmentation
+// experiments. Its use is being controled by
+// `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
+// See `op_converter_registry.cc` for further details.
+//
+// This converter is designed as followed:
+//   - always succeed at graph segmentation time.
+//   - always fail at TRT Engine build time.
+Status ConvertFake(const OpConverterParams* params) {
+  if (params->validation_only) return OkStatus();
+
+  return errors::Unimplemented(
+      "This converter is not valid after graph "
+      "segmentation. Building an engine using this "
+      "converter will trigger a native segment "
+      "fallback.");
 }
 
 Status ConvertSquare(const OpConverterParams* params) {
@@ -5636,7 +5739,9 @@ Status ConvertAddN(const OpConverterParams* params) {
       tensor_inputs.push_back(input.tensor());
     } else {
       auto dims = input.weights().Shape();
-      TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      if (params->use_implicit_batch) {
+        TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      }
       tensor_inputs.push_back(params->converter->CreateConstantLayer(
           input.weights(), dims.AsTrtDims()));
     }
@@ -5713,6 +5818,15 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
                                    "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
+// Debug converter only accessible via `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFake, "FakeOp");
+
+static Status SetDeviceInfoInNodes(GraphDef* graph_def, const string& device) {
+  for (auto& node : *(graph_def->mutable_node())) {
+    *node.mutable_device() = device;
+  }
+  return OkStatus();
+}
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,
@@ -5723,7 +5837,8 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster) {
+    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster,
+    const string& device) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5747,6 +5862,11 @@ Status ConvertGraphDefToEngine(
     if (apply_layout_optim) {
       tensorflow::grappler::GrapplerItem grappler_item;
       grappler_item.graph = gdef;
+
+      // Add device information to each node in the graphdef for successful
+      // execution of the layout optimizer
+      TF_RETURN_IF_ERROR(SetDeviceInfoInNodes(&grappler_item.graph, device));
+
       // TensorRT API requires the input for convolution to be in NCHW.
       tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
       TF_RETURN_IF_ERROR(
@@ -5801,6 +5921,15 @@ Status ConvertGraphDefToEngine(
       DataType tf_dtype = node_def.attr().at(type_key).type();
       if (tf_dtype == DT_RESOURCE) {
         VLOG(2) << "Adding engine input resource " << node_name;
+        if (ctx == nullptr) {
+          return errors::InvalidArgument(
+              "Variable resource type conversion requires a valid ctx");
+        }
+
+        if (ctx->input(slot_number).NumElements() == 0) {
+          return errors::InvalidArgument("Resource input ", node_name,
+                                         " is empty.");
+        }
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {
@@ -5815,7 +5944,7 @@ Status ConvertGraphDefToEngine(
         if (!status.ok()) {
           const string error_message =
               StrCat("Validation failed for ", node_name, " and input slot ",
-                     slot_number, ": ", status.error_message());
+                     slot_number, ": ", status.message());
           LOG_WARNING_WITH_PREFIX << error_message;
           return errors::CreateWithUpdatedMessage(status, error_message);
         }
@@ -5908,12 +6037,20 @@ Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,  // In topological order
     EngineInfo* engine_info) {
+  tensorflow::profiler::TraceMe activity(
+      "ConvertSegmentToGraphDef", tensorflow::profiler::TraceMeLevel::kInfo);
   std::vector<EngineConnection>* connections = &engine_info->connections;
   GraphDef* segment_def = &engine_info->segment_graph_def;
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
+    tensorflow::profiler::TraceMe activity(
+        [&] {
+          return StrCat("Constructing TRTEngine IO: ", i + 1, "/",
+                        connections->size());
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
     auto& connection = connections->at(i);
     if (connection.is_control_edge()) continue;
     auto outside_node = graph->FindNodeId(connection.outside_id);
@@ -5988,7 +6125,14 @@ Status ConvertSegmentToGraphDef(
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
   string local_scope = subgraph_nodes.front()->name();
+  int i = 0;
   for (const Node* node : subgraph_nodes) {
+    tensorflow::profiler::TraceMe activity(
+        [&] {
+          return StrCat("Copy Node to Subgraph: ", ++i, "/",
+                        subgraph_nodes.size());
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
@@ -5997,6 +6141,13 @@ Status ConvertSegmentToGraphDef(
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
+    tensorflow::profiler::TraceMe activity(
+        [&] {
+          return StrCat("Updating Subgraph Input: ", i + 1, "/",
+                        connections->size());
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
     auto& connection = connections->at(i);
     if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
@@ -6008,13 +6159,26 @@ Status ConvertSegmentToGraphDef(
             << arg_name;
     snode->set_input(connection.inside_port, arg_name);
   }
+
   std::set<string> subgraph_node_names;
-  for (const Node* node : subgraph_nodes) {
-    subgraph_node_names.insert(node->name());
+  {
+    tensorflow::profiler::TraceMe activity(
+        "Constructing subgraph_node_names set: ",
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    for (const Node* node : subgraph_nodes) {
+      subgraph_node_names.insert(node->name());
+    }
   }
 
   // Remove control inputs that are not inside the segment.
   for (int i = 0; i < segment_def->node_size(); ++i) {
+    tensorflow::profiler::TraceMe activity(
+        [&] {
+          return StrCat("Removing outside to subgraph control inputs: ", i + 1,
+                        "/", segment_def->node_size());
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
     auto snode = segment_def->mutable_node(i);
     const int input_size = snode->input_size();
     int input_idx = 0;
@@ -6055,6 +6219,15 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
   return true;
 }
 
+ITensorProxyPtr TRT_TensorOrWeights::as_tensor(
+    const OpConverterParams* params) {
+  if (is_tensor()) {
+    return tensor();
+  } else {
+    return params->converter->CreateConstantLayer(weights(), GetTrtDims());
+  }
+}
+
 std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
                                       nvinfer1::DataType type_expected,
                                       const NodeDef& node_def, int idx) {
@@ -6064,7 +6237,7 @@ std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
          DebugString(type_being_checked) + ".";
 }
 
-string batch_size_error(const string& name, const string& comment) {
+string batch_size_error(absl::string_view name, absl::string_view comment) {
   return StrCat("Batch size doesn't match for tensor '", name, "' : ", comment);
 }
 

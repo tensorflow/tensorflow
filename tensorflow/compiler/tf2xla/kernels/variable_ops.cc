@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <utility>
+
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
@@ -190,7 +193,7 @@ class ResourceScatterOp : public XlaOpKernel {
     const xla::XlaOp updates = context->Input(2);
 
     auto result = XlaScatter(var_value, updates, indices, indices_are_vectors_,
-                             combiner_, builder);
+                             /*indices_are_sorted=*/false, combiner_, builder);
     OP_REQUIRES_OK(context, result.status());
     OP_REQUIRES_OK(context, context->AssignVariable(0, dtype, result.value()));
   }
@@ -208,7 +211,7 @@ class ResourceScatterAddOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Add(x, y);
   }
@@ -221,7 +224,7 @@ class ResourceScatterSubOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Sub(x, y);
   }
@@ -234,7 +237,7 @@ class ResourceScatterMulOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Mul(x, y);
   }
@@ -247,7 +250,7 @@ class ResourceScatterDivOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Div(x, y);
   }
@@ -260,7 +263,7 @@ class ResourceScatterMinOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Min(x, y);
   }
@@ -273,7 +276,7 @@ class ResourceScatterMaxOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Max(x, y);
   }
@@ -303,7 +306,7 @@ class ResourceScatterNdAddOp : public ResourceScatterOp {
                           /*combiner=*/Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Add(x, y);
   }
@@ -317,7 +320,7 @@ class ResourceScatterNdSubOp : public ResourceScatterOp {
                           /*combiner=*/Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Sub(x, y);
   }

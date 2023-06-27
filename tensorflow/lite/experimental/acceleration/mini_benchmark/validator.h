@@ -22,14 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 namespace tflite {
 namespace acceleration {
@@ -43,7 +43,7 @@ class Validator {
  public:
   // Construct Validator for the given model and compute settings. The
   // compute_settings must be valid for the lifetime of the Validator instance.
-  Validator(std::unique_ptr<ModelLoader> model_loader,
+  Validator(std::unique_ptr<tools::ModelLoader> model_loader,
             const ComputeSettings* compute_settings)
       : model_loader_(std::move(model_loader)),
         compute_settings_(compute_settings) {}
@@ -65,14 +65,23 @@ class Validator {
     int delegate_error = 0;
     // Number of delegated kernels.
     int delegated_kernels = 0;
-    // Model output with the delegate.
-    // key: output tensor name;
-    // value: output tensor data in byte format.
-    std::map<std::string, std::vector<char>> actual_inference_output;
+    // Model output with the delegate, in byte format. It is ordered the same as
+    // tflite::Interpreter::output_tensor(), i.e. the value of output_tensor(i)
+    // is stored in actual_inference_output[i].
+    std::vector<std::vector<char>> actual_inference_output;
+  };
+
+  // Status from validation run.
+  struct Status {
+    // Status of the mini benchmark run.
+    MinibenchmarkStatus status;
+    // Stage during which validation run failed.
+    // Unknown in case of a successful run.
+    BenchmarkStage stage = BenchmarkStage_UNKNOWN;
   };
 
   // Run the validation graph and return validation results.
-  MinibenchmarkStatus RunValidation(Results* results_out);
+  Status RunValidation(Results* results_out);
 
   // Get timestamps.
   static int64_t BootTimeMicros();
@@ -84,8 +93,16 @@ class Validator {
   Validator& operator=(Validator&&) = delete;
 
  private:
+  // An opaque version of Interpreter::TfLiteDelegatePtr.
+  using TfLiteOpaqueDelegatePtr =
+      std::unique_ptr<TfLiteOpaqueDelegateStruct,
+                      void (*)(TfLiteOpaqueDelegateStruct*)>;
+
   // Load delegate plugin and create delegate.
   MinibenchmarkStatus LoadDelegate();
+
+  // Retrieves a stable delegate and creates an opaque delegate.
+  MinibenchmarkStatus LoadOpaqueDelegate();
 
   // Create the interpreter with the delegate. Must be called after
   // LoadDelegate().
@@ -96,7 +113,7 @@ class Validator {
   // embedded, run Model on CPU and add golden output to model_.
   MinibenchmarkStatus CheckGoldenOutput(Results* results_out);
 
-  std::unique_ptr<ModelLoader> model_loader_;
+  std::unique_ptr<tools::ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;
   // Optional. Interpreter that runs on CPU.
   std::unique_ptr<Interpreter> golden_interpreter_;
@@ -109,6 +126,8 @@ class Validator {
   std::unique_ptr<FlatBufferModel> model_;
   ::tflite::delegates::TfLiteDelegatePtr delegate_ =
       delegates::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  TfLiteOpaqueDelegatePtr opaque_delegate_ =
+      TfLiteOpaqueDelegatePtr(nullptr, [](TfLiteOpaqueDelegate*) {});
   std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
   int validation_entrypoint_index_ = -1;
   Subgraph* validation_entrypoint_ = nullptr;

@@ -17,12 +17,12 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -146,7 +146,7 @@ TEST_F(CpuNoAliasTest, Concat) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_match,
-      RunFileCheck(llvm_ir::DumpModuleToString(ir_module), filecheck_pattern));
+      RunFileCheck(llvm_ir::DumpToString(&ir_module), filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 

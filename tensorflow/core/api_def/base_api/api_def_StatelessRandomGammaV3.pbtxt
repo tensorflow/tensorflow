@@ -1,0 +1,53 @@
+op {
+  graph_op_name: "StatelessRandomGammaV3"
+  visibility: HIDDEN
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  in_arg {
+    name: "key"
+    description: <<END
+Key for the counter-based RNG algorithm (shape uint64[1]).
+END
+  }
+  in_arg {
+    name: "counter"
+    description: <<END
+Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+END
+  }
+  in_arg {
+    name: "alg"
+    description: <<END
+The RNG algorithm (shape int32[]).
+END
+  }
+  in_arg {
+    name: "alpha"
+    description: <<END
+The concentration of the gamma distribution. Shape must match the rightmost
+dimensions of `shape`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Random values with specified shape.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs deterministic pseudorandom random numbers from a gamma distribution."
+  description: <<END
+Outputs random values from a gamma distribution.
+
+The outputs are a deterministic function of the inputs.
+END
+}

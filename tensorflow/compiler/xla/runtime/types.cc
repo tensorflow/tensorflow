@@ -88,12 +88,22 @@ std::string OpaqueOperandType::ToString() const { return "!rt.opaque"; }
 using ArgumentAbi = Type::ArgumentAbi;
 using ResultAbi = Type::ResultAbi;
 
+// Async token passed as a pointer to the runtime async token.
+absl::StatusOr<ArgumentAbi> AsyncTokenType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
 // Async token returned as a pointer to the runtime async token.
 absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
-// Async value returned as a pointer to the runtime async token.
+// Async value passed as a pointer to the runtime async value.
+absl::StatusOr<ArgumentAbi> AsyncValueType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
+// Async value returned as a pointer to the runtime async value.
 absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }

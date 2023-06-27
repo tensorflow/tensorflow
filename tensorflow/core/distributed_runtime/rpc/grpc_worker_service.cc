@@ -33,12 +33,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -56,6 +54,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -76,8 +77,8 @@ namespace {
   do {                                                                       \
     mutex_lock l(shutdown_mu_);                                              \
     if (!is_shutdown_) {                                                     \
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,       \
-           method##Request, method##Response>::                              \
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,  \
+                method##Request, method##Response>::                         \
           EnqueueRequestForMethod(                                           \
               worker_service_, cq_.get(),                                    \
               static_cast<int>(GrpcWorkerMethod::k##method),                 \
@@ -100,11 +101,10 @@ class GrpcWorkerServiceThread {
  public:
   explicit GrpcWorkerServiceThread(
       GrpcWorker* worker, ::grpc::ServerBuilder* builder,
-      std::unordered_map<int, int> queue_depth, GrpcResponseCache* cache,
+      std::unordered_map<int, int> queue_depth,
       grpc::WorkerService::AsyncService* worker_service)
       : worker_(worker),
         queue_depth_(queue_depth),
-        cache_(cache),
         worker_service_(worker_service),
         is_shutdown_(false) {
     cq_ = builder->AddCompletionQueue();
@@ -163,8 +163,8 @@ class GrpcWorkerServiceThread {
     bool ok;
 
     while (cq_->Next(&tag, &ok)) {
-      UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
-          static_cast<UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
+      tsl::UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
+          static_cast<tsl::UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
       CHECK(callback_tag);
       callback_tag->OnCompleted(this, ok);
     }
@@ -183,8 +183,8 @@ class GrpcWorkerServiceThread {
   // `ENQUEUE_REQUEST(Foo)`.
   template <class RequestMessage, class ResponseMessage>
   using WorkerCall =
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
-           RequestMessage, ResponseMessage>;
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
+                RequestMessage, ResponseMessage>;
 
   // Handle all non-cancellable simple methods with a standard wrapper.
   // The boolean `may_block_on_compute_pool` indicates whether or not the
@@ -343,8 +343,8 @@ class GrpcWorkerServiceThread {
   void EnqueueRecvTensorRequestRaw() {
     mutex_lock l(shutdown_mu_);
     if (!is_shutdown_) {
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
-           RecvTensorRequest, ::grpc::ByteBuffer>::
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
+                RecvTensorRequest, ::grpc::ByteBuffer>::
           EnqueueRequestForMethod(
               worker_service_, cq_.get(),
               static_cast<int>(GrpcWorkerMethod::kRecvTensor),
@@ -357,7 +357,6 @@ class GrpcWorkerServiceThread {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   std::unique_ptr<Thread> thread_;
   std::unordered_map<int, int> queue_depth_;
-  GrpcResponseCache* cache_;
   grpc::WorkerService::AsyncService* const worker_service_;
 
   mutex shutdown_mu_;
@@ -365,7 +364,7 @@ class GrpcWorkerServiceThread {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerServiceThread);
 };
 
-class GrpcWorkerService : public AsyncServiceInterface {
+class GrpcWorkerService : public tsl::AsyncServiceInterface {
  public:
   GrpcWorkerService(GrpcWorker* worker, ::grpc::ServerBuilder* builder,
                     GrpcWorkerServiceOptions options)
@@ -373,9 +372,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
     builder->RegisterService(&worker_service_);
 
     for (int i = 0; i < options.num_serving_threads; i++) {
-      threads_.emplace_back(
-          new GrpcWorkerServiceThread(worker, builder, options.queue_depth,
-                                      cache_.get(), &worker_service_));
+      threads_.emplace_back(new GrpcWorkerServiceThread(
+          worker, builder, options.queue_depth, &worker_service_));
     }
   }
 
@@ -410,7 +408,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
   grpc::WorkerService::AsyncService worker_service_;
   std::vector<std::unique_ptr<GrpcWorkerServiceThread>> threads_;
 
-  std::unique_ptr<GrpcResponseCache> cache_;
   mutex service_shutdown_mu_;
   bool is_shutdown_ TF_GUARDED_BY(service_shutdown_mu_);
 
@@ -432,7 +429,7 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(3) << "Enabling gRPC tensor response cache.";
-  response_cache_ = std::make_unique<GrpcResponseCache>();
+  response_cache_ = std::make_unique<RpcResponseCache>();
 }
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
@@ -471,7 +468,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                              const Status& status) {
     if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
-      response_cache_->OnRequestFinished(request_id, tensor, is_dead, status);
+      response_cache_->RequestFinished(request_id, tensor, is_dead, status);
     } else {
       do_response(tensor, is_dead, status);
     }
@@ -520,43 +517,38 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
           const Rendezvous::Args& recv_args, const Tensor& val,
           const bool is_dead) {
         opts->ClearCancelCallback();
-        if (status.ok()) {
-          // DMA can only be used for Tensors that do not fall into
-          // the following three odd edge cases: 1) a zero-size
-          // buffer, 2) a dead tensor which has an uninit value, and
-          // 3) the tensor has the on_host allocation attribute,
-          // i.e. it's in CPU RAM *independent of its assigned
-          // device type*.
-          const bool on_host = send_args.alloc_attrs.on_host();
-          {
-            // Non-DMA cases.
-            if (src_dev->tensorflow_accelerator_device_info() && (!on_host)) {
-              DeviceContext* send_dev_context = send_args.device_context;
-              AllocatorAttributes alloc_attrs;
-              alloc_attrs.set_gpu_compatible(true);
-              alloc_attrs.set_on_host(true);
-              Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
-              Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
-              CHECK(send_dev_context)
-                  << "send dev name: " << src_dev->name() << " gpu_info: "
-                  << src_dev->tensorflow_accelerator_device_info();
-              // "val" is on an accelerator device. Uses the device_context to
-              // fill the copy on host.
-              StatusCallback copy_ready = [rendezvous_done, copy,
-                                           is_dead](const Status& s) {
-                // The value is now ready to be returned on the wire.
-                rendezvous_done(*copy, is_dead, s);
-                delete copy;
-              };
-
-              CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(),
-                               src_dev, copy, send_dev_context, copy_ready);
-              return;
-            }
-          }
+        if (!status.ok()) {
+          return rendezvous_done(val, is_dead, status);
         }
 
-        rendezvous_done(val, is_dead, status);
+        const bool on_host = send_args.alloc_attrs.on_host();
+        if (!src_dev->tensorflow_accelerator_device_info() || on_host) {
+          return rendezvous_done(val, is_dead, status);
+        }
+
+        DeviceContext* send_dev_context = send_args.device_context;
+        AllocatorAttributes alloc_attrs;
+        alloc_attrs.set_gpu_compatible(true);
+        alloc_attrs.set_on_host(true);
+        profiler::ScopedMemoryDebugAnnotation op_annotation(
+            "GrpcWorker::RecvTensorAsync::consumer_callback",
+            request->step_id(), "dynamic", val.dtype(),
+            [shape = val.shape()]() { return shape.DebugString(); });
+        Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
+        Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
+        CHECK(send_dev_context)
+            << "send dev name: " << src_dev->name()
+            << " gpu_info: " << src_dev->tensorflow_accelerator_device_info();
+
+        StatusCallback copy_ready = [rendezvous_done, copy,
+                                     is_dead](const Status& s) {
+          // The value is now ready to be returned on the wire.
+          rendezvous_done(*copy, is_dead, s);
+          delete copy;
+        };
+
+        CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(), src_dev,
+                         copy, send_dev_context, copy_ready);
       });
 }
 
@@ -618,7 +610,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                              const Tensor& tensor, const Status& status) {
     if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
-      response_cache_->OnRequestFinished(request_id, tensor, false, status);
+      response_cache_->RequestFinished(request_id, tensor, false, status);
     } else {
       do_response(tensor, false, status);
     }
@@ -647,11 +639,12 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
       if (hook == nullptr) {
         s = errors::Internal("Invalid null hook for key ",
                              request->buf_rendezvous_key());
-      }
-      if (!DMAHelper::CanUseDMA(hook->prod_value)) {
-        s = errors::Internal("Tensor value for key ",
-                             request->buf_rendezvous_key(),
-                             " is not of a type supported by RecvBuf");
+      } else {
+        if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+          s = errors::Internal("Tensor value for key ",
+                               request->buf_rendezvous_key(),
+                               " is not of a type supported by RecvBuf");
+        }
       }
     } else {
       if (hook != nullptr) {
@@ -754,13 +747,13 @@ void GrpcWorker::RemoveCacheEntryForId(int64_t request_id) {
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env,
                                           const ConfigProto& config) {
-  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env, config));
+  return std::make_unique<GrpcWorker>(env, config);
 }
 
-std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+std::unique_ptr<tsl::AsyncServiceInterface> NewGrpcWorkerService(
     GrpcWorker* worker, ::grpc::ServerBuilder* builder,
     GrpcWorkerServiceOptions options) {
-  return std::unique_ptr<AsyncServiceInterface>(
+  return std::unique_ptr<tsl::AsyncServiceInterface>(
       new GrpcWorkerService(worker, builder, options));
 }
 

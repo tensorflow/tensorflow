@@ -38,6 +38,6 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/thread_annotations.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/thread_annotations.h
 
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PLATFORM_THREAD_ANNOTATIONS_H_

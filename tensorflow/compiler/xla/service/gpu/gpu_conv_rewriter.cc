@@ -24,12 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -560,6 +560,7 @@ HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
                               const Window& window,
                               const ConvolutionDimensionNumbers& dnums,
                               int64_t feature_group_count,
+                              const PrecisionConfig& precision_config,
                               const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
@@ -579,6 +580,7 @@ HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   custom_call->set_feature_group_count(feature_group_count);
+  *custom_call->mutable_precision_config() = precision_config;
   custom_call->set_metadata(metadata);
 
   // Give the customcall a user-friendly name.
@@ -665,14 +667,16 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                          conv->mutable_operand(0), rhs, window, dnums,
-                         conv->feature_group_count(), conv->metadata());
+                         conv->feature_group_count(), conv->precision_config(),
+                         conv->metadata());
   }
 
   if (ConvolutionMatch m = MatchBackwardFilter(conv)) {
     auto& [window, dnums, lhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(), lhs,
                          conv->mutable_operand(1), window, dnums,
-                         conv->batch_group_count(), conv->metadata());
+                         conv->batch_group_count(), conv->precision_config(),
+                         conv->metadata());
   }
 
   // If all else fails, try a forward convolution.
@@ -684,7 +688,8 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
     return CreateGpuConv(kCudnnConvForwardCallTarget, conv->shape(),
                          conv->mutable_operand(0), conv->mutable_operand(1),
                          conv->window(), conv->convolution_dimension_numbers(),
-                         conv->feature_group_count(), conv->metadata());
+                         conv->feature_group_count(), conv->precision_config(),
+                         conv->metadata());
   }
 
   return nullptr;

@@ -17,19 +17,55 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace xla {
+
+using PjRtPlatformId = uint64_t;
+
+inline const char* CpuName() {
+  static constexpr char kCpuName[] = "cpu";
+  return kCpuName;
+}
+inline const char* GpuName() {
+  static constexpr char kGpuName[] = "gpu";
+  return kGpuName;
+}
+inline const char* TpuName() {
+  static constexpr char kTpuName[] = "tpu";
+  return kTpuName;
+}
+inline PjRtPlatformId CpuId() {
+  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
+  return kCpuId;
+}
+inline PjRtPlatformId GpuId() {
+  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
+  return kGpuId;
+}
+inline PjRtPlatformId TpuId() {
+  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
+  return kTpuId;
+}
+
+class PjRtCompiler;
+class PjRtClient;
 
 // TODO(b/240299401): Move CompileOptions to this file.
 
 // Abstract interface to represent device topology that is used by the compiler.
-class PjRtDeviceTopology {
+class PjRtTopologyDescription {
  public:
-  virtual ~PjRtDeviceTopology() {}
+  virtual ~PjRtTopologyDescription() = default;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
@@ -40,23 +76,62 @@ class PjRtDeviceTopology {
   // Returns a string containing human-readable, platform-specific version info
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // If non-null, overrides the compiler for this topology.
+  virtual std::optional<PjRtCompiler*> compiler() const { return std::nullopt; }
+
+  // Returns an unordered list of descriptions for all devices in this topology.
+  virtual std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+  DeviceDescriptions() const = 0;
+
+  // Returns true if the topology represents subslice.
+  virtual bool is_subslice_topology() const { return false; }
+
+  // Returns the number of processes (usually the number of hosts, except in
+  // topologies with multiple processes per host).
+  virtual absl::StatusOr<int> ProcessCount() const {
+    return absl::UnimplementedError("ProcessCount is unsupported.");
+  }
+
+  // Returns the total number of cores of the default type.
+  virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
+    return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
+  }
+
+  // Returns the total number of logical devices of the default type.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
+    return absl::UnimplementedError(
+        "LogicalDeviceCountOfDefaultType is unsupported.");
+  }
+
+  // Returns the number of cores of the default type per process.
+  virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
+    return absl::UnimplementedError(
+        "CoreCountOfDefaultTypePerProcess is unsupported.");
+  }
+
+  // Returns the number of cores per chip for the default type.
+  virtual absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const {
+    return absl::UnimplementedError(
+        "CoreCountOfDefaultTypePerChip is unsupported.");
+  }
 };
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
  public:
-  virtual ~PjRtCompiler() {}
+  virtual ~PjRtCompiler() = default;
 
   // Compiles the 'computation' and returns a 'PjRtExecutable'. The returned
   // PjRtExecutable must be loaded by a compatible client before execution.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -70,17 +145,19 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.
 //
+// The actual compiler used may be overridden by Topology::compiler().
+//
 // Returns error::NotFound if a compiler has not been registered for the
 // platform. Forwards errors returned from the registered compiler in case of a
 // compilation failure.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 }  // namespace xla
 

@@ -40,7 +40,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     if (BodyExists(parsed_path)) {
       return OkStatus();
     }
-    return Status(tensorflow::error::NOT_FOUND, "File does not exist");
+    return Status(absl::StatusCode::kNotFound, "File does not exist");
   }
 
   // Adds the dir to the parent's children list and creates an entry for itself.
@@ -49,13 +49,13 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     ParsePath(dirname, &parsed_path);
     // If the directory already exists, throw an error.
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
-      return Status(tensorflow::error::ALREADY_EXISTS,
+      return Status(absl::StatusCode::kAlreadyExists,
                     "dirname already exists.");
     }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     // If the path is too long then we don't support it.
     if (split_path.size() > 3) {
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Bad dirname");
+      return Status(absl::StatusCode::kInvalidArgument, "Bad dirname");
     }
     if (split_path.empty()) {
       return OkStatus();
@@ -68,7 +68,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     }
     if (split_path.size() == 2) {
       if (!BodyExists(split_path[0])) {
-        return Status(tensorflow::error::FAILED_PRECONDITION,
+        return Status(absl::StatusCode::kFailedPrecondition,
                       "Base dir not created");
       }
       celestial_bodies_[split_path[0]].insert(split_path[1]);
@@ -79,7 +79,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     if (split_path.size() == 3) {
       const string& parent_path = this->JoinPath(split_path[0], split_path[1]);
       if (!BodyExists(parent_path)) {
-        return Status(tensorflow::error::FAILED_PRECONDITION,
+        return Status(absl::StatusCode::kFailedPrecondition,
                       "Base dir not created");
       }
       celestial_bodies_[parent_path].insert(split_path[2]);
@@ -87,7 +87,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
           std::pair<string, std::set<string>>(parsed_path, {}));
       return OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Failed to create");
+    return Status(absl::StatusCode::kFailedPrecondition, "Failed to create");
   }
 
   Status IsDirectory(const string& dirname, TransactionToken* token) override {
@@ -99,12 +99,12 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     if (split_path.size() > 2) {
-      return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+      return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
     }
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
       return OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+    return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
   }
 
   Status GetChildren(const string& dir, TransactionToken* token,
@@ -281,7 +281,7 @@ class TestFileSystem : public NullFileSystem {
     if (dirname == "." || dirname.empty()) {
       return OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+    return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
   }
 
   // Simulating a FS with a root dir and a single file underneath it.

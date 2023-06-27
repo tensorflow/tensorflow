@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
 // Provide a common way to bound compiler analyses that potentially have

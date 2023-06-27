@@ -15,6 +15,9 @@ limitations under the License.
 
 // XLA-specific dynamic stitch Op.
 
+#include <algorithm>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -146,6 +149,10 @@ class DynamicStitchOp : public XlaOpKernel {
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
         int index = indices[input_num].Get<int>({i});
+        OP_REQUIRES(
+            ctx, index >= 0,
+            errors::InvalidArgument("indices[", index, "] is out of range"));
+
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
         if (!src_index_used[index]) {

@@ -874,4 +874,11 @@ class CheckpointManager(object):
 
     if self._init_fn is not None:
       self._init_fn()
+      logging.info(
+          "Customized initialization is done through the passed `init_fn`.")
     return None
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    if self._checkpoint:
+      self._checkpoint.sync()

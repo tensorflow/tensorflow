@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer_data.pb.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -73,8 +73,9 @@ class TpuExecutableInterface : public Executable {
       const ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
-      std::optional<stream_executor::DeviceMemoryBase>
-          cross_program_prefetch_addr) = 0;
+      const std::vector<stream_executor::DeviceMemoryBase>&
+          cross_program_prefetch_addrs,
+      const std::vector<uint32_t>& cross_program_prefetch_offsets) = 0;
 
   virtual absl::string_view fingerprint() const = 0;
 

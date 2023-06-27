@@ -66,8 +66,7 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
   return mlir::success();
 }
 
-::stream_executor::port::StatusOr<int64_t> GetTfGraphProducerVersion(
-    mlir::ModuleOp module) {
+::tsl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module) {
   auto versions = module->getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
   if (!versions) {
     return errors::Internal(

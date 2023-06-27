@@ -25,19 +25,22 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.util import dispatch
 
 
 pi = np_export.np_export_constant(__name__, 'pi', np.pi)
@@ -385,14 +388,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   t_a = np_utils.cond(
-      a.ndim < b.ndim,
+      a.shape.rank < b.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.ndim, a.shape)),
+          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)),
       lambda: a)
   t_b = np_utils.cond(
-      b.ndim < a.ndim,
+      b.shape.rank < a.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.ndim, b.shape)),
+          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)),
       lambda: b)
 
   def _make_shape(shape, prepend):
@@ -401,7 +404,7 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
       shapes = [ones, shape]
     else:
       shapes = [shape, ones]
-    return array_ops.reshape(array_ops.stack(shapes, axis=1), [-1])
+    return array_ops.reshape(array_ops_stack.stack(shapes, axis=1), [-1])
 
   a_shape = array_ops.shape(t_a)
   b_shape = array_ops.shape(t_b)
@@ -447,7 +450,7 @@ def polyval(p, x):  # pylint: disable=missing-function-docstring
   def f(p, x):
     if p.shape.rank == 0:
       p = array_ops.reshape(p, [1])
-    p = array_ops.unstack(p)
+    p = array_ops_stack.unstack(p)
     # TODO(wangpeng): Make tf version take a tensor for p instead of a list.
     y = math_ops.polyval(p, x)
     # If the polynomial is 0-order, numpy requires the result to be broadcast to
@@ -506,8 +509,8 @@ def _tf_gcd(x1, x2):  # pylint: disable=missing-function-docstring
       array_ops.shape(x1), array_ops.shape(x2))
   x1 = array_ops.broadcast_to(x1, shape)
   x2 = array_ops.broadcast_to(x2, shape)
-  value, _ = control_flow_ops.while_loop(_gcd_cond_fn, _gcd_body_fn,
-                                         (math_ops.abs(x1), math_ops.abs(x2)))
+  value, _ = while_loop.while_loop(_gcd_cond_fn, _gcd_body_fn,
+                                   (math_ops.abs(x1), math_ops.abs(x2)))
   return value
 
 
@@ -526,9 +529,11 @@ def lcm(x1, x2):  # pylint: disable=missing-function-docstring
     # Same as the `x2_safe` trick above
     d_safe = array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(1, d.dtype), d)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
     return array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(0, d.dtype),
-        math_ops.abs(x1 * x2) // d_safe)
+        x1 * (x2 // d_safe))
 
   return _bin_op(f, x1, x2)
 
@@ -564,6 +569,7 @@ def bitwise_xor(x1, x2):
   return _bitwise_binary_op(bitwise_ops.bitwise_xor, x1, x2)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('bitwise_not', link=np_utils.AliasOf('invert'))
 def bitwise_not(x):
 
@@ -596,61 +602,73 @@ def _scalar(tf_fn, x, promote_to_float=False):
   return tf_fn(x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('log')
 def log(x):
   return _scalar(math_ops.log, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('exp')
 def exp(x):
   return _scalar(math_ops.exp, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('sqrt')
 def sqrt(x):
   return _scalar(math_ops.sqrt, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('abs', link=np_utils.AliasOf('absolute'))
 def abs(x):  # pylint: disable=redefined-builtin
   return _scalar(math_ops.abs, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('absolute')
 def absolute(x):
   return abs(x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('fabs')
 def fabs(x):
   return abs(x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('ceil')
 def ceil(x):
   return _scalar(math_ops.ceil, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('floor')
 def floor(x):
   return _scalar(math_ops.floor, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('conj')
 def conj(x):
   return _scalar(math_ops.conj, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('negative')
 def negative(x):
   return _scalar(math_ops.negative, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('reciprocal')
 def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('signbit')
 def signbit(x):
 
@@ -662,66 +680,79 @@ def signbit(x):
   return _scalar(f, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('sin')
 def sin(x):
   return _scalar(math_ops.sin, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('cos')
 def cos(x):
   return _scalar(math_ops.cos, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('tan')
 def tan(x):
   return _scalar(math_ops.tan, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('sinh')
 def sinh(x):
   return _scalar(math_ops.sinh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('cosh')
 def cosh(x):
   return _scalar(math_ops.cosh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('tanh')
 def tanh(x):
   return _scalar(math_ops.tanh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arcsin')
 def arcsin(x):
   return _scalar(math_ops.asin, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arccos')
 def arccos(x):
   return _scalar(math_ops.acos, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arctan')
 def arctan(x):
   return _scalar(math_ops.atan, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arcsinh')
 def arcsinh(x):
   return _scalar(math_ops.asinh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arccosh')
 def arccosh(x):
   return _scalar(math_ops.acosh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('arctanh')
 def arctanh(x):
   return _scalar(math_ops.atanh, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('deg2rad')
 def deg2rad(x):
 
@@ -731,6 +762,7 @@ def deg2rad(x):
   return _scalar(f, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('rad2deg')
 def rad2deg(x):
   return x * (180.0 / np.pi)
@@ -741,6 +773,7 @@ _tf_float_types = [
 ]
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('angle')
 def angle(z, deg=False):  # pylint: disable=missing-function-docstring
 
@@ -757,6 +790,7 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
   return y
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('cbrt')
 def cbrt(x):
 
@@ -768,11 +802,13 @@ def cbrt(x):
   return _scalar(f, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
   return _scalar(math_ops.conj, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('exp2')
 def exp2(x):
 
@@ -782,11 +818,13 @@ def exp2(x):
   return _scalar(f, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('expm1')
 def expm1(x):
   return _scalar(math_ops.expm1, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('fix')
 def fix(x):
 
@@ -842,6 +880,7 @@ nansum = _make_nan_reduction('nansum', np_array_ops.sum, 0)
 nanprod = _make_nan_reduction('nanprod', np_array_ops.prod, 1)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('nanmean')
 def nanmean(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=missing-docstring
   a = np_array_ops.array(a)
@@ -863,39 +902,50 @@ def isfinite(x):
 
 @np_utils.np_doc('isinf')
 def isinf(x):
-  return _scalar(math_ops.is_inf, x, True)
+  if x.dtype.is_floating:
+    return _scalar(math_ops.is_inf, x, True)
+  return False
 
 
 @np_utils.np_doc('isneginf')
 def isneginf(x):
-  return x == np_array_ops.full_like(x, -np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, -np.inf)
+  return False
 
 
 @np_utils.np_doc('isposinf')
 def isposinf(x):
-  return x == np_array_ops.full_like(x, np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, np.inf)
+  return False
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('log2')
 def log2(x):
   return log(x) / np.log(2)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('log10')
 def log10(x):
   return log(x) / np.log(10)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('log1p')
 def log1p(x):
   return _scalar(math_ops.log1p, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('positive')
 def positive(x):
   return _scalar(lambda x: x, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('sinc')
 def sinc(x):
 
@@ -907,11 +957,13 @@ def sinc(x):
   return _scalar(f, x, True)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('square')
 def square(x):
   return _scalar(math_ops.square, x)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('diff')
 def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
 
@@ -1146,7 +1198,7 @@ def concatenate(arys, axis=0):
 @np_utils.np_doc_only('tile')
 def tile(a, reps):  # pylint: disable=missing-function-docstring
   a = np_array_ops.array(a)
-  reps = np_array_ops.array(reps, dtype=dtypes.int32).reshape([-1])
+  reps = array_ops.reshape(np_array_ops.array(reps, dtype=dtypes.int32), [-1])
 
   a_rank = array_ops.rank(a)
   reps_size = array_ops.size(reps)
@@ -1193,6 +1245,7 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
   return np_array_ops.array(tf_ans, dtype=np.intp)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('sort')
 def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
   if kind != 'quicksort':
@@ -1239,6 +1292,7 @@ def append(arr, values, axis=None):
     return concatenate([arr, values], axis=axis)
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('average')
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
   if axis is not None and not isinstance(axis, int):
@@ -1267,7 +1321,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     weights = np_array_ops.array(weights, out_dtype)
 
     def rank_equal_case():
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(array_ops.shape(a) == array_ops.shape(weights)),
           [array_ops.shape(a), array_ops.shape(weights)])
       weights_sum = math_ops.reduce_sum(weights, axis=axis)
@@ -1279,7 +1333,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     else:
 
       def rank_not_equal_case():
-        control_flow_ops.Assert(
+        control_flow_assert.Assert(
             array_ops.rank(weights) == 1, [array_ops.rank(weights)])
         weights_sum = math_ops.reduce_sum(weights)
         axes = ops.convert_to_tensor([[axis], [0]])
@@ -1301,6 +1355,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
   return avg
 
 
+@dispatch.add_dispatch_support
 @np_utils.np_doc('trace')
 def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
   if dtype:
@@ -1424,6 +1479,7 @@ def enable_numpy_methods_on_tensor():
   # TODO(b/178540516): Make a custom `setattr` that changes the method's
   #   docstring to the TF one.
   setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
+  setattr(ops.Tensor, 'flatten', np_array_ops.flatten)
   setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
   setattr(ops.Tensor, 'clip', clip)

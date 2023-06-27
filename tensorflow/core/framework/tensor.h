@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
+#include <iosfwd>
+#include <string>
 #include <type_traits>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
@@ -29,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -269,6 +270,10 @@ class Tensor {
   explicit Tensor(T* t) = delete;
 
   ~Tensor();
+
+  // I/O operators.
+  friend std::ostream&  // NOLINT: iosfwd
+  operator<<(std::ostream& out, const Tensor& tensor);
 
   /// Returns the data type.
   DataType dtype() const { return shape_.data_type(); }
@@ -663,6 +668,10 @@ class Tensor {
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+  // Experimental. Returns the refcount on buf_ if it points to a regular
+  // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
+  int RefCount() const;
 
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }

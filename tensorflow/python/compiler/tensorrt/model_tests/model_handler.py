@@ -333,11 +333,16 @@ class ModelHandlerV2(_ModelHandlerBase):
 
   @property
   def graph_func(self):
-    graph_func = load_graph_func(
-        saved_model_dir=self.model_config.saved_model_dir,
-        saved_model_tags=self.model_config.saved_model_tags,
-        saved_model_signature_key=self.model_config.saved_model_signature_key)
-    return convert_to_constants.convert_variables_to_constants_v2(graph_func)
+    try:
+      return self._graph_func
+    except:
+      graph_func = load_graph_func(
+          saved_model_dir=self.model_config.saved_model_dir,
+          saved_model_tags=self.model_config.saved_model_tags,
+          saved_model_signature_key=self.model_config.saved_model_signature_key)
+      self._graph_func = convert_to_constants.convert_variables_to_constants_v2(
+          graph_func)
+      return self._graph_func
 
   @property
   def input_tensor_names(self):

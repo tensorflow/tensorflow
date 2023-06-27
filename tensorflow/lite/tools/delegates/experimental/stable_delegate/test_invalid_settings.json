@@ -1,0 +1,4 @@
+// Test only invalid delegate settings file
+{
+  "invalid": "invalid"
+}

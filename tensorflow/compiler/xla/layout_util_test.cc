@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 
+#include <optional>
 #include <sstream>
+#include <vector>
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -117,9 +119,9 @@ TEST_F(LayoutUtilTest, CopyLayoutCSRArray) {
 
   EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
   *src.mutable_layout()->mutable_physical_shape() = ShapeUtil::MakeTupleShape({
-      ShapeUtil::MakeShapeWithLayout(U32, {2}, {0}, {}, {Tile({100})}),
-      ShapeUtil::MakeShapeWithLayout(U32, {4}, {0}, {}, {Tile({100})}),
-      ShapeUtil::MakeShapeWithLayout(F32, {4}, {0}, {}, {Tile({100})}),
+      ShapeUtil::MakeShapeWithDenseLayout(U32, {2}, {0}, {Tile({100})}),
+      ShapeUtil::MakeShapeWithDenseLayout(U32, {4}, {0}, {Tile({100})}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {4}, {0}, {Tile({100})}),
   });
   EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
   dst.clear_layout();
@@ -168,7 +170,7 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
@@ -187,7 +189,7 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
@@ -199,10 +201,9 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      ::testing::ContainsRegex("layout minor_to_major field contains .* "
-                               "elements, but shape is rank"));
+  EXPECT_THAT(status.message(), ::testing::ContainsRegex(
+                                    "layout minor_to_major field contains .* "
+                                    "elements, but shape is rank"));
 }
 
 TEST_F(LayoutUtilTest, CopyTokenLayout) {
@@ -323,7 +324,7 @@ TEST_F(LayoutUtilTest, MakeAscending) {
 }
 
 TEST_F(LayoutUtilTest, HumanStringWithTiling) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3, 4}, {0, 1, 2});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3, 4}, {0, 1, 2});
   Tile* tile;
 
   // No tiling.
@@ -344,7 +345,7 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "f32[2,3,4]{0,1,2:T(512)}");
 
   // 2 tiles.
-  shape = ShapeUtil::MakeShapeWithLayout(BF16, {2, 3, 4}, {1, 2, 0});
+  shape = ShapeUtil::MakeShapeWithDenseLayout(BF16, {2, 3, 4}, {1, 2, 0});
   tile = shape.mutable_layout()->add_tiles();
   tile->add_dimensions(16);
   tile->add_dimensions(256);
@@ -355,7 +356,7 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "bf16[2,3,4]{1,2,0:T(16,256)(2,1)}");
 
   // PRED with element size of 8 bits.
-  shape = ShapeUtil::MakeShapeWithLayout(PRED, {8, 8, 8}, {0, 2, 1});
+  shape = ShapeUtil::MakeShapeWithDenseLayout(PRED, {8, 8, 8}, {0, 2, 1});
   tile = shape.mutable_layout()->add_tiles();
   tile->add_dimensions(8);
   tile->add_dimensions(128);
@@ -378,7 +379,7 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "pred[8,8,8]{0,2,1:E(32)}");
 
   // Tile with negative dimension size for combining dimensions.
-  shape = ShapeUtil::MakeShapeWithLayout(BF16, {2, 3, 1004}, {2, 1, 0});
+  shape = ShapeUtil::MakeShapeWithDenseLayout(BF16, {2, 3, 1004}, {2, 1, 0});
   tile = shape.mutable_layout()->add_tiles();
   tile->add_dimensions(2);
   tile->add_dimensions(Tile::kCombineDimension);
@@ -387,7 +388,8 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
             "bf16[2,3,1004]{2,1,0:T(2,*,128)}");
 
   // Tile with two negative dimensions.
-  shape = ShapeUtil::MakeShapeWithLayout(BF16, {8, 2, 3, 1004}, {3, 2, 1, 0});
+  shape =
+      ShapeUtil::MakeShapeWithDenseLayout(BF16, {8, 2, 3, 1004}, {3, 2, 1, 0});
   tile = shape.mutable_layout()->add_tiles();
   tile->add_dimensions(2);
   tile->add_dimensions(Tile::kCombineDimension);
@@ -398,7 +400,7 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
-  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1});
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_TRUE(status.ok());
@@ -413,13 +415,13 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("layout minor_to_major field "
                                    "contains 3 elements, but shape is rank 2"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("layout minor_to_major field "
                                    "contains 3 elements, but shape is rank 2"));
 }
@@ -432,13 +434,13 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("layout dim_level_types field "
                                    "contains 3 elements, but shape is rank 2"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("layout dim_level_types field "
                                    "contains 3 elements, but shape is rank 2"));
 }
@@ -449,7 +451,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("shape f32[2,3] does not have a layout"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
@@ -459,10 +461,10 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
+      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {Tile({10, 10})});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   ::testing::HasSubstr(
                       "layout has tiles, but the shape is a sparse array")));
   shape.mutable_layout()->clear_tiles();
@@ -477,7 +479,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
@@ -485,9 +487,16 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_DENSE}, {true, false});
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  ::testing::HasSubstr("layout dimension 1 has invalid level "
+                                       "encoding DIM_DENSE, non-unique")));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
@@ -504,7 +513,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("shape f32[1,2] does not have a layout"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
@@ -517,7 +526,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::HasSubstr("layout minor_to_major field "
                                    "contains 3 elements, but shape is rank 1"));
 }
@@ -531,5 +540,50 @@ TEST_F(LayoutUtilTest, MoveDimToMajor) {
   EXPECT_EQ(new_layout, LayoutUtil::MakeLayout({2, 0, 1}));
 }
 
+TEST_F(LayoutUtilTest, StridesIsMajorToMinor) {
+  std::vector<int64_t> byte_strides = {3960, 440, 44, 4};
+  EXPECT_TRUE(LayoutUtil::ByteStridesIsMajorToMinor(
+      byte_strides, {8, 9, 10, 11}, PrimitiveType::F32));
+}
+
+TEST_F(LayoutUtilTest, StridesNotMajorToMinorInnerMostStrideIncorrect) {
+  std::vector<int64_t> byte_strides = {1880, 220, 22, 2};
+  EXPECT_FALSE(LayoutUtil::ByteStridesIsMajorToMinor(
+      byte_strides, {8, 9, 10, 11}, PrimitiveType::F32));
+}
+
+TEST_F(LayoutUtilTest, StridesNotMajorToMinor) {
+  std::vector<int64_t> byte_strides = {1880, 440, 44, 4};
+  EXPECT_FALSE(LayoutUtil::ByteStridesIsMajorToMinor(
+      byte_strides, {8, 9, 10, 11}, PrimitiveType::F32));
+}
+
+TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 2});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(0);
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  ShapeUtil::GetMutableSubshape(&shape, {0, 1})
+      ->mutable_layout()
+      ->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+}
 }  // namespace
 }  // namespace xla

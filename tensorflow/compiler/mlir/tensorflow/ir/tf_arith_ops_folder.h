@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ARITH_OPS_FOLDER_H_
 
+#include <utility>
+
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -58,8 +60,8 @@ template <
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto lhs_type = arithmetic_op.getX().getType().template cast<ShapedType>();
+  auto rhs_type = arithmetic_op.getY().getType().template cast<ShapedType>();
   auto result_type =
       arithmetic_op.getResult().getType().template cast<ShapedType>();
 
@@ -110,7 +112,7 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
   if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
     if (rhs_attr.isSplat() &&
         rhs_attr.getSplatValue<Attribute>() == identity_attr)
-      return arithmetic_op.x();
+      return arithmetic_op.getX();
   }
 
   // Fold: Op(Identity, Operand) -> Operand for commutative operations.
@@ -118,7 +120,7 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
       is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
     if (lhs_attr.isSplat() &&
         lhs_attr.getSplatValue<Attribute>() == identity_attr)
-      return arithmetic_op.y();
+      return arithmetic_op.getY();
   }
 
   return {};

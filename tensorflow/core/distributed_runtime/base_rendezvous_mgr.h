@@ -16,17 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -46,6 +52,8 @@ class BaseRecvTensorCall;
 // until the tensor is received.  Each global unique "step_id"
 // corresponds to one local rendezvous instance managed by a
 // RendezvousMgr.
+// RendezvousMgr holds weak references to rendezvous. When a rendezvous is
+// destructed, it will create a new instance to fulfill the Find.
 //
 // E.g.,
 //   Rendezvous* rendez = worker_env->rendezvous_mgr->Find(0x8935);
@@ -71,7 +79,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   //
   // Note: the caller must guarantee to eventually call Initialize on the
   // returned RemoteRendezvous
-  RemoteRendezvous* Find(int64_t step_id) override;
+  tsl::core::RefCountPtr<RemoteRendezvous> Find(int64_t step_id) override;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.
@@ -85,29 +93,22 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
-  //
-  // TODO(zhifengc): Have a background thread in worker that
-  // periodically calls CleanupAll().
-  void Cleanup(int64_t step_id) override;
+  void Cleanup(int64_t step_id) override { cache_->RemoveAndAbort(step_id); }
 
   // Remove all rendezvous instances owned by the rendezvous_mgr.
-  void CleanupAll() override;
+  void CleanupAll() override { cache_->RemoveAll(); }
 
  protected:
-  virtual BaseRemoteRendezvous* Create(int64_t step_id,
-                                       const WorkerEnv* worker_env) = 0;
+  virtual tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
+      int64_t step_id, const WorkerEnv* worker_env) = 0;
 
  private:
-  // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64_t, BaseRemoteRendezvous*> Table;
+  tsl::core::RefCountPtr<RendezvousCache<BaseRemoteRendezvous>> cache_;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
 
-  mutex mu_;
-  Table table_ TF_GUARDED_BY(mu_);
-
-  BaseRemoteRendezvous* FindOrCreate(int64_t step_id);
+  tsl::core::RefCountPtr<BaseRemoteRendezvous> FindOrCreate(int64_t step_id);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BaseRendezvousMgr);
 };
@@ -184,7 +185,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   const int64_t step_id_;
 
  private:
-  Rendezvous* local_;  // Owns a Ref on this object.
+  int num_shards_;
+  LocalRendezvous local_;
   // Indicates whether this remote rendezvous instance is used as the default
   // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
   // execution should not abort the rendezvous since it is a context-wide
@@ -205,19 +207,47 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
     const ParsedKey parsed;
     DoneCallback done;
 
-    DeferredCall(const ParsedKey& parsed, DoneCallback done);
+    // Keeps a reference to the rendezvous, to keep it alive.
+    tsl::core::RefCountPtr<Rendezvous> rendezvous;
+
+    DeferredCall(const ParsedKey& parsed, DoneCallback done,
+                 tsl::core::RefCountPtr<Rendezvous> rendez);
   };
   std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(mu_);
 
+  struct CallBucket {
+    mutex mu;
+
+    absl::flat_hash_set<BaseRecvTensorCall*> calls TF_GUARDED_BY(mu);
+  };
+
+  struct PendingCalls {
+    PendingCalls(CancellationToken token, int num_calls, int num_buckets,
+                 tsl::core::RefCountPtr<Rendezvous> rendez)
+        : token(token),
+          num_calls(num_calls),
+          buckets(num_buckets),
+          rendezvous(std::move(rendez)) {}
+    CancellationToken token = CancellationManager::kInvalidToken;
+    std::atomic<int> num_calls = 0;
+    std::vector<CallBucket> buckets;
+
+    // Keeps a reference to the rendezvous, to keep it alive.
+    tsl::core::RefCountPtr<Rendezvous> rendezvous;
+  };
+
   // "CancellationToken" is stored here so that when there's no active
   // RecvTensorCalls, we can de-register the callback in the cancellation
-  // manager.
+  // manager. RecvTensorCalls are managed in multiple buckets since in large
+  // scaled distributed training, lots of Send/Recv may be triggered
+  // concurrently.
   //
   // Note: pointer to CancellationManager can be nullptr in certain use cases.
-  absl::flat_hash_map<
-      CancellationManager*,
-      std::pair<CancellationToken, absl::flat_hash_set<BaseRecvTensorCall*>>>
+  absl::flat_hash_map<CancellationManager*, std::unique_ptr<PendingCalls>>
       calls_ TF_GUARDED_BY(calls_mu_);
+
+  // Callback for CancellationManager.
+  void CancelledByManager(CancellationManager* cm);
 
   bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;

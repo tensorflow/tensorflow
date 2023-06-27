@@ -17,20 +17,20 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_H_
 
 #include <functional>
-#include <unordered_map>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/full_type.pb.h"
-#include "tensorflow/core/framework/full_type_inference_util.h"
-#include "tensorflow/core/framework/full_type_util.h"
+#include "tensorflow/core/framework/full_type_inference_util.h"  // IWYU pragma: export
+#include "tensorflow/core/framework/full_type_util.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/op_def_util.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -43,7 +43,7 @@ namespace tensorflow {
 // (const) OpRegistryInterface* may call LookUp() from multiple threads.
 class OpRegistryInterface {
  public:
-  virtual ~OpRegistryInterface();
+  virtual ~OpRegistryInterface() = default;
 
   // Returns an error status and sets *op_reg_data to nullptr if no OpDef is
   // registered under that name, otherwise returns the registered OpDef.
@@ -71,7 +71,6 @@ class OpRegistry : public OpRegistryInterface {
   typedef std::function<Status(OpRegistrationData*)> OpRegistrationDataFactory;
 
   OpRegistry();
-  ~OpRegistry() override;
 
   void Register(const OpRegistrationDataFactory& op_data_factory);
 
@@ -163,8 +162,8 @@ class OpRegistry : public OpRegistryInterface {
   // Functions in deferred_ may only be called with mu_ held.
   mutable std::vector<OpRegistrationDataFactory> deferred_ TF_GUARDED_BY(mu_);
   // Values are owned.
-  mutable std::unordered_map<string, const OpRegistrationData*> registry_
-      TF_GUARDED_BY(mu_);
+  mutable absl::flat_hash_map<string, std::unique_ptr<const OpRegistrationData>>
+      registry_ TF_GUARDED_BY(mu_);
   mutable bool initialized_ TF_GUARDED_BY(mu_);
 
   // Registry watcher.
@@ -182,7 +181,6 @@ class OpListOpRegistry : public OpRegistryInterface {
  public:
   // Does not take ownership of op_list, *op_list must outlive *this.
   explicit OpListOpRegistry(const OpList* op_list);
-  ~OpListOpRegistry() override;
   Status LookUp(const std::string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
 
@@ -191,7 +189,7 @@ class OpListOpRegistry : public OpRegistryInterface {
 
  private:
   // Values are owned.
-  std::unordered_map<string, const OpRegistrationData*> index_;
+  absl::flat_hash_map<string, std::unique_ptr<const OpRegistrationData>> index_;
 };
 
 // Support for defining the OpDef (specifying the semantics of the Op and how

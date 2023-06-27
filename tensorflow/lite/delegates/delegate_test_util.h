@@ -17,15 +17,17 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace delegates {
@@ -91,10 +93,13 @@ class SimpleDelegate {
 // Friend of Interpreter to access private methods.
 class TestDelegation {
  public:
+  virtual ~TestDelegation() = default;
+
   // Returns an empty interpreter that uses the same default delegates that are
   // normally enabled by default.
-  static std::unique_ptr<Interpreter> NewInterpreterWithDefaultDelegates() {
-    auto interpreter = std::make_unique<Interpreter>();
+  static std::unique_ptr<impl::Interpreter>
+  NewInterpreterWithDefaultDelegates() {
+    auto interpreter = std::make_unique<impl::Interpreter>();
     interpreter->lazy_delegate_providers_ =
         tflite::ops::builtin::BuiltinOpResolver().GetDelegateCreators();
     return interpreter;
@@ -104,12 +109,15 @@ class TestDelegation {
   TfLiteStatus RemoveAllDelegates() {
     return interpreter_->RemoveAllDelegates();
   }
+  void SetMetadata(const std::map<std::string, std::string>& metadata) {
+    interpreter_->SetMetadata(metadata);
+  }
 
-  void SetUpSubgraph(Subgraph* subgraph);
+  virtual void SetUpSubgraph(Subgraph* subgraph);
   void AddSubgraphs(int subgraphs_to_add,
                     int* first_new_subgraph_index = nullptr);
 
-  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<impl::Interpreter> interpreter_;
 };
 
 // Tests scenarios involving a single delegate.
@@ -124,6 +132,30 @@ class TestDelegate : public TestDelegation, public ::testing::Test {
   TfLiteBufferHandle AllocateBufferHandle() { return ++last_allocated_handle_; }
 
   std::unique_ptr<SimpleDelegate> delegate_, delegate2_;
+};
+
+// Tests scenarios involving a single delegate and control edges.
+// Subgraph 0 has the form
+//
+//         /---OP2---\
+//        /           \
+// >---OP0             OP3--->
+//        \           /
+//         \---OP1---/
+//
+// Delegating OP0, OP2 will generate an execution graph with a "super-node"
+// {OP0->OP2}, which can be disabled by adding (in metadata) a control edge
+// between OP1 and OP2:
+//
+//         /->-OP2---\
+//        /     ^     \
+// >---OP0      ^      OP3--->
+//        \     ^     /
+//         \---OP1---/
+//
+class TestDelegateWithControlEdges : public TestDelegate {
+ protected:
+  void SetUpSubgraph(Subgraph* subgraph) override;
 };
 
 // Tests scenarios involving two delegates, parametrized by the first & second
@@ -180,7 +212,7 @@ class TestFP16Delegation : public ::testing::TestWithParam<int> {
     bool fail_delegate_node_invoke_ = false;
   };
 
-  std::unique_ptr<Interpreter> interpreter_;
+  std::unique_ptr<impl::Interpreter> interpreter_;
   std::unique_ptr<FP16Delegate> delegate_;
   Eigen::half float16_const_;
 };

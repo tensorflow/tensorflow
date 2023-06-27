@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -37,6 +37,17 @@ std::string PlatformKindString(PlatformKind kind) {
       return "Mock";
     default:
       return absl::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
+  }
+}
+
+std::string StreamPriorityToString(StreamPriority priority) {
+  switch (priority) {
+    case StreamPriority::Lowest:
+      return "Lowest priority";
+    case StreamPriority::Highest:
+      return "Highest priority";
+    default:
+      return "Default Priority";
   }
 }
 
@@ -89,18 +100,18 @@ Platform::~Platform() {}
 
 bool Platform::Initialized() const { return true; }
 
-port::Status Platform::Initialize(
+tsl::Status Platform::Initialize(
     const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "this platform does not support custom initialization");
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "this platform does not support custom initialization");
   }
   return ::tsl::OkStatus();
 }
 
-port::Status Platform::ForceExecutorShutdown() {
-  return port::Status(port::error::UNIMPLEMENTED,
-                      "executor shutdown is not supported on this platform");
+tsl::Status Platform::ForceExecutorShutdown() {
+  return tsl::Status(absl::StatusCode::kUnimplemented,
+                     "executor shutdown is not supported on this platform");
 }
 
 std::unique_ptr<Platform::PeerAccessMap> Platform::GetPeerAccessMap() {
@@ -118,7 +129,7 @@ std::unique_ptr<Platform::PeerAccessMap> Platform::GetPeerAccessMap() {
   return std::unique_ptr<Platform::PeerAccessMap>{map};
 }
 
-port::Status Platform::EnablePeerAccess() {
+tsl::Status Platform::EnablePeerAccess() {
   auto peer_access_map = GetPeerAccessMap();
   for (const auto &access : *peer_access_map) {
     auto devices = access.first;

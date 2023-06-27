@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -162,7 +163,7 @@ TEST(Merge, RejectsMismatched) {
   t2.set_type_id(TFT_TENSOR);
 
   const auto ret = Merge()({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected compatible input types"));
 }
 
@@ -237,7 +238,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedContainerType) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected container type"));
 }
 
@@ -329,8 +330,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHeterogenous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("need union types"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("need union types"));
 }
 
 TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
@@ -343,7 +343,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/true)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected a subtype"));
 }
 
@@ -358,8 +358,7 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHeterogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("need union types"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("need union types"));
 }
 
 TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
@@ -373,7 +372,7 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/true)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected a subtype"));
 }
 
@@ -517,8 +516,47 @@ TEST(MapCovariant, RejectsMismatchedType) {
   t.add_args()->set_type_id(TFT_INT32);
 
   const auto ret = MapCovariant(TFT_ARRAY, TFT_DATASET, 0)({t}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("expected type"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("expected type"));
+}
+
+// Create a type inference function for the Tuple.Basic test (in a function so
+// that when the function is used, the local variables used to create it are
+// out-of-scope.) Return "Tuple([ReplicateInput(), Tensor(TFT_INT32)])", a case
+// simimlar to the `Merge` op which has two outputs where the second output is
+// always an int32 index.
+static TypeInferenceFn tuple_func() {
+  std::vector<TypeInferenceFn> func_list{ReplicateInput(), Tensor(TFT_INT32)};
+  return Tuple(func_list);
+}
+
+TEST(Tuple, Basic) {
+  const TypeInferenceFn ret_func = tuple_func();
+  FullTypeDef t_in;
+  t_in.set_type_id(TFT_TENSOR);
+  t_in.add_args()->set_type_id(TFT_FLOAT);
+  const auto ret = ret_func({t_in}, {});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.value();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 2);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_TENSOR);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_FLOAT);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_TENSOR);
+  ASSERT_EQ(rt.args(1).args_size(), 1);
+  EXPECT_EQ(rt.args(1).args(0).type_id(), TFT_INT32);
+}
+
+TEST(Tuple, Unset) {
+  const TypeInferenceFn ret_func = tuple_func();
+  FullTypeDef t_in;  // input is TFT_UNSET
+  const auto ret = ret_func({t_in}, {});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.value();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+  ASSERT_EQ(rt.args_size(), 0);
 }
 
 }  // namespace

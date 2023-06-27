@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/detail/common.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -120,6 +120,12 @@ PYBIND11_MODULE(_dtypes, m) {
             return tensorflow::BaseType(self) == tensorflow::DT_BOOL;
           },
           "Returns whether this is a boolean data type.")
+      .def_property_readonly(
+          "is_numeric",
+          [](tensorflow::DataType self) {
+            return tensorflow::DataTypeIsNumeric(tensorflow::BaseType(self));
+          },
+          "Returns whether this is a numeric data type.")
       .def_property_readonly(
           "is_complex",
           [](tensorflow::DataType self) {

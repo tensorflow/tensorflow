@@ -73,13 +73,13 @@ class OpsUtilTest : public ::testing::Test {
     int64_t new_height, new_width, pad_rows, pad_cols;
     Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
-        pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
-        &pad_rows);
+        /*dilation_rate=*/1, pad_struct.input.row_stride,
+        pad_struct.input.padding, &new_height, &pad_rows);
     EXPECT_EQ(status.code(), code) << status;
     status = GetWindowedOutputSize(
         pad_struct.input.in_width, pad_struct.input.filter_width,
-        pad_struct.input.col_stride, pad_struct.input.padding, &new_width,
-        &pad_cols);
+        /*dilation_rate=*/1, pad_struct.input.col_stride,
+        pad_struct.input.padding, &new_width, &pad_cols);
     EXPECT_EQ(status.code(), code) << status;
   }
 
@@ -88,13 +88,13 @@ class OpsUtilTest : public ::testing::Test {
     int64_t new_height, new_width, pad_rows, pad_cols;
     Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
-        pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
-        &pad_rows);
+        /*dilation_rate=*/1, pad_struct.input.row_stride,
+        pad_struct.input.padding, &new_height, &pad_rows);
     EXPECT_EQ(status.code(), code) << status;
     status = GetWindowedOutputSize(
         pad_struct.input.in_width, pad_struct.input.filter_width,
-        pad_struct.input.col_stride, pad_struct.input.padding, &new_width,
-        &pad_cols);
+        /*dilation_rate=*/1, pad_struct.input.col_stride,
+        pad_struct.input.padding, &new_width, &pad_cols);
     EXPECT_EQ(status.code(), code) << status;
     EXPECT_EQ(pad_struct.output.new_height, new_height);
     EXPECT_EQ(pad_struct.output.new_width, new_width);

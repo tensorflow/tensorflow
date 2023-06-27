@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -38,17 +37,17 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
-  port::StatusOr<Platform*> maybe_platform =
+  tsl::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
   Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);
   ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
-  port::StatusOr<StreamExecutor*> maybe_executor =
+  tsl::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
 }
@@ -62,10 +61,10 @@ TEST(StreamExecutor, NameNotSet) {
   };
 
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
+  ASSERT_EQ(status.message(), "'name' field in SP_Platform must be set.");
 }
 
 TEST(StreamExecutor, InvalidNameWithSemicolon) {
@@ -77,11 +76,11 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
   };
 
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       testing::ContainsRegex("Device name/type 'INVALID:NAME' must match"));
 }
 
@@ -94,10 +93,10 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
   };
 
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               testing::ContainsRegex("Device name/type 'INVALID/' must match"));
 }
 
@@ -110,10 +109,10 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   };
 
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(),
+  ASSERT_EQ(status.message(),
             "'create_device' field in SP_PlatformFns must be set.");
 }
 
@@ -126,11 +125,11 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
   };
 
   std::string device_type, platform_name;
-  port::Status status =
+  tsl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
-      status.error_message(),
+      status.message(),
       "'unified_memory_allocate' field in SP_StreamExecutor must be set.");
 }
 
@@ -152,7 +151,7 @@ class StreamExecutorTest : public ::testing::Test {
           platform_, test_util::DestroyPlatform, platform_fns_,
           test_util::DestroyPlatformFns, device_fns_, se_, timer_fns_);
     }
-    port::StatusOr<StreamExecutor*> maybe_executor =
+    tsl::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
     return std::move(maybe_executor).value();
@@ -327,7 +326,7 @@ TEST_F(StreamExecutorTest, StreamStatus) {
   status_ok = false;
   auto updated_status = stream.RefreshStatus();
   ASSERT_FALSE(stream.ok());
-  ASSERT_EQ(updated_status.error_message(), "Test error");
+  ASSERT_EQ(updated_status.message(), "Test error");
 }
 
 TEST_F(StreamExecutorTest, CreateEvent) {
@@ -419,110 +418,6 @@ TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
   ASSERT_FALSE(wait_called);
   stream.ThenWaitFor(&event);
   ASSERT_TRUE(wait_called);
-}
-
-TEST_F(StreamExecutorTest, CreateTimer) {
-  static bool timer_created = false;
-  static bool timer_deleted = false;
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(25);
-    timer_created = true;
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void {
-    auto custom_timer = static_cast<SP_Timer_st*>(timer);
-    EXPECT_EQ(custom_timer->timer_id, 25);
-    delete custom_timer;
-    timer_deleted = true;
-  };
-
-  StreamExecutor* executor = GetExecutor(0);
-  ASSERT_FALSE(timer_created);
-  Stream stream(executor);
-  stream.Init();
-  Timer* timer = new Timer(executor);
-  stream.InitTimer(timer);
-  ASSERT_TRUE(stream.ok());
-  ASSERT_TRUE(timer_created);
-  ASSERT_FALSE(timer_deleted);
-  delete timer;
-  ASSERT_TRUE(timer_deleted);
-}
-
-TEST_F(StreamExecutorTest, StartTimer) {
-  static bool start_called = false;
-  static bool stop_called = false;
-  static TF_Code start_timer_status = TF_OK;
-  static TF_Code stop_timer_status = TF_OK;
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(7);
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void { delete timer; };
-  se_.start_timer = [](const SP_Device* const device, SP_Stream stream,
-                       SP_Timer timer, TF_Status* const status) {
-    TF_SetStatus(status, start_timer_status, "");
-    EXPECT_EQ(timer->timer_id, 7);
-    start_called = true;
-  };
-  se_.stop_timer = [](const SP_Device* const device, SP_Stream stream,
-                      SP_Timer timer, TF_Status* const status) {
-    TF_SetStatus(status, stop_timer_status, "");
-    EXPECT_EQ(timer->timer_id, 7);
-    stop_called = true;
-  };
-  StreamExecutor* executor = GetExecutor(0);
-  Stream stream(executor);
-  stream.Init();
-  Timer timer(executor);
-  stream.InitTimer(&timer);
-
-  // Check both start and stop succeed
-  ASSERT_FALSE(start_called);
-  stream.ThenStartTimer(&timer);
-  ASSERT_TRUE(start_called);
-  ASSERT_FALSE(stop_called);
-  stream.ThenStopTimer(&timer);
-  ASSERT_TRUE(stop_called);
-
-  // Check start timer fails
-  ASSERT_TRUE(stream.ok());
-  start_timer_status = TF_UNKNOWN;
-  stream.ThenStartTimer(&timer);
-  ASSERT_FALSE(stream.ok());
-
-  // Check stop timer fails
-  start_timer_status = TF_OK;
-  stop_timer_status = TF_UNKNOWN;
-  Stream stream2(executor);
-  stream2.Init();
-  Timer timer2(executor);
-  stream2.InitTimer(&timer2);
-  stream2.ThenStartTimer(&timer2);
-  ASSERT_TRUE(stream2.ok());
-  stream2.ThenStopTimer(&timer2);
-  ASSERT_FALSE(stream2.ok());
-}
-
-TEST_F(StreamExecutorTest, TimerFns) {
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(25000);
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void { delete timer; };
-
-  StreamExecutor* executor = GetExecutor(0);
-  Stream stream(executor);
-  stream.Init();
-  Timer timer(executor);
-  stream.InitTimer(&timer);
-  // Our test nanoseconds function just returns value
-  // passed to SP_Timer_st constructor.
-  ASSERT_EQ(timer.Nanoseconds(), 25000);
-  ASSERT_EQ(timer.Microseconds(), 25);
 }
 
 TEST_F(StreamExecutorTest, MemcpyToHost) {
@@ -724,7 +619,7 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<port::Status()> callback = []() -> port::Status {
+  std::function<tsl::Status()> callback = []() -> tsl::Status {
     return ::tensorflow::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
@@ -744,8 +639,8 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<port::Status()> callback = []() -> port::Status {
-    return port::UnimplementedError("Unimplemented");
+  std::function<tsl::Status()> callback = []() -> tsl::Status {
+    return tsl::errors::Unimplemented("Unimplemented");
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());

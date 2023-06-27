@@ -36,7 +36,7 @@ namespace eager {
 // over this (e.g. gRPC).
 class EagerServiceImpl {
  public:
-  explicit EagerServiceImpl(const WorkerEnv* env) : env_(env) {
+  explicit EagerServiceImpl(WorkerEnv* env) : env_(env) {
     gc_thread_.reset(
         env_->env->StartThread({}, "EagerServiceContextGC", [this]() {
           while (true) {
@@ -217,8 +217,11 @@ class EagerServiceImpl {
                           EagerContext* eager_context);
   Status RegisterFunction(const RegisterFunctionOp& register_function,
                           EagerContext* eager_context);
+  Status RemoveFunction(const RemoveFunctionOp& remove_function,
+                        EagerContext* eager_context);
   Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
-  const WorkerEnv* const env_;  // Not owned.
+
+  WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
   std::unordered_map<uint64, ServerContext*> contexts_

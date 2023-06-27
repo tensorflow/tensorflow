@@ -25,7 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -219,7 +219,7 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None,
   return doc
 
 
-_np_doc_form = os.getenv('TF_NP_DOC_FORM', '1.16')
+_np_doc_form = os.getenv('TF_NP_DOC_FORM', 'stable')
 
 
 def get_np_doc_form():
@@ -285,8 +285,7 @@ def generate_link(flag, np_fun_name):
         'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
   elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
     # `flag` is the version number
-    template = ('https://numpy.org/doc/' + flag +
-                '/reference/generated/numpy.%s.html')
+    template = (f'https://numpy.org/doc/{flag}/reference/generated/numpy.%s.html')
   else:
     return None
   return template % np_fun_name
@@ -485,7 +484,7 @@ def _maybe_get_dtype(x):
   # value (not just dtype) of np.ndarray to decide the result type.
   if isinstance(x, numbers.Real):
     return x
-  if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
+  if isinstance(x, indexed_slices.IndexedSlices) or tensor_util.is_tf_type(x):
     return _to_numpy_type(x.dtype)
   if isinstance(x, dtypes.DType):
     return x.as_numpy_dtype
@@ -597,7 +596,7 @@ def cond(pred, true_fn, false_fn):
   """A version of tf.cond that tries to evaluate the condition."""
   v = get_static_value(pred)
   if v is None:
-    return control_flow_ops.cond(pred, true_fn, false_fn)
+    return tf_cond.cond(pred, true_fn, false_fn)
   if v:
     return true_fn()
   else:

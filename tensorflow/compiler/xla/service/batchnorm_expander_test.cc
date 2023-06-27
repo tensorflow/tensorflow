@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -138,7 +138,7 @@ ENTRY entry {
   %param.2 = f32[4] parameter(2)
   ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
     batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
-    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+    epsilon=0.001, feature_index=1, sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
@@ -166,7 +166,7 @@ ENTRY entry {
   %param.2 = f32[4] parameter(2)
   ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
     batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
-    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+    epsilon=0.001, feature_index=1, sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
 })";
   EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
 }

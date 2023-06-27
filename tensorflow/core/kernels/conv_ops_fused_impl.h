@@ -401,12 +401,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           std::abs(dimensions.pad_cols_after - dimensions.pad_cols_before);
       const int64_t new_in_rows = in_rows + padding_rows_diff;
       const int64_t new_in_cols = in_cols + padding_cols_diff;
+      TensorShape transformed_input_shape;
       OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(params.data_format, in_batch,
-                                         new_in_rows, new_in_cols, in_depths),
-                         &transformed_input));
+                     ShapeFromFormatWithStatus(
+                         params.data_format, in_batch, new_in_rows, new_in_cols,
+                         in_depths, &transformed_input_shape));
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     transformed_input_shape,
+                                                     &transformed_input));
       const int64_t input_pad_top =
           dimensions.pad_rows_before - common_padding_rows;
       const int64_t input_pad_bottom =
@@ -441,8 +443,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                      se::CudaComputeCapability::VOLTA);
     if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Convert the input tensor from NHWC to NCHW.
-      TensorShape nchw_shape =
-          ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
+      TensorShape nchw_shape;
+      OP_REQUIRES_OK(
+          context, ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch, in_rows,
+                                             in_cols, in_depths, &nchw_shape));
       if (in_depths > 1) {
         Tensor transformed_input;
         OP_REQUIRES_OK(context,
@@ -557,12 +561,13 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     Tensor transformed_output;
     if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Only allocate temporary memory when a layout transformation is needed.
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
-                                         out_cols, out_depths),
-                         &transformed_output));
+      TensorShape transformed_output_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NCHW, out_batch, out_rows, out_cols,
+                                  out_depths, &transformed_output_shape));
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     transformed_output_shape,
+                                                     &transformed_output));
     } else {
       transformed_output = *output;
     }
@@ -585,9 +590,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     constexpr double kSideInputScale = 0.0;
     double leakyrelu_alpha = fusion_args.leakyrelu_alpha;
 
-    int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
+        stream->parent(),
         in_batch,                      // batch
         in_depths,                     // in_depths
         {{in_rows,                     // in_rows
@@ -604,7 +609,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         {{common_padding_rows,         // padding_rows
           common_padding_cols}},       // padding_cols
         dtype,                         // tensor datatype
-        device_id,                     // device_id
         conv_desc.group_count(),
         ConvParameters::FusionInfo{kConvScale, kSideInputScale, leakyrelu_alpha,
                                    dnn_activation_mode,  // activation_mode
@@ -756,9 +760,11 @@ class FusedConv2DOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    ComputeConv2DDimension(params_, input, filter, &dimensions));
 
-    TensorShape out_shape = ShapeFromFormat(
-        params_.data_format, dimensions.batch, dimensions.out_rows,
-        dimensions.out_cols, dimensions.out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(
+                     params_.data_format, dimensions.batch, dimensions.out_rows,
+                     dimensions.out_cols, dimensions.out_depth, &out_shape));
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]

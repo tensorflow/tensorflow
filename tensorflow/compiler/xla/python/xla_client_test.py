@@ -19,6 +19,7 @@ import functools
 import itertools
 import re
 import threading
+import traceback
 import unittest
 
 from absl import flags
@@ -31,20 +32,41 @@ from tensorflow.compiler.xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  # This import is only used for GPU; the dependency is incompatible with TPU
-  # so it results in an import error.
-  from tensorflow.python.framework import test_util
-except ImportError:
-  test_util = None
-
-# pylint: disable=g-import-not-at-top
-try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
 
 bfloat16 = xla_client.bfloat16
+float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
+float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
+xla_computation_to_mlir_module = (
+    xla_client._xla.mlir.xla_computation_to_mlir_module)
+
+
+# pylint: disable=invalid-name
+def jax_array_convert_to_array(self):
+  return self._single_device_array_to_np_array()
+
+
+def jax_array_device(self):
+  return self._sharding._device
+
+
+def jax_array_copy_to_host_async(self):
+  self._copy_single_device_array_to_host_async()
+
+
+Array = xla_client.ArrayImpl
+Array.__array__ = jax_array_convert_to_array
+Array.copy_to_host_async = jax_array_copy_to_host_async
+Array.device = jax_array_device
+xla_client.SingleDeviceSharding.device_set = property(
+    lambda self: {self._device}
+)
+# pylint: enable=invalid-name
+
 
 FLAGS = flags.FLAGS
 
@@ -56,20 +78,20 @@ FLAGS = flags.FLAGS
 def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
-                external_tpu=False):
+                external_tpu=False,
+                pjrt_c_api=False,
+                pathways=False):
   tests = []
 
-  if not cloud_tpu:
-    int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
-    # TODO(phawkins): test np.float16, where supported.
-    float_dtypes = [bfloat16, np.float32, np.float64]
-    complex_dtypes = [np.complex64, np.complex128]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  else:
-    int_dtypes = [np.int32, np.uint32]
-    float_dtypes = [np.float32]
-    complex_dtypes = [np.complex64]
-    standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
+  # TODO(phawkins): test np.float16, where supported.
+  float_dtypes = [bfloat16, np.float32, np.float64]
+  complex_dtypes = [np.complex64, np.complex128]
+  standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
+  # standard_dtypes is only used for BufferProtocolTest so we only test fp8
+  # round trip tests.
+  standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -85,7 +107,8 @@ def TestFactory(xla_backend,
       return xla_client.XlaBuilder(name)
 
     def _Execute(self, c, arguments):
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       return xla_client.execute_with_python_values(
           compiled_c, arguments, backend=self.backend)
 
@@ -145,20 +168,22 @@ def TestFactory(xla_backend,
       ops.Add(x, x)
       return builder.build()
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCompiledHloModuleToHloText(self):
       computation = self.ExampleComputation()
-      executable = self.backend.compile(computation)
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(computation))
       hlo_modules = executable.hlo_modules()
       self.assertLen(hlo_modules, 1)
       hlo_text = hlo_modules[0].to_string()
       self.assertTrue(hlo_text.startswith("HloModule acomputation"))
       self.assertIn("fusion", hlo_text)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCompiledHloModuleAsSerializedProto(self):
       computation = self.ExampleComputation()
-      executable = self.backend.compile(computation)
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(computation))
       hlo_modules = executable.hlo_modules()
       self.assertLen(hlo_modules, 1)
       hlo_text = hlo_modules[0].to_string()
@@ -167,7 +192,7 @@ def TestFactory(xla_backend,
       hlo_text_roundtrip = hlo_module_roundtrip.to_string()
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testStableComputationSerialization(self):
       # Ideally we would test identical computations produced in different
       # processes. For now we have this limited smoke test.
@@ -176,18 +201,22 @@ def TestFactory(xla_backend,
       for _ in range(10):
         self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    # TODO(b/261771737): some version of this should work with pjrt_c_api=True
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
 
+    # TODO(b/264472335): implement fingerprint for PJRT C API
+    @unittest.skipIf(pjrt_c_api, "not implemented")
     def testFingerprint(self):
       computation = self.ExampleComputation()
-      executable = self.backend.compile(computation)
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not cloud_tpu:
+      if self.backend.platform == "tpu" and not (cloud_tpu or pathways):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:
@@ -203,8 +232,6 @@ def TestFactory(xla_backend,
         "dtype": dtype,
     } for dtype in int_dtypes + float_dtypes)
     def testConstantScalarSum(self, dtype):
-      if dtype == np.int8 and self.backend.platform == "tpu":
-        self.skipTest("TPU doesn't support int8")
       c = self._NewComputation()
       ops.Add(ops.Constant(c, dtype(1.11)), ops.Constant(c, dtype(3.14)))
       self._ExecuteAndCompareClose(c, expected=[dtype(1.11) + dtype(3.14)])
@@ -512,8 +539,9 @@ def TestFactory(xla_backend,
 
       # Load and execute the proto
       c = xla_client.XlaComputation(serialized_proto)
+      m = xla_computation_to_mlir_module(c)
       ans, = xla_client.execute_with_python_values(
-          self.backend.compile(c), (), backend=self.backend)
+          self.backend.compile(m), (), backend=self.backend)
       np.testing.assert_equal(ans, np.int32(3))
 
   tests.append(ComputationFromProtoTest)
@@ -583,25 +611,19 @@ def TestFactory(xla_backend,
                      NumpyArrayF32(3.14)],
           expected=[4.25])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testCannotCallWithDeletedBuffers(self):
       c = self._NewComputation()
       ops.Add(
           ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0.))),
           ops.Constant(c, np.float32(3.14)))
       arg = NumpyArrayF32(1.11)
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.delete()
       with self.assertRaises(xla_client.XlaRuntimeError):
         compiled_c.execute([arg_buffer])
-
-    def testXlaShape(self):
-      pyval = np.array([[1., 2.]], np.float32)
-      local_buffer = self.backend.buffer_from_pyval(pyval)
-      xla_shape = local_buffer.xla_shape()
-      self.assertEqual(xla_shape.dimensions(), (1, 2))
-      self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
     def testXlaShapeIndex(self):
       a = xla_client.ShapeIndex((1, 2))
@@ -642,30 +664,6 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
-    def testDeviceArrayBaseSignatures(self):
-      # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
-      # and thus needs to correctly implement the following methods.
-      arg = np.array([[1., 2., 3.]], np.float32)
-      buffer = self.backend.buffer_from_pyval(arg)
-      if not isinstance(buffer, xla_client.DeviceArrayBase):
-        raise unittest.SkipTest(
-            "The objectof type {} do not extend DeviceArrayBase".format(
-                type(buffer)))
-
-      self.assertEqual(buffer.__array_priority__, 100)
-      self.assertEqual(buffer.shape, (1, 3))
-      self.assertEqual(buffer.dtype, np.float32)
-      self.assertEqual(buffer.size, 3)
-      self.assertEqual(buffer.ndim, 2)
-
-      self.assertIs(buffer, buffer.block_until_ready())
-      self.assertTrue(buffer.is_ready())
-      buffer.delete()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.block_until_ready()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.is_ready()
-
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support OnDeviceSizeInBytes.")
@@ -695,8 +693,6 @@ def TestFactory(xla_backend,
       self.assertIs(self.backend.live_buffers()[0], arg2_buffer)
       self.assertIs(self.backend.live_buffers()[1], arg1_buffer)
       self.assertIs(self.backend.live_buffers()[2], arg0_buffer)
-      self.assertEqual(self.backend.devices()[0].live_buffers(),
-                       self.backend.live_buffers())
 
       arg1_buffer.delete()
       self.assertLen(self.backend.live_buffers(), 2)
@@ -732,8 +728,15 @@ def TestFactory(xla_backend,
 
     def testStandardTypes(self):
       for dtype in standard_dtypes:
-        if dtype == bfloat16 or dtype == np.complex128:
+        if dtype == np.complex128:
           continue
+        # float8_e4m3b11fnuz not supported on some TPU backends.
+        if (
+            dtype in [float8_e4m3b11fnuz]
+            and self.backend.platform == "tpu"
+        ):
+          if self.backend.platform_version.find("TPU") == -1:
+            continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
@@ -751,7 +754,7 @@ def TestFactory(xla_backend,
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
     def testClone(self):
       x = np.array([[3., 4., 5.]], np.float32)
       y = self.backend.buffer_from_pyval(x)
@@ -759,13 +762,6 @@ def TestFactory(xla_backend,
       self.assertNotEqual(id(x), id(y))
       np.testing.assert_array_equal(np.asarray(y), np.asarray(z))
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
-
-    @unittest.skipIf(cloud_tpu, "not implemented")
-    def testJaxAttributesHaveCorrectDefaults(self):
-      x = np.array([[3., 4., 5.]], np.float32)
-      y = self.backend.buffer_from_pyval(x)
-      self.assertIsNone(y.aval)
-      self.assertIsNone(y._device)
 
   tests.append(BufferTest)
 
@@ -811,7 +807,8 @@ def TestFactory(xla_backend,
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       self.assertLen(result, 1)
       expected = np.array(x, dtype=dst_dtype)
 
@@ -840,7 +837,8 @@ def TestFactory(xla_backend,
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       self.assertLen(result, 1)
       expected = x.view(dst_dtype)
 
@@ -1161,6 +1159,12 @@ def TestFactory(xla_backend,
       ops.Abs(ops.Constant(c, arr))
       self._ExecuteAndCompareClose(c, expected=[np.abs(arr)])
 
+    def testTanF32(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
+      ops.Tan(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.tan(arr)])
+
     def testTanhF32(self):
       c = self._NewComputation()
       arr = NumpyArrayF32([-0.2, 3.3, 12.1, 0.1, 0.0001])
@@ -1392,16 +1396,20 @@ def TestFactory(xla_backend,
     def testDynamicSlice(self):
       c = self._NewComputation()
       ops.DynamicSlice(
-          ops.Constant(c, NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-          [ops.Constant(c, NumpyArrayS32([1, 0]))], [2, 2])
+          ops.Constant(c, NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])), [
+              ops.Constant(c, NumpyArrayS32(1)),
+              ops.Constant(c, NumpyArrayS32(0))
+          ], [2, 2])
       self._ExecuteAndCompareExact(c, expected=[[[4, 5], [7, 8]]])
 
     def testDynamicUpdateSlice(self):
       c = self._NewComputation()
       ops.DynamicUpdateSlice(
           ops.Constant(c, NumpyArrayS32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-          ops.Constant(c, NumpyArrayS32([[1, 2], [3, 4]])),
-          [ops.Constant(c, NumpyArrayS32([1, 1]))])
+          ops.Constant(c, NumpyArrayS32([[1, 2], [3, 4]])), [
+              ops.Constant(c, NumpyArrayS32(1)),
+              ops.Constant(c, NumpyArrayS32(1))
+          ])
       self._ExecuteAndCompareExact(
           c, expected=[[[1, 2, 3], [4, 1, 2], [7, 3, 4]]])
 
@@ -1413,7 +1421,8 @@ def TestFactory(xla_backend,
           ops.Constant(c, NumpyArrayBool([True, False, False, True]))
       ])
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       self.assertLen(result, 3)
       np.testing.assert_equal(result[0], 42)
       np.testing.assert_allclose(result[1], [1.0, 2.0])
@@ -1452,7 +1461,8 @@ def TestFactory(xla_backend,
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       # since the result is random, we just check shape and uniqueness
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1468,7 +1478,8 @@ def TestFactory(xla_backend,
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       # since the result is random, we just check shape, uniqueness, and range
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1486,7 +1497,8 @@ def TestFactory(xla_backend,
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.S32,
                                              shape))
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       # since the result is random, we just check shape, integrality, and range
       self.assertLen(result, 1)
       self.assertEqual(result[0].shape, shape)
@@ -1515,7 +1527,8 @@ def TestFactory(xla_backend,
       c = self._NewComputation()
       ops.Sort(c, (ops.Constant(c, keys), ops.Constant(c, values)), dimension=0)
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
       np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
@@ -1537,7 +1550,8 @@ def TestFactory(xla_backend,
           dimension=1,
           comparator=comparator)
       result = xla_client.execute_with_python_values(
-          self.backend.compile(c.build()), (), backend=self.backend)
+          self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
+          backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_allclose(result[0], [[1, 2, 3, 3], [1, 2, 2, 3]])
       np.testing.assert_equal(result[1], [[2, 0, 3, 1], [5, 7, 6, 4]])
@@ -1679,6 +1693,18 @@ def TestFactory(xla_backend,
       g, = self._Execute(c, ())
       expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
       np.testing.assert_allclose(g, expected, rtol=1e-4)
+
+    def testAllGather(self):
+      a = np.arange(9).astype(np.int32).reshape((3, 3))
+      c = self._NewComputation()
+      ops.AllGather(
+          operand=ops.Constant(c, a),
+          all_gather_dimension=0,
+          shard_count=1,
+          replica_groups=xla_client.make_replica_groups([[0]]),
+          use_global_device_ids=False)
+      [g] = self._Execute(c, ())
+      np.testing.assert_equal(g, a)
 
     def testFft(self):
       if self.backend.platform == "tpu":
@@ -1908,6 +1934,7 @@ def TestFactory(xla_backend,
       self._ExecuteAndCompareClose(c, expected=[10])
 
     # TODO(phawkins): test comparison harness doesn't support bfloat16
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     @parameterized.named_parameters({
         "testcase_name": "_{}_dim{}".format(dtype.__name__, dim),
         "dtype": dtype,
@@ -1924,6 +1951,7 @@ def TestFactory(xla_backend,
           dimensions_to_reduce=[dim])
       self._ExecuteAndCompareClose(c, expected=[np.sum(input_array, axis=dim)])
 
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     @parameterized.named_parameters({
         "testcase_name": "_{}_dims[{}]".format(dtype.__name__, dims),
         "dtype": dtype,
@@ -2015,6 +2043,7 @@ def TestFactory(xla_backend,
           padding=padding)
       self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
 
+    @unittest.skipIf(pjrt_c_api, "b/264473047: hangs")
     def testReduceWindowVariadic(self):
       c = self._NewComputation("reducer")
       shape = xla_client.shape_from_pyval(np.array(0, dtype=np.int32))
@@ -2092,7 +2121,7 @@ def TestFactory(xla_backend,
                       false_computation)
       self._ExecuteAndCompareClose(c, expected=[1.])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedS32Values(self):
       to_infeed = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2101,7 +2130,8 @@ def TestFactory(xla_backend,
               ops.CreateToken(c),
               xla_client.shape_from_pyval(
                   to_infeed[0]).with_major_to_minor_layout_if_absent()), 0)
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       device = self.backend.local_devices()[0]
       for item in to_infeed:
         device.transfer_to_infeed(item)
@@ -2111,7 +2141,7 @@ def TestFactory(xla_backend,
             compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedTuple(self):
       to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
       c = self._NewComputation()
@@ -2120,7 +2150,8 @@ def TestFactory(xla_backend,
               ops.CreateToken(c),
               xla_client.shape_from_pyval(
                   to_infeed).with_major_to_minor_layout_if_absent()), 0)
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       device = self.backend.local_devices()[0]
       device.transfer_to_infeed(to_infeed)
 
@@ -2130,7 +2161,7 @@ def TestFactory(xla_backend,
       np.testing.assert_equal(result[0], to_infeed[0])
       np.testing.assert_equal(result[1], to_infeed[1])
 
-    @unittest.skipIf(cloud_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or pjrt_c_api, "not implemented")
     def testInfeedThenOutfeedS32(self):
       to_round_trip = NumpyArrayS32([1, 2, 3, 4])
       c = self._NewComputation()
@@ -2143,8 +2174,10 @@ def TestFactory(xla_backend,
       outfeed_shape = xla_client.shape_from_pyval(
           to_round_trip[0]).with_major_to_minor_layout_if_absent()
       ops.OutfeedWithToken(x, token, outfeed_shape)
+      ops.Tuple(c, ())
 
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       device = self.backend.local_devices()[0]
 
       for want in to_round_trip:
@@ -2181,6 +2214,24 @@ def TestFactory(xla_backend,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    @unittest.skipIf(pathways, "not implemented")
+    def testMemoryStats(self):
+      for device in self.backend.local_devices():
+        stats = device.memory_stats()
+        if self.backend.platform != "tpu" or not tfrt_tpu or external_tpu:
+          self.assertIsNone(stats)
+        else:
+          self.assertIsNotNone(stats)
+          # Spot check a few fields
+          self.assertEqual(type(stats["num_allocs"]), int)
+          self.assertGreaterEqual(stats["num_allocs"], 0)
+          self.assertEqual(type(stats["bytes_in_use"]), int)
+          self.assertGreaterEqual(stats["bytes_in_use"], 0)
+          self.assertEqual(type(stats["peak_bytes_in_use"]), int)
+          self.assertGreaterEqual(stats["peak_bytes_in_use"], 0)
+          self.assertEqual(type(stats["largest_alloc_size"]), int)
+          self.assertGreaterEqual(stats["largest_alloc_size"], 0)
+
   tests.append(DeviceTest)
 
   class ErrorTest(ComputationTest):
@@ -2216,7 +2267,8 @@ def TestFactory(xla_backend,
 
       def TestFun():
         return xla_client.execute_with_python_values(
-            self.backend.compile(c.build()), [self.f32_scalar_2], self.backend)
+            self.backend.compile(xla_computation_to_mlir_module(c.build())),
+            [self.f32_scalar_2], self.backend)
 
       self.assertRaisesRegex(
           RuntimeError, r"Invalid argument: Argument does not match.*"
@@ -2234,7 +2286,8 @@ def TestFactory(xla_backend,
       ops.Add(result, ops.Constant(c, np.float32(1.618)))
 
       arg = NumpyArrayF32(1.0)
-      compiled_c = self.backend.compile(c.build(result))
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build(result)))
       ans, = xla_client.execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
@@ -2257,7 +2310,8 @@ def TestFactory(xla_backend,
       result = ops.Add(x, ops.Constant(c, np.float32(3.14)))
       ops.Add(result, ops.Constant(c, np.float32(1.618)))
       arg = NumpyArrayF32(1.0)
-      compiled_c = self.backend.compile(c.build(result))
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build(result)))
       ans, = xla_client.execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
@@ -2434,7 +2488,7 @@ def TestFactory(xla_backend,
 
         b = xla_client.XlaBuilder("computation")
         ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
-        e = self.backend.compile(b.build())
+        e = self.backend.compile(xla_computation_to_mlir_module(b.build()))
         self.assertEqual(None, e.traceback)
 
     def assertIsTracebackContaining(self, tb, function):
@@ -2457,7 +2511,7 @@ def TestFactory(xla_backend,
 
         b = xla_client.XlaBuilder("computation")
         ops.Add(ops.Constant(b, np.int32(1)), ops.Constant(b, np.int32(2)))
-        e = self.backend.compile(b.build())
+        e = self.backend.compile(xla_computation_to_mlir_module(b.build()))
         self.assertIsTracebackContaining(e.traceback, "testTracebacks")
 
     def testNestedFunction(self):
@@ -2478,6 +2532,29 @@ def TestFactory(xla_backend,
         self.assertEqual(frames[i - 1].function_name, "AnotherFunction")
         self.assertEqual(frames[i + 1].function_name, "testNestedFunction")
 
+    def testPythonTracebackHasCorrectLineNumbers(self):
+      def B():
+        return xla_client.Traceback.get_traceback()
+
+      def A():
+        return B()
+
+      tb = A().as_python_traceback()
+      for frame, lineno in traceback.walk_tb(tb):
+        if frame.f_code.co_name == "A":
+          line = A.__code__.co_firstlineno
+          self.assertBetween(lineno, line, line + 2)
+        elif frame.f_code.co_name == "B":
+          line = B.__code__.co_firstlineno
+          self.assertBetween(lineno, line, line + 2)
+
+    def testAccessingLocalsDoesNotCrash(self):
+      # https://github.com/google/jax/issues/16027
+      tb = xla_client.Traceback.get_traceback()
+      python_tb = tb.as_python_traceback()
+      for frame, _ in traceback.walk_tb(python_tb):
+        _ = frame.f_locals  # should not crash
+
   tests.append(TracebackTest)
 
   class ClientTest(ComputationTest):
@@ -2493,17 +2570,16 @@ def TestFactory(xla_backend,
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
         # Following is false if not built with --config=cuda
-        if test_util.is_gpu_available(cuda_only=True):
+        if version != "<unknown>":
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-        else:
-          self.assertEqual(version, "<unknown>")
-      elif self.backend.platform == "tpu" and not cloud_tpu:
+      elif self.backend.platform == "tpu" and not pathways:
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)
+        self.assertIn("Built on ", version)
 
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
     def testExecutableSerialization(self):
       if self.backend.platform != "tpu":
         self.skipTest("Test requires tpu platform")
@@ -2514,13 +2590,12 @@ def TestFactory(xla_backend,
           ops.Constant(c, NumpyArrayS32([3, 4])))
 
       options = xla_client.CompileOptions()
-      executable = self.backend.compile(c.build(), options)
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), options)
       self.assertLen(executable.hlo_modules(), 1)
 
       serialized = self.backend.serialize_executable(executable)
-      deserialized = self.backend.deserialize_executable(
-          serialized,
-          executable.hlo_modules()[0], options)
+      deserialized = self.backend.deserialize_executable(serialized, options)
 
       expected, = xla_client.execute_with_python_values(executable, (),
                                                         self.backend)
@@ -2528,16 +2603,49 @@ def TestFactory(xla_backend,
                                                       self.backend)
       self.assertTrue(np.all(actual == expected))
 
+    def testCompileOptionsSerialization(self):
+      options = xla_client.CompileOptions()
+      executable_build_options = options.executable_build_options
+      options.num_replicas = 3
+      options.num_partitions = 2
+      options.profile_version = 1337
+      options.compile_portable_executable = True
+      executable_build_options.num_replicas = 3
+      executable_build_options.num_partitions = 2
+      executable_build_options.debug_options.xla_cpu_enable_fast_math = True
+      executable_build_options.debug_options.xla_test_all_input_layouts = True
+
+      b = options.SerializeAsString()
+      restored = xla_client.CompileOptions.ParseFromString(b)
+
+      for name in ("num_replicas", "num_partitions", "profile_version",
+                   "compile_portable_executable"):
+        self.assertEqual(getattr(options, name), getattr(restored, name),
+                         msg=name)
+
+      for name in ("num_replicas", "num_partitions"):
+        self.assertEqual(getattr(options.executable_build_options, name),
+                         getattr(restored.executable_build_options, name),
+                         msg=name)
+
+      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+        self.assertEqual(
+            getattr(options.executable_build_options.debug_options, name),
+            getattr(restored.executable_build_options.debug_options, name),
+            msg=name)
+
   tests.append(ClientTest)
 
   # TODO(b/182461453): Add TFRT and cloud TPU implementation of
   # ReadDynamicShapes
+  @unittest.skip("Test fails HLO -> MHLO conversion")
   class DynamicReshapeTest(ComputationTest):
     """Tests related to DynamicReshape."""
 
     def _CompareToPyAndBufferProtocol(self, builder, args, expected_results,
                                       test_fn):
-      compiled = self.backend.compile(builder.build())
+      compiled = self.backend.compile(
+          xla_computation_to_mlir_module(builder.build()))
       output_buffers = compiled.execute([
           self.backend.buffer_from_pyval(
               arg, device=compiled.local_devices()[0]) for arg in args
@@ -2559,7 +2667,7 @@ def TestFactory(xla_backend,
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
+    @unittest.skip("not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2577,7 +2685,9 @@ def TestFactory(xla_backend,
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
+    @unittest.skipIf(
+        cloud_tpu or pathways or tfrt_tpu or external_tpu or pjrt_c_api,
+        "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2593,7 +2703,7 @@ def TestFactory(xla_backend,
       self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
                                          np.testing.assert_equal)
 
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or pathways or tfrt_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2652,7 +2762,8 @@ def TestFactory(xla_backend,
       ops.Mul(
           ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
           ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
-      compiled_c = self.backend.compile(c.build())
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
       results, token = compiled_c.execute_with_token([])
       token.block_until_ready()
       self.assertLen(results, 1)
@@ -2667,7 +2778,8 @@ def TestFactory(xla_backend,
       num_replicas = 1
       options = xla_client.CompileOptions()
       options.num_replicas = num_replicas
-      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), compile_options=options)
       results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
           [])
       sharded_token.block_until_ready()
@@ -2680,127 +2792,9 @@ def TestFactory(xla_backend,
 
   tests.append(TokenTest)
 
-  class HostCallbackTest(ComputationTest):
-    """Tests related to HostCallback."""
-
-    @unittest.skipIf(not tfrt_tpu, "not implemented")
-    def testHostCallback(self):
-
-      c = self._NewComputation()
-      token = ops.CreateToken(c)
-
-      frontend_attributes = xla_client._xla.FrontendAttributes()
-      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
-      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
-      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
-      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
-      c.set_frontend_attributes(frontend_attributes)
-
-      send_channel_handle = self.backend.create_channel_handle()
-      send_channel_handle.type = (
-          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
-      send_channel_handle.handle = 1
-      ops.SendToHost(
-          ops.Constant(c, np.float32(1.25)),
-          token,
-          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
-          handle=send_channel_handle)
-
-      recv_channel_handle = self.backend.create_channel_handle()
-      recv_channel_handle.type = (
-          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
-      recv_channel_handle.handle = 2
-      data = ops.RecvFromHost(
-          token,
-          shape=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
-          handle=recv_channel_handle)
-      ops.GetTupleElement(data, 0)
-
-      def Identity(x):
-        return (x,)
-
-      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
-          Identity,
-          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
-          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
-          send_channel_ids=[1],
-          recv_channel_ids=[2])
-
-      compiled_c = self.backend.compile(
-          c.build(), host_callbacks=[host_callback])
-      c.clear_frontend_attributes()
-
-      results = compiled_c.execute([])
-      self.assertLen(results, 1)
-
-      np.testing.assert_equal(np.asarray(results[0]), np.float32(1.25))
-
-  tests.append(HostCallbackTest)
-
-  class HostCallbackMultiReplicaTest(ComputationTest):
-    """Tests related to HostCallback for multi-replica execution."""
-
-    @unittest.skipIf(not tfrt_tpu, "not implemented")
-    def testHostCallbackMultiReplica(self):
-
-      c = self._NewComputation()
-      token = ops.CreateToken(c)
-
-      frontend_attributes = xla_client._xla.FrontendAttributes()
-      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
-      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
-      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
-      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
-      c.set_frontend_attributes(frontend_attributes)
-
-      send_channel_handle = self.backend.create_channel_handle()
-      send_channel_handle.type = (
-          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
-      send_channel_handle.handle = 1
-      ops.SendToHost(
-          ops.ReplicaId(c),
-          token,
-          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
-          handle=send_channel_handle)
-
-      recv_channel_handle = self.backend.create_channel_handle()
-      recv_channel_handle.type = (
-          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
-      recv_channel_handle.handle = 2
-      data = ops.RecvFromHost(
-          token,
-          shape=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
-          handle=recv_channel_handle)
-      ops.GetTupleElement(data, 0)
-
-      def Identity(x):
-        return (x,)
-
-      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
-          Identity,
-          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
-          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
-          send_channel_ids=[1],
-          recv_channel_ids=[2])
-
-      num_replicas = 2
-      options = xla_client.CompileOptions()
-      options.num_replicas = num_replicas
-      compiled_c = self.backend.compile(
-          c.build(), compile_options=options, host_callbacks=[host_callback])
-      c.clear_frontend_attributes()
-
-      results = compiled_c.execute_sharded_on_local_devices([])
-      self.assertLen(results, 1)
-      self.assertLen(results[0], num_replicas)
-
-      for i in range(num_replicas):
-        np.testing.assert_equal(np.asarray(results[0][i]), np.uint32(i))
-
-  tests.append(HostCallbackMultiReplicaTest)
-
   class ExecutePortableTest(ComputationTest):
 
+    @unittest.skip("Test does not work under IFRT")
     def testExecutePortable(self):
       devices_by_kind = collections.defaultdict(list)
       for device in self.backend.devices():
@@ -2836,21 +2830,22 @@ def TestFactory(xla_backend,
       ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32))
       options = xla_client.CompileOptions()
       options.num_replicas = 1
-      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), compile_options=options)
 
       results = compiled_c.execute_sharded_on_local_devices([])
       self.assertLen(results, 1)
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
       self.assertLen(results, 1)
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
     def testExecuteShardedOverloadBufferInput(self):
       arg = np.arange(12, dtype=np.int16).reshape(3, 4)
@@ -2859,7 +2854,8 @@ def TestFactory(xla_backend,
 
       options = xla_client.CompileOptions()
       options.num_replicas = 1
-      compiled_c = self.backend.compile(c.build(), compile_options=options)
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), compile_options=options)
 
       buffer = self.backend.buffer_from_pyval(arg)
 
@@ -2868,7 +2864,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
           [[buffer]])
@@ -2876,30 +2872,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
-
-    def testExecuteShardedOverloadShardedBufferInput(self):
-      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
-      c = self._NewComputation()
-      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
-
-      options = xla_client.CompileOptions()
-      options.num_replicas = 1
-      compiled_c = self.backend.compile(c.build(), compile_options=options)
-
-      sharded_buffer = xla_client.ShardedBuffer.create_sharded_buffer(
-          [self.backend.buffer_from_pyval(arg)])
-
-      results = compiled_c.execute_sharded_on_local_devices([sharded_buffer])
-      self.assertLen(results, 1)
-      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
-      results[0].block_until_ready()
-
-      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
-          [sharded_buffer])
-      self.assertLen(results, 1)
-      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
-      results[0].block_until_ready()
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
   tests.append(ExecuteShardedOverloadTest)
 

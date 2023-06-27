@@ -124,6 +124,41 @@ class LinearOperatorLowerTriangularTest(
       sess.run([tril.initializer])
       self.check_convert_variables_to_tensors(operator)
 
+  def test_llt_composition_with_pd_l(self):
+    l = linalg_lib.LinearOperatorLowerTriangular(
+        [[1., 0.], [0.5, 0.2]], is_non_singular=True, is_positive_definite=True)
+    self.assertIs(l, (l @ l.H).cholesky())
+
+  def test_llt_composition_with_non_pd_l(self):
+    # The tril matrix here is selected so that multiplying the rows by the sign
+    # (the correct thing to do) is different than multiplying the columns.
+    l = linalg_lib.LinearOperatorLowerTriangular(
+        [[-1., 0., 0.], [0.5, 0.2, 0.], [0.1, 0.1, 1.]], is_non_singular=True)
+    llt = l @ l.H
+    chol = llt.cholesky()
+    self.assertIsInstance(chol, linalg_lib.LinearOperatorLowerTriangular)
+    self.assertGreater(self.evaluate(chol.diag_part()).min(), 0)
+    self.assertAllClose(
+        self.evaluate(llt.to_dense()), self.evaluate(
+            (chol @ chol.H).to_dense()))
+
+  def test_llt_composition_with_non_pd_complex_l(self):
+    # The tril matrix here is selected so that multiplying the rows by the sign
+    # (the correct thing to do) is different than multiplying the columns.
+    i = math_ops.complex(0., 1.)
+    l = linalg_lib.LinearOperatorLowerTriangular(
+        [[-1. + i, 0., 0.], [0.5, 0.2 - 2 * i, 0.], [0.1, 0.1, 1.]],
+        is_non_singular=True)
+    llt = l @ l.H
+    chol = llt.cholesky()
+    self.assertIsInstance(chol, linalg_lib.LinearOperatorLowerTriangular)
+    self.assertGreater(self.evaluate(math_ops.real(chol.diag_part())).min(), 0)
+    self.assertAllClose(
+        self.evaluate(math_ops.imag(chol.diag_part())).min(), 0)
+    self.assertAllClose(
+        self.evaluate(llt.to_dense()), self.evaluate(
+            (chol @ chol.H).to_dense()))
+
 
 if __name__ == "__main__":
   config.enable_tensor_float_32_execution(False)

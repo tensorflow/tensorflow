@@ -19,6 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_
 
+#include <functional>
+#include <utility>
+
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -90,6 +93,8 @@ class TensorFlowDialect final : public Dialect {
     if (constant_fold_hook_) return constant_fold_hook_(op, operands, results);
     return failure();
   }
+
+  static bool HasConstantFoldHook() { return constant_fold_hook_; }
 
   // Provides a hook for op interface.
   void *getRegisteredInterfaceForOp(mlir::TypeID interface,

@@ -34,7 +34,7 @@ class GpuFtzTest : public GpuCodegenTest {
   std::unique_ptr<VerifiedHloModule> CreateBinaryOpModule(HloOpcode op) {
     HloComputation::Builder builder(TestName());
 
-    Shape param_shape = ShapeUtil::MakeShapeWithLayout(
+    Shape param_shape = ShapeUtil::MakeShapeWithDenseLayout(
         F32, /*dimensions=*/{100, 100}, /*minor_to_major=*/{1, 0});
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
         /* parameter_number=*/0, param_shape, "x"));
@@ -51,7 +51,7 @@ class GpuFtzTest : public GpuCodegenTest {
   std::unique_ptr<VerifiedHloModule> CreateUnaryOpModule(HloOpcode op) {
     HloComputation::Builder builder(TestName());
 
-    Shape param_shape = ShapeUtil::MakeShapeWithLayout(
+    Shape param_shape = ShapeUtil::MakeShapeWithDenseLayout(
         F32, /*dimensions=*/{100, 100}, /*minor_to_major=*/{1, 0});
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
         /* parameter_number=*/0, param_shape, "x"));

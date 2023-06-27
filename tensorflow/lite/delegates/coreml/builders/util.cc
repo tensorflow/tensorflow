@@ -16,7 +16,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "fp16.h"  // from @FP16
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -76,10 +79,26 @@ bool IsBroadcastable(const TfLiteTensor* input_0, const TfLiteTensor* input_1) {
   return true;
 }
 
+bool IsBinaryOpSupportedType(const TfLiteTensor* tensor) {
+  return tensor->type == kTfLiteFloat32 ||
+         (tensor->type == kTfLiteFloat16 && IsConstantTensor(tensor));
+}
+
 bool IsBinaryOpSupported(const TfLiteRegistration* registration,
                          const TfLiteNode* node, TfLiteContext* context) {
-  return IsBroadcastable(GetInput(context, node, 0),
-                         GetInput(context, node, 1));
+  const auto* input_0 = GetInput(context, node, 0);
+  const auto* input_1 = GetInput(context, node, 1);
+  if (IsBinaryOpSupportedType(input_0) && IsBinaryOpSupportedType(input_1)) {
+    return IsBroadcastable(input_0, input_1);
+  }
+  return false;
+}
+
+float GetScalarFloatFromTensor(const TfLiteTensor* tensor) {
+  if (tensor->type == kTfLiteFloat16) {
+    return fp16_ieee_to_fp32_value(GetTensorData<uint16_t>(tensor)[0]);
+  }
+  return GetTensorData<float>(tensor)[0];
 }
 
 }  // namespace coreml

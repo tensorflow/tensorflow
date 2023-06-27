@@ -27,19 +27,19 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/lib/context_types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tsl {
 namespace profiler {
@@ -117,19 +117,25 @@ void CopyEventMetadata(const XEventMetadata& src_event_metadata,
       !src_event_metadata.metadata().empty()) {
     dst_event_metadata.set_metadata(src_event_metadata.metadata());
   }
-  XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
-                                                   &src_event_metadata);
-  src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& stat) {
-    XStatMetadata& metadata = *dst_plane.GetOrCreateStatMetadata(stat.Name());
-    XStat dst_stat = stat.RawStat();
-    if (stat.ValueCase() == XStat::kRefValue) {
-      XStatMetadata& value_metadata =
-          *dst_plane.GetOrCreateStatMetadata(stat.StrOrRefValue());
-      dst_stat.set_ref_value(value_metadata.id());
-    }
-    dst_stat.set_metadata_id(metadata.id());
-    *dst_event_metadata.add_stats() = std::move(dst_stat);
-  });
+
+  if (dst_event_metadata.stats().empty() &&
+      !src_event_metadata.stats().empty()) {
+    XEventMetadataVisitor src_event_metadata_visitor(&src_plane,
+                                                     &src_event_metadata);
+    src_event_metadata_visitor.ForEachStat([&](const XStatVisitor& src_stat) {
+      XStatMetadata& metadata =
+          *dst_plane.GetOrCreateStatMetadata(src_stat.Name());
+      XStat& dst_stat = *dst_event_metadata.add_stats();
+      dst_stat = src_stat.RawStat();
+      if (src_stat.ValueCase() == XStat::kRefValue) {
+        XStatMetadata& value_metadata =
+            *dst_plane.GetOrCreateStatMetadata(src_stat.StrOrRefValue());
+        dst_stat.set_ref_value(value_metadata.id());
+      }
+      dst_stat.set_metadata_id(metadata.id());
+    });
+  }
+  DCHECK_EQ(src_event_metadata.stats_size(), dst_event_metadata.stats_size());
 }
 
 bool IsOpLineName(absl::string_view line_name) {
@@ -505,7 +511,7 @@ std::optional<XEventVisitor> XEventContextTracker::GetOverlappingEvent(
 
 void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   struct EventStat {
-    tensorflow::Stat<int64_t> stat;
+    tsl::Stat<int64_t> stat;
     int64_t children_duration;
   };
   using StatByEvent = absl::flat_hash_map<int64_t /*event_id*/, EventStat>;
@@ -587,6 +593,31 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
       }
     }
   }
+}
+
+bool IsCustomPlane(const XPlane& plane) {
+  // NOTE: remove me after all legacy traces are gone (i.e. 2022/08/04).
+  constexpr absl::string_view kLegacyCustomPlanePrefix = "/custom:";
+  return absl::StartsWith(plane.name(), kCustomPlanePrefix) ||
+         absl::StartsWith(plane.name(), kLegacyCustomPlanePrefix);
+}
+
+bool IsHostPlane(const XPlane& plane) {
+  return plane.name() == kHostThreadsPlaneName ||
+         plane.name() == kHostCpusPlaneName ||
+         plane.name() == kTFStreamzPlaneName ||
+         plane.name() == kMetadataPlaneName ||
+         plane.name() == kSyscallsPlaneName ||
+         plane.name() == kPythonTracerPlaneName ||
+         plane.name() == kCuptiDriverApiPlaneName;
+}
+
+bool IsDevicePlane(const XPlane& plane) {
+  // Device and host planes should be mutually exclusive.
+  if (IsHostPlane(plane)) return false;
+  return absl::StartsWith(plane.name(), "/device") ||
+         absl::StartsWith(plane.name(), kTpuNonCorePlaneNamePrefix) ||
+         IsCustomPlane(plane);
 }
 
 }  // namespace profiler

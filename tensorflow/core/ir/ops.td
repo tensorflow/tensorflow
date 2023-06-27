@@ -179,6 +179,18 @@ def TFGraph_GraphFuncOp : TFG_IntrinsicOp<"func", [
     // executed.
     ArrayRef<Type> getCallableResults() { return getFunctionType().getResults(); }
 
+    /// Returns the argument attributes for all callable region arguments or
+    /// null if there are none.
+    ::mlir::ArrayAttr getCallableArgAttrs() {
+      return getArgAttrs().value_or(nullptr);
+    }
+
+    /// Returns the result attributes for all callable region results or
+    /// null if there are none.
+    ::mlir::ArrayAttr getCallableResAttrs() {
+      return getResAttrs().value_or(nullptr);
+    }
+
     //===------------------------------------------------------------------===//
     // FunctionOpInterface Methods
     //===------------------------------------------------------------------===//
@@ -208,7 +220,7 @@ def TFGraph_DictionaryArrayAttr
     : TypedArrayAttrBase<DictionaryAttr, "an array of dictionaries">;
 
 def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
-  [NoSideEffect, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
+  [Pure, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
   let summary = "Return values from a Function.";
   let description = [{
     The `return` operation represents a return operation within a function.
@@ -219,7 +231,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
     similarly for the function results,
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands,
+  let arguments = (ins Variadic<AnyType>,
                        TFGraph_DictionaryArrayAttr:$control_ret_attrs);
 
   let builders = [
@@ -231,7 +243,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
 
 
 def TFGraph_GetResultOp : TFG_IntrinsicOp<"get_result",
-  [NoSideEffect]> {
+  [Pure]> {
   let summary = "Extract a value out of an opaque tensor in a generic Function.";
   let description = [{
     The `get_result` operation exists in generic functions before instantiation,
@@ -490,7 +502,7 @@ class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []>
           ["getDefaultDialect", "getAsmResultNames"]>, TraitList<traits>]>;
 
 def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `yield` operation is the terminator for control-flow regions. The
@@ -499,7 +511,7 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
     data operands matches the number of results of the parent operation.
 
     The semantics of function calls in TensorFlow mean that the region "returns"
-    data operands as they become avaiable so that users can start executing
+    data operands as they become available so that users can start executing
     immediately. All functional control-flow operations behave as multi-device
     function calls, which means that the control result of the parent operation
     depends on the control operands of the `yield`.
@@ -582,7 +594,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       GetIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
@@ -695,7 +707,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       GetCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
@@ -744,7 +756,7 @@ def TFGraph_StatefulCaseRegionOp :
 
 // Special terminator op for while op condition regions.
 def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `condition` operation is a special terminator for the condition region
@@ -849,11 +861,11 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     OperandRange $cppClass::getSuccessorEntryOperands(
-        Optional<unsigned> index) {
+        std::optional<unsigned> index) {
       return getInit();
     }
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       return GetWhileLikeRegionOpSuccessorRegions(*this, index, operands,
                                                   regions);

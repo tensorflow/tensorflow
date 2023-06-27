@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -76,6 +77,7 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",

@@ -57,7 +57,7 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
 
   InlinerInterface inliner(&getContext());
   auto walk_result = getOperation().walk([&](TF::PartitionedCallOp call_op) {
-    if (!call_op.f().getRootReference().getValue().startswith(kNestedModule))
+    if (!call_op.getF().getRootReference().getValue().startswith(kNestedModule))
       return WalkResult::advance();
     // This is a call we need to inline!
     LLVM_DEBUG(llvm::dbgs()

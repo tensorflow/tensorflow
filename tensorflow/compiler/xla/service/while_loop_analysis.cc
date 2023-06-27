@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 
 #include "absl/base/casts.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 
 namespace xla {
@@ -385,9 +385,9 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
 //  - the while condition does `i < N` or `i <= N`, and
 //  - the while body does `i++`.
 // If so, it's trivial to compute the loop bound.
-static optional<int64_t> PatternMatchLoopTripCount(HloInstruction* while_op,
-                                                   int64_t indvar_tuple_idx,
-                                                   const Literal& indvar_init) {
+static optional<int64_t> PatternMatchLoopTripCount(
+    const HloInstruction* while_op, int64_t indvar_tuple_idx,
+    const Literal& indvar_init) {
   // First, find the scalar constant K that `i` is initialized to.
   optional<int64_t> indvar_init_val = LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
@@ -479,7 +479,7 @@ static optional<int64_t> PatternMatchLoopTripCount(HloInstruction* while_op,
   return nullopt;
 }
 
-optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
+optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
                                             int64_t max_brute_force_iters) {
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
@@ -497,8 +497,8 @@ optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
-  auto* while_init = while_op->mutable_operand(0);
-  auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
+  auto* while_init = while_op->operand(0);
+  auto* indvar_init = while_init->operand(*indvar_tuple_idx);
   StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
@@ -569,7 +569,7 @@ static HloInstruction* GetOnlyGTE(HloInstruction* inst) {
 }
 
 optional<int64_t> ComputeWhileLoopTripCountUpperBound(
-    HloInstruction* while_op) {
+    const HloInstruction* while_op) {
   // If we know the exact trip count, it's also the upper bound.
   auto exact_trip_count = ComputeWhileLoopTripCount(while_op);
   if (exact_trip_count) {

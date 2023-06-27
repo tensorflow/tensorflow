@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -39,7 +40,7 @@ void RegularizeNodes(GraphDef* graph_def) {
       // and StatefulPartitionedCall ops, by stripping the suffix UID if it
       // has one.
       std::string function_name = node.attr().find("f")->second.func().name();
-      StatusOr<int> uid = GetSuffixUID(function_name);
+      StatusOr<int64_t> uid = GetSuffixUID(function_name);
       if (uid.ok()) {
         node.mutable_attr()->find("f")->second.mutable_func()->set_name(
             std::string(
@@ -47,7 +48,10 @@ void RegularizeNodes(GraphDef* graph_def) {
       }
       // Erase the "config_proto" attribute which contains device-specific
       // information.
-      node.mutable_attr()->find("config_proto")->second.mutable_s()->erase();
+      auto node_config_proto = node.mutable_attr()->find("config_proto");
+      if (node_config_proto != node.attr().end()) {
+        node_config_proto->second.mutable_s()->erase();
+      }
     }
     // Erase the value of string constants, which can vary based on platform.
     if (grappler::IsConstant(node)) {

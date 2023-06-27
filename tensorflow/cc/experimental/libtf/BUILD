@@ -1,4 +1,5 @@
-# TODO(aselle): describe this package.
+#include "third_party/absl/strings/str_cat.h"
+#TODO(aselle) : describe this package.
 
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -12,6 +13,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
@@ -41,6 +43,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -83,13 +87,13 @@ py_strict_binary(
     srcs = ["tests/generate_testdata.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
@@ -179,13 +183,11 @@ tf_cc_test(
     size = "medium",
     srcs = [
         "tests/runtime_test_core.cc",
-        "tests/runtime_test_tfrt.cc",
     ],
     deps = [
         ":runtime_test",
         "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
-        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
     ],
 )
 

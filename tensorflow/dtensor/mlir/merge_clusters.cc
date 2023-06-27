@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <iterator>
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APInt.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -53,6 +58,7 @@ namespace dtensor {
 
 namespace {
 #define GEN_PASS_DEF_DTENSORMERGECLUSTERS
+#define GEN_PASS_DEF_DTENSORDECOMPOSECONTROLFLOW
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
@@ -222,8 +228,8 @@ mlir::LogicalResult MergeClusterMetadata(
 
 // Removes tf_device.Cluster ops if tf_device.Cluster is nested inside another
 // cluster and it has same mesh specification as parent cluster.
-mlir::LogicalResult InlineNestedDeviceClusters(mlir::ModuleOp module) {
-  auto clusters = FindAllDeviceClusters(module);
+mlir::LogicalResult InlineNestedDeviceClusters(mlir::Operation* op) {
+  auto clusters = FindAllDeviceClusters(op);
   for (mlir::tf_device::ClusterOp cluster : clusters) {
     auto parent_cluster =
         cluster->getParentOfType<mlir::tf_device::ClusterOp>();
@@ -272,14 +278,14 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // DTensorSend op sends the predicate to `mesh` cluster with replicated
   // layout.
   mlir::TensorType predicate_tensor_type =
-      if_region.cond().getType().cast<mlir::TensorType>();
+      if_region.getCond().getType().cast<mlir::TensorType>();
   const std::string send_recv_key =
       absl::StrCat(kSendRecvKeyPrefix, *num_send_recvs);
   *num_send_recvs += 1;
 
   const Layout target_layout = Layout::ReplicatedOnMesh(mesh, 0);
   builder.create<mlir::TF::DTensorSend>(
-      if_region.getLoc(), if_region.cond(),
+      if_region.getLoc(), if_region.getCond(),
       builder.getStringAttr(send_recv_key),
       mlir::dtensor::LayoutAttr::get(context, target_layout));
 
@@ -302,21 +308,21 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // Clone tf.IfRegion op inside newly created cluster and make sure
   // that the predicate tensor is from DTensorRecv op created above.
   auto host_side_if = builder.create<mlir::TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{}, recv_op.output(),
-      if_region.is_stateless(),
+      if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{},
+      recv_op.getOutput(), if_region.getIsStateless(),
       GetUniqueControlflowFnName("cloned_if_then", builder),
       GetUniqueControlflowFnName("cloned_if_else", builder));
   *cloned_if_region_op = host_side_if;
 
   // Create empty then branch region.
-  auto& then_branch = host_side_if.then_branch();
+  auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
                                     /*operands=*/llvm::ArrayRef<mlir::Value>{});
 
   // Create empty else branch region.
-  auto& else_branch = host_side_if.else_branch();
+  auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&else_branch.front());
   builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
@@ -350,7 +356,7 @@ mlir::LogicalResult VerifyClusterInputOutput(
 bool IsInsideIfThenBranch(mlir::TF::IfRegionOp if_op,
                           mlir::tf_device::ClusterOp cluster) {
   assert(if_op->isProperAncestor(cluster));
-  return if_op.then_branch().isAncestor(cluster->getParentRegion());
+  return if_op.getThenBranch().isAncestor(cluster->getParentRegion());
 }
 
 // Decomposes multi-mesh computation nested inside tf_if operations. See
@@ -358,6 +364,9 @@ bool IsInsideIfThenBranch(mlir::TF::IfRegionOp if_op,
 mlir::LogicalResult DecomposeIf(mlir::TF::IfRegionOp if_op,
                                 mlir::MLIRContext* context,
                                 int* num_control_flow_send_recvs) {
+  if (mlir::failed(InlineNestedDeviceClusters(if_op))) {
+    return mlir::failure();
+  }
   auto nested_clusters = FindAllDeviceClusters(if_op);
   if (nested_clusters.empty()) return mlir::success();
 
@@ -379,19 +388,19 @@ mlir::LogicalResult DecomposeIf(mlir::TF::IfRegionOp if_op,
     // corresponding branch.
     if (IsInsideIfThenBranch(if_op, nested_cluster)) {
       mlir::Operation* then_branch_terminator =
-          cloned_if.then_branch().begin()->getTerminator();
+          cloned_if.getThenBranch().begin()->getTerminator();
       auto& nested_cluster_operations =
           nested_cluster.GetBody().getOperations();
-      cloned_if.then_branch().begin()->getOperations().splice(
+      cloned_if.getThenBranch().begin()->getOperations().splice(
           then_branch_terminator->getIterator(), nested_cluster_operations,
           nested_cluster_operations.begin(),
           std::prev(nested_cluster_operations.end()));
     } else {
       mlir::Operation* else_branch_terminator =
-          cloned_if.else_branch().begin()->getTerminator();
+          cloned_if.getElseBranch().begin()->getTerminator();
       auto& nested_cluster_operations =
           nested_cluster.GetBody().getOperations();
-      cloned_if.else_branch().begin()->getOperations().splice(
+      cloned_if.getElseBranch().begin()->getOperations().splice(
           else_branch_terminator->getIterator(), nested_cluster_operations,
           nested_cluster_operations.begin(),
           std::prev(nested_cluster_operations.end()));
@@ -464,6 +473,10 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
   for (mlir::tf_device::ClusterOp cluster : clusters) {
     mlir::WalkResult walk_result = cluster->walk([&](mlir::Operation* op) {
       if (auto if_op = mlir::dyn_cast<mlir::TF::IfRegionOp>(op)) {
+        // Remove the device attr to follow the 'default' placement set during
+        // replicated execution. If there is a device attr, TensorFlow will
+        // run the body on that device instead.
+        op->removeAttr("device");
         if (mlir::failed(
                 DecomposeIf(if_op, context, num_control_flow_send_recvs)))
           return mlir::WalkResult::interrupt();
@@ -481,6 +494,8 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
 mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
   mlir::func::FuncOp main_func =
       module.lookupSymbol<mlir::func::FuncOp>("main");
+
+  if (!main_func) return mlir::success();
 
   // Create global cluster for each mesh in entire computation.
   auto clusters = FindAllDeviceClusters(main_func);
@@ -598,11 +613,6 @@ struct DTensorMergeClusters
     if (mlir::failed(InlineNestedDeviceClusters(module)))
       return signalPassFailure();
 
-    int num_controlflow_send_recv = 0;
-    if (mlir::failed(
-            DecomposeControlflow(&context, &num_controlflow_send_recv, module)))
-      return signalPassFailure();
-
     if (mlir::failed(MergeClusters(module))) return signalPassFailure();
 
     llvm::SmallVector<mlir::tf_device::ClusterOp, 4> clusters;
@@ -616,6 +626,24 @@ struct DTensorMergeClusters
   };
 };
 
+struct DTensorDecomposeControlflow
+    : public impl::DTensorDecomposeControlflowBase<
+          DTensorDecomposeControlflow> {
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    registry.insert<mlir::dtensor::DTensorDialect>();
+  }
+
+  void runOnOperation() override {
+    mlir::MLIRContext& context = getContext();
+    mlir::OpBuilder op_builder(&context);
+    auto module = getOperation();
+
+    int num = 0;
+    if (mlir::failed(DecomposeControlflow(&context, &num, module)))
+      return signalPassFailure();
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -623,5 +651,9 @@ CreateDTensorMergeClustersPass() {
   return std::make_unique<DTensorMergeClusters>();
 }
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorDecomposeControlflowPass() {
+  return std::make_unique<DTensorDecomposeControlflow>();
+}
 }  // namespace dtensor
 }  // namespace tensorflow

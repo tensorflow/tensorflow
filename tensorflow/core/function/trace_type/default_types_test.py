@@ -39,6 +39,9 @@ class MockSupertypes2With3(trace.TraceType):
     else:
       return None
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __eq__(self, other) -> bool:
     return isinstance(other, type(self)) and self._object == other._object
 
@@ -80,6 +83,14 @@ class TestAttrsClass:
 
 
 class DefaultTypesTest(test.TestCase):
+
+  def testLiteralNan(self):
+    nan_literal = default_types.Literal(float('nan'))
+    complex_nan = default_types.Literal(complex(float('nan'), 1))
+    complex_nan_other = default_types.Literal(complex(1, float('nan')))
+    self.assertEqual(nan_literal, nan_literal)
+    self.assertEqual(nan_literal, complex_nan)
+    self.assertEqual(nan_literal, complex_nan_other)
 
   def testLiteralSupertypes(self):
     literal_a = default_types.Literal(1)
@@ -276,31 +287,19 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
 
-  def testReferenceSubtype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
+  def testCastLazy(self):
+    list_type = default_types.List(
+        default_types.Literal('a'), default_types.Literal('b')
+    )
+    tuple_type = default_types.Tuple(default_types.Literal('c'), list_type)
+    dict_type = default_types.Dict(
+        {'key': tuple_type, 'other_key': list_type}, placeholder_type=dict
+    )
 
-    self.assertEqual(original, clone)
-    self.assertFalse(original.is_subtype_of(different_id))
-    self.assertTrue(original.is_subtype_of(supertype))
-    self.assertFalse(supertype.is_subtype_of(original))
-    self.assertFalse(original.is_subtype_of(different_type))
+    value = dict_type.placeholder_value(None)
+    casted_value = dict_type._cast(value, None)
 
-  def testReferenceSupertype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
-
-    self.assertEqual(supertype.most_specific_common_supertype([]), supertype)
-    self.assertEqual(original.most_specific_common_supertype([clone]), original)
-    self.assertIsNone(original.most_specific_common_supertype([different_id]))
-    self.assertIsNone(original.most_specific_common_supertype([different_type]))
-
+    self.assertIs(value, casted_value)
 
 if __name__ == '__main__':
   test.main()

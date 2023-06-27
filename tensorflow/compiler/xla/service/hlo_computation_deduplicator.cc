@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 
@@ -99,7 +99,11 @@ StatusOr<bool> HloComputationDeduplicator::Run(
       unique_comps[std::move(comp_str)] = comp;
     }
   }
-  module->ReplaceComputations(replacement);
+  if (mark_fusion_duplications_) {
+    module->MarkFusionDuplications(replacement);
+  } else {
+    module->ReplaceComputations(replacement);
+  }
   return !replacement.empty();
 }
 }  // namespace xla

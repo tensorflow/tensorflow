@@ -17,24 +17,27 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 namespace xla {
 
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
                             bool use_tuple_args, bool return_tuple) {
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(module->getContext());
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -42,7 +45,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
         mlir::mhlo::createLegalizeSparseChloToLinalgPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
-            /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
+            /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
@@ -62,8 +65,6 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 
   HloProto proto;
   mlir::MlirToHloConversionOptions options;
-  // We don't want the conversion to muck with our operator names.
-  options.legalize_node_names = false;
   TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &proto, use_tuple_args,
                                          return_tuple, options));
 
@@ -74,10 +75,15 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::ChloDialect>();
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  context.loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
+  context.loadDialect<mlir::stablehlo::StablehloDialect>();
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);

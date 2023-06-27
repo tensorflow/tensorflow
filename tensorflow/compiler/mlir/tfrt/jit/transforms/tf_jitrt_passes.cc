@@ -19,39 +19,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::mlir::Operation;
-using ::mlir::linalg::LinalgOp;
-
 bool IsContiguousMemref(mlir::Value value) {
   auto memref_type = value.getType().dyn_cast<mlir::MemRefType>();
   if (!memref_type) return false;
   mlir::MemRefType canonical_type = canonicalizeStridedLayout(memref_type);
   return canonical_type.getLayout().isIdentity();
-}
-
-mlir::FailureOr<Operation *> DetectCombiner(LinalgOp linalg_op) {
-  mlir::SmallVector<Operation *, 4> combiners;
-  if (!matchReduction(linalg_op.getRegionOutputArgs(), 0, combiners) ||
-      combiners.size() != 1)
-    return mlir::failure();
-  return combiners.front();
-}
-
-constexpr llvm::StringLiteral kTransformMarker =
-    "__internal_transformation_marker__";
-
-void setTransformationAttr(mlir::OpBuilder &b, Operation *op) {
-  op->setAttr(kTransformMarker, b.getBoolAttr(true));
-}
-
-void removeTransformationAttr(Operation *op) {
-  op->removeAttr(kTransformMarker);
-}
-
-bool hasTransformationAttr(Operation *op) {
-  auto marker = op->getAttr(kTransformMarker);
-  if (!marker) return false;
-  return marker && marker.cast<mlir::BoolAttr>().getValue();
 }
 
 }  // namespace tensorflow

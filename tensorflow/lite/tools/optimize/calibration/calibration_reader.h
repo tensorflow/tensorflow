@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_READER_H_
 
 #include "tensorflow/lite/context.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {

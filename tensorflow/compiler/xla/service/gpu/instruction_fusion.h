@@ -16,18 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INSTRUCTION_FUSION_H_
 
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 class GpuInstructionFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate)
-      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
+  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d)
+      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
+        device_info_(d) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -40,6 +54,8 @@ class GpuInstructionFusion : public InstructionFusion {
   }
 
  protected:
+  std::unique_ptr<FusionQueue> GetFusionQueue(
+      HloComputation* computation) override;
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
 
@@ -59,6 +75,8 @@ class GpuInstructionFusion : public InstructionFusion {
   // indexed with different index vectors.
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
+
+  const GpuDeviceInfo device_info_;
 };
 
 }  // namespace gpu

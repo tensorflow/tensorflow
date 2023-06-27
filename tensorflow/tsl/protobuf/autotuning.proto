@@ -73,6 +73,15 @@ message AutotuneResult {
     string exec_plan_id = 1;
   }
 
+  message TritonGemmKey {
+    int64 block_m = 1;
+    int64 block_n = 2;
+    int64 block_k = 3;
+    int64 split_k = 4;
+    int64 num_stages = 5;
+    int64 num_warps = 6;
+  }
+
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
@@ -81,6 +90,7 @@ message AutotuneResult {
   oneof key {
     ConvKey conv = 5;
     GemmKey gemm = 6;
+    TritonGemmKey triton = 17;
     CudaConvPlanKey cuda_conv_plan = 15;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
   }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite {
 namespace acceleration {
@@ -55,13 +56,38 @@ class GPUCompatibilityList {
   // Construct list from bundled data. Returns a unique_ptr to a nullptr if
   // creation fails.
   static std::unique_ptr<GPUCompatibilityList> Create();
+
   // Constructs list from the given flatbuffer data. Returns a unique_ptr to a
   // nullptr is the given flatbuffer is empty or invalid.
+  // The flatbuffer pointer must remain valid during the usage of the
+  // compatibility list, it is the caller's responsibility to make sure of that.
+  // To have the compatibility list own the flatbuffer, use the alternative
+  // Create() method below.
   static std::unique_ptr<GPUCompatibilityList> Create(
       const unsigned char* compatibility_list_flatbuffer, int length);
+
+  // Constructs list from the given flatbuffer data. Returns a unique_ptr to a
+  // nullptr is the given flatbuffer is empty or invalid.
+  // The passed flatbuffer will be owned by the compatibility list object, so
+  // this method can be used safely with local temporary strings.
+  static std::unique_ptr<GPUCompatibilityList> Create(
+      std::string compatibility_list_flatbuffer);
+
   // Returns true if the provided device specs are supported by the database.
   bool Includes(const AndroidInfo& android_info,
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
+
+  // Returns the compatibility status as an enum (unknown/supported/unsupported)
+  gpu::CompatibilityStatus GetStatus(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
+
+  // Returns the compatibility status as an enum (unknown/supported/unsupported)
+  // of the provided device specified as a map of variables (properties).
+  // Map keys should all be from here:
+  // tensorflow/lite/experimental/acceleration/compatibility/variables.h
+  gpu::CompatibilityStatus GetStatus(
+      std::map<std::string, std::string>& variables) const;
 
   // Returns the best TfLiteGpuDelegateOptionsV2 for the provided device specs
   // based on the database. The output can be modified as desired before passing
@@ -86,9 +112,19 @@ class GPUCompatibilityList {
  protected:
   const DeviceDatabase* database_;
 
+  // Optional container of the flatbuffer content, to support ownership of the
+  // flatbuffer by the compatibility list object itself.
+  std::string fbcontent_;
+
  private:
   explicit GPUCompatibilityList(
       const unsigned char* compatibility_list_flatbuffer);
+
+  explicit GPUCompatibilityList(std::string compatibility_list_flatbuffer);
+
+  std::map<std::string, std::string> InfosToMap(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
 };
 
 }  // namespace acceleration

@@ -27,29 +27,28 @@ pip install git+https://github.com/tensorflow/docs
 import contextlib
 import pathlib
 import textwrap
-
 from typing import NamedTuple
 
 from absl import app
 from absl import flags
 from packaging import version
-
 import tensorflow as tf
-
 from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
 from tensorflow_docs.api_generator.pretty_docs import base_page
 from tensorflow_docs.api_generator.pretty_docs import module_page
-
 import yaml
 
 from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 
+if version.parse(tf.__version__) >= version.parse("2.14"):
+  from tensorflow.python.util.pywrap_xla_ops import get_gpu_kernel_names  # pylint: disable=g-import-not-at-top
+
 # Caution: the google and oss versions of this import are different.
-import base_dir
+import base_dir  # pylint: disable=g-import-not-at-top
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -119,11 +118,14 @@ class RawOpsPageInfo(module_page.ModulePageInfo):
     # Skip the ModulePage implementation, which doesn't use a template.
     content = base_page.PageInfo.build(self)
 
-    raw_ops_doc = self.generate_raw_ops_doc()
+    if version.parse(tf.__version__) >= version.parse("2.14"):
+      raw_ops_doc = self.generate_raw_ops_doc_ge_214()
+    else:
+      raw_ops_doc = self.generate_raw_ops_doc_lt_214()
 
     return "\n".join([content, raw_ops_doc])
 
-  def generate_raw_ops_doc(self):
+  def generate_raw_ops_doc_lt_214(self):
     """Generates docs for `tf.raw_ops`."""
     del self
 
@@ -157,6 +159,49 @@ class RawOpsPageInfo(module_page.ModulePageInfo):
 
     return "\n".join(parts)
 
+  def generate_raw_ops_doc_ge_214(self):
+    """Generates docs for `tf.raw_ops`."""
+    del self
+
+    warning = textwrap.dedent("""\n
+      Note: `tf.raw_ops` provides direct/low level access to all TensorFlow ops.
+      See [the RFC](https://github.com/tensorflow/community/blob/master/rfcs/20181225-tf-raw-ops.md)
+      for details. Unless you are library writer, you likely do not need to use
+      these ops directly.""")
+
+    table_header = textwrap.dedent("""
+
+        | Op Name | Has Gradient | GPU XLA Support |
+        |---------|:------------:|:---------------:|""")
+
+    parts = [warning, table_header]
+    xla_compiled_ops = get_gpu_kernel_names()
+    for op_name in sorted(dir(tf.raw_ops)):
+      try:
+        ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
+        has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
+      except LookupError:
+        has_gradient = "\N{CROSS MARK}"
+      is_xla_compilable = "\N{CROSS MARK}"
+      if op_name in xla_compiled_ops:
+        is_xla_compilable = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
+
+      if not op_name.startswith("_"):
+        path = pathlib.Path("/") / FLAGS.site_path / "tf/raw_ops" / op_name
+        path = path.with_suffix(".md")
+        link = ('<a id={op_name} href="{path}">{op_name}</a>').format(
+            op_name=op_name, path=str(path)
+        )
+        parts.append(
+            "| {link} | {has_gradient} | {is_xla_compilable} |".format(
+                link=link,
+                has_gradient=has_gradient,
+                is_xla_compilable=is_xla_compilable,
+            )
+        )
+
+    return "\n".join(parts)
+
 
 # The doc generator isn't aware of tf_export.
 # So prefix the score tuples with -1 when this is the canonical name, +1
@@ -175,8 +220,11 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
                    tf_export.ESTIMATOR_API_NAME]
 
     for api_name in all_exports:
-      canonical = tf_export.get_canonical_name_for_symbol(
-          self._index[name], api_name=api_name)
+      try:
+        canonical = tf_export.get_canonical_name_for_symbol(
+            self._index[name], api_name=api_name)
+      except AttributeError:
+        canonical = None
       if canonical is not None:
         break
 
@@ -220,6 +268,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   do_not_document = ["tf.__internal__",
                      "tf.keras.__internal__",
+                     "tf.keras.wrappers",
                      "tf.__operators__",
                      "tf.tools",
                      "tf.compat.v1.pywrap_tensorflow",
@@ -281,7 +330,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       "tf/nn/sigmoid_cross_entropy_with_logits.md":
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
-          "keras/engine/training.py",
+          "engine/training.py",
   }
 
   all_passed = True
@@ -299,7 +348,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     raise ValueError("\n".join(error_msg_parts))
 
   rejected_path_contents = {
-      "tf/keras/optimizers.md": "keras/optimizers/__init__.py",
+      "tf/keras/optimizers.md": "api/_v2/keras/optimizers/__init__.py",
   }
 
   all_passed = True

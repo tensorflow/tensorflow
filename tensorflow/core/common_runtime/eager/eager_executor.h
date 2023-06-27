@@ -16,13 +16,17 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_EXECUTOR_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -49,9 +53,9 @@ class EagerClient;
 // device to another.
 class EagerNode {
  public:
-  EagerNode() {}
+  EagerNode() = default;
 
-  virtual ~EagerNode() {}
+  virtual ~EagerNode() = default;
 
   // Prepares the node when adding it into EagerExecutor. If any errors happens,
   // EagerExecutor will abort the node immediately.
@@ -111,7 +115,8 @@ class AsyncRemoteExecuteNode : public AsyncEagerNode {
 // TODO(agarwal): Implement optimizations over EagerNode traces.
 class EagerExecutor {
  public:
-  explicit EagerExecutor(bool async, bool enable_streaming_enqueue = true);
+  explicit EagerExecutor(bool async, bool enable_streaming_enqueue = true,
+                         int in_flight_nodes_limit = 0);
 
   ~EagerExecutor();
 
@@ -221,6 +226,8 @@ class EagerExecutor {
 
   // Used to signal that some EagerNodes are pending execution.
   condition_variable nodes_pending_ TF_GUARDED_BY(node_queue_mutex_);
+  // Used to signal that some EagerNodes are done.
+  condition_variable nodes_done_ TF_GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending NodeItems. Ordered by NodeItem::id.
   std::queue<core::RefCountPtr<NodeItem>> node_queue_
@@ -264,7 +271,12 @@ class EagerExecutor {
   const bool enable_streaming_enqueue_;
 
   // Callbacks to run on destruction.
-  std::unordered_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
+  absl::flat_hash_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
+
+  // Limit the number of in-flight nodes. When the number of in-flight eager
+  // async nodes reach this number, enqueuing to the eager async queue is
+  // blocked.
+  const int64_t in_flight_nodes_limit_;
 };
 
 inline bool EagerExecutor::Async() const { return thread_ != nullptr; }

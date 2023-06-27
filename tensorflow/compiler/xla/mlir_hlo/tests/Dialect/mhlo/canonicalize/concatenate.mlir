@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @single_operand
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]

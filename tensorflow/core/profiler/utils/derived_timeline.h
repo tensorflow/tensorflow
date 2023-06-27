@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -41,6 +41,8 @@ class DerivedXEventBuilder {
                     std::optional<int64_t> group_id) const;
 
   void Expand(Timespan event_span);
+  Timespan GetTimespan() const { return event_.GetTimespan(); }
+  void SetTimespan(Timespan event_span) { event_.SetTimespan(event_span); }
 
  private:
   XEventBuilder event_;
@@ -84,9 +86,9 @@ class DerivedXLineBuilder {
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
                              Timespan event_span,
                              std::optional<int64_t> group_id, int level);
+  void AdjustDurationForTraceViewer(int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
-  const XStatMetadata* level_stat_metadata_ = nullptr;
   XLineBuilder line_;
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;
@@ -96,6 +98,7 @@ class DerivedXLineBuilder {
 struct Symbol {
   absl::string_view tf_op_name;
   std::string source_info;
+  std::string hlo_text;
 };
 
 using SymbolResolver = std::function<Symbol(std::optional<uint64_t> program_id,
@@ -110,14 +113,11 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder);
 
-// Adds step names from GroupMetadataMap to "Steps" line in plane.
-// The event name is updated when converted to trace events.
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line);
 
 // Derives "Steps" line from group_id XStat in XEvents.
-void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
-                                XPlane* device_trace);
+void DeriveStepEventsFromGroups(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    XPlane* device_trace);
 
 // Derives "TensorFlow Ops", "TensorFlow Name Scope", "XLA Ops" and "XLA Module"
 // lines in an NVIDIA_GPU device trace from data passed as ScopedAnnotations and
@@ -128,14 +128,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  XPlane* device_trace);
 
 // Derives "Launch Activities Summary" line from host trace.
-void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const GroupMetadataMap& group_metadata_map,
-                               std::vector<XPlane*> device_traces);
+void DeriveEventsFromHostTrace(
+    const XPlane* host_trace,
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    std::vector<XPlane*> device_traces);
 
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space);
+void GenerateDerivedTimeLines(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map, XSpace* space);
 
 // Derives `Tensorflow Ops`, `Tensorflow Name Scope` and `Source Code` lines
 // from device_trace.

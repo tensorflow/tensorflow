@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -159,17 +158,17 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF operation.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &valueMapping) const final {
+                       IRMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+    return isa<IfRegionOp, CaseRegionOp, WhileRegionOp>(dest->getParentOp()) &&
            llvm::hasSingleElement(*src);
   }
 
   // Returns true if its legal to inline a TF operation `op` into the `dest`
   // region.
   bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     // An op is legal to inline if either of the following conditions is true:
     // (a) Its legal to duplicate the Op.
     // (b) The Op is inside a single use function. If that function is inlined,
@@ -227,7 +226,7 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
 
   // If the op has no memory side effects, it can be duplicated.
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (isMemoryEffectFree(op)) return true;
 
   // If the op is marked stateless using the `is_stateless` attribute, that
   // attribute determines if the op can be duplicated.
@@ -272,7 +271,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
 // Returns true if the op can have side effects.
 bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   // If the op has no memory side effects, it has no side effects
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (isMemoryEffectFree(op)) return false;
 
   // If the op is marked stateless using the `is_stateless` attribute, then
   // it has no side effects.

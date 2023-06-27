@@ -48,7 +48,7 @@ class MaterializePassthroughOpPass
 
 void MaterializePassthroughOpPass::runOnOperation() {
   getOperation().walk([](TF::MlirPassthroughOp op) {
-    std::string module_string(op.mlir_module());
+    std::string module_string(op.getMlirModule());
     // Parse the module.
     auto nested_module =
         parseSourceString<ModuleOp>(module_string, op.getContext());

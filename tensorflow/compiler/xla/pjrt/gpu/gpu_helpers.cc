@@ -78,7 +78,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
                                           &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
-               << status.error_message();
+               << status.message();
   }
 
   int device_ordinal = executor->device_ordinal();
@@ -100,7 +100,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   // setting memory_fraction > 1.
   size_t allocator_memory = enable_unified_memory
                                 ? total_memory * fmax(1.0, memory_fraction)
-                                : free_memory * memory_fraction;
+                                : total_memory * memory_fraction;
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";
@@ -117,7 +117,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64MB pool of pinned memory.
+// transfers. We use a fixed 64GB pool of pinned memory.
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   std::unique_ptr<tsl::SubAllocator> sub_allocator(

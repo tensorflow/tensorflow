@@ -10,6 +10,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -51,18 +52,17 @@ py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_oss",  # b/275546007
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -78,12 +78,7 @@ tpu_py_test(
     disable_v3 = True,
     main = "tf_doctest.py",
     python_version = "PY3",
-    tags = [
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_oss"],
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
@@ -112,8 +107,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/ops:logging_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -124,12 +119,7 @@ py_test(
     name = "tf_doctest_test",
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["no_pip"],
     deps = [
         ":tf_doctest_lib",
         "@absl_py//absl/testing:absltest",
@@ -149,13 +139,9 @@ py_library(
 py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
-    data = glob(["**/create_model.md"]),
     tags = [
         "no_oss",
         "no_pip",
-        "noasan",
-        "nomsan",
-        "notsan",
     ],
     deps = [
         ":fenced_doctest_lib",
@@ -180,17 +166,15 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "manual",
-        # No reason to run sanitizers or fastbuild for this test.
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
     ],
     deps = [
         ":generate2_lib",
+        "//third_party/py/packaging",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
+        "//third_party/py/yaml",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -220,9 +204,10 @@ py_library(
         ":base_dir_oss",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

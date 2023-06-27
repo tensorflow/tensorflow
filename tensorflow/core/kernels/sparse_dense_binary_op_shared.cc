@@ -162,7 +162,7 @@ class SparseDenseBinaryOpShared : public OpKernel {
                                   "dense side with broadcasted shape"));       \
       dense_gathered_flat(i) = rhs_ref.coeff(idx);                             \
       if (op_is_div) {                                                         \
-        OP_REQUIRES(ctx, dense_gathered_flat(i) != 0,                          \
+        OP_REQUIRES(ctx, dense_gathered_flat(i) != T{0},                       \
                     errors::InvalidArgument(                                   \
                         "SparseDenseCwiseDiv cannot divide by zero,"           \
                         "but input dense tensor contains zero "));             \

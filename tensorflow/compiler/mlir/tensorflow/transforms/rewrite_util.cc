@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/core/util/device_name_utils.h"
@@ -27,17 +28,17 @@ namespace {
 const char kDeviceAttr[] = "device";
 const char kDeviceGpu[] = "GPU";
 
-llvm::Optional<std::string> GetOpDevice(mlir::Operation *op) {
+std::optional<std::string> GetOpDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
   tensorflow::DeviceNameUtils::ParsedName parsed_name;
   if (!tensorflow::DeviceNameUtils::ParseFullName(device.str(), &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   return parsed_name.type;
 }
@@ -45,7 +46,7 @@ llvm::Optional<std::string> GetOpDevice(mlir::Operation *op) {
 }  // namespace
 
 bool IsOnGpuDevice(mlir::Operation *op) {
-  llvm::Optional<std::string> device = GetOpDevice(op);
+  std::optional<std::string> device = GetOpDevice(op);
   if (!device) return false;
   return *device == kDeviceGpu;
 }

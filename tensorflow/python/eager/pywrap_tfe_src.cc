@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -51,7 +52,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
 
@@ -856,7 +857,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-static std::atomic<int64_t> _uid;
+static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
 // This struct is responsible for marking thread_local storage as destroyed.
 // Access to the `alive` field in already-destroyed ThreadLocalDestructionMarker
@@ -908,8 +909,9 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -931,10 +933,9 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   if (out_status->status.ok()) {
     outputs->resize(num_outputs);
   } else {
-    TF_SetStatus(out_status, TF_GetCode(out_status),
-                 tensorflow::strings::StrCat(TF_Message(out_status),
-                                             " [Op:", op_name, "]")
-                     .c_str());
+    out_status->status = tensorflow::errors::CreateWithUpdatedMessage(
+        out_status->status, tensorflow::strings::StrCat(TF_Message(out_status),
+                                                        " [Op:", op_name, "]"));
   }
 
   Py_END_ALLOW_THREADS;
@@ -1032,7 +1033,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   std::vector<tensorflow::StackFrame> stack_trace =
       tensorflow::errors::GetStackTrace(status);
 
-  if (stack_trace.empty()) return status.error_message();
+  if (stack_trace.empty()) return std::string(status.message());
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =
@@ -1059,7 +1060,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   Py_DecRef(getline);
   Py_DecRef(linecache);
 
-  result << '\n' << status.error_message();
+  result << '\n' << status.message();
   return result.str();
 }
 
@@ -1104,7 +1105,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
 int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
-  const char* msg = status.error_message().c_str();
+  const char* msg = tsl::NullTerminatedMessage(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
@@ -3739,8 +3740,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;

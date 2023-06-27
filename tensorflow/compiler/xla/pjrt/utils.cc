@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 
+#include <algorithm>
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -30,33 +40,21 @@ namespace xla {
 namespace {
 StatusOr<Shape> GetShardedShape(const Shape& shape,
                                 const OpSharding& sharding) {
-  if (sharding.type() == OpSharding::TUPLE) {
-    if (!shape.IsTuple()) {
-      return InvalidArgument(
-          "Got tuple OpSharding (%s) for non-tuple shape (%s)",
-          sharding.DebugString(), shape.ToString());
-    }
-    if (sharding.tuple_shardings_size() != shape.tuple_shapes_size()) {
-      return InvalidArgument(
-          "Got mismatched OpSharding tuple size (%d) and shape tuple size (%d)."
-          " (OpSharding: %s, shape: %s)",
-          sharding.tuple_shardings_size(), shape.tuple_shapes_size(),
-          sharding.DebugString(), shape.ToString());
-    }
-    std::vector<Shape> sharded_subshapes;
-    const int tuple_shapes_size = shape.tuple_shapes_size();
-    sharded_subshapes.reserve(tuple_shapes_size);
-    for (int i = 0; i < tuple_shapes_size; ++i) {
-      TF_ASSIGN_OR_RETURN(
-          Shape sharded_subshape,
-          GetShardedShape(shape.tuple_shapes(i), sharding.tuple_shardings(i)));
-      sharded_subshapes.emplace_back(std::move(sharded_subshape));
-    }
-    return ShapeUtil::MakeTupleShape(sharded_subshapes);
-  }
   TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                       HloSharding::FromProto(sharding));
-  return hlo_sharding.TileShape(shape);
+  if (shape.IsTuple()) {
+    Shape sharded_shape = shape;
+    ShapeUtil::ForEachMutableSubshape(
+        &sharded_shape, [&](Shape* subshape, const ShapeIndex& index) {
+          if (!subshape->IsTuple()) {
+            HloSharding subsharding = hlo_sharding.GetSubSharding(shape, index);
+            *subshape = subsharding.TileShape(*subshape);
+          }
+        });
+    return sharded_shape;
+  } else {
+    return hlo_sharding.TileShape(shape);
+  }
 }
 
 StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
@@ -295,6 +293,42 @@ bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
     }
   }
   return true;
+}
+
+StatusOr<Shape> MakeShapeWithTrivialByteStrides(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> byte_strides) {
+  TF_RET_CHECK(dimensions.size() == byte_strides.size());
+  std::vector<int64_t> minor_to_major(dimensions.size());
+  // Begin with a major-to-minor layout that is likey the most common.
+  std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
+  // Find minor-to-major only if there is no zero dimension size because
+  // minor-to-major is irrelevant with any zero dimension size.
+  if (absl::c_find(dimensions, 0) == dimensions.end()) {
+    absl::c_sort(minor_to_major, [&](int a, int b) {
+      if (byte_strides[a] < byte_strides[b]) {
+        return true;
+      }
+      if (byte_strides[a] > byte_strides[b]) {
+        return false;
+      }
+      return dimensions[a] == 1 && dimensions[b] != 1;
+    });
+    int64_t byte_stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    for (int64_t d : minor_to_major) {
+      if (dimensions[d] != 1 && byte_strides[d] != byte_stride) {
+        return Unimplemented(
+            "Only trivial (compact) byte strides are supported; i.e., byte "
+            "striding represents a transposition of the underlying dense "
+            "buffer but not broadcasting. Dimensions were: [%s], byte strides "
+            "were [%s].",
+            absl::StrJoin(dimensions, ","), absl::StrJoin(byte_strides, ","));
+      }
+      byte_stride *= dimensions[d];
+    }
+  }
+  return ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                             minor_to_major);
 }
 
 }  // namespace xla

@@ -27,34 +27,34 @@ limitations under the License.
 // Note that the GPU cast functor templates need to be instantiated unlike the
 // CPU ones, and hence their specializations are different than that for CPUs.
 #ifdef SPECIALIZE_FOR_GPUS
-#define SPECIALIZE_CAST(DEVICE, OUT_TYPE, IN_OUT)                   \
+#define SPECIALIZE_CAST(DEVICE, OUT_TYPE, IN_TYPE)                  \
   template <typename Device>                                        \
-  struct CastFunctor<Device, OUT_TYPE, IN_OUT> {                    \
+  struct CastFunctor<Device, OUT_TYPE, IN_TYPE> {                   \
     void operator()(const Device& d,                                \
                     typename TTypes<OUT_TYPE>::Flat out_tensor,     \
-                    typename TTypes<IN_OUT>::ConstFlat in_tensor,   \
+                    typename TTypes<IN_TYPE>::ConstFlat in_tensor,  \
                     bool truncate = false) {                        \
       if (truncate) {                                               \
         out_tensor.device(d) =                                      \
-            in_tensor.unaryExpr(LSBZeroSetter<IN_OUT, OUT_TYPE>())  \
+            in_tensor.unaryExpr(LSBZeroSetter<IN_TYPE, OUT_TYPE>()) \
                 .template cast<OUT_TYPE>();                         \
       } else {                                                      \
         out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>(); \
       }                                                             \
     }                                                               \
   };                                                                \
-  template struct CastFunctor<DEVICE, OUT_TYPE, IN_OUT>;
+  template struct CastFunctor<DEVICE, OUT_TYPE, IN_TYPE>;
 #else
-#define SPECIALIZE_CAST(DEVICE, OUT_TYPE, IN_OUT)                   \
+#define SPECIALIZE_CAST(DEVICE, OUT_TYPE, IN_TYPE)                  \
   template <>                                                       \
-  struct CastFunctor<DEVICE, OUT_TYPE, IN_OUT> {                    \
+  struct CastFunctor<DEVICE, OUT_TYPE, IN_TYPE> {                   \
     void operator()(const DEVICE& d,                                \
                     typename TTypes<OUT_TYPE>::Flat out_tensor,     \
-                    typename TTypes<IN_OUT>::ConstFlat in_tensor,   \
+                    typename TTypes<IN_TYPE>::ConstFlat in_tensor,  \
                     bool truncate = false) {                        \
       if (truncate) {                                               \
         out_tensor.device(d) =                                      \
-            in_tensor.unaryExpr(LSBZeroSetter<IN_OUT, OUT_TYPE>())  \
+            in_tensor.unaryExpr(LSBZeroSetter<IN_TYPE, OUT_TYPE>()) \
                 .template cast<OUT_TYPE>();                         \
       } else {                                                      \
         out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>(); \
@@ -73,11 +73,20 @@ limitations under the License.
   SPECIALIZE_CAST(devname, Eigen::half, std::complex<double>)         \
   SPECIALIZE_CAST(devname, Eigen::half, std::complex<float>)          \
   SPECIALIZE_CAST(devname, bfloat16, float)                           \
-  template <typename OUT_TYPE, typename IN_OUT>                       \
-  struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \
+  SPECIALIZE_CAST(devname, float8_e5m2, double)                       \
+  SPECIALIZE_CAST(devname, float8_e5m2, float)                        \
+  SPECIALIZE_CAST(devname, float8_e5m2, bfloat16)                     \
+  SPECIALIZE_CAST(devname, float8_e5m2, Eigen::half)                  \
+  SPECIALIZE_CAST(devname, float8_e5m2, float8_e4m3fn)                \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, double)                     \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, float)                      \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, bfloat16)                   \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, Eigen::half)                \
+  template <typename OUT_TYPE, typename IN_TYPE>                      \
+  struct CastFunctor<devname, OUT_TYPE, IN_TYPE> {                    \
     void operator()(const devname& d,                                 \
                     typename TTypes<OUT_TYPE>::Flat out_tensor,       \
-                    typename TTypes<IN_OUT>::ConstFlat in_tensor,     \
+                    typename TTypes<IN_TYPE>::ConstFlat in_tensor,    \
                     bool truncate = false) {                          \
       out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();     \
     }                                                                 \
@@ -89,18 +98,27 @@ limitations under the License.
 // Eigen::half to float, because it is used in depthwise_conv_grad_op.cc. We
 // still need the specialized cast from float to double because it is used in
 // resize_bilinear_op.cc.
-#define CAST_FUNCTORS_SUBSET(devname)                                 \
-  SPECIALIZE_CAST(devname, float, double)                             \
-  SPECIALIZE_CAST(devname, Eigen::half, float)                        \
-  SPECIALIZE_CAST(devname, bfloat16, float)                           \
-  template <typename OUT_TYPE, typename IN_OUT>                       \
-  struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \
-    void operator()(const devname& d,                                 \
-                    typename TTypes<OUT_TYPE>::Flat out_tensor,       \
-                    typename TTypes<IN_OUT>::ConstFlat in_tensor,     \
-                    bool truncate = false) {                          \
-      out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();     \
-    }                                                                 \
+#define CAST_FUNCTORS_SUBSET(devname)                              \
+  SPECIALIZE_CAST(devname, float, double)                          \
+  SPECIALIZE_CAST(devname, Eigen::half, float)                     \
+  SPECIALIZE_CAST(devname, bfloat16, float)                        \
+  SPECIALIZE_CAST(devname, float8_e5m2, double)                    \
+  SPECIALIZE_CAST(devname, float8_e5m2, float)                     \
+  SPECIALIZE_CAST(devname, float8_e5m2, bfloat16)                  \
+  SPECIALIZE_CAST(devname, float8_e5m2, Eigen::half)               \
+  SPECIALIZE_CAST(devname, float8_e5m2, float8_e4m3fn)             \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, double)                  \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, float)                   \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, bfloat16)                \
+  SPECIALIZE_CAST(devname, float8_e4m3fn, Eigen::half)             \
+  template <typename OUT_TYPE, typename IN_TYPE>                   \
+  struct CastFunctor<devname, OUT_TYPE, IN_TYPE> {                 \
+    void operator()(const devname& d,                              \
+                    typename TTypes<OUT_TYPE>::Flat out_tensor,    \
+                    typename TTypes<IN_TYPE>::ConstFlat in_tensor, \
+                    bool truncate = false) {                       \
+      out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();  \
+    }                                                              \
   };
 #endif
 
@@ -169,14 +187,12 @@ struct CastFunctor {
                   typename TTypes<Tin>::ConstFlat i, bool truncate = false);
 };
 
-// Only enable LSBZeroSetterHelper for 64 and 32 bit input data types.
-// Specialize for others if needed in future.
 template <typename I>
 typename std::enable_if<sizeof(I) == 8, void>::type EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
-  if (!std::isnan(t)) {
+  if (!Eigen::numext::isnan(t)) {
     uint64_t* p = reinterpret_cast<uint64_t*>(&t);
     *p &= (0xFFFFFFFFFFFFFFFF << n);
   }
@@ -187,16 +203,38 @@ typename std::enable_if<sizeof(I) == 4, void>::type EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
-  if (!std::isnan(t)) {
+  if (!Eigen::numext::isnan(t)) {
     uint32_t* p = reinterpret_cast<uint32_t*>(&t);
     *p &= (0xFFFFFFFF << n);
+  }
+}
+
+template <typename I>
+typename std::enable_if<sizeof(I) == 2, void>::type EIGEN_DEVICE_FUNC
+    EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
+  // Only zero the bits for non-NaNs.
+  // For NaNs, let the non-truncation version handle it.
+  if (!Eigen::numext::isnan(t)) {
+    uint16_t* p = reinterpret_cast<uint16_t*>(&t);
+    *p &= (0xFFFF << n);
+  }
+}
+
+template <typename I>
+typename std::enable_if<sizeof(I) == 1, void>::type EIGEN_DEVICE_FUNC
+    EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
+  // Only zero the bits for non-NaNs.
+  // For NaNs, let the non-truncation version handle it.
+  if (!Eigen::numext::isnan(t)) {
+    uint8_t* p = reinterpret_cast<uint8_t*>(&t);
+    *p &= (0xFF << n);
   }
 }
 
 // Set n least significant bits to 0
 template <typename I, typename O>
 struct LSBZeroSetter {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const I operator()(const I& a) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE I operator()(const I& a) const {
     constexpr int bits = MantissaWidth<I>() - MantissaWidth<O>();
     static_assert(
         bits > 0,
@@ -209,14 +247,14 @@ struct LSBZeroSetter {
 
 template <typename I, typename O>
 struct LSBZeroSetter<std::complex<I>, std::complex<O>> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const std::complex<I> operator()(
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<I> operator()(
       const std::complex<I>& a) const {
     constexpr int bits = MantissaWidth<I>() - MantissaWidth<O>();
     static_assert(
         bits > 0,
         "The output type must have fewer mantissa bits than the input type\n");
-    I re = std::real(a);
-    I img = std::imag(a);
+    I re = Eigen::numext::real(a);
+    I img = Eigen::numext::imag(a);
     LSBZeroSetterHelper(re, bits);
     LSBZeroSetterHelper(img, bits);
     std::complex<I> toReturn(re, img);
@@ -227,14 +265,14 @@ struct LSBZeroSetter<std::complex<I>, std::complex<O>> {
 template <typename I, typename O>
 struct LSBZeroSetter<std::complex<I>, O> {
   // Sets the 16 LSBits of the float to 0
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const std::complex<I> operator()(
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<I> operator()(
       const std::complex<I>& a) const {
     constexpr int bits = MantissaWidth<I>() - MantissaWidth<O>();
     static_assert(
         bits > 0,
         "The output type must have fewer mantissa bits than the input type\n");
-    I re = std::real(a);
-    I img = std::imag(a);
+    I re = Eigen::numext::real(a);
+    I img = Eigen::numext::imag(a);
     LSBZeroSetterHelper(re, bits);
     LSBZeroSetterHelper(img, bits);
     std::complex<I> toReturn(re, img);
@@ -260,6 +298,14 @@ struct scalar_cast_op<std::complex<From>, To> {
   }
 };
 
+template <typename From>
+struct scalar_cast_op<std::complex<From>, bool> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(
+      const std::complex<From>& a) const {
+    return static_cast<bool>(a.real());
+  }
+};
+
 template <typename From, typename To>
 struct scalar_cast_op<From, std::complex<To>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
@@ -282,6 +328,10 @@ template <typename From, typename To>
 struct functor_traits_complex_impl {
   enum { Cost = NumTraits<To>::AddCost, PacketAccess = false };
 };
+
+template <typename From>
+struct functor_traits<scalar_cast_op<std::complex<From>, bool>>
+    : functor_traits_complex_impl<std::complex<From>, bool> {};
 
 template <typename From, typename To>
 struct functor_traits<scalar_cast_op<std::complex<From>, To>>

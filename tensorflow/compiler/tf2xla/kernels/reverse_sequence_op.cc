@@ -42,10 +42,15 @@ class ReverseSequenceOp : public XlaOpKernel {
                                         seq_lens_shape.dims()));
     OP_REQUIRES(context, batch_dim_ != seq_dim_,
                 errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim_));
+    OP_REQUIRES(context, seq_dim_ >= 0,
+                errors::InvalidArgument("seq_dim must be >=0, got ", seq_dim_));
     OP_REQUIRES(
         context, seq_dim_ < input_shape.dims(),
         errors::InvalidArgument("seq_dim must be < input rank", " ( ", seq_dim_,
                                 " vs. ", input_shape.dims(), ")"));
+    OP_REQUIRES(
+        context, batch_dim_ >= 0,
+        errors::InvalidArgument("batch_dim must be >=0, got ", batch_dim_));
     OP_REQUIRES(
         context, batch_dim_ < input_shape.dims(),
         errors::InvalidArgument("batch_dim must be < input rank", " ( ",

@@ -59,10 +59,22 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
+// Used to match ops to kernel sources (and eventually to kernel targets)
+#ifdef TF_LOG_KERNEL_SOURCES
+#define LOG_KERNEL_SOURCES(name) \
+  LOG(INFO) << "Kernel found: " << name << " " << __FILE__ << "\n";
+#else
+#define LOG_KERNEL_SOURCES(name)
+#endif
+
 namespace Eigen {
 struct ThreadPoolDevice;
 struct GpuDevice;
 }  // end namespace Eigen
+
+namespace tsl {
+class CoordinationServiceAgent;
+}
 
 namespace tensorflow {
 
@@ -81,7 +93,6 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
-class CoordinationServiceAgent;
 
 // A label that is added to kernels that are JIT compiled. These labels will be
 // removed before kernels are looked up, so they can be used without specifying
@@ -681,7 +692,7 @@ class OpKernelContext {
     bool* outputs_required_array = nullptr;
 
     // For access to distributed coordination service.
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -719,11 +730,16 @@ class OpKernelContext {
 
   // Input
 
-  // Returns an immutable input tensor. May only be used for non-Ref
+  // Returns an immutable input tensor by index. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
   const Tensor& input(int index) const;
+
+  // Returns an immutable input tensor in "tensor" by index. May only be used
+  // for non-Ref inputs. For Ref inputs use mutable_input below.
+  // REQUIRES: !IsRefType(input_dtype(index))
+  StatusOr<const Tensor*> get_input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -1153,7 +1169,7 @@ class OpKernelContext {
   }
 
   // Access to distributed coordination service.
-  CoordinationServiceAgent* coordination_service_agent() const {
+  tsl::CoordinationServiceAgent* coordination_service_agent() const {
     return params_->coordination_service_agent;
   }
 
@@ -1229,6 +1245,18 @@ class OpKernelContext {
   }
 
   Allocator* get_allocator(AllocatorAttributes attr);
+
+  Params* params() const { return params_; }
+  void set_params(Params* params) { params_ = params; }
+
+  void ResetOutputs(int num_outputs = 0) {
+    for (TensorValue& value : outputs_) {
+      DCHECK(!value.is_ref());
+      delete value.tensor;
+      value.tensor = nullptr;
+    }
+    outputs_.resize(num_outputs);
+  }
 
  private:
   bool record_memory_consumption_ = false;
@@ -1430,6 +1458,7 @@ class Name : public KernelDefBuilder {
                      return new __VA_ARGS__(context);                       \
                    });                                                      \
                (void)registrar;                                             \
+               LOG_KERNEL_SOURCES(op_name)                                  \
                return ::tensorflow::InitOnStartupMarker{};                  \
              })(kernel_builder_expr.Build());
 

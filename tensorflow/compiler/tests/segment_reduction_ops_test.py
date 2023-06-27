@@ -19,6 +19,7 @@ import functools
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -27,6 +28,13 @@ from tensorflow.python.platform import googletest
 
 class SegmentReductionOpsTest(xla_test.XLATestCase):
   """Test cases for segment reduction ops."""
+
+  def _findDevice(self, device_name):
+    devices = device_lib.list_local_devices()
+    for d in devices:
+      if d.device_type == device_name:
+        return True
+    return False
 
   def _segmentReduction(self, op, data, indices, num_segments):
     with self.session() as sess, self.test_scope():
@@ -41,6 +49,22 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
     return self._segmentReduction(math_ops.unsorted_segment_sum, data, indices,
                                   num_segments)
 
+  def _segmentSumV2(self, data, indices, num_segments):
+    return self._segmentReduction(math_ops.segment_sum_v2, data, indices,
+                                  num_segments)
+
+  def _segmentProdV2(self, data, indices, num_segments):
+    return self._segmentReduction(math_ops.segment_prod_v2, data, indices,
+                                  num_segments)
+
+  def _segmentMinV2(self, data, indices, num_segments):
+    return self._segmentReduction(math_ops.segment_min_v2, data, indices,
+                                  num_segments)
+
+  def _segmentMaxV2(self, data, indices, num_segments):
+    return self._segmentReduction(math_ops.segment_max_v2, data, indices,
+                                  num_segments)
+
   def _unsortedSegmentProd(self, data, indices, num_segments):
     return self._segmentReduction(math_ops.unsorted_segment_prod, data, indices,
                                   num_segments)
@@ -52,6 +76,104 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
   def _unsortedSegmentMax(self, data, indices, num_segments):
     return self._segmentReduction(math_ops.unsorted_segment_max, data, indices,
                                   num_segments)
+
+  def testSegmentSum(self):
+    for dtype in self.numeric_types:
+      self.assertAllClose(
+          np.array([1, 0, 2, 12], dtype=dtype),
+          self._segmentSumV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 4))
+
+  def testSegmentProd(self):
+    for dtype in self.numeric_types:
+      self.assertAllClose(
+          np.array([0, 1, 2, 60], dtype=dtype),
+          self._segmentProdV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 4))
+
+  def testSegmentProdNumSegmentsLess(self):
+    for dtype in self.numeric_types:
+      self.assertAllClose(
+          np.array([0, 1, 2], dtype=dtype),
+          self._segmentProdV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 3))
+
+  def testSegmentProdNumSegmentsMore(self):
+    for dtype in self.numeric_types:
+      self.assertAllClose(
+          np.array([0, 1, 2, 60, 1], dtype=dtype),
+          self._segmentProdV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
+
+  def testSegmentMin(self):
+    for dtype in self.int_types | self.float_types:
+      maxval = dtypes.as_dtype(dtype).max
+      if dtype == np.float64 and self._findDevice("TPU"):
+        maxval = np.Inf
+      self.assertAllClose(
+          np.array([0, maxval, 2, 3], dtype=dtype),
+          self._segmentMinV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 4))
+
+  def testSegmentMinNumSegmentsLess(self):
+    for dtype in self.int_types | self.float_types:
+      maxval = dtypes.as_dtype(dtype).max
+      if dtype == np.float64 and self._findDevice("TPU"):
+        maxval = np.Inf
+      self.assertAllClose(
+          np.array([0, maxval, 2], dtype=dtype),
+          self._segmentMinV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 3))
+
+  def testSegmentMinNumSegmentsMore(self):
+    for dtype in self.int_types | self.float_types:
+      maxval = dtypes.as_dtype(dtype).max
+      if dtype == np.float64 and self._findDevice("TPU"):
+        maxval = np.Inf
+      self.assertAllClose(
+          np.array([0, maxval, 2, 3, maxval], dtype=dtype),
+          self._segmentMinV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
+
+  def testSegmentMax(self):
+    for dtype in self.int_types | self.float_types:
+      minval = dtypes.as_dtype(dtype).min
+      if dtype == np.float64 and self._findDevice("TPU"):
+        minval = -np.Inf
+      self.assertAllClose(
+          np.array([1, minval, 2, 5], dtype=dtype),
+          self._segmentMaxV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 4))
+
+  def testSegmentMaxNumSegmentsLess(self):
+    for dtype in self.int_types | self.float_types:
+      minval = dtypes.as_dtype(dtype).min
+      if dtype == np.float64 and self._findDevice("TPU"):
+        minval = -np.Inf
+      self.assertAllClose(
+          np.array([1, minval, 2], dtype=dtype),
+          self._segmentMaxV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 3))
+
+  def testSegmentMaxNumSegmentsMore(self):
+    for dtype in self.int_types | self.float_types:
+      minval = dtypes.as_dtype(dtype).min
+      if dtype == np.float64 and self._findDevice("TPU"):
+        minval = -np.Inf
+      self.assertAllClose(
+          np.array([1, minval, 2, 5, minval], dtype=dtype),
+          self._segmentMaxV2(
+              np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
+              np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
 
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:

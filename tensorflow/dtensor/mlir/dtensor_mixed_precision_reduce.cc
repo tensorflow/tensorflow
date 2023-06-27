@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/strings/string_view.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -42,7 +44,7 @@ template <class ReduceOpType>
 mlir::LogicalResult GetAllReduceGroupSize(ReduceOpType reduce_op,
                                           int32* group_size) {
   mlir::DenseIntElementsAttr group_assignment_attr;
-  if (!matchPattern(reduce_op.group_assignment(),
+  if (!matchPattern(reduce_op.getGroupAssignment(),
                     m_Constant(&group_assignment_attr)))
     return mlir::emitError(reduce_op.getLoc(),
                            "group_assigment must be a constant.");
@@ -67,7 +69,9 @@ template <class ReduceOpType>
 mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
                                             bool* changed) {
   const mlir::RankedTensorType& input_type =
-      reduce_op.input().getType().template dyn_cast<mlir::RankedTensorType>();
+      reduce_op.getInput()
+          .getType()
+          .template dyn_cast<mlir::RankedTensorType>();
   if (!input_type.getElementType().isBF16()) {
     // Upcast only applies for bfloat16 input.
     return mlir::success();
@@ -87,19 +91,21 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   if (!reduce_layout.ok())
     return reduce_op.emitOpError(llvm::formatv(
         "Malformed layout specification for DTensor reduce op found: {0}",
-        reduce_layout.status().error_message()));
+        reduce_layout.status().message()));
 
   // The original output tensor type that would have been used by all users of
   // the reduce op.
   const mlir::RankedTensorType& output_type =
-      reduce_op.output().getType().template dyn_cast<mlir::RankedTensorType>();
+      reduce_op.getOutput()
+          .getType()
+          .template dyn_cast<mlir::RankedTensorType>();
 
   mlir::TF::CastOp upcast = builder.create<mlir::TF::CastOp>(
       loc,
       mlir::RankedTensorType::get(input_type.getShape(), builder.getF32Type()),
-      reduce_op.input());
-  reduce_op->setOperand(0, upcast.y());
-  reduce_op.output().setType(upcast.y().getType());
+      reduce_op.getInput());
+  reduce_op->setOperand(0, upcast.getY());
+  reduce_op.getOutput().setType(upcast.getY().getType());
 
   builder.setInsertionPointAfter(reduce_op);
   mlir::TF::CastOp downcast = builder.create<mlir::TF::CastOp>(
@@ -110,7 +116,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   // Match the layout of the downcast with the reduce op, this is required for
   // the later passes.
   SetSingleLayoutOnOp(downcast, *reduce_layout);
-  reduce_op.output().replaceAllUsesExcept(downcast.y(), downcast);
+  reduce_op.getOutput().replaceAllUsesExcept(downcast.getY(), downcast);
 
   *changed = true;
   return mlir::success();
@@ -123,7 +129,7 @@ mlir::LogicalResult TryMixedPrecisionReduce(mlir::func::FuncOp function,
   int32_t changedReduceOpsCounter = 0;
 
   mlir::WalkResult walk_result = function.walk([&](ReduceOpType reduce_op) {
-    if (reduce_op.reduce_op().str() == kReduceOpAdd) {
+    if (reduce_op.getReduceOp().str() == kReduceOpAdd) {
       reduceOpsCounter += 1;
       bool changed = false;
       if (mlir::failed(MaybeUpcastForReduction(reduce_op, &changed)))

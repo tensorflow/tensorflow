@@ -18,24 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#include "tensorflow/c/c_api_macros.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,7 +42,7 @@ typedef enum TF_DataType {
   TF_QINT8 = 11,     // Quantized int8
   TF_QUINT8 = 12,    // Quantized uint8
   TF_QINT32 = 13,    // Quantized int32
-  TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.  Only for cast ops.
+  TF_BFLOAT16 = 14,  // Float32 truncated to 16 bits.
   TF_QINT16 = 15,    // Quantized int16
   TF_QUINT16 = 16,   // Quantized uint16
   TF_UINT16 = 17,
@@ -69,6 +52,9 @@ typedef enum TF_DataType {
   TF_VARIANT = 21,
   TF_UINT32 = 22,
   TF_UINT64 = 23,
+  TF_FLOAT8_E5M2 = 24,    // 5 exponent bits, 2 mantissa bits.
+  TF_FLOAT8_E4M3FN = 25,  // 4 exponent bits, 3 mantissa bits, finite-only, with
+                          // 2 NaNs (0bS1111111).
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding

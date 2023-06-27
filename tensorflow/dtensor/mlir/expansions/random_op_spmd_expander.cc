@@ -108,7 +108,7 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
                            kDeviceSeedForMeshDims)
                        .getValues<uint32_t>()
                        .begin()))
-      return squeeze.output();
+      return squeeze.getOutput();
 
   TF_ASSIGN_OR_RETURN(mlir::Value mesh_coordinates,
                       GetMeshCoordinatesFromCluster(cluster));
@@ -139,7 +139,8 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   mlir::Attribute const_attr =
       mlir::DenseIntElementsAttr::get(const_type, multipliers);
   mlir::Value multiplier =
-      builder.create<mlir::TF::ConstOp>(cluster.getLoc(), const_attr).output();
+      builder.create<mlir::TF::ConstOp>(cluster.getLoc(), const_attr)
+          .getOutput();
 
   const mlir::RankedTensorType one_by_one =
       mlir::RankedTensorType::get({1, 1}, builder.getIntegerType(32));
@@ -154,7 +155,7 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   mlir::Value seed_plus_prime =
       builder
           .create<mlir::TF::AddV2Op>(cluster.getLoc(), one_by_one, seed, prime)
-          .z();
+          .getZ();
 
   mlir::TF::SqueezeOp squeeze = builder.create<mlir::TF::SqueezeOp>(
       cluster.getLoc(),
@@ -164,7 +165,7 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   squeeze->setAttr(kDeviceSeedForMeshDims,
                    builder.getI32TensorAttr(layout_dims));
 
-  return squeeze.output();
+  return squeeze.getOutput();
 }
 
 // Compute the new local shape for SPMD expansion and ensure it is valid.
@@ -173,7 +174,8 @@ StatusOr<llvm::SmallVector<int64_t, 4>> GetNewLocalShape(mlir::Operation* op,
                                                          const Layout& layout) {
   auto random_op = llvm::cast<RandomOp>(op);
   llvm::SmallVector<int64_t, 4> op_shape;
-  TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(random_op.shape(), &op_shape));
+  TF_RETURN_IF_ERROR(
+      ExtractConstVectorFromValue(random_op.getShape(), &op_shape));
 
   // Validate that sharding of random op is compatible with it's user defined
   // shape and calculate new shape of local random op.
@@ -215,7 +217,7 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV1(const Layout& layout,
   // Create device_id_seed for local RNG.
   TF_ASSIGN_OR_RETURN(auto seed_xor,
                       ComputeNewSeed<RandomOp>(builder, op, layout, location,
-                                               random_op.seed()));
+                                               random_op.getSeed()));
 
   // Create a new random op with new `local` shape and newly generated seed.
   // StatelessRandom op is used to make random op SPMD expansion
@@ -228,7 +230,7 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV1(const Layout& layout,
   // TODO(zhonglinhan) : check different input for StatelessRandomUniformInt
   auto local_random = builder.create<RandomOp>(location, new_random_type,
                                                new_shape_value, seed_xor);
-  op->getResult(0).replaceAllUsesWith(local_random.output());
+  op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();
 }
@@ -245,9 +247,9 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2(const Layout& layout,
 
   auto random_op = llvm::cast<RandomOp>(op);
   // Create device_id_seed for local RNG.
-  TF_ASSIGN_OR_RETURN(
-      auto seed_xor,
-      ComputeNewSeed<RandomOp>(builder, op, layout, location, random_op.key()));
+  TF_ASSIGN_OR_RETURN(auto seed_xor,
+                      ComputeNewSeed<RandomOp>(builder, op, layout, location,
+                                               random_op.getKey()));
 
   // Create a new random op with new `local` shape and newly generated seed.
   // StatelessRandom op is used to make random op SPMD expansion
@@ -258,10 +260,10 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2(const Layout& layout,
 
   auto new_shape_value = Int64Const(builder, location, new_random_shape);
 
-  auto local_random =
-      builder.create<RandomOp>(location, new_random_type, new_shape_value,
-                               seed_xor, random_op.counter(), random_op.alg());
-  op->getResult(0).replaceAllUsesWith(local_random.output());
+  auto local_random = builder.create<RandomOp>(
+      location, new_random_type, new_shape_value, seed_xor,
+      random_op.getCounter(), random_op.getAlg());
+  op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();
 }
@@ -278,9 +280,9 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2Range(
 
   auto random_op = llvm::cast<RandomOp>(op);
   // Create device_id_seed for local RNG.
-  TF_ASSIGN_OR_RETURN(
-      auto seed_xor,
-      ComputeNewSeed<RandomOp>(builder, op, layout, location, random_op.key()));
+  TF_ASSIGN_OR_RETURN(auto seed_xor,
+                      ComputeNewSeed<RandomOp>(builder, op, layout, location,
+                                               random_op.getKey()));
 
   // Create a new random op with new `local` shape and newly generated seed.
   // StatelessRandom op is used to make random op SPMD expansion
@@ -292,9 +294,10 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2Range(
   auto new_shape_value = Int64Const(builder, location, new_random_shape);
 
   auto local_random = builder.create<RandomOp>(
-      location, new_random_type, new_shape_value, seed_xor, random_op.counter(),
-      random_op.alg(), random_op.minval(), random_op.maxval());
-  op->getResult(0).replaceAllUsesWith(local_random.output());
+      location, new_random_type, new_shape_value, seed_xor,
+      random_op.getCounter(), random_op.getAlg(), random_op.getMinval(),
+      random_op.getMaxval());
+  op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();
 }

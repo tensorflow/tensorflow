@@ -34,7 +34,7 @@ BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
-IntroduceFloatingPointJitterPassFlags* jitter_flags;
+XlaCallModuleFlags* call_module_flags;
 MlirCommonFlags* mlir_flags;
 JitRtFlags* jitrt_flags;
 std::vector<Flag>* jitrt_flag_list;
@@ -74,6 +74,13 @@ bool SetterForXlaAutoJitFlag(const string& value) {
 
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
       opt_level;
+  return true;
+}
+
+bool SetterForXlaCallModuleDisabledChecks(const string& value) {
+  auto directives = absl::StrSplit(value, ',', absl::SkipEmpty());
+  call_module_flags->disabled_checks.insert(directives.begin(),
+                                            directives.end());
   return true;
 }
 
@@ -163,17 +170,17 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags = new JitRtFlags;
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
+  jitrt_flags->enable_crash_reproducer = false;
   jitrt_flags->log_query_of_death = false;
   jitrt_flags->vectorize = false;
-  jitrt_flags->enable_crash_reproducer = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
       Flag("cost_driven_async_parallel_for",
            &jitrt_flags->cost_driven_async_parallel_for, ""),
-      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
-      Flag("vectorize", &jitrt_flags->vectorize, ""),
       Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
            ""),
+      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
+      Flag("vectorize", &jitrt_flags->vectorize, ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
@@ -185,6 +192,7 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_check_cluster_input_numerics = false;
   build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
+  build_ops_flags->tf_xla_disable_full_embedding_pipelining = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
@@ -214,10 +222,12 @@ void AllocateAndParseFlags() {
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
 
-  jitter_flags = new IntroduceFloatingPointJitterPassFlags;
-  jitter_flags->jitter_amount = 1e-5;
-
+  call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
   //
@@ -228,15 +238,11 @@ void AllocateAndParseFlags() {
   // bridge, on a per-graph basis).
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
-  bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
-  auto setter_for_jitter_tensor_names = [](string sequence) {
-    jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
-    return true;
-  };
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
+  bool enable_mlir_generic_outside_compilation = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -257,6 +263,10 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_disable_constant_folding,
             "If true then disables constant folding on TF graph before XLA "
             "compilation."),
+       Flag("tf_xla_disable_full_embedding_pipelining",
+            &build_ops_flags->tf_xla_disable_full_embedding_pipelining,
+            "If true then disables full embedding pipelining and instead use "
+            "strict SparseCore / TensorCore sequencing."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "
@@ -274,15 +284,31 @@ void AllocateAndParseFlags() {
             "When lazy compilation is enabled, asynchronous compilation starts "
             "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
+       Flag("tf_xla_use_device_api_for_xla_launch",
+            &ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_,
+            "If true, uses Device API (PjRt) for single device compilation and "
+            "execution of functions marked for JIT compilation i.e. "
+            "jit_compile=True. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_compile_on_demand",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_,
+            "If true, uses Device API (PjRt) for compiling and executing ops "
+            "one by one in 'on-demand' mode. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_auto_jit",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_,
+            "If true, uses Device API (PjRt) for compilation and execution "
+            "when auto-clustering is enabled. Defaults to false."),
+       Flag("tf_xla_use_device_api",
+            &ops_flags->tf_xla_use_device_api.enabled_for_all_,
+            "If true, uses Device API (PjRt) for compilation and execution "
+            "of ops one-by-one in 'on-demand' mode, for functions marked for "
+            "JIT compilation, or when auto-clustering is enabled. Defaults to "
+            "false."),
 
-       Flag("tf_introduce_floating_point_jitter_to_tensors",
-            setter_for_jitter_tensor_names, "",
-            "The Tensors to add the jitter to.  The tensors are named in the "
-            "TensorId format of <node name>:<output idx>."),
-       Flag("tf_introduce_floating_point_jitter_amount",
-            &jitter_flags->jitter_amount,
-            "The amount of jitter to introduce.  This amount is added to each "
-            "element in the tensors named in `tensor_names."),
+       Flag("tf_xla_call_module_disabled_checks",
+            SetterForXlaCallModuleDisabledChecks, "",
+            "A comma-sepated list of directives specifying the safety checks "
+            "to be skipped when compiling XlaCallModuleOp. See the op "
+            "documentation for the recognized values."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
@@ -295,15 +321,13 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
-       Flag(
-           "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
-           "When tf_mlir_enable_mlir_bridge is true, this field can enable "
-           "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
-           "it only runs for graphs that use features MLIR bridge currently "
-           "supports."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
-            "are dumped in MLIR TFG dialect and not in GraphDef")});
+            "are dumped in MLIR TFG dialect and not in GraphDef"),
+       Flag("tf_mlir_enable_generic_outside_compilation",
+            &enable_mlir_generic_outside_compilation,
+            "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
+            "Generic Compiler Bridge.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -311,15 +335,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::
-                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        (mlir_bridge_safe_mode)
-            ? ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED
-            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
   } else {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
@@ -328,6 +347,8 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_generic_outside_compilation =
+      enable_mlir_generic_outside_compilation;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
@@ -342,7 +363,6 @@ void ResetFlags() {
   delete mark_for_compilation_flags;
   delete device_flags;
   delete ops_flags;
-  delete jitter_flags;
   delete mlir_flags;
   delete flag_list;
   delete jitrt_flags;
@@ -372,15 +392,14 @@ XlaDeviceFlags* GetXlaDeviceFlags() {
   return device_flags;
 }
 
-const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
+XlaOpsCommonFlags* GetXlaOpsCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
-  return *ops_flags;
+  return ops_flags;
 }
 
-const IntroduceFloatingPointJitterPassFlags&
-GetIntroduceFloatingPointJitterPassFlags() {
+XlaCallModuleFlags* GetXlaCallModuleFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
-  return *jitter_flags;
+  return call_module_flags;
 }
 
 MlirCommonFlags* GetMlirCommonFlags() {
@@ -434,6 +453,8 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
 static std::atomic<bool> xla_compilation_disabled(false);
 
 void DisableXlaCompilation() { xla_compilation_disabled = true; }
+
+void EnableXlaCompilation() { xla_compilation_disabled = false; }
 
 bool FailOnXlaCompilation() { return xla_compilation_disabled; }
 

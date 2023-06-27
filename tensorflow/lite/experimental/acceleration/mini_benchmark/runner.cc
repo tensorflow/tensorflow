@@ -14,12 +14,48 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 
+#ifndef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
+#include <dlfcn.h>
+#endif  // !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#ifndef _WIN32
+#include <poll.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
+
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <vector>
+
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
+
+#if defined(__ANDROID__) && !defined(TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS)
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
+#endif  // __ANDROID__ && !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
+
 // Implementation notes and rationale:
 //
 // This class's primary client is the mini-benchmark. The mini-benchmark tries
 // out different acceleration configurations for TFLite. The acceleration may
-// hang or crash due to driver bugs. Running in a separate process isolates the
-// application from these hangs or crashes.
+// hang or crash due to driver bugs. By Default, the mini-benchmark on Android
+// runs in a separate process that is forked from the host application. This is
+// done to prevent the benchmark from crashing or hanging the host application.
+// All other platforms run the benchmark in the same process. If
+// TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS is defined, the mini-benchmark is
+// forced to run in process..
 //
 // The separate process is implemented in native code. The main alternative
 // would be to use a separate service process at the Android application
@@ -59,37 +95,6 @@ limitations under the License.
 // be used to detect issues in production without using strings which can be
 // hard to make privacy-compliant.
 
-#ifdef __ANDROID__
-#include <dlfcn.h>
-#endif
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#ifndef _WIN32
-#include <poll.h>
-#include <signal.h>
-#include <unistd.h>
-#endif
-
-#include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <thread>  // NOLINT(build/c++11)
-#include <vector>
-
-#include "absl/strings/numbers.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#ifdef __ANDROID__
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#endif  // __ANDROID__
-
 namespace tflite {
 namespace acceleration {
 namespace {
@@ -100,9 +105,9 @@ MinibenchmarkStatus ProcessRunner::Init() {
   if (!function_pointer_) {
     return kMinibenchmarkPreconditionNotMet;
   }
-#ifndef __ANDROID__
+#if !defined(__ANDROID__) || defined(TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS)
   return kMinibenchmarkSuccess;
-#else
+#else  // __ANDROID__ && !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   tflite::acceleration::AndroidInfo android_info;
   if (!tflite::acceleration::RequestAndroidInfo(&android_info).ok()) {
     return kMinibenchmarkRequestAndroidInfoFailed;
@@ -166,7 +171,7 @@ MinibenchmarkStatus ProcessRunner::Init() {
   runner_path_ = runner_path;
   soname_ = soname;
   return kMinibenchmarkSuccess;
-#endif  // !__ANDROID__
+#endif  // !__ANDROID__ || TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 }
 
 // TODO(b/245901066): Refactor the runner to separate Multi-process
@@ -182,8 +187,8 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
   ssize_t length = fread(buffer, 1, kPidBufferLength, fstream);
   int pid;
   if (length != kPidBufferLength || !absl::SimpleAtoi(buffer, &pid)) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                    "Failed to get Validator subprocess id: %s", buffer);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to get Validator subprocess id: %s", buffer);
     return false;
   }
   struct pollfd pfd[1];
@@ -196,17 +201,17 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
     kill(pid, SIGKILL);
     return true;
   } else if (poll_ret < 0) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Validator timer failed: %s",
-                    strerror(errno));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Validator timer failed: %s",
+                         strerror(errno));
   }
   return false;
 }
 #endif  // _WIN32
 
-MinibenchmarkStatus ProcessRunner::Run(
-    const flatbuffers::FlatBufferBuilder* model,
-    const std::vector<std::string>& args, std::string* output, int* exitcode,
-    int* signal) {
+MinibenchmarkStatus ProcessRunner::Run(const Allocation* model_allocation,
+                                       const std::vector<std::string>& args,
+                                       std::string* output, int* exitcode,
+                                       int* signal) {
 #ifdef _WIN32
   return kMinibenchmarkUnsupportedPlatform;
 #else  // !_WIN32
@@ -215,13 +220,13 @@ MinibenchmarkStatus ProcessRunner::Run(
   }
   int benchmark_process_status = 0;
   MinibenchmarkStatus status = kMinibenchmarkCommandFailed;
-#ifndef __ANDROID__
+#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (function_pointer_) {
-    benchmark_process_status = RunInprocess(model, args);
+    benchmark_process_status = RunInprocess(model_allocation, args);
   } else {
     return kMinibenchmarkPreconditionNotMet;
   }
-#else
+#else   // !TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (runner_path_.empty()) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -232,13 +237,13 @@ MinibenchmarkStatus ProcessRunner::Run(
   // If model is not null, open a pipe() and add pipe model path as cmdline
   // argv[3]. If model is null, argv[0] should be the model path.
   int pipe_fds[2];
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     if (pipe(pipe_fds) < 0) {
       *exitcode = errno;
       return kMinibenchmarkPipeFailed;
     }
     std::string pipe_model_path = absl::StrCat(
-        "pipe:", pipe_fds[0], ":", pipe_fds[1], ":", model->GetSize());
+        "pipe:", pipe_fds[0], ":", pipe_fds[1], ":", model_allocation->bytes());
     cmd = cmd + " " + ShellEscape(pipe_model_path);
   }
 
@@ -254,15 +259,16 @@ MinibenchmarkStatus ProcessRunner::Run(
   }
 
   // Write model to MiniBenchmark process.
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     close(pipe_fds[0]);
     int written_bytes = 0;
-    int remaining_bytes = model->GetSize();
-    uint8_t* buffer = model->GetBufferPointer();
+    int remaining_bytes = model_allocation->bytes();
+    const uint8_t* current =
+        static_cast<const uint8_t*>(model_allocation->base());
     while (remaining_bytes > 0 &&
-           (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) > 0) {
+           (written_bytes = write(pipe_fds[1], current, remaining_bytes)) > 0) {
       remaining_bytes -= written_bytes;
-      buffer += written_bytes;
+      current += written_bytes;
     }
     close(pipe_fds[1]);
     if (written_bytes <= 0 || remaining_bytes > 0) {
@@ -289,7 +295,7 @@ MinibenchmarkStatus ProcessRunner::Run(
   } while (length == buffer.size());
   *output = ret;
   benchmark_process_status = pclose(f);
-#endif  // !__ANDROID
+#endif  //  TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   if (WIFEXITED(benchmark_process_status)) {
     *exitcode = WEXITSTATUS(benchmark_process_status);
     *signal = 0;
@@ -304,13 +310,12 @@ MinibenchmarkStatus ProcessRunner::Run(
 #endif  // _WIN32
 }
 
-#ifndef __ANDROID__
-
+#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 #ifndef __W_EXITCODE  // Mac
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
 
-int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
+int ProcessRunner::RunInprocess(const Allocation* model_allocation,
                                 const std::vector<std::string>& user_args) {
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running Validator in-process.");
   std::vector<std::string> args_string;
@@ -319,7 +324,7 @@ int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
   args_string.push_back(function_name_);
 
   std::thread write_thread;
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     int pipe_fds[2];
     if (pipe(pipe_fds) < 0) {
       return __W_EXITCODE(kMinibenchmarkPipeFailed, 0);
@@ -328,26 +333,29 @@ int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
     // Add pipe_model_path when model is not null.
     // Model loader won't close the write file descriptor when it's -1.
     args_string.push_back(
-        absl::StrCat("pipe:", pipe_fds[0], ":-1:", model->GetSize()));
+        absl::StrCat("pipe:", pipe_fds[0], ":-1:", model_allocation->bytes()));
 
     // When running MiniBenchmark in-process, we start a separate thread for
     // writing to pipe.
-    write_thread = std::thread([pipe_fds, model]() {
+    write_thread = std::thread([pipe_fds, model_allocation,
+                                error_reporter = error_reporter_]() {
       int written_bytes = 0;
-      int remaining_bytes = model->GetSize();
-      uint8_t* buffer = model->GetBufferPointer();
+      int remaining_bytes = model_allocation->bytes();
+      const uint8_t* current =
+          static_cast<const uint8_t*>(model_allocation->base());
       while (remaining_bytes > 0 &&
-             (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) >
+             (written_bytes = write(pipe_fds[1], current, remaining_bytes)) >
                  0) {
         remaining_bytes -= written_bytes;
-        buffer += written_bytes;
+        current += written_bytes;
       }
       close(pipe_fds[1]);
       if (written_bytes < 0 || remaining_bytes > 0) {
-        TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                        "Failed to write Model to pipe: %s. Expect to write %d "
-                        "bytes, %d bytes written.",
-                        strerror(errno), remaining_bytes, written_bytes);
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "Failed to write Model to pipe: %s. Expect to write %d "
+            "bytes, %d bytes written.",
+            strerror(errno), remaining_bytes, written_bytes);
       }
     });
   }
@@ -374,7 +382,7 @@ int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
   }
   return exit_code;
 }
-#endif  // !__ANDROID__
+#endif  // TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 
 namespace {
 

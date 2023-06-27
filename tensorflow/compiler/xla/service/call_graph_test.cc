@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -564,9 +564,70 @@ TEST_F(CallGraphTest, VisitWithError) {
       [](const CallGraphNode&) { return InternalError("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("Visitation failed"));
+  ASSERT_EQ(status.code(), tsl::error::INTERNAL);
+  ASSERT_THAT(status.message(), ::testing::HasSubstr("Visitation failed"));
+}
+
+TEST_F(CallGraphTest, ExecutionThread) {
+  // Create a module with two computations with different execution_threads and
+  // ensure call graphs with non-empty execution threads ignore the computations
+  // that are not in execution_threads.
+  HloComputation::Builder builder(TestName());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      kScalarShape, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* main_thread_computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      main_thread_computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+  auto* parallel_thread_computation = async_done->async_wrapped_computation();
+
+  {
+    // Call graph with all of the execution threads.
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    EXPECT_EQ(call_graph->nodes().size(), 2);
+    const CallGraphNode& main_thread_node =
+        call_graph->GetNode(main_thread_computation);
+    const CallGraphNode& parallel_thread_node =
+        call_graph->GetNode(parallel_thread_computation);
+    EXPECT_EQ(main_thread_node.callers().size(), 0);
+    EXPECT_EQ(main_thread_node.callees().size(), 1);
+    EXPECT_EQ(main_thread_node.depth(), 0);
+    EXPECT_EQ(parallel_thread_node.callers().size(), 1);
+    EXPECT_EQ(parallel_thread_node.callees().size(), 0);
+    EXPECT_EQ(parallel_thread_node.depth(), 1);
+  }
+
+  {
+    // Call graph with the main thread only.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module.get(), {HloInstruction::kMainExecutionThread});
+    EXPECT_EQ(call_graph->nodes().size(), 1);
+    const CallGraphNode& main_thread_node =
+        call_graph->GetNode(main_thread_computation);
+    EXPECT_EQ(main_thread_node.callers().size(), 0);
+    EXPECT_EQ(main_thread_node.callees().size(), 0);
+    EXPECT_EQ(main_thread_node.depth(), 0);
+  }
+
+  {
+    // Call graph with the parallel thread only.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module.get(), {kParallelThreadName});
+    EXPECT_EQ(call_graph->nodes().size(), 1);
+    const CallGraphNode& parallel_thread_node =
+        call_graph->GetNode(parallel_thread_computation);
+    EXPECT_EQ(parallel_thread_node.callers().size(), 0);
+    EXPECT_EQ(parallel_thread_node.callees().size(), 0);
+    EXPECT_EQ(parallel_thread_node.depth(), 0);
+  }
 }
 
 }  // namespace

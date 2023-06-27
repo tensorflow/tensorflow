@@ -15,7 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite.gpu;
 
-import androidx.annotation.Nullable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.annotations.UsedByReflection;
 
@@ -32,24 +31,21 @@ import org.tensorflow.lite.annotations.UsedByReflection;
 @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
 public class GpuDelegate implements Delegate {
 
-  @Nullable
-  private static final Throwable LOAD_LIBRARY_EXCEPTION;
   private static final long INVALID_DELEGATE_HANDLE = 0;
-  private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
-  private static volatile boolean isInit = false;
 
   private long delegateHandle;
 
   @UsedByReflection("GpuDelegateFactory")
   public GpuDelegate(GpuDelegateFactory.Options options) {
-    init();
+    GpuDelegateNative.init();
     delegateHandle =
         createDelegate(
             options.isPrecisionLossAllowed(),
             options.areQuantizedModelsAllowed(),
             options.getInferencePreference(),
             options.getSerializationDir(),
-            options.getModelToken());
+            options.getModelToken(),
+            options.getForceBackend().value());
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
@@ -83,58 +79,13 @@ public class GpuDelegate implements Delegate {
     }
   }
 
-  static {
-    Throwable exception = null;
-    try {
-      System.loadLibrary(TFLITE_GPU_LIB);
-    } catch (UnsatisfiedLinkError e) {
-      exception = e;
-    }
-    LOAD_LIBRARY_EXCEPTION = exception;
-  }
-
-  /**
-   * Ensure the GpuDelegate native library has been loaded.
-   *
-   * <p>If unsuccessful, throws an UnsatisfiedLinkError with the appropriate error message.
-   */
-  private static void init() {
-    if (isInit) {
-      return;
-    }
-
-    try {
-      // Try to invoke a native method (which itself does nothing) to ensure that native libs are
-      // available.
-      // This code is thread safe without synchronization, as multiple concurrent callers will
-      // either throw an exception without setting this value or set it to true several times.
-      nativeDoNothing();
-      isInit = true;
-    } catch (UnsatisfiedLinkError originalUnsatisfiedLinkError) {
-      // Prefer logging the original library loading exception if native methods are unavailable.
-      Throwable exceptionToLog =
-          LOAD_LIBRARY_EXCEPTION != null ? LOAD_LIBRARY_EXCEPTION : originalUnsatisfiedLinkError;
-      UnsatisfiedLinkError exceptionToThrow =
-          new UnsatisfiedLinkError(
-              "Failed to load native GpuDelegate methods. Check that the correct native"
-                  + " libraries are present, and, if using a custom native library, have been"
-                  + " properly loaded via System.loadLibrary():\n"
-                  + "  "
-                  + exceptionToLog);
-      exceptionToThrow.initCause(originalUnsatisfiedLinkError);
-      exceptionToThrow.addSuppressed(exceptionToLog);
-      throw exceptionToThrow;
-    }
-  }
-
-  private static native void nativeDoNothing();
-
   private static native long createDelegate(
       boolean precisionLossAllowed,
       boolean quantizedModelsAllowed,
       int preference,
       String serializationDir,
-      String modelToken);
+      String modelToken,
+      int forceBackend);
 
   private static native void deleteDelegate(long delegateHandle);
 }

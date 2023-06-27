@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -43,6 +47,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -117,7 +123,13 @@ const char* TF_Version() { return TF_VERSION_STRING; }
 // --------------------------------------------------------------------------
 
 // --------------------------------------------------------------------------
-TF_SessionOptions* TF_NewSessionOptions() { return new TF_SessionOptions; }
+TF_SessionOptions* TF_NewSessionOptions() {
+  TF_SessionOptions* out = new TF_SessionOptions;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  out->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  return out;
+}
 void TF_DeleteSessionOptions(TF_SessionOptions* opt) { delete opt; }
 
 void TF_SetTarget(TF_SessionOptions* options, const char* target) {
@@ -129,6 +141,9 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
   if (!options->options.config.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument("Unparseable ConfigProto");
   }
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
 }
 
 void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
@@ -315,6 +330,9 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
         }
       }
       *graph_def.mutable_library() = graph.flib_def().ToProto();
+      if (flags::Global().more_stack_traces.value()) {
+        *graph_def.mutable_debug_info() = graph.BuildDebugInfo();
+      }
       session->graph->mu.unlock();
       status->status = session->session->Extend(std::move(graph_def));
       if (!status->status.ok()) {
@@ -2417,20 +2435,21 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
 unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
                                      TF_Tensor** result, TF_Status* status) {
-  *result = nullptr;
   mutex_lock l(graph->mu);
-  OutputTensor tensor(&output.oper->node, output.index);
-  bool evaluated;
-  Tensor result_tensor;
-  status->status = EvaluateConstantTensor(
-      tensor, graph->refiner, *graph->graph.op_registry(),
-      graph->graph.versions().producer(), &evaluated, &result_tensor);
-  if (evaluated) {
-    DCHECK(status->status.ok());
-    *result = TF_TensorFromTensor(result_tensor, &status->status);
-    if (!status->status.ok()) evaluated = false;
+  auto status_or = EvaluateConstantTensor(
+      output.oper->node, output.index, graph->refiner,
+      [](const Node&, int) { return std::optional<Tensor>(); },
+      tensorflow::EvaluateConstantTensorRunner{
+          graph->graph.op_registry(),
+          graph->graph.versions().producer(),
+      });
+  if (!status_or.ok() || !status_or->has_value()) {
+    *result = nullptr;
+    status->status = std::move(status_or).status();
+    return false;
   }
-  return evaluated;
+  *result = TF_TensorFromTensor(**status_or, &status->status);
+  return status->status.ok();
 }
 
 TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {

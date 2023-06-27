@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_GPU_COMPATIBILITY_H_
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 

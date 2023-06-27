@@ -17,6 +17,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -45,7 +46,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -63,8 +64,8 @@ py_test(
     ],
     deps = [
         ":upgrade_schema_main_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -77,7 +78,7 @@ py_test(
 #         "//tensorflow/lite/schema:schema_generated.h.oss",
 #     ],
 #     python_version = "PY3",
-#     # TODO(b/217577534): Enable this TAP with FlatBuffer 2.0 migration.
+#     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.
 #     tags = [
 #         "manual",
 #         "notap",
@@ -178,6 +179,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "@flatbuffers",
     ],
+)
+
+flatbuffer_cc_library(
+    name = "conversion_metadata_fbs",
+    srcs = ["conversion_metadata.fbs"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tflite_portable_test_suite()

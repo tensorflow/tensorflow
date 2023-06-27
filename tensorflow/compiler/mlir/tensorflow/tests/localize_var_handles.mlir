@@ -116,3 +116,25 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: module @handles_iterators
+module @handles_iterators attributes {tf_saved_model.semantics} {
+  // CHECK-LABEL: @get_next
+  func.func private @get_next(%arg0: tensor<!tf_type.resource>) -> tensor<200x10xf32> {
+    // CHECK: %0 = "tf.Iterator"
+    // CHECK-SAME: shared_name = "foo_iterator"
+    // CHECK: "tf.IteratorGetNext"(%0)
+    %0 = "tf.IteratorGetNext"(%arg0) : (tensor<!tf_type.resource>) -> tensor<200x10xf32>
+    return %0 : tensor<200x10xf32>
+  }
+
+  // CHECK-LABEL: @main
+  func.func @main()
+  attributes {tf_saved_model.exported_names = ["main"]} {
+    %0 = "tf.Iterator"() {container = "", output_shapes = [#tf_type.shape<200x10>], output_types = [f32], shared_name = "foo_iterator"} : () -> tensor<!tf_type.resource>
+    %1 = func.call @get_next(%0) : (tensor<!tf_type.resource>) -> tensor<200x10xf32>
+    return
+  }
+}

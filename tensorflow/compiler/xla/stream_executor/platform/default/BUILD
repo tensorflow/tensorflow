@@ -1,12 +1,14 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.bzl", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
 licenses(["notice"])
 
-package(default_visibility = [
-    "//tensorflow/compiler/xla/stream_executor:__subpackages__",
-    "//tensorflow/stream_executor:__subpackages__",
-])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+    ],
+)
 
 cc_library(
     name = "platform",
@@ -15,26 +17,15 @@ cc_library(
 
 cc_library(
     name = "dso_loader",
-    srcs = ["dso_loader.cc"] + select({
-        # include dynamic loading checker only for open source build
-        "//tensorflow/tsl:oss": ["dlopen_checker.cc"],
-        "//conditions:default": ["dlopen_checker_stub.cc"],
-    }),
     hdrs = ["dso_loader.h"],
     compatible_with = [],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     tags = [
         "manual",
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:dso_loader",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_tensorrt//:tensorrt_headers",
     ],
 )

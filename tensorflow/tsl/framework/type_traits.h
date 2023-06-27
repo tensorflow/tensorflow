@@ -69,7 +69,10 @@ struct is_simple_type {
   static constexpr bool value =
       std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value ||
-      is_quantized<T>::value || std::is_same<T, bfloat16>::value;
+      is_quantized<T>::value || std::is_same<T, bfloat16>::value ||
+      std::is_same<T, float8_e4m3fn>::value ||
+      std::is_same<T, float8_e4m3b11>::value ||
+      std::is_same<T, float8_e5m2>::value;
 };
 
 }  // namespace tsl

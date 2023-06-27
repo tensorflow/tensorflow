@@ -42,16 +42,16 @@ from tensorflow.python.ops.check_ops import *
 from tensorflow.python.ops.clip_ops import *
 from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
+from tensorflow.python.ops.cond import cond
 from tensorflow.python.ops.confusion_matrix import confusion_matrix
-from tensorflow.python.ops.control_flow_ops import Assert
-from tensorflow.python.ops.control_flow_ops import case
-from tensorflow.python.ops.control_flow_ops import cond
+from tensorflow.python.ops.control_flow_assert import Assert
+from tensorflow.python.ops.control_flow_case import case
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
 from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
 # pylint: enable=redefined-builtin
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.ops.control_flow_ops import while_loop
+from tensorflow.python.ops.while_loop import while_loop
 from tensorflow.python.ops.batch_ops import *
 from tensorflow.python.ops.critical_section_ops import *
 from tensorflow.python.ops.data_flow_ops import *
@@ -61,6 +61,12 @@ from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *
 from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
+from tensorflow.python.ops.linalg import adjoint_registrations as _adjoint_registrations
+from tensorflow.python.ops.linalg import cholesky_registrations as _cholesky_registrations
+from tensorflow.python.ops.linalg import inverse_registrations as _inverse_registrations
+from tensorflow.python.ops.linalg import linear_operator_algebra as _linear_operator_algebra
+from tensorflow.python.ops.linalg import matmul_registrations as _matmul_registrations
+from tensorflow.python.ops.linalg import solve_registrations as _solve_registrations
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
 from tensorflow.python.ops.logging_ops import timestamp

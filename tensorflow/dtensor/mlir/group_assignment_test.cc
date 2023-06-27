@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -61,7 +60,7 @@ GroupAssignment CreateGroupAssignment(
       group_assignment_attr,
       GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
           num_slices, slice_size));
-  CHECK(group_assignment.ok());
+  TF_CHECK_OK(group_assignment.status());
   return *group_assignment;
 }
 
@@ -75,7 +74,7 @@ GroupAssignment CreateGroupAssignment(
   StatusOr<GroupAssignment> group_assignment = GroupAssignment::FromMLIR(
       group_assignment_attr,
       GroupAssignment::ReplicaToDeviceMap(std::move(map)));
-  CHECK(group_assignment.ok());
+  TF_CHECK_OK(group_assignment.status());
   return *group_assignment;
 }
 

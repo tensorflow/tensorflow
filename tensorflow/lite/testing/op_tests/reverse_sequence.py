@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for reverse_sequence."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -50,7 +50,7 @@ def make_reverse_sequence_tests(options):
         name="input",
         shape=parameters["input_shape"])
     outs = tf.reverse_sequence(
-        input_value,
+        input=input_value,
         seq_lengths=parameters["seq_lengths"],
         batch_axis=parameters["batch_axis"],
         seq_axis=parameters["seq_axis"])

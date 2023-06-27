@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
 namespace delegates {
@@ -71,6 +75,46 @@ TEST(UtilsTest, CreateNewTensorWithDifferentTypeTest) {
   // Cleanup.
   TfLiteIntArrayFree(tensors[0].dims);
   TfLiteIntArrayFree(tensors[1].dims);
+}
+
+TEST(UtilsTest, AcquireAndReleaseSubgraphContextTest) {
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 5; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/nullptr,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+  TfLiteContext* context = subgraphs[0]->context();
+  subgraphs[0]->context();
+
+  TfLiteContext* acquired_context;
+  EXPECT_EQ(kTfLiteOk, AcquireSubgraphContext(context, 2, &acquired_context));
+  EXPECT_EQ(subgraphs[2]->context(), acquired_context);
+  EXPECT_EQ(kTfLiteOk, ReleaseSubgraphContext(context, 2));
+}
+
+TEST(UtilsTest, MarkSubgraphAsDelegationSkippableTest) {
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 3; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/nullptr,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+  TfLiteContext* context = subgraphs[0]->context();
+
+  EXPECT_EQ(kTfLiteOk, MarkSubgraphAsDelegationSkippable(context, 2));
+
+  EXPECT_FALSE(subgraphs[0]->IsDelegationSkippable());
+  EXPECT_FALSE(subgraphs[1]->IsDelegationSkippable());
+  EXPECT_TRUE(subgraphs[2]->IsDelegationSkippable());
 }
 
 // A mock TfLiteContext to be used for GraphPartitionHelperTest.

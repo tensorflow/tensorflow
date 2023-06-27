@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/scatter_spmd_expander.h"
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -76,16 +79,16 @@ template <typename OpType>
 StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
   auto scatter_op = llvm::cast<OpType>(op);
   TF_ASSIGN_OR_RETURN(auto tensor_layout,
-                      ExtractLayoutFromOperand(scatter_op.tensor()));
+                      ExtractLayoutFromOperand(scatter_op.getTensor()));
   TF_ASSIGN_OR_RETURN(auto indices_layout,
-                      ExtractLayoutFromOperand(scatter_op.indices()));
+                      ExtractLayoutFromOperand(scatter_op.getIndices()));
   TF_ASSIGN_OR_RETURN(auto updates_layout,
-                      ExtractLayoutFromOperand(scatter_op.updates()));
+                      ExtractLayoutFromOperand(scatter_op.getUpdates()));
   TF_ASSIGN_OR_RETURN(auto output_layout,
                       ExtractSingleLayoutFromOp(scatter_op));
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
 
   if (tensor_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
@@ -94,18 +97,18 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
   // operations.
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> tensor_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.tensor()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getTensor()));
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> indices_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.indices()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getIndices()));
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> updates_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.updates()));
+      GetGlobalShapeOfValueFromDTensorLayout(scatter_op.getUpdates()));
 
   // Start by relaying out the inputs. Indices should replicated.
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_indices,
-      EmitRelayout(scatter_op.indices(), *indices_layout,
+      EmitRelayout(scatter_op.getIndices(), *indices_layout,
                    Layout::ReplicatedOnMesh(indices_layout->mesh(),
                                             indices_shape.size())));
 
@@ -131,10 +134,10 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
                       Layout::GetLayout(updates_specs, updates_layout->mesh()));
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_tensor,
-      EmitRelayout(scatter_op.tensor(), *tensor_layout, pre_output_layout));
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value new_updates,
-      EmitRelayout(scatter_op.updates(), *updates_layout, new_updates_layout));
+      EmitRelayout(scatter_op.getTensor(), *tensor_layout, pre_output_layout));
+  TF_ASSIGN_OR_RETURN(mlir::Value new_updates,
+                      EmitRelayout(scatter_op.getUpdates(), *updates_layout,
+                                   new_updates_layout));
 
   mlir::OpBuilder builder(op);
   OpType new_scatter = builder.create<OpType>(
@@ -142,7 +145,7 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_output,
-      EmitRelayout(new_scatter.output(), pre_output_layout, *output_layout));
+      EmitRelayout(new_scatter.getOutput(), pre_output_layout, *output_layout));
 
   op->getResult(0).replaceAllUsesWith(new_output);
   op->erase();
@@ -156,15 +159,15 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutForward(
   TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto scatter_op = llvm::cast<OpType>(op);
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
 
-  absl::optional<Layout> tensor_layout;
+  std::optional<Layout> tensor_layout;
   if (input_layouts.find(0) != input_layouts.end())
     tensor_layout.emplace(input_layouts.lookup(0));
-  absl::optional<Layout> updates_layout;
+  std::optional<Layout> updates_layout;
   if (input_layouts.find(2) != input_layouts.end())
     updates_layout.emplace(input_layouts.lookup(2));
 
@@ -184,9 +187,9 @@ StatusOr<llvm::DenseMap<int, Layout>> TensorScatterOpComputeLayoutBackward(
   TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto scatter_op = llvm::cast<OpType>(op);
 
-  const int tensor_rank = ValueRank(scatter_op.tensor());
-  const int indices_rank = ValueRank(scatter_op.indices());
-  const int updates_rank = ValueRank(scatter_op.updates());
+  const int tensor_rank = ValueRank(scatter_op.getTensor());
+  const int indices_rank = ValueRank(scatter_op.getIndices());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
   if (tensor_rank == -1 || indices_rank == -1 || updates_rank == -1)
     return errors::InvalidArgument("all inputs must have valid rank.");
 
@@ -269,6 +272,171 @@ TensorScatterOpSPMDExpander::ComputeLayoutBackward(
   }
   return errors::Unimplemented(absl::StrCat(
       "Layout propagation for op : ", OpName(op), " is not implemented"));
+}
+
+StatusOr<mlir::Operation*> ScatterNdOpSPMDExpander::ExpandOp(
+    mlir::Operation* op) {
+  TF_ASSIGN_OR_RETURN(const std::vector<Layout>& operand_layouts,
+                      ExtractRequiredLayoutFromOperands(op));
+  TF_ASSIGN_OR_RETURN(const Layout& output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+
+  const Layout& indices_layout = operand_layouts[0];
+  const Layout& updates_layout = operand_layouts[1];
+
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+  auto scatter_op = llvm::cast<mlir::TF::ScatterNdOp>(op);
+
+  const int output_rank = ValueRank(scatter_op.getResult());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
+  const int indices_rank = ValueRank(scatter_op.getIndices());
+
+  if (output_rank == -1 || updates_rank == -1) {
+    return errors::InvalidArgument(
+        "Dynamic shaped inputs are not supported. Please file a feature "
+        "request to TF DTensor: component id: 8333864");
+  }
+
+  llvm::SmallVector<int64_t, 4> global_shape;
+  if (!ExtractConstVectorFromValue(scatter_op.getShape(), &global_shape).ok()) {
+    return errors::InvalidArgument(
+        "Failed in extracting constant vector from shape tensor. Please file "
+        "a bug to TF DTensor: component id: 833864");
+  }
+
+  // Only do computation after replicating indices tensor.
+  // The expansion will work as the following:
+  // Let N be the rank of the output tensor.
+  // Let K be the rank of each update tensor.
+  // Then the size of each tensor of indices must be size N-K+1.
+  // We will enforce the indices tensor to be replicated, which means
+  // that also the first N-K+1 dimensions of the output must be replicated as
+  // well.
+  // We will shard the updates tensor however much we can, which also means
+  // we will shard the last K dimension tensors of the output tensor to be
+  // as sharded as the updates tensor.
+  //
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value new_indices,
+      EmitRelayout(scatter_op.getIndices(), indices_layout,
+                   Layout::ReplicatedOnMesh(mesh, indices_rank)));
+
+  // Create intermediate layouts for tensors and updates. Since the layout of
+  // tensor and the output of the local tensor-scatter are the same we can reuse
+  // GetOutputLayout. This intermediate layout will be the layout that
+  // both the output and the updates tensor will agree upon. The updates
+  // intermediate layout will also be computed from the last K dimension of
+  // this.
+  TF_ASSIGN_OR_RETURN(Layout output_intermediate_layout,
+                      GetOutputLayout(output_layout, output_rank,
+                                      updates_layout, updates_rank, mesh));
+
+  std::vector<std::string> updates_specs(updates_rank);
+  if (updates_rank == 0) {
+    return errors::InvalidArgument(
+        "Expected updates_rank to be greater than zero, but got: ",
+        updates_rank);
+  }
+  updates_specs[0] = Layout::kUnshardedDim;
+
+  for (int i = 1; i < updates_rank; ++i) {
+    updates_specs[updates_rank - i] =
+        output_intermediate_layout.sharding_spec(output_rank - i);
+  }
+
+  TF_ASSIGN_OR_RETURN(Layout new_updates_layout,
+                      Layout::GetLayout(updates_specs, mesh));
+
+  TF_ASSIGN_OR_RETURN(mlir::Value new_updates,
+                      EmitRelayout(scatter_op.getUpdates(), updates_layout,
+                                   new_updates_layout));
+
+  const std::vector<int64_t>& local_shape =
+      output_layout.LocalShapeFromGlobalShape(global_shape);
+
+  mlir::OpBuilder builder(op);
+  mlir::Operation* new_scatter = builder.create<mlir::TF::ScatterNdOp>(
+      op->getLoc(), op->getResult(0).getType(), new_indices, new_updates,
+      /*shape=*/
+      ::mlir::TF::collection_ops_util::GetR1Const(local_shape, builder,
+                                                  op->getLoc()));
+
+  TF_ASSIGN_OR_RETURN(mlir::Value new_output,
+                      EmitRelayout(new_scatter->getResult(0),
+                                   output_intermediate_layout, output_layout));
+
+  op->getResult(0).replaceAllUsesWith(new_output);
+  op->erase();
+
+  return InferSPMDExpandedLocalShape(new_output.getDefiningOp());
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+ScatterNdOpSPMDExpander::ComputeLayoutForward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+  auto scatter_op = llvm::cast<mlir::TF::ScatterNdOp>(op);
+
+  const int output_rank = ValueRank(scatter_op.getResult());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
+  if (output_rank == -1 || updates_rank == -1)
+    return errors::InvalidArgument(
+        "Dynamic shaped inputs are not supported. Please file a feature "
+        "request to TF DTensor: component id: 8333864");
+
+  std::optional<Layout> updates_layout;
+  auto iter = input_layouts.find(1);
+  if (iter == input_layouts.end()) {
+    return llvm::DenseMap<int, Layout>();
+  }
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      GetOutputLayout(std::nullopt, output_rank,
+                                      iter->getSecond(), updates_rank, mesh));
+  return llvm::DenseMap<int, Layout>({{0, output_layout}});
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+ScatterNdOpSPMDExpander::ComputeLayoutBackward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+  auto scatter_op = llvm::cast<mlir::TF::ScatterNdOp>(op);
+
+  const int output_rank = ValueRank(scatter_op.getResult());
+  const int indices_rank = ValueRank(scatter_op.getIndices());
+  const int updates_rank = ValueRank(scatter_op.getUpdates());
+
+  if (output_rank == -1 || indices_rank == -1 || updates_rank == -1)
+    return errors::InvalidArgument(
+        "Dynamic shaped inputs are not supported. Please file a feature "
+        "request to TF DTensor: component id: 8333864");
+
+  llvm::DenseMap<int, Layout> input_layouts(scatter_op.getNumOperands());
+
+  // Always set `indices` tensor and 'shape' tensor to replicated.
+  input_layouts[0] = Layout::ReplicatedOnMesh(mesh, /*rank=*/indices_rank);
+  input_layouts[2] = Layout::ReplicatedOnMesh(mesh, /*rank=*/1);
+
+  auto iter = output_layouts.find(0);
+  if (iter == output_layouts.end()) {
+    return input_layouts;
+  }
+  // Compute the updates layout.
+  const Layout& output_layout = iter->getSecond();
+  std::vector<std::string> updates_sharding_specs(updates_rank);
+
+  // Replicate the first dimension. This is the number of update tensors.
+  // Set the rest of the dimensions equal to the output's corresponding
+  // sharding.
+  updates_sharding_specs[0] = Layout::kUnshardedDim;
+  for (int i = 1; i < updates_rank; ++i) {
+    updates_sharding_specs[i] = output_layout.sharding_spec(output_rank - i);
+  }
+
+  TF_ASSIGN_OR_RETURN(const Layout updates_layout,
+                      Layout::GetLayout(updates_sharding_specs, mesh));
+  input_layouts[1] = updates_layout;
+
+  return input_layouts;
 }
 
 }  // namespace dtensor

@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/channel.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "grpcpp/impl/codegen/status.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -761,7 +764,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please make sure "
                          "resource is not already deleted.")));
@@ -777,8 +780,8 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       [ctx, done, handle](const Status& status, const CallResponse& response) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
-        error_code.scalar<int64_t>()() = status.code();
-        error_message.scalar<tstring>()() = status.error_message();
+        error_code.scalar<int64_t>()() = status.raw_code();
+        error_message.scalar<tstring>()() = status.message();
 
         ctx->set_output(0, error_code);
         ctx->set_output(1, error_message);
@@ -795,7 +798,7 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please ensure "
                          "resource is not already deleted.")));

@@ -154,7 +154,11 @@ TEST_F(GrpcSessionDebugTest, FileDebugURL) {
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(
+      test::TestClusterConfig()
+          .Options(Devices(1, 0))
+          .Jobs({test::TestJob{/*name=*/"localhost", /*num_tasks=*/2}}),
+      &cluster));
 
   auto session = NewRemote(Options(cluster->targets()[0], 1));
   TF_CHECK_OK(session->Create(graph));
@@ -224,7 +228,11 @@ void SetDevice(GraphDef* graph, const string& name, const string& dev) {
 
 TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   std::unique_ptr<test::TestCluster> cluster;
-  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 1), 2, &cluster));
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(
+      test::TestClusterConfig()
+          .Options(Devices(1, 1))
+          .Jobs({test::TestJob{/*name=*/"localhost", /*num_tasks=*/2}}),
+      &cluster));
   auto session = NewRemote(Options(cluster->targets()[0], 1000));
 
   // b = a

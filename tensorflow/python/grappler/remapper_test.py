@@ -38,7 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -92,7 +92,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
-      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version_str = sysconfig_lib.get_build_info().get(
+          'cuda_version', '0.0')
       cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
       if cuda_version < (11, 4):
         self.skipTest('This test requires CUDA >= 11.4.')
@@ -156,6 +157,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self.maybe_skip_test(mode)
@@ -171,12 +173,9 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      # Gelu exact (approximate=False) is not supported with bfloat16 precision
-      # since no support for Erf with bfloat16 data type.
-      # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-      # supported with bfloat16.
       if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+        config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
     elif mode == 'cuda':
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
       config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
@@ -223,6 +222,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_conv2d_biasadd_act_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
@@ -276,6 +276,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_two_conv2d_fusions(self):
     """Test two Conv2D patterns and only the second is fusable."""
     if not test_util.is_gpu_available(

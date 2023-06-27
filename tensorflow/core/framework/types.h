@@ -73,7 +73,6 @@ struct DeviceName<Eigen::GpuDevice> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
@@ -243,7 +242,7 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16);
+    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN);
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -262,8 +261,8 @@ const DataTypeSet kNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT64) | ToSet(DT_INT32) |
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_QINT8) |
-    ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_UINT32) |
-    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+    ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
+    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
 inline const DataTypeSet& NumberTypes() { return kNumberTypes; }
 
 constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
@@ -377,6 +376,8 @@ MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
+MATCH_TYPE_AND_ENUM(float8_e5m2, DT_FLOAT8_E5M2);
+MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
@@ -453,17 +454,22 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_HALF);
+    ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
+    ToSet(DT_FLOAT8_E4M3FN);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
 
 // Returns true iff 'dt' is a real, non-quantized floating point type.
 constexpr DataTypeSet kDataTypeIsFloating =
-    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE);
+    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) |
+    ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_FLOAT8_E5M2);
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }
+
+// Returns true iff 'dt' is a numeric type.
+inline bool DataTypeIsNumeric(DataType dt) { return kNumberTypes.Contains(dt); }
 
 // Returns true iff 'dt' is a complex type.
 constexpr DataTypeSet kDataTypeIsComplex =
@@ -541,8 +547,14 @@ struct TypeHasher {
   }
 };
 
-// Maps a legacy DType proto enum to an equivalent FullType ID.
+// Maps a legacy DType proto enum to an equivalent FullType ID,
+// i.e. sets the type_id of t based on dtype.
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t);
+
+// Set the type id_of t to TFT_TENSOR and add a child arg by mapping
+// a legacy DType proto enun to an equivalent FullType ID, e.g.
+// if dtype is DT_FLOAT, sets t to TFT_TENSOR[TFT_FLOAT].
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t);
 
 }  // namespace tensorflow
 

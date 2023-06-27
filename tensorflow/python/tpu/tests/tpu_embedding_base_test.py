@@ -35,7 +35,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util import nest
 
 FLAGS = flags.FLAGS
@@ -147,14 +146,17 @@ class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
     self.feature_friends_values_high_dimensional = self.feature_friends_values * self.data_batch_size
     self.feature_friends_row_lengths_high_dimensional = self.feature_friends_row_lengths * self.data_batch_size
 
-  def _get_strategy(self):
+  def _init_tpu_system(self):
     self.resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)
     if hasattr(self.resolver, '_cloud_tpu_client'):
       self.resolver._cloud_tpu_client.configure_tpu_version(
           version='nightly', restart_type='always')
     remote.connect_to_cluster(self.resolver)
-    tpu_strategy_util.initialize_tpu_system(self.resolver)
+    return tpu_cluster_resolver.initialize_tpu_system(self.resolver)
+
+  def _get_strategy(self):
+    _ = self._init_tpu_system()
     return tpu_strategy.TPUStrategy(self.resolver)
 
   def _create_mid_level(self, optimizer=None):

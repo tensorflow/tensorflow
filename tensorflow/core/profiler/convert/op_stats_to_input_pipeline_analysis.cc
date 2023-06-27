@@ -18,6 +18,8 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -38,18 +40,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/profiler/utils/format_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 const double kNumPsPerMs = 1000000000.0;
 
@@ -110,7 +114,8 @@ double GetTimeInMs(const Collection& type_ps, EventType event_type) {
   return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
 }
 
-StepSummary GetStepSummaryForSampleStats(const Stat<double>& sample_stats) {
+StepSummary GetStepSummaryForSampleStats(
+    const tsl::Stat<double>& sample_stats) {
   StepSummary step_time_summary;
   double avg, sdv, min, max;
   if (sample_stats.empty()) {
@@ -132,17 +137,17 @@ StepSummary GetStepSummaryForSampleStats(const Stat<double>& sample_stats) {
 
 GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
     const InputPipelineAnalysisResult& analysis) {
-  Stat<double> unknown_time_ms;
-  Stat<double> host_wait_input_ms;
-  Stat<double> host_to_device_ms;
-  Stat<double> input_ms;
-  Stat<double> output_ms;
-  Stat<double> device_compute_ms;
-  Stat<double> device_to_device_ms;
-  Stat<double> device_collectives_ms;
-  Stat<double> host_compute_ms;
-  Stat<double> host_prepare_ms;
-  Stat<double> host_compile_ms;
+  tsl::Stat<double> unknown_time_ms;
+  tsl::Stat<double> host_wait_input_ms;
+  tsl::Stat<double> host_to_device_ms;
+  tsl::Stat<double> input_ms;
+  tsl::Stat<double> output_ms;
+  tsl::Stat<double> device_compute_ms;
+  tsl::Stat<double> device_to_device_ms;
+  tsl::Stat<double> device_collectives_ms;
+  tsl::Stat<double> host_compute_ms;
+  tsl::Stat<double> host_prepare_ms;
+  tsl::Stat<double> host_compile_ms;
   GenericStepTimeBreakdown result;
 
   for (const google::protobuf::Any& step_details : analysis.step_details()) {
@@ -192,12 +197,13 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
 InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
   InputPipelineAnalysisResult result;
+  result.set_tag(false);
 
   // Computes the summary of step time in ms.
   *result.mutable_step_time_summary() =
       ComputeStepTimeSummaryInMs(grouped_by_step);
 
-  Stat<double> input_summary_stats_in_percent;
+  tsl::Stat<double> input_summary_stats_in_percent;
   for (const auto& coreid_stepinfo_map : grouped_by_step) {
     // Iterates over each step.
     const auto* ptr = gtl::FindOrNull(coreid_stepinfo_map.step_info_per_core(),
@@ -284,19 +290,21 @@ std::string InputOpCategoryString(InputOpCategory category) {
 inline bool IsInputOp(absl::string_view category) {
   // Do not include "IteratorGetNext*" here, because IteratorGetNext is an Op
   // that experiences the install stall, not an Op that causes the input stall.
-  return IsInfeedEnqueueOp(category) || IsDatasetOp(category) ||
-         IsMemcpyHToDOp(category);
+  return tsl::profiler::IsInfeedEnqueueOp(category) ||
+         tsl::profiler::IsDatasetOp(category) ||
+         tsl::profiler::IsMemcpyHToDOp(category);
 }
 
 // TODO(ckluk):
 //   Confirm with the tf.data team if the classification below is correct.
 InputOpCategory CategorizeInputOp(absl::string_view name,
                                   absl::string_view category) {
-  if (IsInfeedEnqueueOp(category) || IsMemcpyHToDOp(category)) {
+  if (tsl::profiler::IsInfeedEnqueueOp(category) ||
+      tsl::profiler::IsMemcpyHToDOp(category)) {
     // Ops for sending input from host to device.
     return InputOpCategory::kEnqueue;
   }
-  DCHECK(IsDatasetOp(category));
+  DCHECK(tsl::profiler::IsDatasetOp(category));
   if (absl::EndsWith(name, "::TFRecord") ||
       absl::EndsWith(name, "::TextLine") ||
       absl::EndsWith(name, "::FixedLengthRecord") ||
@@ -357,7 +365,7 @@ double RatioOfHostToDeviceTimeToStepTime(
     const OpMetricsDb& host_tf_metrics_db,
     const InputPipelineAnalysisResult& input_pipeline_analysis) {
   // For TPU execution that uses infeed.
-  absl::optional<double> host_infeed_enqueue_ratio =
+  std::optional<double> host_infeed_enqueue_ratio =
       HostInfeedEnqueueRatio(host_tf_metrics_db);
   if (host_infeed_enqueue_ratio.has_value()) {
     return host_infeed_enqueue_ratio.value();
@@ -575,7 +583,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
 
 StepSummary ComputeStepTimeSummaryInMs(
     const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
-  Stat<double> total_step_stats_in_ms;
+  tsl::Stat<double> total_step_stats_in_ms;
   // iterates over each step.
   for (const auto& coreid_stepinfo_map : grouped_by_step) {
     double max_per_step_stats_in_ms = 0.0;

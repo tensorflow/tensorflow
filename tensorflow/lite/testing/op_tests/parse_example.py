@@ -16,7 +16,7 @@
 import string
 
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -64,13 +64,17 @@ def make_parse_example_tests(options):
     if is_dense:
       feature_default_value = np.zeros(shape=feature_shape)
       if feature_dtype == tf.string:
-        feature_default_value = np.array(["missing"]*feature_shape[0])
-      features = {"x": tf.FixedLenFeature(shape=feature_shape,
-                                          dtype=feature_dtype,
-                                          default_value=feature_default_value)}
+        feature_default_value = np.array(["missing"] * feature_shape[0])
+      features = {
+          "x":
+              tf.io.FixedLenFeature(
+                  shape=feature_shape,
+                  dtype=feature_dtype,
+                  default_value=feature_default_value)
+      }
     else:  # Sparse
-      features = {"x": tf.VarLenFeature(dtype=feature_dtype)}
-    out = tf.parse_example(input_value, features)
+      features = {"x": tf.io.VarLenFeature(dtype=feature_dtype)}
+    out = tf.io.parse_example(serialized=input_value, features=features)
     output_tensor = out["x"]
     if not is_dense:
       output_tensor = out["x"].values

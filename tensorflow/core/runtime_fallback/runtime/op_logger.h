@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -44,7 +45,8 @@ class OpLogger : public tfrt::SharedContext {
   }
 
   tfrt::ArrayRef<std::string> GetLoggedOps() const {
-    return op_names_->ToArrayRef();
+    absl::Span<const std::string> span = op_names_->ToConstSpan();
+    return tfrt::ArrayRef<std::string>(span.data(), span.size());
   }
 
   // Cannot be called concurrently with any API in this class.

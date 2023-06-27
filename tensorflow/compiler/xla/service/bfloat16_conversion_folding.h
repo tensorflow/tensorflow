@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_CONVERSION_FOLDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_CONVERSION_FOLDING_H_
 
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -33,8 +33,10 @@ namespace xla {
 // changed made by this pass.
 class BFloat16ConversionFolding : public HloModulePass {
  public:
-  explicit BFloat16ConversionFolding(const BFloat16Support* bfloat16_support)
-      : bfloat16_support_(bfloat16_support) {}
+  explicit BFloat16ConversionFolding(const FloatSupport* bfloat16_support)
+      : bfloat16_support_(bfloat16_support) {
+    DCHECK(bfloat16_support->LowPrecisionType() == BF16);
+  }
 
   ~BFloat16ConversionFolding() override = default;
   absl::string_view name() const override { return "bfloat16-fold"; }
@@ -47,7 +49,7 @@ class BFloat16ConversionFolding : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const BFloat16Support* bfloat16_support_;
+  const FloatSupport* bfloat16_support_;
 };
 
 }  // namespace xla

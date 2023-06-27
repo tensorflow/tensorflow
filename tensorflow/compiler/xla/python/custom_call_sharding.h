@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_CUSTOM_CALL_SHARDING_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_CUSTOM_CALL_SHARDING_H_
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace xla {
 

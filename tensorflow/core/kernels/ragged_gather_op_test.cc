@@ -185,7 +185,7 @@ TEST_F(RaggedGatherOpTest, RaggedGather_OutOfBounds) {
       TensorShape({9}),                     // params_dense_values.shape
       {.1, .2, .3, .4, .5, .6, .7, .8, .9}  // params_dense_values
   );
-  EXPECT_EQ("indices[1] = 10 is not in [0, 4)", RunOpKernel().error_message());
+  EXPECT_EQ("indices[1] = 10 is not in [0, 4)", RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsNotSorted) {
@@ -196,7 +196,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsNotSorted) {
       TensorShape({9}),                     // params_dense_values.shape
       {.1, .2, .3, .4, .5, .6, .7, .8, .9}  // params_dense_values
   );
-  EXPECT_EQ("Ragged splits must be sorted", RunOpKernel().error_message());
+  EXPECT_EQ("Ragged splits must be sorted", RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsNegative) {
@@ -207,8 +207,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsNegative) {
       TensorShape({9}),                     // params_dense_values.shape
       {.1, .2, .3, .4, .5, .6, .7, .8, .9}  // params_dense_values
   );
-  EXPECT_EQ("Ragged splits must be non-negative",
-            RunOpKernel().error_message());
+  EXPECT_EQ("Ragged splits must be non-negative", RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsEmpty) {
@@ -219,7 +218,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsEmpty) {
       TensorShape({0}),  // params_dense_values.shape
       {}                 // params_dense_values
   );
-  EXPECT_EQ("Ragged splits may not be empty", RunOpKernel().error_message());
+  EXPECT_EQ("Ragged splits may not be empty", RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, InvalidSplitsTooBig) {
@@ -231,7 +230,7 @@ TEST_F(RaggedGatherOpTest, InvalidSplitsTooBig) {
       {.1, .2, .3, .4, .5, .6, .7, .8, .9}  // params_dense_values
   );
   EXPECT_EQ("Ragged splits must not point past values",
-            RunOpKernel().error_message());
+            RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, BadValuesShape) {
@@ -242,7 +241,7 @@ TEST_F(RaggedGatherOpTest, BadValuesShape) {
       TensorShape({}),   // params_dense_values.shape
       {.1}               // params_dense_values
   );
-  EXPECT_EQ("params.rank must be nonzero", RunOpKernel().error_message());
+  EXPECT_EQ("params.rank must be nonzero", RunOpKernel().message());
 }
 
 TEST_F(RaggedGatherOpTest, ShapeFn) {

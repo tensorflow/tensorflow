@@ -1,6 +1,7 @@
 path: "tensorflow.Operation"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyOperation\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "control_inputs"
@@ -44,7 +45,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'node_def\', \'g\', \'inputs\', \'output_types\', \'control_inputs\', \'input_types\', \'original_op\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "colocation_groups"
@@ -53,6 +53,10 @@ tf_class {
   member_method {
     name: "experimental_set_type"
     argspec: "args=[\'self\', \'type_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_node_def"
+    argspec: "args=[\'cls\', \'node_def\', \'g\', \'inputs\', \'output_types\', \'control_inputs\', \'input_types\', \'original_op\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_attr"

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -52,7 +51,7 @@ class ROCmPlatform : public Platform {
   int DeviceToBus(int device_ordinal);
 
   // Returns the lowest-ordinal-number StreamExecutor on the specified bus.
-  port::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
+  tsl::StatusOr<StreamExecutor*> FirstExecutorForBus(int bus_ordinal);
 
   // Platform interface implementation:
   // Returns the same value as kROCmPlatform above.
@@ -63,18 +62,18 @@ class ROCmPlatform : public Platform {
 
   const string& Name() const override;
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  port::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
+  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
       int ordinal, const PluginConfig& config) override;
 
-  port::StatusOr<StreamExecutor*> GetExecutor(
+  tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
-  port::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+  tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
   void RegisterTraceListener(std::unique_ptr<TraceListener> listener) override;

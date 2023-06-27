@@ -15,7 +15,9 @@
 """Script Language Operators."""
 
 # pylint: disable=g-bad-name
+import functools
 import threading
+
 
 # Used by py_util.cc to get tracebacks.
 import traceback  # pylint: disable=unused-import
@@ -23,10 +25,11 @@ import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,20 +39,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.lib.core import _pywrap_py_func
+from tensorflow.python.ops import autograph_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
-
-autograph = lazy_loader.LazyLoader(
-    "autograph", globals(),
-    "tensorflow.python.autograph.impl.api")
 
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
@@ -133,7 +132,7 @@ class EagerFunc:
   def __call__(self, device, token, args):
     """Calls `self._func` in eager mode, recording the tape if needed."""
     use_tape_cache = (
-        self._support_graph_mode_gradient or tape_lib.could_possibly_record())
+        self._support_graph_mode_gradient or record.could_possibly_record())
 
     if use_tape_cache:
       with backprop.GradientTape() as tape:
@@ -420,37 +419,148 @@ def _EagerPyFuncGrad(op, *dy):
   return gradient_op
 
 
+def _check_args_and_maybe_make_decorator(
+    script_op, script_op_name, func=None, inp=None, Tout=None, **kwargs
+):
+  """Checks the arguments and returns a decorator if func is None."""
+  if Tout is None:
+    raise TypeError(
+        "Missing required argument: 'Tout'\n"
+        f"  If using {script_op_name} as a decorator, set `Tout`\n"
+        "  **by name** above the function:\n"
+        f"  `@{script_op_name}(Tout=tout)`"
+    )
+
+  if func is None:
+    if inp is not None:
+      raise TypeError(
+          f"Don't set the `inp` argument when using {script_op_name} as a "
+          "decorator (`func=None`)."
+      )
+
+    def py_function_decorator(fun):
+      @functools.wraps(fun)
+      def py_function_wrapper(*args):
+        return script_op(fun, inp=args, Tout=Tout, **kwargs)
+
+      return py_function_wrapper
+
+    return py_function_decorator
+
+  if inp is None:
+    raise TypeError(
+        "Missing argument `inp`:\n"
+        "  You must set the `inp` argument (the list of arguments to the\n"
+        f"  function), unless you use `{script_op_name}` as a decorator"
+        "(`func=None`)."
+    )
+
+  return None
+
+
 @tf_export("py_function")
 @dispatch.add_dispatch_support
-def eager_py_func(func, inp, Tout, name=None):
+def eager_py_func(func=None, inp=None, Tout=None, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
-  This function allows expressing computations in a TensorFlow graph as
-  Python functions. In particular, it wraps a Python function `func`
-  in a once-differentiable TensorFlow operation that executes it with eager
-  execution enabled. As a consequence, `tf.py_function` makes it
-  possible to express control flow using Python constructs (`if`, `while`,
-  `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
-  `tf.while_loop`). For example, you might use `tf.py_function` to
-  implement the log huber function:
+  Using `tf.py_function` inside a `tf.function` allows you to run a python
+  function using eager execution, inside the `tf.function`'s graph.
+  This has two main affects:
 
-  ```python
-  def log_huber(x, m):
-    if tf.abs(x) <= m:
-      return x**2
-    else:
-      return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
+  1. This allows you to use nofunc=None, inp=None, Tout=Nonen tensorflow code
+  inside your `tf.function`.
+  2. It allows you to run python control logic in a `tf.function` without
+  relying on `tf.autograph` to convert the code to use tensorflow control logic
+  (tf.cond, tf.while_loop).
 
-  x = tf.constant(1.0)
-  m = tf.constant(2.0)
+  Both of these features can be useful for debgging.
 
-  with tf.GradientTape() as t:
-    t.watch([x, m])
-    y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
+  Since `tf.py_function` operates on `Tensor`s it is still
+  differentiable (once).
 
-  dy_dx = t.gradient(y, x)
-  assert dy_dx.numpy() == 2.0
-  ```
+  There are two ways to use this function:
+
+  ### As a decorator
+
+  Use `tf.py_function` as a decorator to ensure the function always runs
+  eagerly.
+
+  When using `tf.py_function` as a decorator:
+
+  * you must set `Tout`
+  * you may set `name`
+  * you must not set `func` or `inp`
+
+  For example, you might use `tf.py_function` to
+  implement the log huber function.
+
+  >>> @tf.py_function(Tout=tf.float32)
+  ... def py_log_huber(x, m):
+  ...   print('Running with eager execution.')
+  ...   if tf.abs(x) <= m:
+  ...     return x**2
+  ...   else:
+  ...     return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
+
+  Under eager execution the function operates normally:
+
+  >>> x = tf.constant(1.0)
+  >>> m = tf.constant(2.0)
+  >>>
+  >>> print(py_log_huber(x,m).numpy())
+  Running with eager execution.
+  1.0
+
+  Inside a `tf.function` the `tf.py_function` is not converted to a `tf.Graph`.:
+
+  >>> @tf.function
+  ... def tf_wrapper(x):
+  ...   print('Tracing.')
+  ...   m = tf.constant(2.0)
+  ...   return py_log_huber(x,m)
+
+  The `tf.py_function` only executes eagerly, and only when the `tf.function`
+  is called:
+
+  >>> print(tf_wrapper(x).numpy())
+  Tracing.
+  Running with eager execution.
+  1.0
+  >>> print(tf_wrapper(x).numpy())
+  Running with eager execution.
+  1.0
+
+
+  Gradients work as exeppcted:
+
+  >>> with tf.GradientTape() as t:
+  ...   t.watch(x)
+  ...   y = tf_wrapper(x)
+  Running with eager execution.
+  >>>
+  >>> t.gradient(y, x).numpy()
+  2.0
+
+  ### Inplace
+
+  You can also skip the decorator and use `tf.py_function` inplace.
+  This form can a useful shortcut if you don't control the function's source,
+  but it is harder to read.
+
+  >>> # No decorator
+  >>> def log_huber(x, m):
+  ...   if tf.abs(x) <= m:
+  ...     return x**2
+  ...   else:
+  ...     return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
+  >>>
+  >>> x = tf.constant(1.0)
+  >>> m = tf.constant(2.0)
+  >>>
+  >>> tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32).numpy()
+  1.0
+
+  ### More info
 
   You can also use `tf.py_function` to debug your models at runtime
   using Python tools, i.e., you can isolate portions of your code that
@@ -461,7 +571,7 @@ def eager_py_func(func, inp, Tout, name=None):
   For more information on eager execution, see the
   [Eager guide](https://tensorflow.org/guide/eager).
 
-  `tf.py_function` is similar in spirit to `tf.compat.v1.py_func`, but unlike
+  `tf.py_function` is similar in spirit to `tf.numpy_function`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
   Python function. In particular, while `tf.compat.v1.py_func` only runs on CPUs
   and wraps functions that take NumPy arrays as inputs and return NumPy arrays
@@ -492,29 +602,36 @@ def eager_py_func(func, inp, Tout, name=None):
     error.
 
   Args:
-    func: A Python function that accepts `inp` as arguments, and returns a
-      value (or list of values) whose type is described by `Tout`.
-
+    func: A Python function that accepts `inp` as arguments, and returns a value
+      (or list of values) whose type is described by `Tout`. Do not set `func`
+      when using `tf.py_function` as a decorator.
     inp: Input arguments for `func`.  A list whose elements are `Tensor`s or
       `CompositeTensors` (such as `tf.RaggedTensor`); or a single `Tensor` or
-      `CompositeTensor`.
-
-    Tout: The type(s) of the value(s) returned by `func`.  One of the
-      following.
-
+      `CompositeTensor`. Do not set `inp` when using `tf.py_function` as a
+      decorator.
+    Tout: The type(s) of the value(s) returned by `func`.  One of the following.
       * If `func` returns a `Tensor` (or a value that can be converted to a
-        Tensor): the `tf.DType` for that value.
-      * If `func` returns a `CompositeTensor`: The `tf.TypeSpec` for that value.
-      * If `func` returns `None`: the empty list (`[]`).
-      * If `func` returns a list of `Tensor` and `CompositeTensor` values:
-        a corresponding list of `tf.DType`s and `tf.TypeSpec`s for each value.
-
+      Tensor): the `tf.DType` for that value. * If `func` returns a
+      `CompositeTensor`: The `tf.TypeSpec` for that value. * If `func` returns
+      `None`: the empty list (`[]`). * If `func` returns a list of `Tensor` and
+      `CompositeTensor` values: a corresponding list of `tf.DType`s and
+      `tf.TypeSpec`s for each value.
     name: A name for the operation (optional).
 
   Returns:
-    The value(s) computed by `func`: a `Tensor`, `CompositeTensor`, or list of
+    * If `func` is `None` this returns a decorator that will ensure the
+    decorated function will always run with eager execution even if called
+    from a `tf.function`/`tf.Graph`.
+    * If used `func` is not `None` this executes `func` with eager execution
+    and returns the result: a `Tensor`, `CompositeTensor`, or list of
     `Tensor` and `CompositeTensor`; or an empty list if `func` returns `None`.
   """
+  decorator = _check_args_and_maybe_make_decorator(
+      eager_py_func, "tf.py_function", func=func, inp=inp, Tout=Tout, name=name
+  )
+  if decorator is not None:
+    return decorator
+
   if ops.executing_eagerly_outside_functions():
     with ops.device(context.context().host_address_space()):
       return _internal_py_func(
@@ -686,26 +803,67 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 @tf_export("numpy_function")
 @dispatch.add_dispatch_support
-def numpy_function(func, inp, Tout, stateful=True, name=None):
+def numpy_function(func=None, inp=None, Tout=None, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func` wrap this function as an operation in a
-  TensorFlow function. `func` must take numpy arrays as its arguments and
+  `tf.function`. `func` must take numpy arrays as its arguments and
   return numpy arrays as its outputs.
 
-  The following example creates a TensorFlow graph with `np.sinh()` as an
-  operation in the graph:
+  There are two ways to use `tf.numpy_function`.
 
-  >>> def my_numpy_func(x):
+  ### As a decorator
+
+  When using `tf.numpy_function` as a decorator:
+
+  * you must set `Tout`
+  * you may set `name`
+  * you must not set `func` or `inp`
+
+  >>> @tf.numpy_function(Tout=tf.float32)
+  ... def my_numpy_func(x):
   ...   # x will be a numpy array with the contents of the input to the
   ...   # tf.function
+  ...   print(f'executing eagerly, {x=}')
   ...   return np.sinh(x)
+
+  The function runs eagerly:
+
+  >>> my_numpy_func(1.0).numpy()
+  executing eagerly, x=1.0
+  1.17520
+
+  The behavior doesn't change inside a `tf.function`:
+
   >>> @tf.function(input_signature=[tf.TensorSpec(None, tf.float32)])
   ... def tf_function(input):
   ...   y = tf.numpy_function(my_numpy_func, [input], tf.float32)
-  ...   return y * y
-  >>> tf_function(tf.constant(1.))
-  <tf.Tensor: shape=(), dtype=float32, numpy=1.3810978>
+  ...   return y
+  >>> tf_function(tf.constant(1.)).numpy()
+  executing eagerly, x=array(1.)
+  1.17520
+
+  ### Inplace
+
+  This form can be useful if you don't control the function's source,
+  but it is harder to read.
+
+  Here is the same function with no decorator:
+
+  >>> def my_func(x):
+  ...   # x will be a numpy array with the contents of the input to the
+  ...   # tf.function
+  ...   print(f'executing eagerly, {x=}')
+  ...   return np.sinh(x)
+
+  To run `tf.numpy_function` inplace, pass the function, its inputs, and the
+  output type in a single call to `tf.numpy_function`:
+
+  >>> tf.numpy_function(my_func, [tf.constant(1.0)], tf.float32)
+  executing eagerly, x=array(1.)
+  1.17520
+
+  ### More info
 
   Comparison to `tf.py_function`:
   `tf.py_function` and `tf.numpy_function` are very similar, except that
@@ -746,28 +904,44 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
       `numpy.ndarray`). This function must accept as many arguments as there are
       tensors in `inp`, and these argument types will match the corresponding
       `tf.Tensor` objects in `inp`. The returns `numpy.ndarray`s must match the
-      number and types defined `Tout`.
-      Important Note: Input and output `numpy.ndarray`s of `func` are not
-        guaranteed to be copies. In some cases their underlying memory will be
-        shared with the corresponding TensorFlow tensors. In-place modification
-        or storing `func` input or return values in python datastructures
-        without explicit (np.)copy can have non-deterministic consequences.
+      number and types defined `Tout`. Important Note: Input and output
+      `numpy.ndarray`s of `func` are not guaranteed to be copies. In some cases
+      their underlying memory will be shared with the corresponding TensorFlow
+      tensors. In-place modification or storing `func` input or return values in
+      python datastructures without explicit (np.)copy can have
+      non-deterministic consequences.
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
     stateful: (Boolean.) Setting this argument to False tells the runtime to
-      treat the function as stateless, which enables certain optimizations.
-      A function is stateless when given the same input it will return the
-      same output and have no side effects; its only purpose is to have a
-      return value.
-      The behavior for a stateful function with the `stateful` argument False
-      is undefined. In particular, caution should be taken when
-      mutating the input arguments as this is a stateful operation.
+      treat the function as stateless, which enables certain optimizations. A
+      function is stateless when given the same input it will return the same
+      output and have no side effects; its only purpose is to have a return
+      value. The behavior for a stateful function with the `stateful` argument
+      False is undefined. In particular, caution should be taken when mutating
+      the input arguments as this is a stateful operation.
     name: (Optional) A name for the operation.
 
   Returns:
-    Single or list of `tf.Tensor` which `func` computes.
+    * If `func` is `None` this returns a decorator that will ensure the
+      decorated function will always run with eager execution even if called
+      from a `tf.function`/`tf.Graph`.
+    * If used `func` is not `None` this executes `func` with eager execution
+      and returns the result: A single or list of `tf.Tensor` which `func`
+      computes.
   """
+  decorator = _check_args_and_maybe_make_decorator(
+      numpy_function,
+      "tf.numpy_function",
+      func=func,
+      inp=inp,
+      Tout=Tout,
+      stateful=stateful,
+      name=name,
+  )
+  if decorator is not None:
+    return decorator
+
   return py_func_common(func, inp, Tout, stateful=stateful, name=name)
 
 

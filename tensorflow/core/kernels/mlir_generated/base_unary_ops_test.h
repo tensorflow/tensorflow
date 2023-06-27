@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_UNARY_OPS_TEST_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_UNARY_OPS_TEST_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -166,7 +168,8 @@ class UnaryOpsTestBase : public OpsTestBase {
       absl::InlinedVector<T, 10> input,
       const BaselineCallback& baseline_callback) {
     absl::InlinedVector<OutT, 10> expected_output;
-    for (int i = 0; i < input.size(); i++) {
+    expected_output.reserve(input.size());
+    for (int64_t i = 0; i < input.size(); i++) {
       auto arg = static_cast<BaselineT>(input[i]);
       auto result = static_cast<OutT>(baseline_callback(arg));
       expected_output.push_back(result);

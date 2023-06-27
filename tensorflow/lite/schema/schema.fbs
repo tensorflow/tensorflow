@@ -21,6 +21,9 @@
 //             version 3.
 // Version 3b: Rename fields in SignatureDef. Has backward compatibility with
 //             version 3 and 3a.
+// Version 3c: Move constant tensor buffers & custom op buffers outside from
+//             Flatbuffers. Has backward compatibility with version 3, 3a and
+//             3b.
 
 namespace tflite;
 
@@ -53,7 +56,8 @@ enum TensorType : byte {
   RESOURCE = 13,
   VARIANT = 14,
   UINT32 = 15,
-  UINT16 = 16
+  UINT16 = 16,
+  INT4 = 17,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -412,7 +416,10 @@ enum BuiltinOperator : int32 {
   UNSORTED_SEGMENT_SUM = 155,
   ATAN2 = 156,
   UNSORTED_SEGMENT_MIN = 157,
-  SIGN = 158
+  SIGN = 158,
+  BITCAST = 159,
+  BITWISE_XOR = 160,
+  RIGHT_SHIFT = 161,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -540,7 +547,10 @@ union BuiltinOptions {
   UnsortedSegmentMinOptions,
   UnsortedSegmentSumOptions,
   ATan2Options,
-  SignOptions
+  SignOptions,
+  BitcastOptions,
+  BitwiseXorOptions,
+  RightShiftOptions,
 }
 
 // LINT.IfChange
@@ -739,8 +749,11 @@ table UnidirectionalSequenceLSTMOptions {
   // If true then first dimension is sequence, otherwise batch.
   time_major:bool;
 
-  // Parameter for Unidirectional Sequence LSTM version 4.
+  // Parameter for Unidirectional Sequence LSTM version 3.
   asymmetric_quantize_inputs:bool;
+
+  // Parameter for unidirectional sequence RNN version 4.
+  diagonal_recurrent_tensors:bool;
 }
 
 table BidirectionalSequenceLSTMOptions {
@@ -870,6 +883,8 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+  // If true, then the end tensor is an offset of the begin tensor.
+  offset: bool;
 }
 
 table LogSoftmaxOptions {
@@ -919,9 +934,13 @@ table SliceOptions {
 }
 
 table TransposeConvOptions {
+  // Parameters supported by version 1, 2, 3:
   padding:Padding;
   stride_w:int;
   stride_h:int;
+
+  // Parameters supported by version 4:
+  fused_activation_function:ActivationFunctionType = NONE;
 }
 
 table ExpandDimsOptions {
@@ -1170,6 +1189,14 @@ table UnsortedSegmentMinOptions{
 table SignOptions {
 }
 
+table BitcastOptions {
+}
+
+table BitwiseXorOptions {
+}
+
+table RightShiftOptions {
+}
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
@@ -1230,6 +1257,13 @@ table Operator {
   // computation, which may require relevant metadata such as quantization
   // parameters.
   intermediates:[int];
+
+  // When an op is using custom_options in a model that is larger than 2GB, then
+  // we instead use the following attributes to find the buffer location which
+  // is stored outside of flatbuffers, the offset is calculated relative to the
+  // beginning of the file and is only valid if > 1
+  large_custom_options_offset: ulong;
+  large_custom_options_size: ulong;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1258,6 +1292,13 @@ table SubGraph {
 // by index. The generous alignment accommodates mmap-friendly data structures.
 table Buffer {
   data:[ubyte] (force_align: 16);
+
+  // In a model that is larger than 2GB, then buffers instead uses the following
+  // attributes to find stored data, which is outside of flatbuffers
+  // the offset is calculated relative to the beginning of the file and is only
+  // valid if > 1.
+  offset: ulong;
+  size: ulong;
 }
 
 table Metadata {

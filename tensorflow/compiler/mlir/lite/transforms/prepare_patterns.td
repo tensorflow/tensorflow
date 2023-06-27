@@ -76,6 +76,8 @@ def ConvertPlaceholderWithDefault : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
+def RemovePreventGradient : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
+def RemoveXlaSharding : Pat<(TF_XlaShardingOp $a, $b, $c), (replaceWithValue $a)>;
 def RemoveIdentityN : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
@@ -195,3 +197,10 @@ def LowerUInt32AddV2 : Pat<
       (CreateTFCastOpI32 $rhs, /*truncate=*/ConstBoolAttrFalse)),
      /*truncate=*/ConstBoolAttrFalse),
   [(TensorOf<[TF_Uint32]> $lhs), (TensorOf<[TF_Uint32]> $rhs)]>;
+
+//===----------------------------------------------------------------------===//
+// Fill op patterns.
+//===----------------------------------------------------------------------===//
+
+def RemoveRedundantShapeOp :
+  Pat<(TF_ShapeOp (TF_FillOp $shape, $fill)), (replaceWithValue $shape)>;

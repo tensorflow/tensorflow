@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 
@@ -92,8 +92,9 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     }
     fixed_state_create_params.combiners_size = c_str_combiners.size();
     fixed_state_create_params.combiners = c_str_combiners.data();
-    fixed_state_ = tpu::OpsApiFn()->TpuEmbeddingTensorBatchFixedState_CreateFn(
-        &fixed_state_create_params);
+    fixed_state_ = stream_executor::tpu::OpsApiFn()
+                       ->TpuEmbeddingTensorBatchFixedState_CreateFn(
+                           &fixed_state_create_params);
 
     OP_REQUIRES_OK(ctx, status.status());
   }
@@ -167,7 +168,8 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
       tensorflow::profiler::TraceMe enqueue_batch_trace(
           [] { return "EnqueueBatch"; },
           tensorflow::profiler::TraceMeLevel::kInfo);
-      tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(&params);
+      stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(
+          &params);
       OP_REQUIRES_OK(ctx, status.status());
     }
 
@@ -185,7 +187,8 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
   }
 
   ~EnqueueTPUEmbeddingArbitraryTensorBatchOp() override {
-    tpu::OpsApiFn()->TpuEmbeddingTensorBatchFixedState_DestroyFn(fixed_state_);
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingTensorBatchFixedState_DestroyFn(fixed_state_);
   }
 
  private:

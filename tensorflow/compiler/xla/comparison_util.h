@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -164,7 +166,7 @@ class Comparison {
   // Returns a comparison operator: (T, T) -> bool for this Comparison's
   // Direction.
   template <typename T>
-  std::function<bool(T, T)> GetComparator() const {
+  inline std::function<bool(T, T)> GetComparator() const {
     switch (GetDirection()) {
       case Direction::kEq:
         return std::equal_to<T>();
@@ -183,25 +185,24 @@ class Comparison {
 
   // Applies the comparison from this Comparison's direction and ordering for
   // integral types.
-  template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
-  bool Compare(const T a, const T b) const {
-    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+  template <typename T,
+            absl::enable_if_t<std::numeric_limits<T>::is_integer, int> = 0>
+  inline bool Compare(const T a, const T b) const {
+    DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     return GetComparator<T>()(a, b);
   }
 
   // Applies the comparison from this Comparison's direction and ordering
   // for floating point types.
   template <typename T,
-            absl::enable_if_t<std::is_floating_point<T>::value ||
-                                  std::is_same<T, xla::bfloat16>::value,
-                              int> = 0>
-  bool Compare(const T a, const T b) const {
-    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+            absl::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 0>
+  inline bool Compare(const T a, const T b) const {
+    DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     if (IsTotalOrder()) {
       //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
       // Reference:
       // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
-      using R = typename SignedIntegerTypeForSize<sizeof(T)>::type;
+      using R = SignedIntegerTypeForSizeType<sizeof(T)>;
       return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
     }
     return GetComparator<T>()(a, b);
@@ -234,8 +235,8 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
-std::string ComparisonPrimitiveTypeToString(PrimitiveType type);
-std::string ComparisonOrderToString(Comparison::Order order);
+absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
+absl::string_view ComparisonOrderToString(Comparison::Order order);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
@@ -247,6 +248,18 @@ StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order);
 template <typename KeyFn>
 auto LessThanByKey(KeyFn&& key_fn) {
   return [=](const auto& a, const auto& b) { return key_fn(a) < key_fn(b); };
+}
+
+// Two comparisons are equivalent iff they have the same direction, precision,
+// and ordering.
+inline bool operator==(const Comparison& a, const Comparison& b) {
+  return a.GetDirection() == b.GetDirection() &&
+         a.GetPrimitiveType() == b.GetPrimitiveType() &&
+         a.GetOrder() == b.GetOrder();
+}
+
+inline bool operator!=(const Comparison& a, const Comparison& b) {
+  return !(a == b);
 }
 
 }  // namespace xla

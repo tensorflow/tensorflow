@@ -14,20 +14,63 @@
 # ==============================================================================
 """TraceType implementations for common Python types."""
 
-from typing import Any, Hashable, Optional, Sequence, Type
-from typing import Dict as PythonDict
-from typing import Tuple as PythonTuple
+import collections
+import math
+import numbers
+from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type
 import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
 from tensorflow.core.function.trace_type import serialization
+from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
+
+# Register the TraceType of Tensor (aka TensorSpec) to avoid cyclic dependency.
+TENSOR = None
+
+
+def register_tensor_type(tensor_type):
+  global TENSOR
+  if not TENSOR:
+    TENSOR = tensor_type
+  else:
+    raise AssertionError("Tensor type is already registered.")
+
+NanMarker = object()
+
+
+def is_nan(x):
+  """Checks if given value is a Python NaN."""
+  if not isinstance(x, numbers.Number):
+    return False
+
+  if isinstance(x, complex):
+    return math.isnan(x.real) or math.isnan(x.imag)
+  else:
+    return math.isnan(x)
+
+
+def cast_and_return_whether_casted(
+    trace_types, values, context
+) -> PythonTuple[PythonList[Any], bool]:
+  did_cast = False
+  casted_values = []
+  for t, v in zip(trace_types, values):
+    casted_v = t._cast(v, context)  # pylint: disable=protected-access
+    casted_values.append(casted_v)
+    if casted_v is not v:
+      did_cast = True
+  return casted_values, did_cast
 
 
 class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""
 
   def __init__(self, value: Any):
+    # We match nan values against each other even though Python doesn't.
+    if is_nan(value):
+      value = NanMarker
+
     self.value = value
     self._value_hash = hash(value)
 
@@ -82,8 +125,25 @@ class Literal(trace.TraceType, serialization.Serializable):
     raise ValueError("Can not serialize Literal of type " +
                      type(self.value).__name__)
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
+    # TODO(b/263505796): Remove this check when a range's placeholder output
+    # is expected to be a range and not a list.
+    if isinstance(self.value, range):
+      return list(self.value)
+
+    if self.value is NanMarker:
+      return float("nan")
+
     return self.value
+
+  def _cast(self, value: Any, casting_context: Any) -> Any:
+    if self.value is NanMarker and is_nan(value):
+      return value
+
+    if value == self.value:
+      return value
+    else:
+      raise ValueError(f"Can not cast {value!r} to {self!r}")
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -116,8 +176,20 @@ class Weakref(trace.TraceType):
       self, types: Sequence[trace.TraceType]) -> Optional["Weakref"]:
     return self if all(self == other for other in types) else None
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     return self._ref()
+
+  def _cast(self, value, _):
+    if value is self._ref() or value == self._ref():
+      return value
+
+    # We unwrap objects when generating the TraceType so we allow matching now.
+    while hasattr(value, "__wrapped__"):
+      value = value.__wrapped__
+      if value is self._ref():
+        return value
+
+    raise ValueError(f"Can not cast {value!r} to {self!r}")
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -187,12 +259,42 @@ class Tuple(trace.TraceType, serialization.Serializable):
     return default_types_pb2.SerializedTuple(
         components=[serialization.serialize(c) for c in self.components])
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     components = [
-        component._placeholder_value()  # pylint: disable=protected-access
+        component.placeholder_value(placeholder_context)
         for component in self.components
     ]
     return tuple(components)
+
+  def _to_tensors(self, value) -> Any:
+    assert isinstance(value, tuple)
+    flattened_values = []
+    for comp_value, comp_type in zip(value, self.components):
+      flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
+    return flattened_values
+
+  def _from_tensors(self, tensors) -> Any:
+    return tuple(c._from_tensors(tensors) for c in self.components)  # pylint: disable=protected-access
+
+  def _flatten(self) -> PythonList[trace.TraceType]:
+    flattened_types = []
+    for component in self.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+    return flattened_types
+
+  def _cast(self, value: Any, casting_context) -> Any:
+    assert isinstance(value, tuple), f"Can not cast {value!r} to tuple type."
+    assert len(value) == len(
+        self.components
+    ), f"Expected {value} to have length of {len(self.components)}"
+
+    casted_values, was_casted = cast_and_return_whether_casted(
+        self.components, value, casting_context
+    )
+    if was_casted:
+      return tuple(casted_values)
+    else:
+      return value
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -228,8 +330,11 @@ class List(trace.TraceType, serialization.Serializable):
     if not all(isinstance(other, List) for other in others):
       return None
 
-    supertyped_components_tuple = self.components_tuple.most_specific_common_supertype(
-        [other.components_tuple for other in others])
+    supertyped_components_tuple = (
+        self.components_tuple.most_specific_common_supertype(
+            [other.components_tuple for other in others]
+        )
+    )
 
     if supertyped_components_tuple is None:
       return None
@@ -250,8 +355,32 @@ class List(trace.TraceType, serialization.Serializable):
     return default_types_pb2.SerializedList(
         components_tuple=self.components_tuple.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
-    return list(self.components_tuple._placeholder_value())  # pylint: disable=protected-access
+  def placeholder_value(self, placeholder_context) -> Any:
+    return list(self.components_tuple.placeholder_value(placeholder_context))
+
+  def _to_tensors(self, value):
+    assert isinstance(value, list)
+    return self.components_tuple._to_tensors(tuple(value))  # pylint: disable=protected-access
+
+  def _from_tensors(self, tensors) -> Any:
+    return list(self.components_tuple._from_tensors(tensors))  # pylint: disable=protected-access
+
+  def _flatten(self) -> PythonList[trace.TraceType]:
+    return self.components_tuple._flatten()  # pylint: disable=protected-access
+
+  def _cast(self, value: Any, casting_context) -> Any:
+    assert isinstance(value, list), f"Can not cast {value!r} to list type."
+    assert len(value) == len(
+        self.components_tuple.components
+    ), f"Expected {value} to have length of {len(self.components_tuple)}"
+
+    casted_values, was_casted = cast_and_return_whether_casted(
+        self.components_tuple.components, value, casting_context
+    )
+    if was_casted:
+      return list(casted_values)
+    else:
+      return value
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -332,7 +461,7 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
         attribute_names=list(self.attribute_names),
         attributes=self.attributes.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     if self._placeholder_type is None:
       # We don't need to trace after serialization so it is not needed but we
       # can generate a placeholder type using the description if ever needed.
@@ -340,10 +469,55 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
                        " unspecified placeholder_type. Note: placeholder_type "
                        "is lost during serialization.")
     attribute_placeholders = [
-        attribute._placeholder_value()  # pylint: disable=protected-access
+        attribute.placeholder_value(placeholder_context)
         for attribute in self.attributes.components
     ]
     return self._placeholder_type(*attribute_placeholders)
+
+  def _to_tensors(self, value: Any):
+    assert util.is_namedtuple(value)
+    flattened_values = []
+    for attribute_name, attribute_type in zip(
+        self.attribute_names, self.attributes.components):
+      attribute_value = getattr(value, attribute_name)
+      flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
+    return flattened_values
+
+  def _from_tensors(self, tensors) -> Any:
+    if self._placeholder_type is None:
+      raise ValueError("Packing serialized NamedTuples is not supported.")
+
+    return self._placeholder_type(
+        *[c._from_tensors(tensors) for c in self.attributes.components]  # pylint: disable=protected-access
+    )
+
+  def _flatten(self) -> PythonList[trace.TraceType]:
+    flattened_types = []
+
+    for component in self.attributes.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
+
+  def _cast(self, value: Any, casting_context) -> Any:
+    # Value must have same attributes with the TraceType
+    assert util.is_namedtuple(
+        value
+    ), f"Cannot cast {value!r} to type {self._placeholder_type!r}."
+    value_dict = value._asdict()
+    assert set(value_dict.keys()) == set(
+        self.attribute_names
+    ), f"{value!r} has different attributes with the TraceType {self!r}"
+
+    casted_values, was_casted = cast_and_return_whether_casted(
+        self.attributes.components,
+        [getattr(value, name) for name in self.attribute_names],
+        casting_context,
+    )
+    if was_casted:
+      return self._placeholder_type(*casted_values)
+    else:
+      return value
 
   def __hash__(self) -> int:
     return hash((self.type_name, self.attribute_names, self.attributes))
@@ -396,8 +570,11 @@ class Attrs(trace.TraceType):
     if not all(isinstance(other, Attrs) for other in others):
       return None
 
-    supertyped_attributes = self.named_attributes.most_specific_common_supertype(
-        [other.named_attributes for other in others])
+    supertyped_attributes = (
+        self.named_attributes.most_specific_common_supertype(
+            [other.named_attributes for other in others]
+        )
+    )
 
     if supertyped_attributes is None:
       return None
@@ -424,7 +601,7 @@ class Attrs(trace.TraceType):
     return default_types_pb2.SerializedAttrs(
         named_attributes=self.named_attributes.experimental_as_proto())
 
-  def _placeholder_value(self) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     if self._placeholder_type is None:
       # We don't need to trace after serialization so it is not needed but we
       # can generate a placeholder type using the description if ever needed.
@@ -432,10 +609,54 @@ class Attrs(trace.TraceType):
                        " unspecified placeholder_type. Note: placeholder_type "
                        "is lost during serialization.")
     attribute_placeholders = [
-        attribute._placeholder_value()  # pylint: disable=protected-access
+        attribute.placeholder_value(placeholder_context)
         for attribute in self.named_attributes.attributes.components
     ]
     return self._placeholder_type(*attribute_placeholders)
+
+  def _to_tensors(self, value: Any):
+    assert util.is_attrs(value)
+    flattened_values = []
+    for attribute_name, attribute_type in zip(
+        self.named_attributes.attribute_names,
+        self.named_attributes.attributes.components):
+      attribute_value = getattr(value, attribute_name)
+      flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
+    return flattened_values
+
+  def _from_tensors(self, tensors):
+    if self._placeholder_type is None:
+      raise ValueError("Packing serialized NamedTuples is not supported.")
+
+    return self._placeholder_type(
+        *[
+            c._from_tensors(tensors)  # pylint: disable=protected-access
+            for c in self.named_attributes.attributes.components
+        ]
+    )
+
+  def _flatten(self) -> PythonList[trace.TraceType]:
+    flattened_types = []
+
+    for component in self.named_attributes.attributes.components:
+      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
+
+  def _cast(self, value: Any, casting_context) -> Any:
+    assert util.is_attrs(value)
+
+    attr_names = self.named_attributes.attribute_names
+    casted_values, was_casted = cast_and_return_whether_casted(
+        self.named_attributes.attributes.components,
+        [getattr(value, name) for name in attr_names],
+        casting_context,
+    )
+
+    if was_casted:
+      return self._placeholder_type(*casted_values)
+    else:
+      return value
 
   def __hash__(self) -> int:
     return hash(self.named_attributes)
@@ -462,8 +683,11 @@ class Dict(trace.TraceType, serialization.Serializable):
     mapping: A mapping from keys to corresponding TraceTypes of the dict values.
   """
 
-  def __init__(self, mapping: PythonDict[Hashable, trace.TraceType]):
+  def __init__(self,
+               mapping: PythonDict[Hashable, trace.TraceType],
+               placeholder_type: Optional[Type[Any]] = None):
     self.mapping = mapping
+    self._placeholder_type = placeholder_type
 
   def _has_same_structure(self, other):
     if not isinstance(other, Dict):
@@ -499,7 +723,7 @@ class Dict(trace.TraceType, serialization.Serializable):
       else:
         new_mapping[key] = common
 
-    return Dict(new_mapping)
+    return Dict(new_mapping, self._placeholder_type)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedDict]:
@@ -518,11 +742,72 @@ class Dict(trace.TraceType, serialization.Serializable):
         keys=[Literal(k).experimental_as_proto() for k in self.mapping.keys()],
         values=[serialization.serialize(v) for v in self.mapping.values()])
 
-  def _placeholder_value(self) -> Any:
-    return {
-        key: value._placeholder_value()  # pylint: disable=protected-access
+  def placeholder_value(self, placeholder_context) -> Any:
+    if self._placeholder_type is None:
+      raise ValueError("Can not generate placeholder value for Dict with"
+                       " unspecified placeholder_type. Note: placeholder_type "
+                       "is lost during serialization.")
+    attribute_placeholders = [
+        (key, value.placeholder_value(placeholder_context))
         for key, value in self.mapping.items()
+    ]
+    if self._placeholder_type is collections.defaultdict:
+      return dict(attribute_placeholders)
+    return self._placeholder_type(attribute_placeholders)
+
+  def _to_tensors(self, value: Any):
+    assert isinstance(value, collections.abc.Mapping)
+    flattened_values = []
+    for key in sorted(self.mapping.keys()):
+      comp_value, comp_type = value[key], self.mapping[key]
+      flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
+    return flattened_values
+
+  def _from_tensors(self, tensors):
+    if self._placeholder_type is None:
+      raise ValueError("Packing serialized Dict is not supported.")
+
+    sorted_traversal = {
+        key: self.mapping[key]._from_tensors(tensors)  # pylint: disable=protected-access
+        for key in sorted(self.mapping)
     }
+
+    if self._placeholder_type is collections.defaultdict:
+      return {key: sorted_traversal[key] for key in self.mapping}
+
+    return self._placeholder_type(
+        (key, sorted_traversal[key]) for key in self.mapping
+    )
+
+  def _flatten(self) -> PythonList[trace.TraceType]:
+    flattened_types = []
+
+    for key in sorted(self.mapping.keys()):
+      flattened_types.extend(self.mapping[key]._flatten())  # pylint: disable=protected-access
+
+    return flattened_types
+
+  def _cast(self, value: Any, casting_context) -> Any:
+    # Value must have same keys with the TraceType
+    assert isinstance(
+        value, collections.abc.Mapping
+    ), f"Can not cast {value!r} to a Dict type."
+    assert set(value.keys()) == set(
+        self.mapping.keys()
+    ), f"{value!r} has different keys with the TraceType {self!r}."
+
+    casted_values, was_casted = cast_and_return_whether_casted(
+        self.mapping.values(),
+        [value[k] for k in self.mapping.keys()],
+        casting_context,
+    )
+
+    if was_casted:
+      return self._placeholder_type(
+          **{k: v for k, v in zip(self.mapping.keys(), casted_values)}
+      )
+    else:
+      return value
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -538,54 +823,6 @@ class Dict(trace.TraceType, serialization.Serializable):
 
   def __repr__(self):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
-
-
-class Reference(trace.TraceType):
-  """Represents a resource with an identifier.
-
-  Resource identifiers are useful to denote identical resources, that is,
-  resources which are known at compilation time to point to the same thing.
-  This information is useful in automatic control dependencies for instance,
-  where ops using the same resource don't run concurrently.
-  """
-
-  def __init__(self, base: trace.TraceType, identifier: Hashable):
-    self.base = base
-    self.identifier = identifier
-
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    if isinstance(other, Reference) and self.identifier == other.identifier:
-      return self.base.is_subtype_of(other.base)
-    return False
-
-  def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional["Reference"]:
-    if all(
-        isinstance(other, Reference) and self.identifier == other.identifier
-        for other in types):
-      base_supertype = self.base.most_specific_common_supertype(
-          [other.base for other in types])
-      if base_supertype is not None:
-        return Reference(base_supertype, self.identifier)
-    return None
-
-  def _placeholder_value(self) -> Any:
-    return self.base._placeholder_value()  # pylint: disable=protected-access
-
-  def __eq__(self, other: Any) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    return isinstance(
-        other, Reference
-    ) and self.identifier == other.identifier and self.base == other.base
-
-  def __hash__(self) -> int:
-    return hash((self.identifier, self.base))
-
-  def __repr__(self):
-    return (f"{self.__class__.__name__}(base={self.base!r}, "
-            f"identifier={self.identifier!r})")
 
 serialization.register_serializable(Literal)
 serialization.register_serializable(Tuple)

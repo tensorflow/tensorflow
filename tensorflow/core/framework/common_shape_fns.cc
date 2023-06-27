@@ -2178,7 +2178,7 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return OkStatus();
 }
 
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   ShapeHandle s_data = c->input(0);
   ShapeHandle s_segment_ids = c->input(1);
   ShapeHandle s_num_segments = c->input(2);
@@ -2448,7 +2448,7 @@ Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
             "] = ", c->DebugString(prefix_indices),
             " must match dimensions [0,", outer_dims,
             ") of updates[shape=", c->DebugString(updates_shape),
-            "] = ", c->DebugString(prefix_updates), ": ", s.error_message());
+            "] = ", c->DebugString(prefix_updates), ": ", s.message());
       }
 
       ShapeHandle suffix_output;
@@ -2464,7 +2464,7 @@ Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
             "] = ", c->DebugString(suffix_output), " must match dimensions [",
             outer_dims, ",", c->Rank(updates_shape),
             ") of updates[shape=", c->DebugString(updates_shape),
-            "] = ", c->DebugString(suffix_updates), ": ", s.error_message());
+            "] = ", c->DebugString(suffix_updates), ": ", s.message());
       }
     }
   }

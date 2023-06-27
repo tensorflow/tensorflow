@@ -1,14 +1,12 @@
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -40,7 +38,7 @@ pybind_extension(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_wrapper_lib",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_protobuf//:protobuf",
         "@pybind11",
@@ -66,8 +64,8 @@ py_test(
     deps = [
         ":metrics_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -127,8 +125,8 @@ py_test(
         ":metrics",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

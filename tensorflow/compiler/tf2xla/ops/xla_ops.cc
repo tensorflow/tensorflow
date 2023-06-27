@@ -997,7 +997,7 @@ Takes the packed uint32 input and unpacks the input to uint8 to do
 Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
-output: Output tensors whose types is bloat16. If transpose_output is true,
+output: Output tensors whose types is bfloat16. If transpose_output is true,
      output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
      is false, output shape is [d0,..., dn * 4].
 min_range: The minimum scalar value possibly produced for the input.
@@ -1318,11 +1318,17 @@ result_shapes: Shapes of all results.
 REGISTER_OP("XlaCallModule")
     .Input("args: Tin")
     .Output("output: Tout")
+    .Attr("version: int")
     .Attr("module: string")
     .Attr("Sout: list(shape) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("Tin: list(type) >= 0")
-    .Attr("dim_args_spec: list(string) >= 0")
+    .Attr("dim_args_spec: list(string) = []")
+    .Attr("platforms: list(string) = []")
+    .Attr("function_list: list(func) = []")
+    .Attr("has_token_input_output: bool = false")
+    .Attr("disabled_checks: list(string) = []")
+    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
@@ -1343,41 +1349,67 @@ REGISTER_OP("XlaCallModule")
       return OkStatus();
     })
     .Doc(R"doc(
-Temporary op for experimenting with jax2tf.
+Invokes a StableHLO module.
 
-DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
-very likely to change. This op will be used only in jax2tf under an
-experimental flag.
-
-This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing MHLO directly from JAX. At the moment this op
-carries a serialized MHLO module, therefore there are no backward-compatibility
-guarantees, and should not be used for serialization.
-Eventually, the op will carry a MHLO object, which will have
-backwards-compatibility guarantees.
-
-The serialized module must return a tuple if and only if the Sout is an empty
-list or a list with more than 1 elements. The length of Tout and Sout must
-match. This op always returns a tuple of results, even if the module returns
-a single result.
-
-The handling of dynamic shapes is work-in-progress. At the moment, the
-JAX lowering for dynamic shapes will prepend one dimension parameter to the
-serialized module for each dimension whose value must be passed in.
-The "args" correspond to the non-dimension arguments. During compilation
-we compute the values of the dimension arguments based on the static shapes of
-the "args". In order to do this, we encode for each dimension argument a
-specification of how to compute its value, as a string, in the form
-"<arg_idx>.<axis_idx>".
-E.g., the specification "2.1" denotes the value args[2].shape[1].
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
-  to the HLO module.
-module: A serialized computation, a text representation of mlir.Module.
+  to the `module`. These are the actual arguments and do not include the
+  platform argument (see `platforms`) nor the dimension arguments (see
+  `dim_args_spec`).
+version: Tracks changes the semantics of the op, to support backwards
+  compatibility. Minimum supported version is 2. From
+  version 2, the op carries a StableHLO text or bytecode `module`. From
+  version 3, the op also supports the `platforms` attribute. From version 4,
+  the op carries a StableHLO module with compatibility guarantees. From version
+  5, XLACallModule can include `stablehlo.custom_call` op to execute tf
+  functions. From version 6 the op supports the `disabled_checks` attribute.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+VERSION_MAXIMUM_SUPPORTED%22&type=code.
+module: A serialized computation, a text or bytecode representation of
+  an mlir.Module. The return type must be a tuple if and only if the `Sout` is
+  a list with 0 or more than 1 elements. The length of `Tout` and
+  `Sout` must match. This op always returns a tuple of results, even if the
+  module returns a single result.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
-dim_args_spec: the specification for the dimension arguments, one for each
-  dimension argument. In absence of dynamic shapes this list is empty.
+platforms: the list of platforms supported by `module`. The list can contain
+  the strings "CPU", "CUDA", "ROCM", or "TPU". It is an error to compile
+  this op for a platform that does not appear in the list. This check can be
+  disabled using `disabled_checks`. If the list contains more than
+  one platform, then the `module` takes one additional 0-dimensional
+  integer-tensor parameter in the first position, encoding the index in
+  `platforms` of the current compilation platform. This parameter has value 0
+  if the plaform is not among `platforms` and the check has been disabled.
+  The list can be empty in old versions (earlier than 6) to denote that no
+  platform checking must be performed at loading time.
+dim_args_spec: in presence of dynamic shapes, this is the specification for the
+  dimension arguments. In absence of dynamic shapes this list is empty. The
+  `module` takes one 0-dimensional integer tensor dimension argument for each
+  element of `dim_spec_args`. The dimension arguments come after the platform
+  index argument and before the actual arguments. Each specification is a
+  string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
+  the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
+  where "args" are the actual array arguments.
+  This attribute is not used anymore in modules serialized with version 5
+  after March 28th, 2023 and JAX OSS versions higher than 0.4.6.
+  TODO(b/283439649): remove support for dim_args_spec.
+function_list: This list contains the TensorFlow FunctionDefs that are used by
+  the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
+  operations, they can call TensorFlow graph functions outside of the
+  XLACallModule. This `function_list` attribute registers the dependency of the
+  XLACallModule on those functions. This attribute was added in version 5.
+has_token_input_output: If true, the embedded StableHLO module's main function
+  must take a `!stablehlo.token` as its first argument and returns a token as
+  its first result. This can be used in conjunction with the TF2XLA's side
+  effect mechanism in order to model side effects.
+disabled_checks: A list of strings describing the safety checks that were
+  disabled at serialization time. This attribute was added in version 6.
+  For more details see
+  https://github.com/search?q=repo%3Agoogle%2Fjax+path%3Ajax_export+%22class+DisabledSafetyCheck%22&type=code.
+  This list, supplemented with a comma-separate list of directives specified
+  using the flag --tf_xla_call_module_disabled_checks,
+  is used at module loading time to skip the corresponding checks.
 )doc");
 
 }  // namespace

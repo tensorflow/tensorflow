@@ -15,6 +15,7 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
     ],
@@ -185,6 +186,7 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
@@ -193,6 +195,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
@@ -223,7 +226,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -246,14 +248,13 @@ tf_cc_test(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -265,7 +266,6 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
         "@llvm-project//mlir:IR",
@@ -288,6 +288,7 @@ tf_py_test(
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -297,7 +298,6 @@ cc_library(
     hdrs = ["integration/node_expansion_pass.h"],
     deps = [
         ":tfr_decompose_ctx",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
@@ -320,6 +320,7 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -329,8 +330,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfr",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -355,15 +356,23 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python/autograph/converters",
-        "//tensorflow/python/autograph/impl",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/converters:control_flow",
+        "//tensorflow/python/autograph/converters:return_statements",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct:transpiler",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
+        "//tensorflow/python/autograph/pyct/static_analysis:type_inference",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:op_def_registry",
-        "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
 )
@@ -380,8 +389,9 @@ tf_py_test(
         ":tfr_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/tfr/resources:test_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -391,6 +401,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct:transpiler",
     ],
 )
 
@@ -405,6 +417,7 @@ tf_py_test(
         ":composite",
         ":op_reg_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -414,6 +427,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

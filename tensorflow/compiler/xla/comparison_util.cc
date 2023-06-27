@@ -31,32 +31,14 @@ namespace {
 // Verifies that this is a valid Comparison: (1) not a partial ordering on
 // integers, and (2) a valid PrimitiveType.
 bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
-  switch (type) {
-    case F16:
-    case F32:
-    case BF16:
-    case F64:
-    case C64:
-    case C128:
-      return true;
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case PRED:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return order == Comparison::Order::kTotal;
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-    case PRIMITIVE_TYPE_INVALID:
-    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
-    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-      return false;
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return true;
   }
+  if (primitive_util::IsIntegralType(type) || type == PRED) {
+    return order == Comparison::Order::kTotal;
+  }
+  LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
 }
 
 // Returns the X32 primitive type for each Type.
@@ -86,27 +68,14 @@ Comparison::Order DefaultOrdering(Comparison::Type type) {
 
 // Returns the expected ordering for each primitive type.
 Comparison::Order DefaultOrdering(PrimitiveType type) {
-  switch (type) {
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case PRED:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return Comparison::Order::kTotal;
-    case BF16:
-    case F16:
-    case F32:
-    case F64:
-    case C64:
-    case C128:
-      return Comparison::Order::kPartial;
-    default:
-      LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return Comparison::Order::kPartial;
   }
+  if (primitive_util::IsIntegralType(type) || type == PRED) {
+    return Comparison::Order::kTotal;
+  }
+  LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
 }
 
 // Returns the converse of `direction`.
@@ -179,11 +148,11 @@ std::string ComparisonTypeToString(Comparison::Type type) {
   }
 }
 
-std::string ComparisonPrimitiveTypeToString(PrimitiveType type) {
+absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type) {
   return PrimitiveType_Name(type);
 }
 
-std::string ComparisonOrderToString(Comparison::Order order) {
+absl::string_view ComparisonOrderToString(Comparison::Order order) {
   switch (order) {
     case Comparison::Order::kPartial:
       return "PARTIALORDER";
@@ -238,28 +207,17 @@ StatusOr<Comparison::Type> StringToComparisonType(
 }
 
 Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
-  switch (type) {
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-      return Type::kSigned;
-    case PRED:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return Type::kUnsigned;
-    case F16:
-    case F32:
-    case BF16:
-    case F64:
-    case C64:
-    case C128:
-      return Type::kFloat;
-    default:
-      LOG(FATAL) << "Unexpected: " << PrimitiveType_Name(type);
+  if (primitive_util::IsFloatingPointType(type) ||
+      primitive_util::IsComplexType(type)) {
+    return Type::kFloat;
   }
+  if (primitive_util::IsSignedIntegralType(type)) {
+    return Type::kSigned;
+  }
+  if (primitive_util::IsUnsignedIntegralType(type) || type == PRED) {
+    return Type::kUnsigned;
+  }
+  LOG(FATAL) << "Unexpected: " << PrimitiveType_Name(type);
 }
 
 Comparison::Comparison(Direction dir, PrimitiveType type, Order order)
@@ -297,31 +255,10 @@ std::optional<Comparison> Comparison::Inverse() const {
     // operand is NaN.
     return std::nullopt;
   }
-  switch (primitive_type_) {
-    case F16:
-    case F32:
-    case BF16:
-    case F64:
-    case C64:
-    case C128:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case PRED:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return Comparison(xla::Inverse(dir_), primitive_type_, order_);
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-    case PRIMITIVE_TYPE_INVALID:
-    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
-    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-      return std::nullopt;
+  if (primitive_util::IsArrayType(primitive_type_)) {
+    return Comparison(xla::Inverse(dir_), primitive_type_, order_);
   }
+  return std::nullopt;
 }
 
 bool Comparison::IsReflexive() const {

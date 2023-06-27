@@ -77,8 +77,6 @@ class ListDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return num_elements_; }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return num_elements_;
   }
@@ -129,6 +127,8 @@ class ListDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty()) {

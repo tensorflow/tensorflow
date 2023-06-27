@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.util import nest
 
 try:
@@ -87,7 +88,7 @@ def _gather(strategy, value):
     value = values.PerReplica([ops.convert_to_tensor(value)])
   if not isinstance(strategy.extended,
                     collective_all_reduce_strategy.CollectiveAllReduceExtended):
-    return array_ops.stack(value._values)
+    return array_ops_stack.stack(value._values)
   assert len(strategy.extended.worker_devices) == len(value._values)
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
   return strategy.gather(values.PerReplica(inputs), axis=0)
@@ -292,3 +293,8 @@ def is_tpu_strategy(strategy):
   return isinstance(strategy,
                     (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
                      tpu_strategy.TPUStrategyV2))
+
+
+def reset_context():
+  """Resets eager context."""
+  context._reset_context()  # pylint: disable=protected-access

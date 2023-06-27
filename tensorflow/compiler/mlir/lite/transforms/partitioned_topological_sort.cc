@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -32,16 +33,16 @@ namespace {
 bool IsFlexDelegate(Operation *op) {
   // Unwrap from any ControlNodeOps or CustomTfOp.
   if (auto control_node = dyn_cast<mlir::TFL::ControlNodeOp>(*op)) {
-    return IsFlexDelegate(&control_node.body().front().front());
+    return IsFlexDelegate(&control_node.getBody().front().front());
   }
   if (auto custom_tf_op = dyn_cast<mlir::TFL::CustomTfOp>(*op)) {
-    return IsFlexDelegate(&custom_tf_op.body().front().front());
+    return IsFlexDelegate(&custom_tf_op.getBody().front().front());
   }
 
   // Our MLIR might be the result of a conversion from a previously generated
   // flatbuffer file.
   if (auto custom_op = dyn_cast<mlir::TFL::CustomOp>(*op)) {
-    return custom_op.custom_code().startswith("Flex");
+    return custom_op.getCustomCode().startswith("Flex");
   }
 
   // We never see TFL::IfOps in the IR -- it is flatbuffer_export that rewrites
@@ -115,7 +116,7 @@ bool PartitionedTopologicalSort(
     // This round, we will only schedule operations that belong
     // to this_partition. this_partition is the partition to
     // which the next schedulable operations belongs.
-    llvm::Optional<bool> this_partition;
+    std::optional<bool> this_partition;
 
     for (Operation &unscheduled_op : llvm::make_early_inc_range(
              llvm::make_range(next_unscheduled_op, end))) {

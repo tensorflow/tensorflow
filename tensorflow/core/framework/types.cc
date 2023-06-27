@@ -62,6 +62,11 @@ void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t) {
   }
 }
 
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t) {
+  t.set_type_id(TFT_TENSOR);
+  map_dtype_to_tensor(dtype, *t.add_args());
+}
+
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
@@ -121,6 +126,10 @@ string DataTypeStringInternal(DataType dtype) {
       return "bfloat16";
     case DT_HALF:
       return "half";
+    case DT_FLOAT8_E5M2:
+      return "float8_e5m2";
+    case DT_FLOAT8_E4M3FN:
+      return "float8_e4m3fn";
     case DT_RESOURCE:
       return "resource";
     case DT_VARIANT:
@@ -215,6 +224,12 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "half" || sp == "float16") {
     *dt = DT_HALF;
     return true;
+  } else if (sp == "float8_e5m2") {
+    *dt = DT_FLOAT8_E5M2;
+    return true;
+  } else if (sp == "float8_e4m3fn") {
+    *dt = DT_FLOAT8_E4M3FN;
+    return true;
   } else if (sp == "resource") {
     *dt = DT_RESOURCE;
     return true;
@@ -262,6 +277,8 @@ int DataTypeSize(DataType dt) {
     // bitcast.
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
+    CASE(tsl::float8_e5m2);
+    CASE(tsl::float8_e4m3fn);
 
     default:
       return 0;
@@ -294,6 +311,8 @@ DEFINE_DATATYPETOENUM_VALUE(quint16);
 DEFINE_DATATYPETOENUM_VALUE(qint32);
 DEFINE_DATATYPETOENUM_VALUE(bfloat16);
 DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
+DEFINE_DATATYPETOENUM_VALUE(float8_e5m2);
+DEFINE_DATATYPETOENUM_VALUE(float8_e4m3fn);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
 DEFINE_DATATYPETOENUM_VALUE(Variant);
 #undef DEFINE_DATATYPETOENUM_VALUE

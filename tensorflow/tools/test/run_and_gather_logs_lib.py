@@ -138,7 +138,9 @@ def run_and_gather_logs(name,
   gpu_config = gpu_info_lib.gather_gpu_devices()
   if gpu_config:
     gpu_name = gpu_config[0].model
-    gpu_short_name_match = re.search(r"Tesla (K40|K80|P100|V100)", gpu_name)
+    gpu_short_name_match = re.search(
+        r"(Tesla|NVIDIA) (K40|K80|P100|V100|A100)", gpu_name
+    )
     if gpu_short_name_match:
       gpu_short_name = gpu_short_name_match.group(0)
       test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")

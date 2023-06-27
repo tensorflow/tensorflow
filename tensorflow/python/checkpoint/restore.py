@@ -31,6 +31,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import constants
 from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import object_identity
 
 
@@ -52,13 +53,13 @@ class CheckpointPosition(object):
     # object.
     self.skip_restore = False
 
-  def restore(self, trackable):
+  def restore(self, trackable, reader=None):
     """Restore this value into `trackable`."""
     with ops.init_scope():
       if self.bind_object(trackable):
         # This object's correspondence with a checkpointed object is new, so
         # process deferred restorations for it and its dependencies.
-        restore_ops = self._restore_descendants()
+        restore_ops = self._restore_descendants(reader)
         if restore_ops:
           self._checkpoint.new_restore_ops(restore_ops)
 
@@ -152,12 +153,6 @@ class CheckpointPosition(object):
           python_positions: list,
           registered_savers: dict)
     """
-    # pylint:disable=g-import-not-at-top
-    # There are circular dependencies between Trackable and SaveableObject,
-    # so we must import it here.
-    # TODO(b/224069573): Remove this code from Trackable.
-    from tensorflow.python.training.saving import saveable_object_util
-    # pylint:enable=g-import-not-at-top
 
     recorded_registered_saver = self.get_registered_saver_name()
     if not (self.object_proto.attributes or recorded_registered_saver):
@@ -325,11 +320,14 @@ class CheckpointPosition(object):
 
     return existing_restore_ops, named_saveables
 
-  def restore_ops(self):
+  def restore_ops(self, reader=None):
     """Create or fetch restore ops for this object's attributes.
 
     Requires that the `Trackable` Python object has been bound to an object
     ID in the checkpoint.
+
+    Args:
+      reader: A `CheckpointReader`. If None, a new instance will be created.
 
     Returns:
       A list of operations when graph building, or an empty list when executing
@@ -341,7 +339,8 @@ class CheckpointPosition(object):
     (restore_ops, tensor_saveables, python_positions,
      _) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
-        self._checkpoint.restore_saveables(tensor_saveables, python_positions))
+        self._checkpoint.restore_saveables(
+            tensor_saveables, python_positions, reader=reader))
     return restore_ops
 
   @property
@@ -427,7 +426,7 @@ class CheckpointPosition(object):
   def create_child_position(self, node_id):
     return CheckpointPosition(checkpoint=self.checkpoint, proto_id=node_id)
 
-  def _restore_descendants(self):
+  def _restore_descendants(self, reader=None):
     """Restore the bound Trackable and dependencies (may be deferred)."""
     # Attempt a breadth-first traversal, since presumably the user has more
     # control over shorter paths. If we don't have all of the dependencies at
@@ -461,9 +460,11 @@ class CheckpointPosition(object):
       _queue_slot_variables(current_position, visit_queue)
 
     restore_ops.extend(
-        current_position.checkpoint.restore_saveables(tensor_saveables,
-                                                      python_positions,
-                                                      registered_savers))
+        current_position.checkpoint.restore_saveables(
+            tensor_saveables,
+            python_positions,
+            registered_savers,
+            reader=reader))
     return restore_ops
 
   def _single_restore(self):
@@ -501,12 +502,6 @@ def restore_nodes(save_path, nodes_to_restore):
     raise ValueError(
         "Expecting a dictionary of node_id to Trackable for nodes_to_restore.")
 
-  # pylint:disable=g-import-not-at-top
-  # There are circular dependencies between Trackable and SaveableObject,
-  # so we must import it here.
-  from tensorflow.python.training.saving import saveable_object_util
-  # pylint:enable=g-import-not-at-top
-
   ckpt_view = checkpoint_view.CheckpointView(save_path)
   ckpt_view_descendants = ckpt_view.descendants()
   for node_id, trackable in nodes_to_restore.items():
@@ -533,7 +528,8 @@ def restore_nodes(save_path, nodes_to_restore):
         current_trackable)
     if not trackable_has_serialize_to_tensor:
       if not node.attributes:
-        if current_trackable._gather_saveables_for_checkpoint():  # pylint: disable=protected-access
+        if saveable_object_util.saveable_objects_from_trackable(
+            current_trackable):
           raise ValueError(
               f"Trackable {current_trackable} expects checkpointed values but "
               "checkpoint does not contain serialized tensors for node_id: "
@@ -598,6 +594,13 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
   # pylint: disable=protected-access
   trackable = checkpoint_position.trackable
   for child in checkpoint_position.object_proto.children:
+    # trackable._lookup_dependency can be expensive so first check if this node
+    # already has an object correspondence. If so we skip this node.
+    correspondence = checkpoint_position.checkpoint.object_by_proto_id.get(
+        child.node_id, None
+    )
+    if correspondence is not None:
+      continue
     child_position = checkpoint_position.create_child_position(child.node_id)
     local_object = trackable._lookup_dependency(child.local_name)
     child_proto = child_position.object_proto

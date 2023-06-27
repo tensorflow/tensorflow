@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 
-#include <memory>
-#include <set>
-#include <vector>
+#include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -42,9 +40,7 @@ StatusOr<bool> GpuSanitizeConstantNames::Run(
         continue;
       }
 
-      const std::string& old_name = instr->name();
       instr->UniquifyName(&instr_name_uniquer);
-      CHECK_EQ(old_name, instr->name());
     }
   }
 

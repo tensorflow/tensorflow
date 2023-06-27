@@ -50,10 +50,9 @@ In your `BUILD` file, add the `TensorFlowLite` dependency to your target:
 
 ```python
 objc_library(
-  deps = [
-      "//tensorflow/lite/objc:TensorFlowLite",
-  ],
-)
+    deps=[
+        "//tensorflow/lite/objc:TensorFlowLite",
+    ],)
 ```
 
 In your Objective-C files, import the umbrella header:

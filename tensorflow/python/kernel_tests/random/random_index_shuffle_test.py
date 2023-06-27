@@ -17,7 +17,10 @@
 import itertools
 
 from absl.testing import parameterized
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
@@ -83,6 +86,17 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllLessEqual(new_index, max_index)
     self.assertLen(new_index, max_index + 1)
     self.assertLen(set(new_index), max_index + 1)
+
+  def test_unknown_shape(self):
+
+    @def_function.function
+    def shuffle(repeats):
+      indices = array_ops.repeat(2, repeats)
+      return stateless.index_shuffle(indices, seed=(1, 2), max_index=10)
+
+    new_index = shuffle(constant_op.constant(2))
+    self.assertAllGreaterEqual(new_index, 0)
+    self.assertAllLessEqual(new_index, 10)
 
 
 if __name__ == '__main__':

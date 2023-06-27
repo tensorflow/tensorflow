@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_DTENSOR_UTILS_H_
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_UTILS_H_
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 namespace dtensor {
 
@@ -32,7 +36,7 @@ bool LogOnAllTasks();
 
 // Returns whether to log op-by-op execution in addition to function execution
 // when logging is enabled.
-bool LogOpByOp();
+bool LogOpByOp(absl::string_view op_name);
 
 // Returns the maximum number of steps to run layout propagation. If the number
 // of steps exceeds this amount, layout propagation will fail.
@@ -51,6 +55,22 @@ bool DoNotFuseReduceScatter();
 // reduce op.
 int ReduceInBfloat16MaxGroupSize();
 
+// Returns whether to lower DTensorAllGather to CollectiveReduceV2. If false,
+// lowers it to CollectiveReduceV2 for GPU and CPU for supported data types.
+bool LowerCollectiveGatherToCollectiveGatherV2();
+
+// Returns whether to enable defaulting TF ops that do not have SPMD
+// implementation to default to the ReplicatedOpSpmdExpander.
+bool EnableReplicatedSpmdAsDefault(const std::string& op_name);
+
+// Returns whether to use all-to-all collective for relayout when possible.
+bool EnableAllToAllForRelayout();
+
+// Returns the maximum number of AllReduce ops to merge into a group.
+int AllReduceCombineOptimizationGroupSize();
+
+// Returns whether to perform multi-device expansion.
+bool EnableMultiDeviceMode();
 }  // namespace dtensor
 }  // namespace tensorflow
 

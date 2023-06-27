@@ -56,7 +56,7 @@ bool ForwardNUTF8CharPositions(const StringPiece in,
     // move forward one utf-8 character
     do {
       ++*pos;
-    } while (IsTrailByte(in[*pos]) && *pos < size);
+    } while (*pos < size && IsTrailByte(in[*pos]));
     ++utf8_chars_counted;
   }
   return utf8_chars_counted == num_utf8_chars_to_shift;

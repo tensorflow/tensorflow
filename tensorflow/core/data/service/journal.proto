@@ -8,7 +8,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 // Message representing journaled dispatcher metadata updates. When we apply
 // one of these changes to the dispatcher's in-memory state, we also write an
 // Update message to the journal.
-// Next tag: 15
+// Next tag: 16
 message Update {
   oneof update_type {
     RegisterDatasetUpdate register_dataset = 1;
@@ -24,6 +24,7 @@ message Update {
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
+    SnapshotUpdate snapshot = 15;
   }
   reserved 13;
 }
@@ -36,12 +37,13 @@ message RegisterDatasetUpdate {
   bool dedupe_by_dataset_id = 4;
 }
 
-// Next tag: 5
+// Next tag: 6
 message RegisterWorkerUpdate {
   string worker_address = 1;
-  string transfer_address = 2;
+  repeated DataTransferServerInfo transfer_servers = 5;
   repeated string worker_tags = 3;
   int64 worker_uid = 4;
+  reserved 2;
 }
 
 // Next tag: 9
@@ -117,29 +119,36 @@ message ClientHeartbeatUpdate {
   TaskRejected task_rejected = 3;
 }
 
-// Next tag: 8
+// Next tag: 9
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
   int64 iteration_id = 2;
   string worker_address = 3;
-  string transfer_address = 4;
+  repeated DataTransferServerInfo transfer_servers = 8;
   repeated string worker_tags = 6;
   int64 worker_uid = 7;
   int64 starting_round = 5;
+  reserved 4;
 }
 
-// Next tag: 9
+// Next tag: 10
 message CreateTaskUpdate {
   reserved 3, 5;
   int64 task_id = 1;
   int64 iteration_id = 2;
   string worker_address = 4;
-  string transfer_address = 6;
+  repeated DataTransferServerInfo transfer_servers = 9;
   repeated string worker_tags = 7;
   int64 worker_uid = 8;
+  reserved 6;
 }
 
 // Next tag: 2
 message FinishTaskUpdate {
   int64 task_id = 1;
+}
+
+// Next tag: 2
+message SnapshotUpdate {
+  string path = 1;
 }

@@ -15,6 +15,7 @@ Pod::Spec.new do |s|
 
   s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
   s.ios.deployment_target = '11.0'
+  s.swift_version = '5.0'
 
   s.module_name = 'TensorFlowLite'
   s.static_framework = true

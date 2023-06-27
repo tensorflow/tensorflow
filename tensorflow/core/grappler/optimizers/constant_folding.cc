@@ -19,12 +19,15 @@ limitations under the License.
 
 #include <cmath>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -53,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
@@ -326,7 +330,7 @@ static Status PutValueIntoTensor(const int64_t value, const DataType& type,
                                  const int index, Tensor* tensor) {
   if (type == DT_INT32) {
     if (value >= INT_MAX) {
-      return Status(error::INVALID_ARGUMENT, "int32 overflow");
+      return Status(absl::StatusCode::kInvalidArgument, "int32 overflow");
     }
     tensor->flat<int32>()(index) = static_cast<int32>(value);
   } else {
@@ -865,9 +869,9 @@ Status ConstantFolding::MaterializeConstantValuedNode(
       // node, even if the shape specified in the original Fill is large.
       Tensor t;
       if (!t.FromProto(input_tensor)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Could not construct Tensor form TensorProto in node: ",
-            input_node->name());
+            input_node->name()));
       }
       tensor->clear_tensor_content();
       t.AsProtoField(tensor);
@@ -1012,9 +1016,13 @@ bool ConstantFolding::IsFoldableUncached(
     for (const auto& input_prop : input_props) {
       const PartialTensorShape input_shape(input_prop.shape());
       if (input_shape.IsFullyDefined()) {
-        input_size_bytes +=
-            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+        int64_t bytes = MultiplyWithoutOverflow(
+            input_shape.num_elements(), DataTypeSize(input_prop.dtype()));
+        input_size_bytes = AddWithoutOverflow(input_size_bytes, bytes);
       }
+    }
+    if (input_size_bytes < 0) {  // Overflown
+      input_size_bytes = INT64_MAX;
     }
     for (const auto& output_prop : output_props) {
       PartialTensorShape output_shape;
@@ -1024,8 +1032,11 @@ bool ConstantFolding::IsFoldableUncached(
         return false;
       }
       if (output_shape.IsFullyDefined()) {
-        const int64_t num_bytes =
-            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        const int64_t num_bytes = MultiplyWithoutOverflow(
+            output_shape.num_elements(), DataTypeSize(output_prop.dtype()));
+        if (num_bytes < 0) {  // Overflown
+          return false;
+        }
         if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
           // Notice that this is not exactly the same check used in
@@ -1167,9 +1178,9 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
       SET_TENSOR_VAL_CASE(DT_QUINT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
-      return errors::InvalidArgument(
-          "Unsupported type in CreateConstantTensorAttrValue: ",
-          DataTypeString(type));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported type in CreateConstantTensorAttrValue: ",
+                       DataTypeString(type)));
   }
   return OkStatus();
 }
@@ -1251,28 +1262,28 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)                      \
-  {                                                                            \
-    const auto* val_ptr = tensor->flat<TYPE>().data();                         \
-    auto last = *val_ptr;                                                      \
-    int64_t last_index = 0;                                                    \
-    for (int64_t i = 0; i < tensor->NumElements(); ++i) {                      \
-      TYPE cur = *val_ptr++;                                                   \
-      if (PackedValuesNotEqual(cur, last)) {                                   \
-        last = cur;                                                            \
-        last_index = i;                                                        \
-      }                                                                        \
-    }                                                                          \
-    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);                       \
-    if (encoded_size < kint32max) {                                            \
-      optimized = true;                                                        \
-      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);                 \
-      const auto* src_ptr = tensor->flat<TYPE>().data();                       \
-      auto* dst_ptr =                                                          \
-          t->mutable_##FIELDTYPE##_val()->AddNAlreadyReserved(last_index + 1); \
-      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);                   \
-    }                                                                          \
-  }                                                                            \
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)         \
+  {                                                               \
+    const auto* val_ptr = tensor->flat<TYPE>().data();            \
+    auto last = *val_ptr;                                         \
+    int64_t last_index = 0;                                       \
+    for (int64_t i = 0; i < tensor->NumElements(); ++i) {         \
+      TYPE cur = *val_ptr++;                                      \
+      if (PackedValuesNotEqual(cur, last)) {                      \
+        last = cur;                                               \
+        last_index = i;                                           \
+      }                                                           \
+    }                                                             \
+    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);          \
+    if (encoded_size < kint32max) {                               \
+      optimized = true;                                           \
+      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);    \
+      const auto* src_ptr = tensor->flat<TYPE>().data();          \
+      auto* dst_ptr = t->mutable_##FIELDTYPE##_val()              \
+                          -> AddNAlreadyReserved(last_index + 1); \
+      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);      \
+    }                                                             \
+  }                                                               \
   break
 
     switch (tensor->dtype()) {
@@ -1316,9 +1327,9 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   node->mutable_attr()->insert({"value", attr_tensor});
 
   if (encoded_size > original_size && encoded_size >= kMaxConstantSize) {
-    return errors::InvalidArgument(
-        strings::StrCat("Can't fold ", name, ", its size would be too large (",
-                        encoded_size, " >= ", kMaxConstantSize, " bytes)"));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't fold ", name, ", its size would be too large (",
+                     encoded_size, " >= ", kMaxConstantSize, " bytes)"));
   }
   return OkStatus();
 }
@@ -1355,7 +1366,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     const NodeDef* input_node = node_map_->GetNode(input);
     if (!IsReallyConstant(*input_node)) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
@@ -1363,22 +1374,22 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     if (raw_val.dtype() == DT_INVALID) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           strings::StrCat("A tensor in the input node, with TensorId of ",
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
     }
     if (IsRefType(raw_val.dtype())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Not allowed to construct a tensor with reference dtype, got ",
-          DataTypeString(raw_val.dtype()));
+          DataTypeString(raw_val.dtype())));
     }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
       delete (value);
-      return errors::InvalidArgument("Unable to make Tensor from proto for ",
-                                     node.name(), " with shape ",
-                                     raw_val.tensor_shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to make Tensor from proto for ", node.name(),
+                       " with shape ", raw_val.tensor_shape().DebugString()));
     }
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
@@ -1386,7 +1397,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
-    return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "Expected at least one output.");
   }
 
   outputs->resize(output_tensors.size());
@@ -1452,7 +1464,7 @@ Status ConstantFolding::FoldMergeNode(NodeDef* node, GraphDef* output_graph) {
     if (node_map_->GetNode(const_out_name) ||
         node_map_->GetNode(const_index_name)) {
       // Intended name already exists.
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           strings::StrCat(const_out_name, " or ", const_index_name,
                           " already present in the graph"));
     }
@@ -1571,7 +1583,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
     } else {
       if (node_map_->GetNode(const_node->name())) {
         // Intended name already exists.
-        return errors::AlreadyExists(strings::StrCat(
+        return absl::AlreadyExistsError(strings::StrCat(
             const_node->name(), " already present in the graph"));
       }
       NodeDef* added_node = output_graph->add_node();
@@ -1697,18 +1709,19 @@ Status ConstantFolding::FoldGraph(
 Status ConstantFolding::IsSimplifiableReshape(
     const NodeDef& node, const GraphProperties& properties) const {
   if (!IsReshape(node)) {
-    return errors::Internal("Node ", node.name(), " is not a Reshape node");
+    return absl::InternalError(
+        absl::StrCat("Node ", node.name(), " is not a Reshape node"));
   }
   if (2 > node.input_size()) {
-    return errors::Internal("Node ", node.name(),
-                            " must have at most 2 inputs but has ",
-                            node.input_size());
+    return absl::InternalError(absl::StrCat(
+        "Node ", node.name(), " must have at most 2 inputs but has ",
+        node.input_size()));
   }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
-    return errors::Internal("Node ", node.name(), " has shape ",
-                            new_shape->DebugString(),
-                            " which is not a constant");
+    return absl::InternalError(absl::StrCat("Node ", node.name(), " has shape ",
+                                            new_shape->DebugString(),
+                                            " which is not a constant"));
   }
   TensorVector outputs;
   auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
@@ -1719,29 +1732,32 @@ Status ConstantFolding::IsSimplifiableReshape(
 
   Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
   if (!s.ok()) {
-    return errors::Internal("Could not evaluate node ", node.name());
+    return absl::InternalError(
+        absl::StrCat("Could not evaluate node ", node.name()));
   }
   if (outputs.size() != 1) {
-    return errors::Internal("Node ", node.name(),
-                            " must have exactly 1 output but has ",
-                            outputs.size());
+    return absl::InternalError(
+        absl::StrCat("Node ", node.name(),
+                     " must have exactly 1 output but has ", outputs.size()));
   }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
   if (props.empty()) {
-    return errors::Internal("Node ", node.name(), " has no properties");
+    return absl::InternalError(
+        absl::StrCat("Node ", node.name(), " has no properties"));
   }
   const OpInfo::TensorProperties& prop = props[0];
   if (prop.dtype() == DT_INVALID) {
-    return errors::Internal("Node ", node.name(), " has property ",
-                            prop.DebugString(), " with invalid dtype");
+    return absl::InternalError(
+        absl::StrCat("Node ", node.name(), " has property ", prop.DebugString(),
+                     " with invalid dtype"));
   }
   const PartialTensorShape shape(prop.shape());
   if (!shape.IsFullyDefined()) {
-    return errors::Internal("Node ", node.name(), " has property ",
-                            prop.DebugString(), " with shape ",
-                            shape.DebugString(), " which is not fully defined");
+    return absl::InternalError(absl::StrCat(
+        "Node ", node.name(), " has property ", prop.DebugString(),
+        " with shape ", shape.DebugString(), " which is not fully defined"));
   }
 
   PartialTensorShape new_dims;
@@ -1764,8 +1780,9 @@ Status ConstantFolding::IsSimplifiableReshape(
   }
 
   if (!shape.IsCompatibleWith(new_dims)) {
-    return errors::Internal("Expected shape ", shape.DebugString(),
-                            "to be compatible with ", new_dims.DebugString());
+    return absl::InternalError(
+        absl::StrCat("Expected shape ", shape.DebugString(),
+                     "to be compatible with ", new_dims.DebugString()));
   }
 
   return OkStatus();
@@ -1985,7 +2002,7 @@ void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node,
                                                GraphProperties* properties,
                                                GraphDef* graph) {
   if (HasRegularOutputs(*node, *node_map_)) return;
-  node->set_op("NoOp");
+  ChangeToNoOp(node);
   EraseRegularNodeAttributes(node);
   EraseNodeOutputAttributes(node);
   // Erase attributes that describe output properties.
@@ -2982,8 +2999,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     const NodeDef* x = node_map_->GetNode(node->input(0));
     const NodeDef* y = node_map_->GetNode(node->input(1));
     if (x == nullptr || y == nullptr) {
-      return errors::InvalidArgument("Invalid inputs to node: ",
-                                     node->DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid inputs to node: ", node->DebugString()));
     }
     const TensorShapeProto& output_shape =
         properties.GetOutputProperties(node->name())[0].shape();
@@ -3974,7 +3991,7 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
     TF_RETURN_IF_ERROR(add_quantized_out(min_out_const_name, 1));
     TF_RETURN_IF_ERROR(add_quantized_out(max_out_const_name, 2));
   } else {
-    return errors::Internal(absl::Substitute(
+    return absl::InternalError(absl::Substitute(
         "Can't create Const for QuantizedMatMul min_out/max_out of "
         "node '$0' because of node name conflict",
         node->name()));

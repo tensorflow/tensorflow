@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 
 #include <string>
+#include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
@@ -28,12 +29,12 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   Type element_type = shaped_type.getElementType();
   ShapedType scalar_type = RankedTensorType::get({}, element_type);
-  Attribute attr;
+  TypedAttr attr;
   if (element_type.isF16()) {
     auto floatType = mlir::FloatType::getF16(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
@@ -65,7 +66,7 @@ stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
 
       attr = mlir::TF::TensorProtoAttr::get(scalar_type, mangled);
     } else {
-      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+      return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
     }
   } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
@@ -88,7 +89,7 @@ stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
                                                  static_cast<int64_t>(value));
           break;
         default:
-          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                     "Unsupported type");
       }
     } else {
@@ -110,15 +111,16 @@ stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
                                                   static_cast<uint64_t>(value));
           break;
         default:
-          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                     "Unsupported type");
       }
     }
   } else {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Unsupported type");
   }
-  return rewriter->create<arith::ConstantOp>(loc, scalar_type, attr);
+  return rewriter->create<arith::ConstantOp>(loc, scalar_type,
+                                             cast<TypedAttr>(attr));
 }
 
 }  // namespace TFL

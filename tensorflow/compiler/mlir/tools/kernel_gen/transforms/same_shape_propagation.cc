@@ -18,6 +18,8 @@ limitations under the License.
 // sizes of operands with equal shapes.
 
 #include <memory>
+#include <tuple>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -35,7 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 #define DEBUG_TYPE "kernel-gen-shapes"
 
@@ -120,7 +122,7 @@ struct ShapeValue {
 
   ArrayRef<ValueOrConst> scalars() const {
     assert(!is_vector);
-    return llvm::makeArrayRef(shape);
+    return llvm::ArrayRef(shape);
   }
 
   bool isVector() const { return is_vector; }
@@ -294,8 +296,7 @@ class ShapeEqualityKnowledge {
             if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
             if (!index.has_value()) return false;
-            return candidate == dimOp.getSource() &&
-                   p.index() == index.getValue();
+            return candidate == dimOp.getSource() && p.index() == index.value();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),

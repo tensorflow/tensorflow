@@ -14,8 +14,11 @@
 # ==============================================================================
 """Tools for serializing `Function`s."""
 
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager import wrap_function as wrap_function_lib
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import nest
@@ -23,10 +26,14 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
-  if function_spec.is_method and not function_spec.fullargspec.args:
-    raise NotImplementedError(
-        "Cannot serialize a method function without a named "
-        "'self' argument.")
+  if (
+      function_spec.fullargspec.args
+      and function_spec.fullargspec.args[0] == "self"
+  ):
+    raise TypeError(
+        "Can not serialize tf.function with unbound 'self' parameter."
+    )
+
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function
@@ -38,7 +45,7 @@ def _serialize_function_spec(function_spec):
       nested_structure_coder.encode_structure(
           function_spec.fullargspec._replace(annotations={})))
 
-  proto.is_method = function_spec.is_method
+  proto.is_method = False
   proto.input_signature.CopyFrom(
       nested_structure_coder.encode_structure(function_spec.input_signature))
 
@@ -78,6 +85,38 @@ def serialize_concrete_function(concrete_function, node_ids):
   return concrete_function_proto
 
 
+# TODO(b/203440205): Support FunctionType directly.
+def get_preinitialized_function_spec(concrete_function):
+  """Generates an unconstrained FunctionSpec from FunctionType."""
+  # TODO(b/203440205): SavedModel does not support FunctionType on its own
+  # without a FuncGraph signature.
+  # WrappedFunctions are not supposed to have FunctionSpecs.
+  if concrete_function.structured_input_signature is None or isinstance(
+      concrete_function, wrap_function_lib.WrappedFunction
+  ):
+    return None
+
+  function_type = concrete_function.function_type
+  if function_type is None:
+    return None
+
+  unconstrained_type = function_type_lib.FunctionType(
+      [
+          function_type_lib.Parameter(p.name, p.kind, p.optional, None)
+          for p in function_type.parameters.values()
+      ]
+  )
+  default_values = {
+      p.default for p in function_type.parameters.values() if p.optional
+  }
+  return function_type_utils.FunctionSpec(
+      unconstrained_type,
+      default_values,
+      False,
+      name=concrete_function.name,
+  )
+
+
 def serialize_bare_concrete_function(concrete_function):
   """Build a SavedBareConcreteFunction."""
   # pylint: disable=protected-access
@@ -85,10 +124,9 @@ def serialize_bare_concrete_function(concrete_function):
       concrete_function_name=concrete_function.name,
       allowed_positional_arguments=concrete_function._num_positional_args,
       argument_keywords=concrete_function._arg_keywords)
-  if concrete_function._pre_initialized_function_spec is not None:
-    proto.function_spec.CopyFrom(
-        _serialize_function_spec(
-            concrete_function._pre_initialized_function_spec))
+  function_spec = get_preinitialized_function_spec(concrete_function)
+  if function_spec is not None:
+    proto.function_spec.CopyFrom(_serialize_function_spec(function_spec))
   return proto
   # pylint: enable=protected-access
 
@@ -122,7 +160,6 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._captures  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 
@@ -135,17 +172,26 @@ def wrap_cached_variables(concrete_function):
         continue
       cached_variable = cached_variable()
       new_cached_value = cached_variable.read_value()
-      remapped_captures[id(capture)] = captures[id(capture)]
-      captures[id(capture)] = (new_cached_value, placeholder)
+      key = id(capture)
+      external = concrete_function.graph.function_captures.by_val_external[key]
+      internal = concrete_function.graph.function_captures.by_val_internal[key]
+      remapped_captures[key] = [external, internal]
+      concrete_function.graph.function_captures.add_or_replace(
+          key=key,
+          external=new_cached_value,
+          internal=placeholder,
+          is_by_ref=False)
       mapped_captures = True
 
   if not mapped_captures:
     return concrete_function
 
-  inner_concrete = defun.ConcreteFunction(concrete_function.graph)
+  inner_concrete = defun.ConcreteFunction.from_func_graph(
+      concrete_function.graph, concrete_function.function_type, {}
+  )
 
   def wrap_function(*args):
-    return inner_concrete._call_flat(args, inner_concrete.captured_inputs)  # pylint:disable=protected-access
+    return inner_concrete._call_flat(list(args), inner_concrete.captured_inputs)  # pylint:disable=protected-access
 
   args = nest.flatten(concrete_function.structured_input_signature,
                       expand_composites=True)
@@ -156,15 +202,19 @@ def wrap_cached_variables(concrete_function):
   # Create concrete function, and copy the attributes necessary to serialize
   # the function.
   # pylint: disable=protected-access
-  fn = defun.ConcreteFunction(
-      outer_graph, spec=concrete_function._function_spec)
+  fn = defun.ConcreteFunction.from_func_graph(
+      outer_graph, concrete_function.function_type, {}
+  )
   fn._arg_keywords = concrete_function._arg_keywords
   fn._num_positional_args = concrete_function._num_positional_args
-  fn._pre_initialized_function_spec = (
-      concrete_function._pre_initialized_function_spec)
   # pylint: enable=protected-access
 
   # Return the captures to their original values
   for key, capture in remapped_captures.items():
-    captures[key] = capture
+    external, internal = capture
+    concrete_function.graph._function_captures.add_or_replace(  # pylint: disable=protected-access
+        key=key,
+        external=external,
+        internal=internal,
+        is_by_ref=False)
   return fn

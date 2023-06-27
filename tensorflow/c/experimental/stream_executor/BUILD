@@ -6,11 +6,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -27,7 +26,7 @@ cc_library(
     hdrs = ["stream_executor.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status_headers",
     ],
 )
@@ -45,13 +44,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_utils",
-        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 
@@ -70,7 +68,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ],
 )
 

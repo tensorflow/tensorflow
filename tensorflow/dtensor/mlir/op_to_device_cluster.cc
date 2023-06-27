@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "llvm/Support/Casting.h"
@@ -56,9 +57,9 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
       op->getLoc(), op->getResultTypes());
   if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
-                                    layout_op.layout().mesh().ToString()));
+                                    layout_op.getLayout().mesh().ToString()));
   } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::CopyToMeshOp>(op)) {
-    const std::string layout_string = copy_to_mesh.layout().str();
+    const std::string layout_string = copy_to_mesh.getLayout().str();
     auto layout_or = Layout::FromString(layout_string);
     if (!layout_or.ok())
       return op->emitOpError(
@@ -78,7 +79,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
     if (!status_or_mesh.ok())
       return op->emitOpError(
           llvm::formatv("failed to wrap to device cluster. {0}",
-                        status_or_mesh.status().error_message()));
+                        status_or_mesh.status().message()));
 
     const auto mesh_config = status_or_mesh.value();
     if (mesh_config)

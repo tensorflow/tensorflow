@@ -29,6 +29,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "float16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

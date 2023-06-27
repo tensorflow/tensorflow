@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import enum
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
 from tensorflow.compiler.xla.python import xla_extension
 
@@ -24,14 +24,23 @@ XlaOp = xla_extension.XlaOp
 
 _CallbackToPython = Any
 
+
 def start(
     callback_to_python: _CallbackToPython,
     backends: Sequence[Client],
-    max_queue_size_bytes: int = ...) -> OutfeedReceiverForPython: ...
+    max_queue_size_bytes: int = ...,
+    compile_options: Optional[xla_extension.ExecutableBuildOptions] = ...,
+) -> OutfeedReceiverForPython:
+  ...
+
 
 class OutfeedReceiverForPython:
+
   def add_outfeed(
       builder: XlaBuilder,
       token: XlaOp,
       consumer_id: int,
-      arrays: Sequence[XlaOp]) -> XlaOp: ...
+      arrays: Sequence[XlaOp],
+      device_idx: int,
+  ) -> XlaOp:
+    ...

@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "absl/strings/match.h"
-#include "dnnl.hpp"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"

@@ -18,15 +18,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 
 using xla::source_map_util::InvalidParameterArgument;
 
@@ -167,8 +166,8 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
   //    ExecutableRunOptions.eigen_intra_op_thread_pool.
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
-  ServiceExecutableRunOptions service_options(run_options,
-                                              backend_->StreamBorrower());
+  ServiceExecutableRunOptions service_options(
+      run_options, backend_->StreamBorrowerWithPriority());
   return std::make_pair(service_options, std::move(stream));
 }
 

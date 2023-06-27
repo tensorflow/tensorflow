@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
 #define TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include "tensorflow/cc/framework/scope.h"
 
 namespace tensorflow {

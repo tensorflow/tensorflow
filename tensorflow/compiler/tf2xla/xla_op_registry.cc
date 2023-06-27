@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -86,7 +87,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   }
   if (!x.has_device_allowlist && !y.has_device_allowlist) {
     LOG(WARNING) << "Duplicate registrations of " << x.name
-                 << "with no device allowlists.";
+                 << " with no device allowlists.";
     return false;
   }
   if (x.has_device_allowlist && y.has_device_allowlist) {
@@ -221,7 +222,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
       const OpDef* op_def;
       Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
       if (!lookup_status.ok()) {
-        LOG(ERROR) << lookup_status.error_message();
+        LOG(ERROR) << lookup_status.message();
         XLA_LOG_LINES(
             ERROR,
             "Ops registered: \n" +
@@ -343,10 +344,14 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   RegisterCompilationKernels();
   std::vector<const KernelDef*> kernels;
   XlaOpRegistry& registry = Instance();
+  std::string registered_backends =
+      absl::StrJoin(registry.BackendNames(), ", ");
   mutex_lock lock(registry.mutex_);
   auto it = registry.backends_.find(compilation_device_name);
+
   CHECK(it != registry.backends_.end())
-      << "Unknown backend " << compilation_device_name;
+      << "Unknown backend " << compilation_device_name
+      << "; Known backends are: " << registered_backends;
   for (const std::unique_ptr<KernelDef>& k : it->second.kernel_defs) {
     auto op_iter = registry.ops_.find(k->op());
     CHECK(op_iter != registry.ops_.end() && !op_iter->second.empty());
@@ -365,6 +370,7 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   std::vector<string> ops;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
+  ops.reserve(registry.ops_.size());
   for (const auto& pair : registry.ops_) {
     ops.push_back(pair.first);
   }
@@ -461,6 +467,7 @@ std::vector<string> XlaOpRegistry::BackendNames() {
   std::vector<string> names;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
+  names.reserve(registry.backends_.size());
   for (const auto& backend_pair : registry.backends_) {
     names.push_back(backend_pair.first);
   }

@@ -189,7 +189,7 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
       AutoShardDatasetParams6(), AutoShardDatasetParams7()};
   for (const auto& dataset_params : invalid_dataset_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

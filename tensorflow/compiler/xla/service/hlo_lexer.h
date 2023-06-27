@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LEXER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LEXER_H_
 
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -37,10 +39,13 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,     // =
-  kComma,     // ,
-  kColon,     // :
-  kAsterisk,  // *
+  kEqual,      // =
+  kComma,      // ,
+  kColon,      // :
+  kAsterisk,   // *
+  kOctothorp,  // #
+  kPlus,       // +
+  kTilde,      // ~
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,
@@ -135,6 +140,16 @@ class HloLexer {
   // Looks ahead one token and returns it. Lexer state is unchanged.
   TokKind LookAhead();
 
+  // Lexes a string delimited by matching curly braces.  Curlies contained
+  // inside double quotes don't count.
+  //
+  // Requires that you've already lexed the open curly brace.
+  //
+  // The returned string value includes the outer curlies.
+  //
+  // Returns TokKind::kString on success.
+  TokKind LexJsonDict();
+
  private:
   // Returns the current character. If it's neither the end of input buffer nor
   // an invalid character, moves the pointer forward.
@@ -184,6 +199,14 @@ class HloLexer {
   // This caches the line number of the previous query.
   mutable LineNoCacheTy line_no_cache_{nullptr, 0};
 };
+
+// Does this string start with "{", end with "}", and contain valid-ish JSON
+// in-between?  If so, hlo_parser can parse e.g. backend_config={blah: "blah"}
+// instead of the much uglier backend_config="{blah: \"blah\"}".
+//
+// (Technically we're not checking for fully-valid JSON, just something we can
+// find the end of reasonably.)
+bool LexesAsJsonDict(absl::string_view str);
 
 }  // namespace xla
 

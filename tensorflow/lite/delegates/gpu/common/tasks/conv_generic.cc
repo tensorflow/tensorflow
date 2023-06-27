@@ -31,12 +31,10 @@ namespace tflite {
 namespace gpu {
 
 namespace {
-std::string GenerateUploadByThreads(const std::string& local_ptr_name,
-                                    const std::string& name, bool use_ptrs,
-                                    const std::string& global_offset_name,
-                                    const std::string& lid_name,
-                                    int total_work_items,
-                                    int elements_to_upload) {
+std::string GenerateUploadByThreads(
+    const std::string& local_ptr_name, const std::string& name, bool use_ptrs,
+    const std::string& global_offset_name, const std::string type_conversion,
+    const std::string& lid_name, int total_work_items, int elements_to_upload) {
   std::string c;
   std::string offset =
       global_offset_name.empty() ? "" : global_offset_name + " + ";
@@ -45,17 +43,20 @@ std::string GenerateUploadByThreads(const std::string& local_ptr_name,
   const std::string access_start = name + (use_ptrs ? "[" : ".Read(");
   const std::string access_end = use_ptrs ? "]" : ")";
   for (int i = 0; i < groups; ++i) {
+    const std::string value = access_start + offset + lid_name + " + " +
+                              std::to_string(total_work_items * i) + access_end;
     c += "    " + local_ptr_name + "[" + lid_name + " + " +
-         std::to_string(total_work_items * i) + "] = " + access_start + offset +
-         lid_name + " + " + std::to_string(total_work_items * i) + access_end +
-         ";\n";
+         std::to_string(total_work_items * i) +
+         "] = " + absl::Substitute(type_conversion, value) + ";\n";
   }
   if (reminder != 0) {
+    const std::string value = access_start + offset + lid_name + " + " +
+                              std::to_string(total_work_items * groups) +
+                              access_end;
     c += "    if (" + lid_name + " < " + std::to_string(reminder) + ") {\n";
     c += "      " + local_ptr_name + "[" + lid_name + " + " +
-         std::to_string(total_work_items * groups) + "] = " + access_start +
-         offset + lid_name + " + " + std::to_string(total_work_items * groups) +
-         access_end + ";\n";
+         std::to_string(total_work_items * groups) +
+         "] = " + absl::Substitute(type_conversion, value) + ";\n";
     c += "    }\n";
   }
   return c;
@@ -303,7 +304,8 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-  if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
+  if (conv_params_.IsPrivateMemBroadcast() &&
+      (gpu_info.IsCL20OrHigher() || gpu_info.opencl_info.IsCLVK())) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
@@ -470,15 +472,10 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
           ? "__constant"
           : "__global";
 
-  const std::string weights_data_type =
-      conv_params.weights_data_type == DataType::FLOAT32 ? "float4" : "half4";
-
-  const std::string weights_global_ptr =
-      weights_space + " " + weights_data_type + "*";
-
   std::string c;
   if (use_simd_broadcast && gpu_info.IsApiOpenCl()) {
-    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
+    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
+        gpu_info.SupportsExtension("cl_khr_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
@@ -491,7 +488,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
          std::to_string(work_group_size_.y) + ", " +
          std::to_string(work_group_size_.z) + ")))\n";
   }
-  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl()) {
+  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+      gpu_info.SupportsExtension("cl_intel_required_subgroup_size")) {
     c += "__attribute__((intel_reqd_sub_group_size(" +
          std::to_string(simd_size) + ")))\n";
   }
@@ -635,9 +633,19 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
   if (src_def.HasAxis(Axis::DEPTH)) {
     trivial_kernel_size = trivial_kernel_size && conv_params_.z_kernel_is_1;
   }
+  const std::string weights_global_ptr =
+      weights_space + " " + ToCLDataType(conv_params.weights_data_type, 4) +
+      "*";
+  DataType summable_data_type = conv_params.weights_data_type;
+  if (gpu_info.IsPowerVR() &&
+      op_def.precision == CalculationsPrecision::F32_F16 &&
+      conv_params.weights_upload_type ==
+          ConvGeneric::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
+    summable_data_type = DataType::FLOAT32;
+  }
   if (need_local_mem) {
-    c += "  __local " + weights_data_type + " weights_cache[" +
-         std::to_string(local_mem_size) + "];\n";
+    c += "  __local " + ToCLDataType(summable_data_type, 4) +
+         " weights_cache[" + std::to_string(local_mem_size) + "];\n";
   } else if (conv_params.AreWeightsBuffer() &&
              gpu_info.SupportsPointersInKernels()) {
     c += "    " + weights_global_ptr + " weights_cache;\n";
@@ -762,14 +770,15 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
         for (int x = 0; x < block_size.x; ++x) {
           const std::string xind = std::to_string(x);
           const std::string id = generate_id(xind, yind, zind);
-          c += "    " + weights_data_type + " src" + id + ";\n";
+          c += "    " + ToCLDataType(summable_data_type, 4) + " src" + id +
+               ";\n";
         }
       }
     }
   };
   const bool conditional_read = gpu_info.IsMali();
   auto read_src = [&]() {
-    const std::string cl_type = ToCLDataType(conv_params.weights_data_type);
+    const std::string read_as_type = ToCLDataType(summable_data_type);
     for (int z = 0; z < block_size.z; ++z) {
       const std::string zind = std::to_string(z);
       for (int y = 0; y < block_size.y; ++y) {
@@ -795,22 +804,23 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
             address += ", s";
           }
           if (src_def.ReturnsZeroForNegOneRead(gpu_info)) {
-            c += "    src" + id + " = args.src_tensor.Read<" + cl_type + ">(" +
-                 address + ");\n";
+            c += "    src" + id + " = args.src_tensor.Read<" + read_as_type +
+                 ">(" + address + ");\n";
             const std::string ds = trivial_kernel_size ? "ds" : "ds" + id;
             c += "    " + address + " += " + ds + ";\n";
           } else {
             if (!check.empty()) {
               if (conditional_read) {
                 c += "    src" + id + " = " + check +
-                     " ? args.src_tensor.Read<" + cl_type + ">(" + address +
-                     ") : INIT_FLT4(0.0f);\n";
+                     " ? args.src_tensor.Read<" + read_as_type + ">(" +
+                     address + ") : INIT_FLT4(0.0f);\n";
               } else {
-                c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
-                     ">(" + address + ") * INIT_FLT(" + check + ");\n";
+                c += "    src" + id + " = args.src_tensor.Read<" +
+                     read_as_type + ">(" + address + ") * INIT_FLT(" + check +
+                     ");\n";
               }
             } else {
-              c += "    src" + id + " = args.src_tensor.Read<" + cl_type +
+              c += "    src" + id + " = args.src_tensor.Read<" + read_as_type +
                    ">(" + address + ");\n";
             }
             if (src_def.IsLinear()) {
@@ -826,7 +836,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int s = 0; s < block_size.w; ++s) {
       const std::string sind = std::to_string(s);
-      if (op_def.precision != CalculationsPrecision::F32_F16) {
+      if (op_def.precision != CalculationsPrecision::F32_F16 ||
+          summable_data_type == DataType::FLOAT32) {
         for (int ch = 0; ch < 4; ++ch) {
           for (int z = 0; z < block_size.z; ++z) {
             const std::string zind = std::to_string(z);
@@ -949,6 +960,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
   declare_src();
   const int total_work_items =
       work_group_size_.x * work_group_size_.y * work_group_size_.z;
+  const std::string type_conversion = GetTypeConversion(
+      gpu_info, conv_params.weights_data_type, summable_data_type, 4);
   if (conv_params.weights_upload_type ==
       ConvGeneric::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
     c += GenerateAsyncUpload("weights_cache", "filters_loc",
@@ -962,13 +975,15 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
       c += "    " + barrier + ";\n";
     }
     if (gpu_info.SupportsPointersInKernels()) {
-      c += GenerateUploadByThreads(
-          "weights_cache", "filters_loc", /*use_ptrs*/ true,
-          /*global_offset_name*/ "", "lid", total_work_items, local_mem_size);
+      c += GenerateUploadByThreads("weights_cache", "filters_loc",
+                                   /*use_ptrs*/ true,
+                                   /*global_offset_name*/ "", type_conversion,
+                                   "lid", total_work_items, local_mem_size);
     } else {
       c += GenerateUploadByThreads("weights_cache", "args.weights",
-                                   /*use_ptrs*/ false, "filters_offset", "lid",
-                                   total_work_items, local_mem_size);
+                                   /*use_ptrs*/ false, "filters_offset",
+                                   type_conversion, "lid", total_work_items,
+                                   local_mem_size);
     }
   } else if (use_simd_broadcast) {
     int parts = local_mem_size / simd_size;
@@ -1059,8 +1074,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                ConvGeneric::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
       c += "  " + barrier + ";\n";
       c += GenerateUploadByThreads("weights_cache", "args.biases",
-                                   /*use_ptrs*/ false, "DST_S", "lid",
-                                   total_work_items, block_size.w);
+                                   /*use_ptrs*/ false, "DST_S", type_conversion,
+                                   "lid", total_work_items, block_size.w);
       c += "  " + barrier + ";\n";
     } else if (gpu_info.SupportsPointersInKernels()) {
       c += "  weights_cache = args.biases.GetPtr() + DST_S;\n";
@@ -1277,30 +1292,34 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
       params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f, dst_shape,
-      params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {4, 2, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.25f, dst_shape,
-      params.block_size));
+  if (!apple_info.IsA7GenerationGpu()) {
+    options.push_back(CreateWorkGroupSizeOption(
+        {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {4, 2, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.25f,
+        dst_shape, params.block_size));
+  }
   options.push_back(CreateWorkGroupSizeOption(
       {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
       dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.25f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.0f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.01f,
-      dst_shape, params.block_size));
-  options.push_back(CreateWorkGroupSizeOption(
-      {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.25f,
-      dst_shape, params.block_size));
+  if (!apple_info.IsA7GenerationGpu()) {
+    options.push_back(CreateWorkGroupSizeOption(
+        {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.25f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.0f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.01f,
+        dst_shape, params.block_size));
+    options.push_back(CreateWorkGroupSizeOption(
+        {8, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearAll, 3.1 * 1.25f,
+        dst_shape, params.block_size));
+  }
 
   float optimum = options[0].work_groups_count * options[0].penalty *
                   options[0].work_group_size.x * options[0].work_group_size.y *
@@ -1537,8 +1556,12 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     }
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
-    conv_params.weights_upload_type =
-        WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+    if (definition.precision == CalculationsPrecision::F32_F16) {
+      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    } else {
+      conv_params.weights_upload_type =
+          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+    }
     if (dst_depth % 8 == 0 || dst_depth >= 32) {
       conv_params.block_size.w = 8;
     } else if (dst_depth % 4 == 0 || dst_depth >= 8) {
@@ -1725,7 +1748,8 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-  } else if (gpu_info.IsIntel()) {
+  } else if (gpu_info.IsIntel() ||
+             (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK())) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
       work_group_launch_order_ = int3(0, 1, 2);
@@ -1746,18 +1770,34 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
           WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
       conv_params.simd_size = 8;
     }
-    if (gpu_info.IsApiOpenCl()) {
-      const int kSubGroupSize = 16;
+    if (gpu_info.IsApiOpenCl() &&
+        definition.precision != CalculationsPrecision::F32_F16) {
       const bool supports_subgroups =
           gpu_info.SupportsExtension("cl_khr_subgroups") ||
-          gpu_info.SupportsExtension("cl_intel_subgroups");
-      if (definition.precision != CalculationsPrecision::F32_F16 &&
-          supports_subgroups &&
-          gpu_info.SupportsExtension("cl_intel_required_subgroup_size") &&
-          gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
-        conv_params.weights_upload_type =
-            WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
-        conv_params.simd_size = kSubGroupSize;
+          gpu_info.SupportsExtension("cl_intel_subgroups") ||
+          gpu_info.opencl_info.IsCLVK();
+      if (supports_subgroups) {
+        const int kSubGroupSize = 16;
+        const bool supports_subgroup_size_control =
+            gpu_info.SupportsExtension("cl_intel_required_subgroup_size");
+        if (supports_subgroup_size_control &&
+            gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
+          conv_params.weights_upload_type =
+              WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          conv_params.simd_size = kSubGroupSize;
+        } else if (gpu_info.opencl_info.IsCLVK()) {
+          // It will work because of specific driver using subgroup size 16
+          conv_params.weights_upload_type =
+              WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          conv_params.simd_size = 16;
+        } else {
+          // no support of subgroup size control
+          // only smallest subgroup size (8) can be used safely, otherwise
+          // correctness can not be guaranteed
+          // conv_params.weights_upload_type =
+          //    WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          // conv_params.simd_size = 8;
+        }
       }
     }
     if (dst_depth % 4 == 0 || dst_depth >= 8) {

@@ -16,17 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "absl/functional/function_ref.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
@@ -95,7 +96,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  using Thunk::Thunk;
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
 
   struct Buffer {
     int64_t element_count;
@@ -105,6 +106,23 @@ class NcclCollectiveThunk : public Thunk {
     mlir::Value destination_value;
   };
 
+  class AsyncExecutor {
+   public:
+    // Executes the function on the async communications stream and records a
+    // completion event.
+    Status Execute(
+        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
+            fn,
+        const ExecuteParams& params, ncclComm_t comm);
+    // Blocks the compute stream until async communication is complete.
+    Status Await(const ExecuteParams& params);
+
+   private:
+    absl::Mutex mu_;
+    // Store done events (by device ordinal) for the done thunk to wait on.
+    absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
+  };
+
   // Returns whether NCCL operations appear possible to perform; e.g. if we
   // haven't done a build with the CUDA compiler enabled, we can't compile the
   // NCCL header, and thus this will be false.
@@ -112,33 +130,64 @@ class NcclCollectiveThunk : public Thunk {
   // When this is false, the ExecuteOnStream() call will simply return a status
   // error.
   static bool NcclIsEnabled();
+  static Status CheckImplementable();
 
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
 
+  AsyncExecutor* async_executor() { return async_.get(); }
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
-                                   ncclComm_t comm) = 0;
+                                   se::Stream& stream, ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
 
  private:
+  bool IsAsync() const { return async_ != nullptr; }
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif  // XLA_ENABLE_XCCL
+  std::unique_ptr<AsyncExecutor> async_;  // null if not async.
 };
 
-// Returns if the given data type is supported by NCCL.
-// Note: Keep this in sync with ToNcclDataType().
-bool IsTypeSupportedByNccl(PrimitiveType element_type);
+class NcclCollectiveDoneThunk : public Thunk {
+ public:
+  NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+                          NcclCollectiveThunk::AsyncExecutor& async);
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  NcclCollectiveThunk::AsyncExecutor& async_;
+};
+
+Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
+
+template <typename NcclThunkType, typename OpT>
+Status AddOpDescription(Status status, OpT op, int64_t replica_count,
+                        int64_t partition_count) {
+  if (status.ok()) {
+    return status;
+  }
+  CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
+  return Status(
+      status.code(),
+      absl::StrFormat(
+          "%s\n"
+          "%s with replica_count: %d, partition_count: %d, group_mode: %s, "
+          "operand_count: %d\n%s",
+          status.message(), NcclThunkType::GetHloOpName(), replica_count,
+          partition_count, CollectiveOpGroupModeToString(group_mode),
+          op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
+}
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id);
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id);
 #endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {

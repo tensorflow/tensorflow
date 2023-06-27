@@ -54,7 +54,7 @@ mlir::LogicalResult ConductSparseExpansion(mlir::ModuleOp module) {
       if (expanded_op != nullptr) emit_op = expanded_op;
       return emit_op->emitError(WithContext(status, __FILE__, __LINE__,
                                             "While computing Sparse expansion")
-                                    .error_message());
+                                    .message());
     }
   }
   return mlir::success();

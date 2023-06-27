@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -12,9 +13,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
@@ -38,9 +39,9 @@ pybind_extension(
     link_in_framework = True,
     deps = [
         ":calibration_wrapper_lib",
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/lite/core:headers",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -57,8 +58,8 @@ py_library(
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
         "//tensorflow/lite/python:convert_phase",
         "//tensorflow/lite/python:interpreter",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -75,10 +76,10 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":calibrator",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

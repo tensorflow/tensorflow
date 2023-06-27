@@ -21,13 +21,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 std::unique_ptr<Pass> CreateDropSavedModelSemanticsPass();
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_DROP_SAVEDMODEL_SEMANTICS_H_

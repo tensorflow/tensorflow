@@ -578,9 +578,6 @@ class BFCAllocator : public Allocator {
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
-  // The total number of allocated bytes by the allocator.
-  size_t total_region_allocated_bytes_ = 0;
-
   // An indicator that expansion of a region has hit the limits
   // of the available memory.
   bool started_backpedal_ = false;
@@ -615,7 +612,7 @@ class BFCAllocator : public Allocator {
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
 #ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ = 0 TF_GUARDED_BY(lock_);
+  int64 action_counter_ TF_GUARDED_BY(lock_) = 0;
 #define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
   int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif

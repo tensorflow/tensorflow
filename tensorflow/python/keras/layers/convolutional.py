@@ -37,6 +37,7 @@ from tensorflow.python.keras.layers.pooling import MaxPooling3D
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -1024,7 +1025,7 @@ class Conv1DTranspose(Conv1D):
       output_shape = (batch_size, out_length, self.filters)
     data_format = conv_utils.convert_data_format(self.data_format, ndim=3)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = nn_ops.conv1d_transpose(
         inputs,
         self.kernel,
@@ -1316,7 +1317,7 @@ class Conv2DTranspose(Conv2D):
     else:
       output_shape = (batch_size, out_height, out_width, self.filters)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = backend.conv2d_transpose(
         inputs,
         self.kernel,
@@ -1625,7 +1626,7 @@ class Conv3DTranspose(Conv3D):
                       self.filters)
       strides = (1, stride_d, stride_h, stride_w, 1)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = nn.conv3d_transpose(
         inputs,
         self.kernel,

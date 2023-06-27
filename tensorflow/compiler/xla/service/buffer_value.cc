@@ -18,8 +18,8 @@ limitations under the License.
 #include <iosfwd>
 #include <ostream>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 
@@ -55,11 +55,6 @@ LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
   if (has_color()) {
     proto.set_color(color());
   }
-  // TODO(b/239098765): Stop populating these fields and delete them when
-  // profiler finishes adaptation.
-  proto.mutable_defined_at()->set_computation_name(
-      instruction()->parent()->name());
-  proto.mutable_defined_at()->set_instruction_name(instruction()->name());
   return proto;
 }
 

@@ -17,12 +17,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/MDBuilder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -78,24 +83,24 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(0)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(0)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimy: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_y,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(1)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(1)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimz: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(2)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(2)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kGroupBarrierId: {
@@ -158,21 +163,60 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt"};
     }
+    case TargetDeviceFunctionID::kTan: {
+      return {"__nv_tan", "__ocml_tan"};
+    }
     case TargetDeviceFunctionID::kTanh: {
       return {"__nv_tanh", "__ocml_tanh"};
+    }
+    case TargetDeviceFunctionID::kCbrt: {
+      return {"__nv_cbrt", "__ocml_cbrt"};
     }
   }
 }
 }  // namespace
 
+StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
+  switch (op) {
+    case HloOpcode::kAtan2:
+      return TargetDeviceFunctionID::kAtan2;
+    case HloOpcode::kCos:
+      return TargetDeviceFunctionID::kCos;
+    case HloOpcode::kExp:
+      return TargetDeviceFunctionID::kExp;
+    case HloOpcode::kExpm1:
+      return TargetDeviceFunctionID::kExpm1;
+    case HloOpcode::kLog:
+      return TargetDeviceFunctionID::kLog;
+    case HloOpcode::kLog1p:
+      return TargetDeviceFunctionID::kLog1p;
+    case HloOpcode::kPower:
+      return TargetDeviceFunctionID::kPow;
+    case HloOpcode::kRsqrt:
+      return TargetDeviceFunctionID::kRsqrt;
+    case HloOpcode::kSin:
+      return TargetDeviceFunctionID::kSin;
+    case HloOpcode::kSqrt:
+      return TargetDeviceFunctionID::kSqrt;
+    case HloOpcode::kTan:
+      return TargetDeviceFunctionID::kTan;
+    case HloOpcode::kTanh:
+      return TargetDeviceFunctionID::kTanh;
+    case HloOpcode::kCbrt:
+      return TargetDeviceFunctionID::kCbrt;
+    default:
+      break;
+  }
+  return NotFound("The HLO opcode %s is not mapped to a device function",
+                  HloOpcodeString(op));
+}
+
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                      PrimitiveType output_type,
-                                     llvm::IRBuilder<>* b) {
+                                     llvm::Triple target_triple) {
   // The device math functions differentiate between "double" and "float" by
   // appending a double or float specific suffix to a root name. The suffix and
   // the root name are specific to the target.
-  llvm::Triple target_triple =
-      llvm::Triple(b->GetInsertBlock()->getModule()->getTargetTriple());
   struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
   if (target_triple.isNVPTX()) {
     if (output_type == F32) {
@@ -180,7 +224,8 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
     } else if (output_type == F64) {
       return gpu_root_names.nvptx_root;
     } else {
-      LOG(FATAL) << "Unexpected type while getting device function name.";
+      LOG(FATAL) << "Unexpected type while getting device function name: "
+                 << primitive_util::LowercasePrimitiveTypeName(output_type);
     }
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     if (output_type == F32) {
@@ -198,8 +243,8 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b, absl::string_view name) {
+    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
   for (PrimitiveType input_type : input_types) {
@@ -218,9 +263,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
           ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
-  for (auto attribute : attributes) {
-    callee->addFnAttr(attribute);
-  }
+  callee->addFnAttrs(attributes);
 
   return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }

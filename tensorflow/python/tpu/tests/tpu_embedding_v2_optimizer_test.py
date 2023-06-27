@@ -20,7 +20,6 @@ import numpy as np
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -146,7 +145,7 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     if use_tpu:
       strategy = self._get_strategy()
     else:
-      strategy = distribution_strategy_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
     with strategy.scope():
       mid_level = tpu_embedding_v2.TPUEmbedding(
           feature_config=self.feature_config,

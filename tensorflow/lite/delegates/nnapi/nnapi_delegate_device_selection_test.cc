@@ -27,12 +27,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -42,6 +42,7 @@ namespace {
 class FloatAddOpModel : public SingleOpModel {
  public:
   FloatAddOpModel() = default;
+  ~FloatAddOpModel() { stateful_delegate_.reset(); }
   void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
@@ -121,7 +122,7 @@ TEST_F(NnApiDeviceSelectionTest, DoesntSetDevicesWhenCpuAllowed) {
       [](ANeuralNetworksModel* model,
          const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
          ANeuralNetworksCompilation** compilation) -> int {
-        EXPECT_TRUE(false) << "Should not call createForDevices";
+        ADD_FAILURE() << "Should not call createForDevices";
         return 1;
       });
 
@@ -545,7 +546,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   m.PopulateTensor<float>(m.input3(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  // Delegation succeded without failures and all nodes have been delegated.
+  // Delegation succeeded without failures and all nodes have been delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
 }
 
@@ -628,7 +629,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllCostituentOpsNotSupported) {
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  // Delegation succeded without failures and HardSwish has not been delegated
+  // Delegation succeeded without failures and HardSwish has not been delegated
   // but Add has been correctly delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
 }
@@ -658,7 +659,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, NotAllConstitutentOpsSupported) {
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  // Delegation succeded without failures. HardSwish has not been delegated
+  // Delegation succeeded without failures. HardSwish has not been delegated
   // but Add is delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
 }
@@ -687,7 +688,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllConstitutentOpsSupported) {
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  // Delegation succeded without failures and all nodes have been delegated.
+  // Delegation succeeded without failures and all nodes have been delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
 }
 

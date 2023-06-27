@@ -1,14 +1,16 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = [
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = set_external_visibility([
+        "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -48,6 +50,15 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    hdrs = ["//tensorflow/tsl/platform:criticality.h"],
+    textual_hdrs = ["criticality.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
+)
+
+cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],
@@ -63,6 +74,35 @@ cc_library(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:types",
         "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "dso_loader",
+    srcs = ["dso_loader.cc"] + select({
+        # include dynamic loading checker only for open source build
+        "//tensorflow/tsl:oss": ["dlopen_checker.cc"],
+        "//conditions:default": ["dlopen_checker_stub.cc"],
+    }),
+    hdrs = ["dso_loader.h"],
+    compatible_with = [],
+    copts = tsl_copts(),
+    tags = [
+        "manual",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_tensorrt//:tensorrt_headers",
     ],
 )
 
@@ -128,6 +168,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -297,7 +338,7 @@ cc_library(
         "//tensorflow/tsl/platform:snappy.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
         # TF Additional NUMA defines
         "//tensorflow/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
@@ -310,14 +351,14 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "@com_google_absl//absl/base",
+        "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:byte_order",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
+        "@com_google_absl//absl/base",
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
@@ -356,6 +397,7 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:test",
         "@bazel_tools//tools/cpp/runfiles",
     ],
 )
@@ -391,7 +433,7 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler.h"],
+    hdrs = ["//tensorflow/tsl/platform:stacktrace_handler_hdrs"],
     linkstatic = 1,
     deps = [
         "//tensorflow/tsl/platform",
@@ -508,23 +550,39 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["crash_analysis.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:protobuf",
     ],
 )
 
+cc_library(
+    name = "status",
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    textual_hdrs = ["status.h"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
+)
+
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "additional_mobile_srcs_no_runtime",
-    visibility = ["//tensorflow/core/platform:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 filegroup(
@@ -539,16 +597,16 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
-        "resource.cc",
         "stacktrace.h",
+        "status.h",
         "tracing_impl.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -559,12 +617,13 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
-        "subprocess.cc",
-        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
-    ],
-    visibility = ["//tensorflow/core/platform:__pkg__"],
+    ] + if_not_fuchsia([
+        "subprocess.cc",
+        "subprocess.h",
+    ]),
+    visibility = set_external_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 exports_files(
@@ -576,7 +635,7 @@ exports_files(
             "test.cc",
         ],
     ),
-    visibility = ["//tensorflow/core/platform:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 exports_files(
@@ -585,10 +644,10 @@ exports_files(
         "logging.h",
         "test.cc",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )

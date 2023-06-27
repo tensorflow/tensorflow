@@ -20,6 +20,7 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+// Note: Please add new context type after all existing ones.
 enum class ContextType : int {
   kGeneric = 0,
   kLegacy,

@@ -220,7 +220,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
           rt_inputs=([['a00', 'a01'], [], ['a20', 'a21']],),
           axis=0,
           expected=[[b'a00', b'a01'], [], [b'a20', b'a21']]),
-  )   # pyformat: disable
+  )  # pyformat: disable
   def testRaggedConcat(self,
                        descr,
                        rt_inputs,
@@ -280,7 +280,11 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
           rt_inputs=([[1, 2]], [[3, 4], [5, 6]]),
           axis=1,
           error=errors.InvalidArgumentError,
-          message='Input tensors have incompatible shapes'),
+          message=(
+              r'Input tensors at index 0 \(=x\) and 1 \(=y\) have incompatible'
+              r' shapes\.'
+          ),
+      ),
   ])
   def testRuntimeError(self, rt_inputs, axis, error, message,
                        ragged_ranks=None):

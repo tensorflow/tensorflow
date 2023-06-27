@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 20
+// next: 21
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -149,6 +149,11 @@ message OptimizationOptions {
   oneof optional_inject_prefetch {
     bool inject_prefetch = 19;
   }
+  // Whether to start background threads of asynchronous transformations upon
+  // iterator creation (as opposed to upon first call to `GetNext`).
+  oneof optional_warm_start {
+    bool warm_start = 20;
+  }
 }
 
 // next: 3
@@ -173,7 +178,7 @@ enum ExternalStatePolicy {
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
 //
-// next: 8
+// next: 9
 message Options {
   // Whether the outputs need to be produced in deterministic order.
   oneof optional_deterministic {
@@ -201,5 +206,19 @@ message Options {
   // FAIL: External state results in an error.
   oneof optional_external_state_policy {
     ExternalStatePolicy external_state_policy = 6;
+  }
+  // This option indicates whether to checkpoint input pipeline state
+  // "explicitly", by storing the internal state of iterators for each
+  // tf.data operation, (the default), or "symbolically", by storing metadata
+  // that captures the state of each tf.data operation at the time it processed
+  // the last data seen by tf.data consumer.
+  //
+  // Symbolic checkpoints are expected to be much smaller but not all tf.data
+  // operations are compatible with symbolic checkpointing. In particular,
+  // symbolic checkpointing requires that data is processed in-order and
+  // operations that reorder elements, such as `shuffle()` or non-deterministic
+  // `map()`, are not compatible with symbolic checkpointing.
+  oneof optional_symbolic_checkpoint {
+    bool symbolic_checkpoint = 8;
   }
 }

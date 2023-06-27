@@ -16,10 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -68,6 +77,12 @@ class VariantTensorDataReader : public IteratorStateReader {
                             StringPiece key, Tensor* val) const;
   Status ReadDatasetInternal(FunctionLibraryRuntime* flr, StringPiece name,
                              StringPiece key, Tensor* val) const;
+  // Produces all key/value pairs stored in this reader. Useful for debugging.
+  std::map<string, Tensor> ReadAllTensors();
+
+  // For access to ReadAllTensors()
+  friend tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
+  CheckpointStats(const std::string& checkpoint_bytes);
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -85,9 +100,8 @@ class VariantTensorDataReader : public IteratorStateReader {
 // Now the VariantTensorData objects can be used to serialize.
 class VariantTensorDataWriter : public IteratorStateWriter {
  public:
-  Status WriteScalar(StringPiece key, const int64_t val) override;
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const int64_t val) override;
+  Status WriteScalar(StringPiece key, int64_t val) override;
+  Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override;
 
   Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteScalar(StringPiece name, StringPiece key,
@@ -120,6 +134,66 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   std::map<string, std::vector<string>> keys_;
 };
 
+// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
+// The `GetData()` method returns an VariantTensorData object which contains all
+// the state needed to restore a single iterator.
+//
+// Usage example:
+//
+// Encoding:
+//
+//   Tensor t(DT_VARIANT, TensorShape({}));
+//   t->scalar<Variant>()() = IteratorStateVariant();
+//
+// Encode() sets the type_name of the VariantTensorData object to
+// IteratorStateVariant::TypeName().
+//
+// Decoding:
+//
+//   Variant v = <VariantTensorDataProto object>;
+//   DecodeUnaryVariant(&v);
+//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
+//   IteratorStateReader reader({wrapper->GetData()});
+//   iterator_resource->Restore(ctx, &reader);
+//
+// The type_name of the VariantTensorData object to be decoded must match
+// IteratorStateVariant::TypeName().
+class IteratorStateVariant {
+ public:
+  IteratorStateVariant() = default;
+  IteratorStateVariant(const IteratorStateVariant& other);
+  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
+  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
+
+  static std::string TypeName();
+
+  // Initializes `this` from a VariantTensorData object.
+  Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> data);
+
+  // Returns a borrowed pointer to the underlying VariantTensorData.
+  const VariantTensorData* GetData() const { return data_.get(); }
+
+  // Encodes this `IteratorStateVariant` into `*data`. Data will be compressed
+  // and stored as a scalar `CompressedElement` tensor, or left uncompressed if
+  // compression fails.
+  void Encode(VariantTensorData* data) const;
+
+  // Decodes from `data`. If `data` contains a single scalar `CompressedElement`
+  // tensor, it is assumed to be compressed by `Encode`, and will be
+  // uncompressed as part of `Decode`.
+  bool Decode(VariantTensorData data);
+
+  std::string DebugString() const;
+
+ private:
+  // Returns the compressed element in `data`. If `data` does not contain a
+  // compressed element, returns nullptr.
+  static const CompressedElement* GetCompressedElement(
+      const VariantTensorData& data);
+
+  std::unique_ptr<VariantTensorData> data_;
+};
+
 // Returns a GraphDef representation of the given dataset.
 Status AsGraphDef(const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
@@ -134,6 +208,11 @@ Status AsGraphDef(const DatasetBase* dataset,
 Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
                             std::vector<std::pair<string, Tensor>>* input_list,
                             GraphDef* result, string* dataset_node);
+
+// Analyzes the bytes of a tf.data iterator checkpoint to identify all of the
+// keys in the checkpoint along with their sizes in bytes.
+tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+    const std::string& checkpoint_bytes);
 
 }  // namespace data
 }  // namespace tensorflow

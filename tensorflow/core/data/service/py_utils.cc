@@ -37,7 +37,5 @@ std::string DefaultProtocol() {
   return "grpc";
 }
 
-std::string DefaultDataTransferProtocol() { return "grpc"; }
-
 }  // namespace data
 }  // namespace tensorflow

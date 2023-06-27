@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/status.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 

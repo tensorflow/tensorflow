@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <atomic>
 
-#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/allocator_registry.h"
 #include "tensorflow/tsl/framework/tracking_allocator.h"
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tsl {
@@ -71,7 +72,7 @@ class CPUAllocator : public Allocator {
       : single_allocation_warning_count_(0),
         total_allocation_warning_count_(0) {}
 
-  ~CPUAllocator() override {}
+  ~CPUAllocator() override = default;
 
   string Name() override { return "cpu"; }
 
@@ -125,8 +126,8 @@ class CPUAllocator : public Allocator {
     tsl::profiler::TraceMe::InstantActivity(
         [this, traceme_name, chunk_ptr, req_bytes,
          alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
-          const auto& annotation = tensorflow::profiler::
-              ScopedMemoryDebugAnnotation::CurrentAnnotation();
+          const auto& annotation =
+              tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
           return tsl::profiler::TraceMeEncode(
               traceme_name, {{"allocator_name", Name()},
                              {"bytes_reserved", stats_.bytes_reserved},
@@ -195,11 +196,13 @@ class CPUAllocatorFactory : public AllocatorFactory {
 
     void* Alloc(size_t alignment, size_t num_bytes,
                 size_t* bytes_received) override {
+      tsl::profiler::TraceMe traceme("CPUSubAllocator::Alloc");
       *bytes_received = num_bytes;
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
     }
 
     void Free(void* ptr, size_t num_bytes) override {
+      tsl::profiler::TraceMe traceme("CPUSubAllocator::Free");
       cpu_allocator_->DeallocateRaw(ptr);
     }
 

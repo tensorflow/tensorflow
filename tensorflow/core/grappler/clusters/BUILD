@@ -8,12 +8,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],
-)
-
-config_setting(
-    name = "xsmm",
-    define_values = {"tensorflow_xsmm": "1"},
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -26,15 +21,12 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ] + select({
-        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
-        "//conditions:default": [],
-    }),
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cc_test(
@@ -79,6 +71,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -136,6 +129,8 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

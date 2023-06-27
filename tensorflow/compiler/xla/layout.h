@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -49,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -83,6 +86,8 @@ class Tile {
   absl::InlinedVector<int64_t, 2> dimensions_;
 };
 
+// TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
+// matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
  public:
   Layout();
@@ -97,13 +102,14 @@ class Layout {
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-                  int64_t memory_space, std::unique_ptr<Shape> physical_shape);
-
-  explicit Layout(absl::Span<const int64_t> minor_to_major,
-                  absl::Span<const DimLevelType> dim_level_types,
+                  absl::Span<const bool> dim_unique,
+                  absl::Span<const bool> dim_ordered,
                   absl::Span<const Tile> tiles,
-                  int64_t element_size_in_bits = 0, int64_t memory_space = 0);
+                  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -114,6 +120,9 @@ class Layout {
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
 
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
+
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;
 
@@ -123,10 +132,6 @@ class Layout {
   //
   // - Comparing two layouts ignoring their difference in tiles:
   //   Equal().IgnoreTiles()(layout1, layout2);
-  //
-  // - Comparing two layouts ignoring their difference in tiles and element
-  //   size:
-  //   Equal().IgnoreTiles().IgnoreElementSize()(layout1, layout2);
   class Equal {
    public:
     Equal() = default;
@@ -138,16 +143,13 @@ class Layout {
       return *this;
     }
 
-    Equal& IgnoreElementSize() {
-      ignore_element_size_ = true;
+    Equal& IgnoreIndexPrimitiveType() {
+      ignore_index_primitive_type_ = true;
       return *this;
     }
 
-    Equal& MinorToMajorOnly() {
-      ignore_tiles_ = true;
-      ignore_element_size_ = true;
-      ignore_memory_space_ = true;
-      ignore_physical_shape_ = true;
+    Equal& IgnorePointerPrimitiveType() {
+      ignore_pointer_primitive_type_ = true;
       return *this;
     }
 
@@ -161,9 +163,25 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnoreElementSize() {
+      ignore_element_size_ = true;
+      return *this;
+    }
+
+    Equal& MinorToMajorOnly() {
+      return IgnoreTiles()
+          .IgnoreIndexPrimitiveType()
+          .IgnorePointerPrimitiveType()
+          .IgnoreMemorySpace()
+          .IgnorePhysicalShape()
+          .IgnoreElementSize();
+    }
+
    private:
     bool ignore_tiles_ = false;
     bool ignore_element_size_ = false;
+    bool ignore_index_primitive_type_ = false;
+    bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
     bool ignore_physical_shape_ = false;
   };
@@ -200,6 +218,46 @@ class Layout {
   }
   DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_; }
 
+  // Methods for accessing the dim_unique array.
+  int dim_unique_size() const { return dim_unique_.size(); }
+  bool dim_unique(int index) const { return dim_unique_.at(index); }
+  Layout& set_dim_unique(int index, bool unique) {
+    dim_unique_.at(index) = unique;
+    return *this;
+  }
+  Layout& add_dim_unique(bool unique) {
+    dim_unique_.push_back(unique);
+    return *this;
+  }
+  Layout& clear_dim_unique() {
+    dim_unique_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_unique() const { return dim_unique_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_unique() {
+    return &dim_unique_;
+  }
+
+  // Methods for accessing the dim_ordered array.
+  int dim_ordered_size() const { return dim_ordered_.size(); }
+  bool dim_ordered(int index) const { return dim_ordered_.at(index); }
+  Layout& set_dim_ordered(int index, bool ordered) {
+    dim_ordered_.at(index) = ordered;
+    return *this;
+  }
+  Layout& add_dim_ordered(bool ordered) {
+    dim_ordered_.push_back(ordered);
+    return *this;
+  }
+  Layout& clear_dim_ordered() {
+    dim_ordered_.clear();
+    return *this;
+  }
+  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
+  absl::InlinedVector<bool, InlineRank()>* mutable_dim_ordered() {
+    return &dim_ordered_;
+  }
+
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
   int64_t minor_to_major(int index) const { return minor_to_major_.at(index); }
@@ -215,11 +273,15 @@ class Layout {
     minor_to_major_.clear();
     return *this;
   }
+  // Removes the given dimension from 'minor_to_major_', and adjusts the other
+  // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
+  // 'dim_unique_' in case it is a sparse layout.
+  Layout& DeleteDimension(int64_t dim_to_delete);
   absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Methods for accessing the tile field.
-  int tiles_size() const { return tiles_.size(); }
+  int64_t tiles_size() const { return tiles_.size(); }
   const Tile& tiles(int index) const { return tiles_.at(index); }
   Tile* mutable_tiles(int index) { return &tiles_.at(index); }
   Tile* add_tiles() {
@@ -238,6 +300,21 @@ class Layout {
     element_size_in_bits_ = value;
     return *this;
   }
+
+  PrimitiveType index_primitive_type() const { return index_primitive_type_; }
+  Layout& set_index_primitive_type(PrimitiveType value) {
+    index_primitive_type_ = value;
+    return *this;
+  }
+
+  PrimitiveType pointer_primitive_type() const {
+    return pointer_primitive_type_;
+  }
+  Layout& set_pointer_primitive_type(PrimitiveType value) {
+    pointer_primitive_type_ = value;
+    return *this;
+  }
+
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
   int64_t memory_space() const { return memory_space_; }
@@ -255,6 +332,13 @@ class Layout {
   Shape* mutable_physical_shape();
   void clear_physical_shape();
 
+  int64_t dynamic_shape_metadata_prefix_bytes() const {
+    return dynamic_shape_metadata_prefix_bytes_;
+  }
+  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+    dynamic_shape_metadata_prefix_bytes_ = bytes;
+  }
+
   void Swap(Layout* other) {
     using std::swap;
     swap(*this, *other);
@@ -265,13 +349,18 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_, l.memory_space_);
+                      l.element_size_in_bits_, l.index_primitive_type_,
+                      l.pointer_primitive_type_, l.memory_space_);
   }
 
  private:
   // The list of dimension level types, indicating the method that will be used
   // to represent each dimension of the array.
   DimLevelTypeVector dim_level_types_;
+
+  // Whether each DimLevelType is unique and ordered.
+  absl::InlinedVector<bool, InlineRank()> dim_unique_;
+  absl::InlinedVector<bool, InlineRank()> dim_ordered_;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying
@@ -289,7 +378,13 @@ class Layout {
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;
 
+  // The primitive type to use for sparse array indices and pointers.  Each of
+  // these must either be INVALID, or an unsigned integer type.
+  PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
+  PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
+
   // The number of bits used to store an individual array element.
+  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
   int64_t element_size_in_bits_ = 0;
 
   // The assigned memory space.
@@ -297,6 +392,11 @@ class Layout {
 
   // The physical on-device shape used to represent a sparse array.
   std::unique_ptr<Shape> physical_shape_;
+
+  // The dynamic shape metadata size in bytes in front of the shape data. The
+  // field may be non-zero for a static shape whose associated buffer is for a
+  // dynamic shape, e.g. a result of SliceToDynamic.
+  int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

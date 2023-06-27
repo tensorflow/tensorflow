@@ -13,15 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to create TensorProtos."""
+import typing
+from typing import Protocol
 import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.types import core
 from tensorflow.python.types import internal
@@ -71,10 +71,48 @@ def FastAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
           proto_values, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
 
 
+def ExtractBitsFromFloat8e5m2(x):
+  return np.asarray(
+      x, dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8).item()
+
+
+def SlowAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.half_val.extend(
+      [ExtractBitsFromFloat8e5m2(x) for x in proto_values])
+
+
+def FastAppendFloat8e5m2ArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendFloat8ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values,
+                 dtype=dtypes.float8_e5m2.as_numpy_dtype).view(np.uint8))
+
+
+def ExtractBitsFromFloat8e4m3fn(x):
+  return np.asarray(
+      x, dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8).item()
+
+
+def SlowAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.half_val.extend(
+      [ExtractBitsFromFloat8e4m3fn(x) for x in proto_values])
+
+
+def FastAppendFloat8e4m3fnArrayToTensorProto(tensor_proto, proto_values):
+  fast_tensor_util.AppendFloat8ArrayToTensorProto(
+      tensor_proto,
+      np.asarray(proto_values,
+                 dtype=dtypes.float8_e4m3fn.as_numpy_dtype).view(np.uint8))
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype:
           FastAppendBFloat16ArrayToTensorProto,
+      dtypes.float8_e5m2.as_numpy_dtype:
+          FastAppendFloat8e5m2ArrayToTensorProto,
+      dtypes.float8_e4m3fn.as_numpy_dtype:
+          FastAppendFloat8e4m3fnArrayToTensorProto,
       np.float16:
           _MediumAppendFloat16ArrayToTensorProto,
       np.float32:
@@ -155,27 +193,52 @@ else:
     tensor_proto.bool_val.extend([x.item() for x in proto_values])
 
   _NP_TO_APPEND_FN = {
-      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
-      np.float16: SlowAppendFloat16ArrayToTensorProto,
-      np.float32: SlowAppendFloat32ArrayToTensorProto,
-      np.float64: SlowAppendFloat64ArrayToTensorProto,
-      np.int32: SlowAppendIntArrayToTensorProto,
-      np.int64: SlowAppendInt64ArrayToTensorProto,
-      np.uint8: SlowAppendIntArrayToTensorProto,
-      np.uint16: SlowAppendIntArrayToTensorProto,
-      np.uint32: SlowAppendUInt32ArrayToTensorProto,
-      np.uint64: SlowAppendUInt64ArrayToTensorProto,
-      np.int8: SlowAppendIntArrayToTensorProto,
-      np.int16: SlowAppendIntArrayToTensorProto,
-      np.complex64: SlowAppendComplex64ArrayToTensorProto,
-      np.complex128: SlowAppendComplex128ArrayToTensorProto,
-      np.object_: SlowAppendObjectArrayToTensorProto,
-      np.bool_: SlowAppendBoolArrayToTensorProto,
-      dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
-      dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
-      dtypes.qint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
-      dtypes.quint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
-      dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.bfloat16.as_numpy_dtype:
+          SlowAppendBFloat16ArrayToTensorProto,
+      dtypes.float8_e5m2.as_numpy_dtype:
+          SlowAppendFloat8e5m2ArrayToTensorProto,
+      dtypes.float8_e4m3fn.as_numpy_dtype:
+          SlowAppendFloat8e4m3fnArrayToTensorProto,
+      np.float16:
+          SlowAppendFloat16ArrayToTensorProto,
+      np.float32:
+          SlowAppendFloat32ArrayToTensorProto,
+      np.float64:
+          SlowAppendFloat64ArrayToTensorProto,
+      np.int32:
+          SlowAppendIntArrayToTensorProto,
+      np.int64:
+          SlowAppendInt64ArrayToTensorProto,
+      np.uint8:
+          SlowAppendIntArrayToTensorProto,
+      np.uint16:
+          SlowAppendIntArrayToTensorProto,
+      np.uint32:
+          SlowAppendUInt32ArrayToTensorProto,
+      np.uint64:
+          SlowAppendUInt64ArrayToTensorProto,
+      np.int8:
+          SlowAppendIntArrayToTensorProto,
+      np.int16:
+          SlowAppendIntArrayToTensorProto,
+      np.complex64:
+          SlowAppendComplex64ArrayToTensorProto,
+      np.complex128:
+          SlowAppendComplex128ArrayToTensorProto,
+      np.object_:
+          SlowAppendObjectArrayToTensorProto,
+      np.bool_:
+          SlowAppendBoolArrayToTensorProto,
+      dtypes.qint8.as_numpy_dtype:
+          SlowAppendQIntArrayToTensorProto,
+      dtypes.quint8.as_numpy_dtype:
+          SlowAppendQIntArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype:
+          SlowAppendQIntArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype:
+          SlowAppendQIntArrayToTensorProto,
+      dtypes.qint32.as_numpy_dtype:
+          SlowAppendQIntArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 
@@ -235,7 +298,8 @@ def _FlattenToStrings(nested_strings):
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
     dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
-    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64,
+    dtypes.float8_e5m2, dtypes.float8_e4m3fn
 ])
 
 
@@ -276,7 +340,7 @@ _check_bool = _generate_isinstance_check(bool)
 
 def _check_not_tensor(values):
   _ = [_check_failed(v) for v in nest.flatten(values)
-       if isinstance(v, ops.Tensor)]
+       if isinstance(v, core.Symbol)]
 # pylint: enable=invalid-name
 
 _TF_TO_IS_OK = {
@@ -335,7 +399,7 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
-  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
+  if isinstance(obj, core.Symbol) and not isinstance(obj, core.Value):  # pylint: disable=protected-access
     # Tensor implements __array__ only so it can inform the user that it is not
     # a valid array.
     return False
@@ -612,6 +676,9 @@ def MakeNdarray(tensor):
     # of the fp16: we need to reinterpret this as a proper float16
     values = np.fromiter(tensor.half_val, dtype=np.uint16)
     values.dtype = tensor_dtype.as_numpy_dtype
+  elif tensor_dtype == dtypes.float8_e5m2 or tensor_dtype == dtypes.float8_e4m3fn:
+    values = np.fromiter(tensor.float8_val, dtype=np.uint8)
+    values.dtype = tensor_dtype.as_numpy_dtype
   elif tensor_dtype == dtypes.float32:
     values = np.fromiter(tensor.float_val, dtype=dtype)
   elif tensor_dtype == dtypes.float64:
@@ -677,7 +744,7 @@ def ShapeEquals(tensor_proto, shape):
 
 def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
-  if not isinstance(tensor, ops.Tensor):
+  if not isinstance(tensor, core.Symbol):
     raise TypeError(f"{tensor!r} must be a Tensor, but got {type(tensor)}.")
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
@@ -758,7 +825,11 @@ def _ConstantValue(tensor, partial):
       if value is None and not partial:
         return None
       values.append(value)
-    return np.array(values)
+    try:
+      return np.array(values)
+    except ValueError:
+      # If partial=True, some of the elements of values may be None.
+      return np.array(values, dtype=object)
   elif tensor.op.type == "Unpack":
     # We can't handle axis != 0 Unpacks at the moment.
     if tensor.op.get_attr("axis") != 0:
@@ -864,7 +935,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(tensor, ops.EagerTensor):
+  if isinstance(tensor, core.Value):
     try:
       return tensor.numpy()
     except errors_impl.UnimplementedError:
@@ -873,7 +944,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
       return None
   if not is_tensor(tensor):
     return tensor
-  if not isinstance(tensor, ops.Tensor):
+  if not isinstance(tensor, core.Symbol):
     return None
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
@@ -902,7 +973,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Raises:
     ValueError: If the shape is rank-0 and is not statically known to be -1.
   """
-  if isinstance(tensor, ops.EagerTensor):
+  if isinstance(tensor, core.Value):
     return tensor_shape.TensorShape(
         [dim if dim != -1 else None for dim in tensor.numpy()])
 
@@ -1026,6 +1097,16 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+@typing.runtime_checkable
+class IsTensorLike(Protocol):
+
+  def is_tensor_like(self):  # pylint: disable=invalid-name
+    pass
+
+
+tf_type_classes = (internal.NativeObject, core.Tensor, IsTensorLike)
+
+
 # TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
 def is_tf_type(x):  # pylint: disable=invalid-name
@@ -1055,67 +1136,11 @@ def is_tf_type(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a TensorFlow-native type.
   """
-  return (isinstance(x, internal.NativeObject) or
-          isinstance(x, core.Tensor) or
-          getattr(x, "is_tensor_like", False))
+  return isinstance(x, tf_type_classes)
 
 
 # Deprecated alias for tensor_util.is_tf_type.
 is_tensor = is_tf_type
-
-
-def shape_tensor(shape):  # pylint: disable=invalid-name
-  """Convert to an int32 or int64 tensor, defaulting to int32 if empty."""
-  dtype = None
-  if isinstance(shape, (tuple, list)):
-    if not shape:
-      dtype = dtypes.int32
-    else:
-      # If there are Dimension objects in the shape, unwrap them. This can be a
-      # problem if v1 and v2 TensorShape objects get mixed up in partial
-      # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
-      # not convertible to Tensors because of mixed content.
-      shape = tuple(map(tensor_shape.dimension_value, shape))
-  return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
-
-
-# DO NOT USE: For testing only.
-_ENABLE_MAYBE_SET_STATIC_SHAPE = True
-
-
-def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
-  """Sets the shape of `tensor` to the `shape`'s constant value, if inferrable.
-
-  This is a temporary workaround to fix shape inference across functional op
-  boundaries. E.g.
-
-  ```python
-  shape = tf.constant([3])
-  @tf.function
-  def f():
-    u = tf.random_uniform(shape)
-    return u
-  ```
-
-  If we were to rely solely on C++ shape inference, the shape of `u` inside
-  `f` would be unknown because C++ shape inference is not aware of the outer
-  graph and all it sees is a Placeholder node when backtracing the captured
-  tensor for `shape`. `maybe_set_static_shape` computes the static shape value
-  of `shape` by traversing the `FuncGraph` boundaries and sets the correct
-  shape.
-
-  A longer term solution would be to fix C++ shape inference.
-
-  Args:
-    tensor: A tensor.
-    shape: A shape tensor.
-  """
-  if (_ENABLE_MAYBE_SET_STATIC_SHAPE and not context.executing_eagerly() and
-      ops.get_default_graph().building_function and
-      not tensor.shape.is_fully_defined() and is_tensor(shape)):
-    shape = shape_tensor(shape)
-    const_shape = constant_value_as_shape(shape)
-    tensor.set_shape(const_shape)
 
 
 def try_evaluate_constant(tensor):  # pylint: disable=invalid-name

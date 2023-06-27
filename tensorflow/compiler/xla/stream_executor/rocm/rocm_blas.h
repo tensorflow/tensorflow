@@ -48,6 +48,11 @@ struct RocBlasTypeConversionHelper<Eigen::half> {
 };
 
 template <>
+struct RocBlasTypeConversionHelper<Eigen::bfloat16> {
+  using mapped_type = rocblas_bfloat16;
+};
+
+template <>
 struct RocBlasTypeConversionHelper<std::complex<float>> {
   using mapped_type = rocblas_float_complex;
 };
@@ -116,11 +121,11 @@ class ROCMBlas : public blas::BlasSupport {
                               /*err_on_failure=*/true, args...);
   }
 
-  // Same as above, but returns Status.
+  // Same as above, but returns tsl::Status.
   template <typename... Args>
-  port::Status DoBlasInternalStatus(Args... args) {
+  tsl::Status DoBlasInternalStatus(Args... args) {
     if (!DoBlasInternal(args...)) {
-      return port::InternalError("Failed calling rocBLAS");
+      return tsl::errors::Internal("Failed calling rocBLAS");
     }
     return tsl::OkStatus();
   }
@@ -135,7 +140,7 @@ class ROCMBlas : public blas::BlasSupport {
   // A helper allocation function to convert raw pointers memory layout to
   // strided flavor
   template <typename T>
-  port::Status AllocateStridedBuffer(
+  tsl::Status AllocateStridedBuffer(
       const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
           &raw_ptrs,
       int batch_count, uint64_t batch_stride,
@@ -163,33 +168,13 @@ class ROCMBlas : public blas::BlasSupport {
   // It will take advantage of the AllocateStridedBuffer subroutine to
   // reallocate the memory layout to be strided batched.
   template <typename T, typename FuncT>
-  port::Status DoBlasGemmBatchedInternal(
+  tsl::Status DoBlasGemmBatchedInternal(
       FuncT rocblas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
-      const absl::Span<DeviceMemory<T> *const> &a_ptrs_to_wrappers, int lda,
-      const absl::Span<DeviceMemory<T> *const> &b_ptrs_to_wrappers, int ldb,
-      T beta, const absl::Span<DeviceMemory<T> *const> &c_ptrs_to_wrappers,
-      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
-
-  // Helper function for implementing DoBlasGemmWithProfiling.
-  template <typename T, typename ParamType>
-  bool DoBlasGemmWithProfilingImpl(Stream *stream, blas::Transpose transa,
-                                   blas::Transpose transb, uint64_t m,
-                                   uint64_t n, uint64 k, const ParamType &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &b, int ldb,
-                                   const ParamType &beta, DeviceMemory<T> *c,
-                                   int ldc,
-                                   blas::ProfileResult *output_profile_result);
-
-  // Helper function for implementing DoBlasGemvWithProfiling.
-  template <typename T>
-  bool DoBlasGemvWithProfilingImpl(Stream *stream, blas::Transpose trans,
-                                   uint64_t m, uint64 n, const T &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &x, int incx,
-                                   const T &beta, DeviceMemory<T> *y, int incy,
-                                   blas::ProfileResult *output_profile_result);
+      DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
+      DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
+      DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
+      ScratchAllocator *scratch_allocator);
 
   // mutex that guards the rocBLAS handle for this device.
   absl::Mutex mu_;

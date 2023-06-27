@@ -158,6 +158,10 @@ class SobolSampleOp : public OpKernel {
                 num_results < std::numeric_limits<int32_t>::max() - skip,
                 errors::InvalidArgument("num_results+skip must be less than ",
                                         std::numeric_limits<int32_t>::max()));
+    OP_REQUIRES(context,
+                num_results < std::numeric_limits<int32_t>::max() / dim,
+                errors::InvalidArgument("num_results*dim must be less than ",
+                                        std::numeric_limits<int32_t>::max()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

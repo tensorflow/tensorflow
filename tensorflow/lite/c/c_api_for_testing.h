@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_FOR_TESTING_H_
 #define TENSORFLOW_LITE_C_C_API_FOR_TESTING_H_
 
-#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 #ifdef __cplusplus
 extern "C" {

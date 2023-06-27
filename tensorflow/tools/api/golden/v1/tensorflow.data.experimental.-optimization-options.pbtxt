@@ -47,6 +47,10 @@ tf_class {
     name: "shuffle_and_repeat_fusion"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "warm_start"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"

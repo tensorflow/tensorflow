@@ -1,7 +1,15 @@
 """Description: BUILD file for shell script to install bazel using the installer.
 """
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
+
+exports_files(
+    srcs = glob(["*.sh"]),
+    visibility = ["//visibility:public"],
+)
 
 sh_binary(
     name = "install_bazel",

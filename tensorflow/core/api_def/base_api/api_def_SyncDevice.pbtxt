@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "SyncDevice"
+  visibility: HIDDEN
+  summary: "Synchronizes the device this op is run on."
+  description: <<END
+Only GPU ops are asynchrous in TensorFlow, and so this only has an effect when
+run on GPUs. On GPUs, this op synchronizes the GPU's compute stream.
+END
+}

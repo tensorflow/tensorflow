@@ -31,6 +31,7 @@ limitations under the License.
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -92,7 +93,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
   if (!status.ok()) {
     return EmitErrorAsync(
         exec_ctx, tfrt::StrCat("error getting device name from TensorHandle: ",
-                               status.error_message()));
+                               status.message()));
   }
 
   // Check if the underlying tensorflow::TensorHandle is already on GPU.
@@ -103,7 +104,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
     if (!status.ok()) {
       return EmitErrorAsync(
           exec_ctx, tfrt::StrCat("error getting shape from TF tensor handle: ",
-                                 status.error_message()));
+                                 status.message()));
     }
 
     auto tf_shape = shape.dim_sizes();
@@ -115,7 +116,7 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
     if (!status.ok()) {
       return EmitErrorAsync(exec_ctx,
                             tfrt::StrCat("error calling TensorHandle::Tensor: ",
-                                         status.error_message()));
+                                         status.message()));
     }
 
     auto platform = tensorflow::tfd::GetTfrtGpuPlatform(tf_tensor_handle);
@@ -128,8 +129,9 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
     // tfrt::DenseGpuTensor. Otherwise, the TensorHandle will be released
     // when he RuntimeFallbackTensor goes out of scope after the tensor
     // conversion. The GPU buffer will be deleted as well.
+    tf_tensor_handle->Ref();
     OwnedTensorHandle owned_tf_tensor_handle =
-        OwnedTensorHandle{TensorHandleFromInterface(tf_tensor_handle->Copy())};
+        OwnedTensorHandle{TensorHandleFromInterface(tf_tensor_handle)};
 
     // The OwnedTensorHandle holds a reference on underlying Tensorflow buffer
     // and is held alive by GpuOneShotAllocator.
@@ -214,7 +216,7 @@ ConvertDenseGpuTensorToRuntimeFallbackTensor(
     return EmitErrorAsync(exec_ctx,
                           absl::InternalError(tfrt::StrCat(
                               "error looking up gpu device from EagerContext: ",
-                              status.error_message())));
+                              status.message())));
 
   auto fallback_tensor = CopyRefGpuTensorToRuntimeFallbackTensor(
       tensor, device, device, eager_ctx);

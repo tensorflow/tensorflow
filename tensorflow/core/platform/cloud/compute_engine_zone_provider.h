@@ -18,23 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/zone_provider.h"
+#include "tensorflow/tsl/platform/cloud/compute_engine_zone_provider.h"
 
 namespace tensorflow {
-
-class ComputeEngineZoneProvider : public ZoneProvider {
- public:
-  explicit ComputeEngineZoneProvider(
-      std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client);
-  virtual ~ComputeEngineZoneProvider();
-
-  Status GetZone(string* zone) override;
-
- private:
-  std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client_;
-  string cached_zone;
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputeEngineZoneProvider);
-};
-
+using tsl::ComputeEngineZoneProvider;  // NOLINT(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_COMPUTE_ENGINE_ZONE_PROVIDER_H_

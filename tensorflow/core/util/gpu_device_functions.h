@@ -221,15 +221,11 @@ namespace detail {
 __device__ inline bool GpuValidateShuffleSyncMask(unsigned mask,
                                                   unsigned src_lane) {
   unsigned src_dst_mask = 1u << GpuLaneId() | 1u << src_lane;
-#if CUDA_VERSION >= 9000
-  unsigned src_lane_mask = __shfl_sync(mask, mask, src_lane);
-#else
 #if GOOGLE_CUDA
-  unsigned src_lane_mask = __shfl(mask, src_lane);
-#elif TENSORFLOW_USE_ROCM
+  unsigned src_lane_mask = __shfl_sync(mask, mask, src_lane);
+#else  // TENSORFLOW_USE_ROCM
   unsigned src_lane_mask =
       __shfl(static_cast<int>(mask), static_cast<int>(src_lane));
-#endif
 #endif
   return (src_dst_mask & ~mask) == 0 && src_lane_mask == mask;
 }
@@ -292,7 +288,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorGetSrcLane,
 // Wrapper for __syncwarp. No-op for CUDA 8 and earlier.
 __device__ inline void GpuSyncWarp(unsigned mask = kCudaWarpAll) {
   assert(mask & 1u << GpuLaneId());
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   __syncwarp(mask);
 #endif
 }
@@ -302,9 +298,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuSyncWarp, CudaSyncWarp);
 // convergence, see comment above for details.
 __device__ inline unsigned GpuBallotSync(unsigned mask, int pred) {
   assert(mask & 1u << GpuLaneId());
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __ballot_sync(mask, pred);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __ballot(pred) & mask;  // Apply mask to match __ballot_sync's spec.
 #endif
 }
@@ -314,9 +310,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuBallotSync, CudaBallotSync);
 // convergence, see comment above for details.
 __device__ inline int GpuAnySync(unsigned mask, int pred) {
   assert(mask & 1u << GpuLaneId());
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __any_sync(mask, pred);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __any(pred);
 #endif
 }
@@ -326,9 +322,9 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAnySync, CudaAnySync);
 // convergence, see comment above for details.
 __device__ inline int GpuAllSync(unsigned mask, int pred) {
   assert(mask & 1u << GpuLaneId());
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __all_sync(mask, pred);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __all(pred);
 #endif
 }
@@ -342,9 +338,9 @@ __device__ T GpuShuffleSync(unsigned mask, T value, int src_lane,
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleGetSrcLane(src_lane, width)));
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __shfl_sync(mask, value, src_lane, width);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __shfl(value, src_lane, width);
 #endif
 }
@@ -381,9 +377,9 @@ __device__ inline T GpuShuffleUpSync(unsigned mask, T value, unsigned delta,
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleUpGetSrcLane(delta, width)));
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __shfl_up_sync(mask, value, delta, width);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __shfl_up(value, delta, width);
 #endif
 }
@@ -421,9 +417,9 @@ __device__ inline T GpuShuffleDownSync(unsigned mask, T value, unsigned delta,
   assert(!(width & width - 1));
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleDownGetSrcLane(delta, width)));
-#if CUDA_VERSION >= 9000
+#if GOOGLE_CUDA
   return __shfl_down_sync(mask, value, delta, width);
-#else
+#else  // TENSORFLOW_USE_ROCM
   return __shfl_down(value, delta, width);
 #endif
 }
@@ -462,11 +458,7 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
   assert(detail::GpuValidateShuffleSyncMask(
       mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
 #if GOOGLE_CUDA
-#if CUDA_VERSION >= 9000
   return __shfl_xor_sync(mask, value, lane_mask, width);
-#else
-  return __shfl_xor(value, lane_mask, width);
-#endif
 #elif TENSORFLOW_USE_ROCM
   // ROCM TODO: check if HIP should be changed to cope with more types
   return __shfl_xor(static_cast<int>(value), lane_mask, width);
@@ -664,6 +656,18 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 }
 
 template <typename F>
+__device__ Eigen::bfloat16 GpuAtomicCasHelper(Eigen::bfloat16* ptr,
+                                              F accumulate) {
+  Eigen::half ret = detail::GpuAtomicCasHelper(
+      reinterpret_cast<Eigen::half*>(ptr), [accumulate](Eigen::half a) {
+        Eigen::bfloat16 acc =
+            accumulate(Eigen::numext::bit_cast<Eigen::bfloat16>(a));
+        return Eigen::numext::bit_cast<Eigen::half>(acc);
+      });
+  return Eigen::numext::bit_cast<Eigen::bfloat16>(ret);
+}
+
+template <typename F>
 __device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
   return static_cast<long long>(
       GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
@@ -723,6 +727,12 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a + value; });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a + value; });
 }
 
 #if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
@@ -785,6 +795,13 @@ __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a - value; });
 }
+
+__device__ inline Eigen::bfloat16 GpuAtomicSub(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a - value; });
+}
+
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 
 // GpuAtomicMax
@@ -836,6 +853,12 @@ __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return max(a, value); });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicMax(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return max(a, value); });
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
@@ -903,6 +926,12 @@ __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
                                            Eigen::half value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return min(a, value); });
+}
+
+__device__ inline Eigen::bfloat16 GpuAtomicMin(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return min(a, value); });
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)

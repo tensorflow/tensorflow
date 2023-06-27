@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -56,7 +57,7 @@ static std::string Transpose3D(std::array<int32_t, 3> perm) {
 template <int32_t size>
 static auto Shuffle(std::array<int32_t, size> perm) {
   return [perm](llvm::ArrayRef<Tensor> inputs,
-                llvm::Optional<Eigen::ThreadPoolDevice> device) {
+                std::optional<Eigen::ThreadPoolDevice> device) {
     std::array<int64_t, size> shuffled;
     for (unsigned d = 0; d < size; d++)
       shuffled[d] = inputs[0].dim_size(perm[d]);

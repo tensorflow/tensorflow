@@ -1093,6 +1093,14 @@ class ArrayMethodsTest(test.TestCase):
         np.take(a, indices, axis=axis),
         np_array_ops.take(a, indices, axis=axis))
 
+  def testTakeAlongAxis(self):
+    rng = np.random.default_rng()
+    x = rng.standard_normal((2, 3)).astype(np.float32)
+    ind = rng.integers(0, 3, (2, 5)).astype(np.int64)
+    out_expected = np.take_along_axis(x, ind, axis=1)
+    out = np_array_ops.take_along_axis(x, ind, axis=1)
+    self.assertAllEqual(out, out_expected)
+
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
                         np_array_ops.where([True], [1.0, 1.0],
@@ -1156,6 +1164,14 @@ class ArrayMethodsTest(test.TestCase):
     x = np_array_ops.arange(8)
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
+
+  def testHSplitBecomesVsplitFor1DInput(self):
+    @def_function.function
+    def f(arr):
+      return np_array_ops.hsplit(arr, 2)
+
+    x = np_array_ops.arange(4)
+    self.assertListEqual([[0, 1], [2, 3]], f(x))
 
   def testSign(self):
     state = np.random.RandomState(0)

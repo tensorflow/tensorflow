@@ -18,7 +18,7 @@ limitations under the License.
 #include <limits>
 #include <random>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -76,7 +76,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  input->type == kTfLiteInt32 || input->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, tflite::NumDimensions(input), 1);
   TfLiteTensor* output = tflite::GetOutput(context, node, 0);
-  if (!IsConstantTensor(input)) {
+  if (!IsConstantOrPersistentTensor(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

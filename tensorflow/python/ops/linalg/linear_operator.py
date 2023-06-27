@@ -20,12 +20,15 @@ import contextlib
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -46,6 +49,41 @@ from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperator"]
+
+
+# pylint: disable=protected-access
+class _LinearOperatorGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """Composite tensor gradient for `LinearOperator`."""
+
+  def get_gradient_components(self, value):
+    return value._type_spec._to_components(value)
+
+  def replace_gradient_components(self, value, components):
+    flat_components = nest.flatten(components)
+
+    # If all component gradients are disconnected, return None.
+    if all(c is None for c in flat_components):
+      return None
+
+    # TODO(b/286565628): Update this once `CompositeTensorGradient` fully
+    # supports `tf.UnconnectedGradients.ZERO`.
+    # Replace individual disconnected component gradients with zeros.
+    value_components = value._type_spec._to_components(value)
+    flat_grad_components = []
+    for gc, vc in zip(flat_components, nest.flatten(value_components)):
+      if gc is None:
+        flat_grad_components.append(
+            nest.map_structure(
+                lambda x: array_ops.zeros_like(x, dtype=value.dtype),
+                vc,
+                expand_composites=True))
+      else:
+        flat_grad_components.append(gc)
+    grad_components = nest.pack_sequence_as(
+        value_components, flat_grad_components)
+    return value._type_spec._from_components(grad_components)
+# pylint: enable=protected-access
 
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
@@ -420,7 +458,9 @@ class LinearOperator(
     # `shape` may be passed in if this can be pre-computed in a
     # more efficient manner, e.g. without excessive Tensor conversions.
     if self.tensor_rank is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(self.tensor_rank)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.tensor_rank
+      )
     else:
       shape = self.shape_tensor() if shape is None else shape
       return array_ops.size(shape)
@@ -464,7 +504,7 @@ class LinearOperator(
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.domain_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-1]
@@ -508,7 +548,7 @@ class LinearOperator(
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.range_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-2]
@@ -676,7 +716,7 @@ class LinearOperator(
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
 
       self_dim = -2 if adjoint else -1
@@ -723,7 +763,7 @@ class LinearOperator(
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
@@ -869,7 +909,9 @@ class LinearOperator(
         return linear_operator_algebra.solve(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
 
       self_dim = -1 if adjoint else -2
@@ -926,7 +968,9 @@ class LinearOperator(
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
@@ -1089,7 +1133,7 @@ class LinearOperator(
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 
@@ -1234,6 +1278,8 @@ class LinearOperator(
     """
     return ()
 
+  __composite_gradient__ = _LinearOperatorGradient()
+
 
 class _LinearOperatorSpec(type_spec.BatchableTypeSpec):
   """A tf.TypeSpec for `LinearOperator` objects."""
@@ -1339,7 +1385,7 @@ def make_composite_tensor(cls, module_name="tf.linalg"):
 
   spec_name = "{}Spec".format(cls.__name__)
   spec_type = type(spec_name, (_LinearOperatorSpec,), {"value_type": cls})
-  type_spec.register("{}.{}".format(module_name, spec_name))(spec_type)
+  type_spec_registry.register("{}.{}".format(module_name, spec_name))(spec_type)
   cls._type_spec = property(spec_type.from_operator)  # pylint: disable=protected-access
   return cls
 

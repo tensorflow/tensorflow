@@ -23,6 +23,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/tools/verifier.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -72,18 +73,6 @@ void CustomValidationEmbedder::CreateTensorsFrom(
     // If buffer content is provided, embed the content. Otherwise create an
     // empty buffer.
     if (buffer_content && !(*buffer_content)[i].empty()) {
-      int expected_size = 1;
-      for (int dim : base_tensor.shape) {
-        expected_size *= dim;
-      }
-      // Only log as a warning for now, since tensor shape might be unknown.
-      if (expected_size != (*buffer_content)[i].size()) {
-        TF_LITE_REPORT_ERROR(
-            error_reporter_,
-            "Unexpected custom input buffer size for tensor %d. "
-            "Expected: %d. Actual: %d.",
-            i, expected_size, (*buffer_content)[i].size());
-      }
       buffers.push_back(
           CreateBuffer(fbb, fbb.CreateVector((*buffer_content)[i])));
     } else {
@@ -153,14 +142,15 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
                     buffers, tensors);
   auto input_offset = fbb.CreateVector(input);
   auto output_offset = fbb.CreateVector(output);
-  subgraphs.push_back(CreateSubGraph(
-      fbb, fbb.CreateVector(tensors), input_offset, output_offset,
-      fbb.CreateVector({CreateOperator(
-          fbb, operator_code_index, input_offset, output_offset,
-          tflite::BuiltinOptions_NONE, 0,
-          CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
-          tflite::CustomOptionsFormat_FLEXBUFFERS)}),
-      fbb.CreateString(std::string(kValidationGraphName))));
+  std::vector<flatbuffers::Offset<Operator>> operators{CreateOperator(
+      fbb, operator_code_index, input_offset, output_offset,
+      tflite::BuiltinOptions_NONE, 0,
+      CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
+      tflite::CustomOptionsFormat_FLEXBUFFERS)};
+  subgraphs.push_back(
+      CreateSubGraph(fbb, fbb.CreateVector(tensors), input_offset,
+                     output_offset, fbb.CreateVector(operators),
+                     fbb.CreateString(std::string(kValidationGraphName))));
 
   fbb.Finish(
       CreateModel(fbb, kModelSchemaVersion, fbb.CreateVector(operator_codes),
@@ -171,7 +161,11 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
                   fbb.CreateVector(signature_defs)),
       "TFL3");
 
-  return kMinibenchmarkSuccess;
+  if (Verify(fbb.GetBufferPointer(), fbb.GetSize(), error_reporter_)) {
+    return kMinibenchmarkSuccess;
+  } else {
+    return kMinibenchmarkValidationSubgraphBuildFailed;
+  }
 }
 
 }  // namespace acceleration

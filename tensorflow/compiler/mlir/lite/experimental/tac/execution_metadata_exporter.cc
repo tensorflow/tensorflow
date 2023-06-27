@@ -16,13 +16,12 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,34 +54,34 @@ bool HasValidHardwareTarget(mlir::Operation* op) {
   return IsOpSupported(op, "CPU");
 }
 
-llvm::Optional<std::string> GetDeviceName(mlir::Operation* op) {
-  if (IsConst(op)) return llvm::None;
+std::optional<std::string> GetDeviceName(mlir::Operation* op) {
+  if (IsConst(op)) return std::nullopt;
 
   // The model may contain quant stats op which is unrelevant to the
   // execution.
   if (llvm::isa<mlir::func::ReturnOp, mlir::quantfork::StatisticsOp>(op))
-    return llvm::None;
+    return std::nullopt;
 
-  if (!HasValidHardwareTarget(op)) return llvm::None;
+  if (!HasValidHardwareTarget(op)) return std::nullopt;
 
   auto device = op->getAttrOfType<mlir::StringAttr>(mlir::TFL::tac::kDevice);
-  if (device == nullptr) return llvm::None;
+  if (device == nullptr) return std::nullopt;
 
   llvm::StringRef device_name_str = device.getValue();
   return device_name_str.str();
 }
 
-llvm::Optional<std::vector<float>> GetPerDeviceCosts(
+std::optional<std::vector<float>> GetPerDeviceCosts(
     const std::map<std::string, uint8_t>& hardware_map, mlir::Operation* op) {
   auto device_costs_attr =
       op->getAttrOfType<mlir::DictionaryAttr>("per_device_costs");
-  if (device_costs_attr == nullptr) return llvm::None;
+  if (device_costs_attr == nullptr) return std::nullopt;
 
   std::vector<float> device_costs(hardware_map.size(), -1.f);
 
   for (const auto& kv : hardware_map) {
     auto cost_attr = device_costs_attr.getNamed(kv.first);
-    if (!cost_attr.has_value()) return llvm::None;
+    if (!cost_attr.has_value()) return std::nullopt;
     float cost = cost_attr->getValue()
                      .dyn_cast_or_null<mlir::FloatAttr>()
                      .getValueAsDouble();
@@ -116,13 +115,12 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
       flatbuffers::Offset<flatbuffers::Vector<float>> per_device_cost_offset;
 
       if (per_device_cost.has_value()) {
-        per_device_cost_offset =
-            builder->CreateVector(per_device_cost.getValue());
+        per_device_cost_offset = builder->CreateVector(*per_device_cost);
       }
 
       OpMetadataBuilder op_builder(*builder);
       op_builder.add_index(index);
-      uint8_t hardware = hardware_map.at(device_name.getValue());
+      uint8_t hardware = hardware_map.at(*device_name);
       op_builder.add_hardware(hardware);
 
       if (per_device_cost.has_value()) {
@@ -147,9 +145,9 @@ CreateHardwareMetadataAndPopulateLookupTable(
       auto device_name = GetDeviceName(op);
       if (!device_name.has_value()) return;
 
-      auto iter = hardware_names->find(device_name.getValue());
+      auto iter = hardware_names->find(*device_name);
       if (iter == hardware_names->end()) {
-        hardware_names->insert({device_name.getValue(), index++});
+        hardware_names->insert({*device_name, index++});
       }
     });
   }
@@ -165,7 +163,7 @@ CreateHardwareMetadataAndPopulateLookupTable(
 
 }  // namespace
 
-llvm::Optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module) {
+std::optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module) {
   mlir::func::FuncOp main_fn = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_fn) return std::string("");
 

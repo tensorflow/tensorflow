@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_OPAQUE_INTERNAL_H_
 #define TENSORFLOW_LITE_C_C_API_OPAQUE_INTERNAL_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 namespace internal {
@@ -35,8 +35,12 @@ class CommonOpaqueConversionUtil {
   // when the 'context' gets destroyed.  I.e., the caller of this function
   // should not deallocate the object pointed to by the return value of
   // 'ObtainRegistrationExternal'.
+  //
+  // We also need to provide the 'node_index' that the 'registration'
+  // corresponds to, so that the 'TfLiteRegistrationExternal' can store that
+  // index within its fields.
   static TfLiteRegistrationExternal* ObtainRegistrationExternal(
-      TfLiteContext* context, TfLiteRegistration* registration);
+      TfLiteContext* context, TfLiteRegistration* registration, int node_index);
 };
 }  // namespace internal
 }  // namespace tflite

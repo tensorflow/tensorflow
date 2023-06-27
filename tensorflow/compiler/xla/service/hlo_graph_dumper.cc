@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -35,15 +37,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
@@ -188,7 +190,7 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
     case kRed:
       return NodeColors{"filled", "#ffcdd2", "#cb9ca1", "black"};
     case kWhite:
-      return NodeColors{"filled", "white", "black", "black"};
+      return NodeColors{"filled", "white", "#9e9e9e", "black"};
     case kYellow:
       return NodeColors{"filled", "#fff9c4", "#cbc693", "black"};
     case kDashedBorder:
@@ -329,13 +331,11 @@ class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, absl::string_view label,
                const DebugOptions& debug_options,
-               HloRenderOptions hlo_render_options,
-               const HloExecutionProfile* profile, NodeFilter filter)
+               HloRenderOptions hlo_render_options, NodeFilter filter)
       : computation_(computation),
         label_(label),
         debug_options_(debug_options),
         hlo_render_options_(hlo_render_options),
-        profile_(profile),
         filter_(std::move(filter)) {}
 
   std::string Dump();
@@ -419,7 +419,6 @@ class HloDotDumper {
   const std::string label_;            // overall name for the graph
   const DebugOptions& debug_options_;
   const HloRenderOptions hlo_render_options_;
-  const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
   // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
@@ -499,11 +498,6 @@ stylesheet=<
   if (computation_->IsFusionComputation()) {
     StrAppend(&graph_label, " (in fusion instruction ",
               computation_->FusionInstruction()->name(), ")");
-  }
-  if (profile_ != nullptr) {
-    auto cycles = profile_->total_cycles_executed(*computation_);
-    absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
-                          tensorflow::strings::HumanReadableNum(cycles));
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
@@ -897,7 +891,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     std::string constant_name;
     if (absl::StartsWith(constant->name(), "constant")) {
-      constant_name = constant->name();
+      constant_name = std::string(constant->name());
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
@@ -905,6 +899,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<std::string> lines;
+  constexpr int64_t kMaxOperandsShown = 32;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<std::string> operand_str;
@@ -934,7 +929,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
                       operand->operand(0)->name(),
                       ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
-        operand_str = operand->name();
+        operand_str = std::string(operand->name());
       }
     }
 
@@ -944,6 +939,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
       } else {
         lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
+    }
+    if (lines.size() == kMaxOperandsShown && i < instr->operand_count() - 1) {
+      lines.push_back("...");
+      break;
     }
   }
 
@@ -1030,6 +1029,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
@@ -1047,62 +1047,49 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
-      // De-emphasize scalar-shaped elementwise ops -- they're generally
-      // uninteresting.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
-      return kYellow;
-    case HloOpcode::kBitcast:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kAfterAll:
+      return kWhite;
     case HloOpcode::kAddDependency:
-    case HloOpcode::kTuple:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kPad:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kConstant:
       // Constants aren't usually shown as their own nodes, but they'll be
       // present if e.g. they're the root of a computation.
       return kWhite;
     case HloOpcode::kBroadcast:
-      // De-emphasize nodes which broadcast a scalar within a fusion node --
-      // these are essentially free.
-      if (instr->IsFused() &&
-          ShapeUtil::IsEffectiveScalar(instr->operand(0)->shape())) {
-        return kWhite;
-      }
-      return kGreen;
+    case HloOpcode::kDynamicUpdateSlice:
+      return kYellow;
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
-    case HloOpcode::kGather:
-    case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTranspose:
-      // De-emphasize scalar-shaped data movement ops and all data movement ops
-      // inside fusion nodes, both of which are essentially free.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape()) || instr->IsFused()) {
-        return kWhite;
-      }
-      return kGreen;
-    case HloOpcode::kDynamicUpdateSlice:
-      // Unlike the data-movement ops above, dynamic-update-slice is not ~free
-      // inside of fusion nodes, so we de-emphasize it only if it's
-      // scalar-shaped.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
+      // These data-movement ops can be expensive; emphasize them.  (Yes, even
+      // concat can be expensive, at least on GPU, as it can create warp
+      // divergence.)
       return kGreen;
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
+      return kGreen;
+    case HloOpcode::kBitcast:
+      // Unfused bitcast is free, but fused bitcast should count as a non-free
+      // data-movement op (e.g. requires linearization of indices on GPU).
+      if (!instr->IsFused()) {
+        return kWhite;
+      }
       return kGreen;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1114,8 +1101,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
       return kDarkBlue;
-    case HloOpcode::kReducePrecision:
-      return kRed;
     case HloOpcode::kParameter:
       return parameter_color;
     case HloOpcode::kBatchNormGrad:
@@ -1125,6 +1110,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kGather:  // not a reduction, but goes with scatter
       return kPurple;
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -1256,6 +1242,10 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
   if (config.algorithm_case() == gpu::GemmBackendConfig::kSelectedAlgorithm) {
     props.emplace_back("algorithm", StrCat(config.selected_algorithm()));
   }
+  if (config.epilogue() != gpu::GemmBackendConfig::DEFAULT) {
+    props.emplace_back(
+        "epilogue", gpu::GemmBackendConfig::Epilogue_Name(config.epilogue()));
+  }
   return props;
 }
 
@@ -1322,6 +1312,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
+    } else if (absl::StartsWith(line, "feature_group_count=")) {
+      // Highlight the group count so it's obvious that it's a grouped
+      // convolution.
+      lines.push_back(StrFormat("<b>%s</b>", HtmlLikeStringSanitize(line)));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }
@@ -1357,16 +1351,6 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
     lines.push_back(StrFormat("[%p]", instr));
-  }
-  if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
-    double total_cycles_executed =
-        profile_->total_cycles_executed(*instr->parent());
-    if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
-      lines.push_back(
-          StrFormat("%% of cycles executed=%.2f",
-                    100 * hlo_cycles_executed / total_cycles_executed));
-    }
   }
   return StrJoin(lines, "<br/>");
 }
@@ -1624,22 +1608,6 @@ NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
     return to_display.count(instr) ? kNormalNode : kHideNode;
   });
 }
-
-static const char* kRenderDotJS = R"(
-  <!-- Integrity hash is generated by https://www.srihash.org/ -->
-  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/viz.js"
-     integrity="sha384-aD1MJYb0WKIUT+CtwJp5LTuV3U4pLAS6B/nUxL7ECimC2pN9N8vjlMr/yQCAkzxE"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/full.render.js"
-     integrity="sha384-bAixY275aIpCj6Te19y0MILZ4V+VEC8CVFujFEH+Lf7W+4XYYeYLwW5IBI6yQmMT"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.0/dist/svg-pan-zoom.min.js"
-     integrity="sha384-3008WpYB2pOBvE7lwkrKf+qTmbTPGGPYxA9C1YVhvbPukns4ZFj7E98QPLkNW9dS"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm/dist/index.min.js"
-     integrity="sha384-X+8WXyWZ+W2gUHiSSj0aePAkE77Fl6eZ+QIByw+Ii8LzWEJ/W8bI8M4RkneDAJ4D"
-     crossorigin="anonymous"></script>
-)";
 
 std::string WrapDotInHtml(absl::string_view dot) {
   std::string html_prefix =
@@ -2064,7 +2032,7 @@ void RegisterGraphToURLRenderer(
     std::function<StatusOr<std::string>(absl::string_view)> renderer) {
   absl::MutexLock lock(&url_renderer_mu);
   if (url_renderer != nullptr) {
-    LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer.  Last call "
+    LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer. Last call "
                     "wins, but because order of initialization in C++ is "
                     "nondeterministic, this may not be what you want.";
   }
@@ -2092,7 +2060,7 @@ void RegisterFusionState(const HloComputation& computation,
   HloDotDumper dumper(
       consumer.parent(),
       StrCat("Rendering of ", kRenderRadius, " nodes around fusion consumer"),
-      consumer.GetModule()->config().debug_options(), {}, /*profile=*/nullptr,
+      consumer.GetModule()->config().debug_options(), {},
       MakeNodeRadiusAroundFilter(&consumer, kRenderRadius, render_boundary));
   std::string dot_txt = dumper.Dump();
 
@@ -2107,17 +2075,15 @@ void RegisterFusionState(const HloComputation& computation,
 StatusOr<std::string> RenderGraph(
     const HloComputation& computation, absl::string_view label,
     const DebugOptions& debug_options, RenderedGraphFormat format,
-    const HloExecutionProfile* hlo_execution_profile,
     HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
 
-  std::string rendered_dot =
-      HloDotDumper(&computation, label, debug_options, hlo_render_options,
-                   hlo_execution_profile, NodeFilter())
-          .Dump();
+  std::string rendered_dot = HloDotDumper(&computation, label, debug_options,
+                                          hlo_render_options, NodeFilter())
+                                 .Dump();
   return WrapDotInFormat(computation, rendered_dot, format);
 }
 
@@ -2136,7 +2102,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
   std::string rendered_dot =
       HloDotDumper(node.parent(), label,
                    node.GetModule()->config().debug_options(),
-                   hlo_render_options, /*profile=*/nullptr,
+                   hlo_render_options,
                    MakeNodeRadiusAroundFilter(&node, radius, boundary))
           .Dump();
   return WrapDotInFormat(*node.parent(), rendered_dot, format);
@@ -2165,10 +2131,9 @@ StatusOr<std::string> RenderAllPathsFromTo(
                    "<br/><br/>***SHOWING ONLY A SUBSET OF ALL PATHS BETWEEN "
                    "NODES***<br/><br/>");
   }
-  std::string rendered_dot =
-      HloDotDumper(from.parent(), label, debug_options, hlo_render_options,
-                   /*profile=*/nullptr, filter)
-          .Dump();
+  std::string rendered_dot = HloDotDumper(from.parent(), label, debug_options,
+                                          hlo_render_options, filter)
+                                 .Dump();
   return WrapDotInFormat(*from.parent(), rendered_dot, format);
 }
 

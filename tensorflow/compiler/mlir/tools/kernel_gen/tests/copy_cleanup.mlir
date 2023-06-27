@@ -23,8 +23,8 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @Copy(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -64,8 +64,8 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithWrite(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -109,8 +109,8 @@ builtin.module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
-// CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
+// CHECK-DAG: #[[$MAP0:.*]] = affine_map<(d0)[s0] -> (d0 * s0)>
+// CHECK-DAG: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithMutation(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index

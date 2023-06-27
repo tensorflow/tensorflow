@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
@@ -45,7 +44,7 @@ class ConfigureDistributedTpuOp : public OpKernel {
         errors::Internal("_ConfigureDistributedTPU needs at least one input"));
   }
   void Compute(OpKernelContext* ctx) override;
-  ~ConfigureDistributedTpuOp() override {}
+  ~ConfigureDistributedTpuOp() override = default;
 
  private:
   // ConfigureDistributedTpuOp is neither copyable nor movable.
@@ -69,7 +68,7 @@ class WaitForDistributedTpuOp : public OpKernel {
                                         startup_timeout_sec_, " must be >0"));
   }
   void Compute(OpKernelContext* ctx) override;
-  ~WaitForDistributedTpuOp() override {}
+  ~WaitForDistributedTpuOp() override = default;
 
  private:
   // The time to wait for all hosts to start up.
@@ -90,7 +89,7 @@ class ShutdownDistributedTpuOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
-  ~ShutdownDistributedTpuOp() override {}
+  ~ShutdownDistributedTpuOp() override = default;
 
  private:
   // ShutdownDistributedTpuOp is neither copyable nor movable.
@@ -116,7 +115,7 @@ class InitializeHostForDistributedTpuOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
-  ~InitializeHostForDistributedTpuOp() override {}
+  ~InitializeHostForDistributedTpuOp() override = default;
 
  private:
   // InitializeHostForDistributedTpuOp is neither copyable nor movable.
@@ -138,7 +137,7 @@ class SetGlobalTPUArrayOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
-  ~SetGlobalTPUArrayOp() override {}
+  ~SetGlobalTPUArrayOp() override = default;
 
  private:
   // SetGlobalTPUArrayOp is neither copyable nor movable.
@@ -157,7 +156,7 @@ class DisconnectDistributedTpuChipsOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
-  ~DisconnectDistributedTpuChipsOp() override {}
+  ~DisconnectDistributedTpuChipsOp() override = default;
 
  private:
   // DisconnectDistributedTpuChipsOp is neither copyable nor movable.

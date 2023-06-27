@@ -67,8 +67,9 @@ class UnfoldLargeSplatConstantPass
       return;
     }
     auto element_type = splat_elements_attr.getType().getElementType();
-    if (!(element_type.isF32() || element_type.isInteger(1) ||
-          element_type.isInteger(32) || element_type.isInteger(64))) {
+    if (!(element_type.isF32() || element_type.isF16() ||
+          element_type.isInteger(1) || element_type.isInteger(32) ||
+          element_type.isInteger(64))) {
       return;
     }
     if (splat_elements_attr.getNumElements() *

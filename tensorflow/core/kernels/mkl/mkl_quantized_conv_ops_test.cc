@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
 #include <functional>
@@ -112,12 +112,12 @@ class QuantizedConv2DTest : public OpsTestBase {
     }
 
     // Image -> uint8
-    AddInputFromArray<float>(TensorShape({1}), {0.0f});
-    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+    AddInputFromArray<float>(TensorShape({}), {0.0f});
+    AddInputFromArray<float>(TensorShape({}), {255.0f});
 
     // Filter -> int8 with symmetric range
-    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+    AddInputFromArray<float>(TensorShape({}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({}), {127.0f});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -195,10 +195,10 @@ class QuantizedConv2DTest : public OpsTestBase {
                               image_quantized.flat<quint8>());
     AddInputFromArray<qint8>(filter_quantized.shape(),
                              filter_quantized.flat<qint8>());
-    AddInputFromArray<float>(TensorShape({1}), {image_min});
-    AddInputFromArray<float>(TensorShape({1}), {image_max});
-    AddInputFromArray<float>(TensorShape({1}), {filter_min});
-    AddInputFromArray<float>(TensorShape({1}), {filter_max});
+    AddInputFromArray<float>(TensorShape({}), {image_min});
+    AddInputFromArray<float>(TensorShape({}), {image_max});
+    AddInputFromArray<float>(TensorShape({}), {filter_min});
+    AddInputFromArray<float>(TensorShape({}), {filter_max});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -232,8 +232,8 @@ class QuantizedConv2DTest : public OpsTestBase {
                                               178, 187, 234, 261, 121});
 
     const Tensor& output = *GetOutput(0);
-    const float output_min = GetOutput(1)->flat<float>()(0);
-    const float output_max = GetOutput(2)->flat<float>()(0);
+    const float output_min = GetOutput(1)->scalar<float>()();
+    const float output_max = GetOutput(2)->scalar<float>()();
     Tensor output_float =
         QuantizedTensorToFloat<qint32>(output, output_min, output_max);
     test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
@@ -284,10 +284,10 @@ class QuantizedConv2DTest : public OpsTestBase {
                              image_quantized.flat<qint8>());
     AddInputFromArray<qint8>(filter_quantized.shape(),
                              filter_quantized.flat<qint8>());
-    AddInputFromArray<float>(TensorShape({1}), {image_min});
-    AddInputFromArray<float>(TensorShape({1}), {image_max});
-    AddInputFromArray<float>(TensorShape({1}), {filter_min});
-    AddInputFromArray<float>(TensorShape({1}), {filter_max});
+    AddInputFromArray<float>(TensorShape({}), {image_min});
+    AddInputFromArray<float>(TensorShape({}), {image_max});
+    AddInputFromArray<float>(TensorShape({}), {filter_min});
+    AddInputFromArray<float>(TensorShape({}), {filter_max});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -300,8 +300,8 @@ class QuantizedConv2DTest : public OpsTestBase {
     test::FillValues<float>(&expected_float, {1});
 
     const Tensor& output = *GetOutput(0);
-    const float output_min = GetOutput(1)->flat<float>()(0);
-    const float output_max = GetOutput(2)->flat<float>()(0);
+    const float output_min = GetOutput(1)->scalar<float>()();
+    const float output_max = GetOutput(2)->scalar<float>()();
     Tensor output_float =
         QuantizedTensorToFloat<qint32>(output, output_min, output_max);
 
@@ -330,12 +330,12 @@ class QuantizedConv2DTest : public OpsTestBase {
         {10, 40, 70, 20, 50, 80, 30, 60, 90});
 
     // Image -> uint8
-    AddInputFromArray<float>(TensorShape({1}), {0.0f});
-    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+    AddInputFromArray<float>(TensorShape({}), {0.0f});
+    AddInputFromArray<float>(TensorShape({}), {255.0f});
 
     // Filter -> int8 with symmetric range
-    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+    AddInputFromArray<float>(TensorShape({}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({}), {127.0f});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -374,12 +374,12 @@ class QuantizedConv2DTest : public OpsTestBase {
         {10, 40, 70, 20, 50, 80, 30, 60, 90});
 
     // Image -> uint8
-    AddInputFromArray<float>(TensorShape({1}), {0.0f});
-    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+    AddInputFromArray<float>(TensorShape({}), {0.0f});
+    AddInputFromArray<float>(TensorShape({}), {255.0f});
 
     // Filter -> int8 with symmetric range
-    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+    AddInputFromArray<float>(TensorShape({}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({}), {127.0f});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -416,12 +416,12 @@ class QuantizedConv2DTest : public OpsTestBase {
         {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
     // Image -> uint8
-    AddInputFromArray<float>(TensorShape({1}), {0.0f});
-    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+    AddInputFromArray<float>(TensorShape({}), {0.0f});
+    AddInputFromArray<float>(TensorShape({}), {255.0f});
 
     // Filter -> int8 with symmetric range
-    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+    AddInputFromArray<float>(TensorShape({}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({}), {127.0f});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -458,12 +458,12 @@ class QuantizedConv2DTest : public OpsTestBase {
         {1, 2, 3, 4, 5, 6, 7, 8, 9});
 
     // Image -> uint8
-    AddInputFromArray<float>(TensorShape({1}), {0.0f});
-    AddInputFromArray<float>(TensorShape({1}), {255.0f});
+    AddInputFromArray<float>(TensorShape({}), {0.0f});
+    AddInputFromArray<float>(TensorShape({}), {255.0f});
 
     // Filter -> int8 with symmetric range
-    AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-    AddInputFromArray<float>(TensorShape({1}), {127.0f});
+    AddInputFromArray<float>(TensorShape({}), {-127.0f});
+    AddInputFromArray<float>(TensorShape({}), {127.0f});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -674,8 +674,6 @@ class QuantizedConvTest : public OpsTestBase {
                           const float tol = 1.0) {
     bool fuse_bias = std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
                      fused_ops.end();
-    bool fuse_relu = std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
-                     fused_ops.end();
     bool fuse_sum =
         std::find(fused_ops.begin(), fused_ops.end(), "Sum") != fused_ops.end();
     bool fuse_requantize = std::find(fused_ops.begin(), fused_ops.end(),
@@ -766,7 +764,7 @@ class QuantizedConvTest : public OpsTestBase {
     const Tensor& output = *GetOutput(0);
     const Tensor& output_min = *GetOutput(1);
     const Tensor& output_max = *GetOutput(2);
-    const float output_max_value = output_max.flat<float>()(0);
+    const float output_max_value = output_max.scalar<float>()();
 
     Tensor output_float;
     MklTestingUtil::RunDequantizeOp(output, output_min, output_max, "SCALED",
@@ -1064,4 +1062,4 @@ TEST_F(QuantizedConvTest, BiasAddSumReluFusionFloatSummand) {
 }
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3 && ENABLE_MKL

@@ -2,6 +2,7 @@ load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -62,7 +63,7 @@ cc_library(
     deps = [
         ":nnapi_implementation_headers",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

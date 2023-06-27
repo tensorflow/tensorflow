@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
     ],
@@ -38,6 +39,6 @@ tf_py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python:test_ops",
+        "//tensorflow/python/framework:test_ops",
     ],
 )

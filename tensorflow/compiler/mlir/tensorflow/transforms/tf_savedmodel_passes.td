@@ -132,3 +132,58 @@ def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "Modul
   }];
   let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
 }
+
+def ConvertSessionInitializerToFunctionPass : Pass<"tf-saved-model-convert-session-initializer-to-function", "ModuleOp"> {
+  let summary = "Converts the session initializer to a function.";
+  let description = [{
+      This converts
+        "tf_saved_model.session_initializer"() {initializers = [@a, @b, @c]} : () -> ()
+      to
+	func.func @session_initializer() {
+	  call @a() : () -> ()
+	  call @b() : () -> ()
+	  call @c() : () -> ()
+	  return
+	}
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass()";
+}
+
+def AddFunctionsForExportedNamesPass : Pass<"tf-saved-model-add-functions-for-exported-names", "ModuleOp"> {
+  let summary = "Create a trampoline function for each exported name.";
+  let description = [{
+      This converts
+        func.func @foo() attributes {tf_saved_model.exported_names = ["a", "b", "c"]}
+      to
+        func.func @a() {return @foo_internal()}
+        func.func @b() {return @foo_internal()}
+        func.func @c() {return @foo_internal()}
+        func.func private @foo_internal()
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass()";
+}
+
+def AssetSinkingPass : Pass<"tf-saved-model-asset-sinking", "mlir::ModuleOp"> {
+  let summary = "Sinks SavedModel asset filenames to constants";
+
+  let description = [{
+    This pass sinks arguments of SavedModel methods that are bounded to
+    `tf_saved_model.asset` into constants in the methods. After the pass, unused
+    asset ops are removed from the module.
+
+    This is to convert initialization methods with bound inputs into the same
+    methods without any arguments, so that program invocation doesn't need to
+    track and explicitly pass asset filenames.
+
+    This pass accepts an option `saved-model-dir`, which specifies the directory
+    where SavedModel is stored. This is a required option because all asset
+    filenames are relative to this directory.
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateAssetSinkingPass(\"\")";
+
+  let options = [
+    Option<"saved_model_dir_", "saved-model-dir", "std::string", "",
+           "SavedModel directory, which is prepended to asset file names.">,
+  ];
+}

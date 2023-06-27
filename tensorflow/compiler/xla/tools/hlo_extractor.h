@@ -16,20 +16,44 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 #define TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include <functional>
+#include <memory>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
+
+// Define ExtractSelector, which is a lambda that, given an HLO
+// instruction, returns true if selected, otherwise return false.
+using ExtractSelector = std::function<bool(const HloInstruction*)>;
+
+// Define ReplaceTypeSelector, which is a lambda that, given an HLO
+// instruction, returns ReplaceType, which indicated which type of op should be
+// used to replace.
+enum class ReplaceType { kReplaceParam, kReplaceConst };
+using ReplaceTypeSelector = std::function<ReplaceType(const HloInstruction*)>;
 
 // Creates a new HLO module rooted with an entry computation rooted at the given
 // instruction.
 //
-//  By default (height == -1), the new computation includes all transitive
-//  operands of `root`.  If you specify a different height, the new computation
-//  will include all instructions <= `height` hops away from `root`.
-//  Instructions at the boundary are replaced by parameters.
-std::unique_ptr<HloModule> ExtractModule(HloInstruction* instruction,
-                                         int64_t height = -1);
+// By default (height == -1), the new computation includes all transitive
+// operands of `root`.  If you specify a different height, the new computation
+// will include all instructions <= `height` hops away from `root`.
+// Instructions at the boundary are replaced by parameters.
+//
+// The `extractor_selector` will return true/false for each hlo instruction. If
+// false is returned, the corresponding instruction and its predecessors will
+// not be included in the extracted hlo module
+//
+// The `replace_type_selector` specify, if an HLO instruction is determined to
+// be excluded, which type of node should be the replacement. If true is
+// returned, Parameter will be used to replace, otherwise Constant will be used.
+std::unique_ptr<HloModule> ExtractModule(
+    HloInstruction* instruction, int64_t height = -1,
+    ExtractSelector extract_selector = nullptr,
+    ReplaceTypeSelector replace_type_selector = nullptr);
 
 }  // namespace xla
 

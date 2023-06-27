@@ -15,18 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 
-#include <stdio.h>
 #include <unistd.h>
 
+#include <deque>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -42,32 +48,42 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
  public:
   explicit ExtractionVisitor(
       const HloModule& old_module,
-      absl::flat_hash_set<const HloInstruction*>* boundary)
+      absl::flat_hash_set<const HloInstruction*>* boundary,
+      ExtractSelector extract_selector,
+      ReplaceTypeSelector replace_type_selector)
       : old_module_(old_module),
-        module_(std::make_unique<HloModule>("extracted", config_)),
+        module_(std::make_unique<HloModule>(
+            "extracted", config_,
+            std::make_unique<CompilationEnvironments>(old_module.comp_envs()))),
         clone_context_(module_.get()),
         builder_("entry_computation"),
-        boundary_(boundary) {}
+        boundary_(boundary),
+        extract_selector_(extract_selector),
+        replace_type_selector_(replace_type_selector) {}
 
   Status HandleParameter(const HloInstruction* parameter) override {
     // Entry parameters need renumbering.
-    auto new_parameter = HloInstruction::CreateParameter(
-        parameter_number_++, parameter->shape(), parameter->name());
-    clone_context_.MapInstruction(parameter, new_parameter.get());
-    builder_.AddInstruction(std::move(new_parameter));
-    return OkStatus();
+    return ReplaceWithParameter(parameter);
   }
 
   Status DefaultAction(const HloInstruction* hlo) override {
-    // Replace instructions at the boundary with parameters, but leave constants
-    // untouched.
-    if (boundary_ != nullptr && boundary_->count(hlo) > 0) {
-      auto new_parameter = HloInstruction::CreateParameter(
-          parameter_number_, hlo->shape(), hlo->name());
-      parameter_number_++;
-      clone_context_.MapInstruction(hlo, new_parameter.get());
-      builder_.AddInstruction(std::move(new_parameter));
-      return OkStatus();
+    // Replace the following two types of instructions with parameters/constants
+    // (1) the instructions at the boundary with (2) the instructions that are
+    // not selected by the hlo_selector.
+    if ((boundary_ != nullptr && boundary_->contains(hlo) > 0) ||
+        (extract_selector_ != nullptr && !extract_selector_(hlo))) {
+      if (replace_type_selector_ != nullptr) {
+        switch (replace_type_selector_(hlo)) {
+          case ReplaceType::kReplaceConst:
+            return ReplaceWithConstant(hlo);
+          case ReplaceType::kReplaceParam:
+            return ReplaceWithParameter(hlo);
+          default:
+            QCHECK(false) << "Unsupported replacement type";
+        }
+      }
+
+      return ReplaceWithParameter(hlo);
     }
     std::vector<HloInstruction*> new_operands;
     for (auto operand : hlo->operands()) {
@@ -100,12 +116,35 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   std::unique_ptr<HloModule> ConsumeModule() { return std::move(module_); }
 
  private:
+  // Replace the `hlo` with Constant of the same shape.
+  Status ReplaceWithConstant(const HloInstruction* hlo) {
+    StatusOr<Literal> literal_status = MakeFakeLiteral(hlo->shape());
+    TF_CHECK_OK(literal_status.status());
+    auto new_const =
+        HloInstruction::CreateConstant(std::move(literal_status.value()));
+    clone_context_.MapInstruction(hlo, new_const.get());
+    builder_.AddInstruction(std::move(new_const));
+    return OkStatus();
+  }
+
+  // Replace the `hlo` with Parameter of the same shape.
+  Status ReplaceWithParameter(const HloInstruction* hlo) {
+    auto new_parameter = HloInstruction::CreateParameter(
+        parameter_number_, hlo->shape(), hlo->name());
+    parameter_number_++;
+    clone_context_.MapInstruction(hlo, new_parameter.get());
+    builder_.AddInstruction(std::move(new_parameter));
+    return OkStatus();
+  }
+
   const HloModule& old_module_;
   HloModuleConfig config_;
   std::unique_ptr<HloModule> module_;
   HloCloneContext clone_context_;
   HloComputation::Builder builder_;
   absl::flat_hash_set<const HloInstruction*>* boundary_;
+  ExtractSelector extract_selector_;
+  ReplaceTypeSelector replace_type_selector_;
   int64_t parameter_number_ = 0;
 };
 
@@ -135,20 +174,25 @@ void ComputeBoundary(const HloInstruction* root, int64_t limit,
 
 }  // namespace
 
-std::unique_ptr<HloModule> ExtractModule(HloInstruction* instruction,
-                                         int64_t height) {
+std::unique_ptr<HloModule> ExtractModule(
+    HloInstruction* instruction, int64_t height,
+    ExtractSelector extract_selector,
+    ReplaceTypeSelector replace_type_selector) {
   absl::flat_hash_set<const HloInstruction*> boundary;
   if (height != -1) {
     ComputeBoundary(instruction, height, &boundary);
   }
-  ExtractionVisitor visitor(*instruction->GetModule(), &boundary);
-  CHECK(instruction->Accept(&visitor).ok());
+  ExtractionVisitor visitor(*instruction->GetModule(), &boundary,
+                            extract_selector, replace_type_selector);
+  TF_CHECK_OK(instruction->Accept(&visitor));
 
   // The first pass may leave unused parameter instructions. Do another
   // extraction pass to remove unused parameters. This is done because
   // HloComputation does not allow removing parameters after the computation has
   // been built.
-  ExtractionVisitor cleanup_visitor(*visitor.module(), /*boundary=*/nullptr);
+  ExtractionVisitor cleanup_visitor(*visitor.module(), /*boundary=*/nullptr,
+                                    /*extract_selector=*/nullptr,
+                                    /*replace_type_selector=*/nullptr);
   TF_CHECK_OK(visitor.module()->entry_computation()->root_instruction()->Accept(
       &cleanup_visitor));
 

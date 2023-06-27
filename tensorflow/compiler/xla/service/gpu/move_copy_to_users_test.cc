@@ -183,5 +183,42 @@ ENTRY main {
   CheckMoveCopyToUsers(hlo, std::nullopt);
 }
 
+TEST_F(MoveCopyToUsersTest, Concat) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,1,0} parameter(0)
+  input2 = f32[5,17,9,9]{3,2,1,0} parameter(1)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  copy2 = f32[5,17,9,9]{1,3,2,0} copy(input2)
+  ROOT add = f32[6,17,9,9]{1,3,2,0} concatenate(copy, copy2), dimensions={0}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[input_0:%[^ ]+]] = f32[1,17,9,9]{3,2,1,0} parameter(0)
+// CHECK: [[input2_1:%[^ ]+]] = f32[5,17,9,9]{3,2,1,0} parameter(1)
+// CHECK: [[concat:%[^ ]+]] = f32[6,17,9,9]{3,2,1,0} concatenate([[input_0]], [[input2_1]])
+// CHECK: ROOT [[copy_1_3:%[^ ]+]] = f32[6,17,9,9]{1,3,2,0} copy([[concat]])
+)");
+}
+
+TEST_F(MoveCopyToUsersTest, ConcatDifferentLayoutNoChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,0,1} parameter(0)
+  input2 = f32[1,17,9,9]{3,2,1,0} parameter(1)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  copy2 = f32[1,17,9,9]{1,3,2,0} copy(input2)
+  ROOT add = f32[2,17,9,9]{1,3,2,0} concatenate(copy, copy2), dimensions={0}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

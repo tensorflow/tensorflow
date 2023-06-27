@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -104,8 +105,9 @@ def float_cases(shape_dtypes=(None,)):
   def wrap(op, dtype, shape, shape_dtype, seed, **kwargs):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
-    if (dtype == dtypes.float16 and device_type in ('XLA_GPU', 'XLA_CPU') or
-        dtype == dtypes.bfloat16 and device_type == 'GPU'):
+    if (dtype == dtypes.bfloat16 and device_type == 'GPU' and
+        not test_util.is_gpu_available(
+            cuda_only=True, min_cuda_compute_capability=(8, 0))):
       dtype = dtypes.float32
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
@@ -504,7 +506,7 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     new_seed = stateless.split(seed, 3)
     self.assertEqual(new_seed.shape, [3, 2])
     self.assertDTypeEqual(new_seed.dtype, dtype)
-    self.assertNoEqualPair([seed] + array_ops.unstack(new_seed))
+    self.assertNoEqualPair([seed] + array_ops_stack.unstack(new_seed))
 
   @parameterized.parameters(['int32', 'int64'])
   @test_util.run_v2_only

@@ -12,6 +12,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -68,7 +69,7 @@ cc_test(
     deps = [
         ":audio_microfrontend",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -110,15 +111,15 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":audio_microfrontend_op",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

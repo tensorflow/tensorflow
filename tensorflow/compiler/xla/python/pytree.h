@@ -23,6 +23,7 @@ limitations under the License.
 // binding code and the idiomatic way to emit Python exceptions.
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -31,9 +32,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
+#include "tensorflow/compiler/xla/python/pytree.pb.h"
 
 namespace xla {
 
@@ -178,7 +180,20 @@ class PyTreeDef {
   // to implement `PyTreeDef.__setstate__`.
   static PyTreeDef FromPickleable(pybind11::object pickleable);
 
+  void SerializeTo(jax::PyTreeDefProto& result) const;
+
+  static PyTreeDef DeserializeFrom(const jax::PyTreeDefProto& input);
+
+  std::optional<std::pair<pybind11::type, pybind11::object>> GetNodeData()
+      const;
+
+  static PyTreeDef MakeFromNodeDataAndChildren(
+      std::optional<std::pair<pybind11::type, pybind11::object>> node_data,
+      pybind11::iterable children);
+
  private:
+  void SetNumLeavesAndNumNodes();
+
   struct Node {
     PyTreeKind kind = PyTreeKind::kLeaf;
 
@@ -186,9 +201,16 @@ class PyTreeDef {
     int arity = 0;
 
     // Kind-specific auxiliary data. For a kNamedTuple, contains the tuple type
-    // object. For a kDict, contains a sorted list of keys. For a kCustom type,
-    // contains the auxiliary data returned by the `to_iterable` function.
+    // object. For a kDict, use `sorted_dict_keys` field below. For a kCustom
+    // type, contains the auxiliary data returned by the `to_iterable` function.
     pybind11::object node_data;
+
+    // Kind-specific auxiliary data specialized for kDict. Use a c++ vector
+    // to hold the sorted dict keys instead of a py::list to avoid creating
+    // a new python list object when flattening kDict. For deeply nested dict,
+    // using c++ vector instead of py::list avoids creating too many python
+    // objects that make python gc sweep slow.
+    std::vector<pybind11::object> sorted_dict_keys;
 
     // Custom type registration. Must be null for non-custom types.
     const PyTreeTypeRegistry::Registration* custom = nullptr;

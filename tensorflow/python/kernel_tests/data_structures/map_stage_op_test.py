@@ -623,6 +623,22 @@ class MapStageTest(test.TestCase):
                                   'key must be an int64 scalar'):
         sess.run(t, feed_dict={x: 1})
 
+  def testNonScalarKeyMapPeek(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'key must be an int64 scalar'
+    ):
+      v = data_flow_ops.gen_data_flow_ops.map_peek(
+          key=constant_op.constant(value=[1], shape=(1, 3), dtype=dtypes.int64),
+          indices=np.array([[6]]),
+          dtypes=[dtypes.int64],
+          capacity=0,
+          memory_limit=0,
+          container='container1',
+          shared_name='',
+          name=None,
+      )
+      self.evaluate(v)
+
 
 if __name__ == '__main__':
   test.main()

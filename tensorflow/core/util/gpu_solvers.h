@@ -33,7 +33,11 @@ limitations under the License.
 #else
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
+#include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#if TF_ROCM_VERSION >= 40500
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
@@ -283,13 +287,12 @@ class GpuSolver {
   // Uses LU factorization to solve A * X = B.
   template <typename Scalar>
   Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A, int lda,
-               const int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
+               int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
 
   template <typename Scalar>
   Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
                       DeviceLapackInfo* info, const int batch_count);
 
-  // No GetrsBatched for HipSolver yet.
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
@@ -325,10 +328,40 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
+  // See
+  // https://rocblas.readthedocs.io/en/latest/API_Reference_Guide.html#trsm_batched
+  // trsm_batched performs the following batched operation:
+  // op(A_i)*X_i = alpha*B_i or
+  // X_i*op(A_i) = alpha*B_i, for i = 1, ..., batch_count,
+  // where alpha is a scalar, X and B are batched m by n matrices,
+  // A is triangular batched matrix and op(A) is one of
+  // op( A ) = A   or
+  // op( A ) = A^T   or
+  // op( A ) = A^H.
+  // Each matrix X_i is overwritten on B_i for i = 1, ..., batch_count.
+  template <typename Scalar>
+  Status TrsmBatched(rocblas_side side, rocblas_fill uplo,
+                     rocblas_operation trans, rocblas_diagonal diag, int m,
+                     int n, const Scalar* alpha,
+                     const Scalar* const dev_Aarray[], int lda,
+                     Scalar* dev_Barray[], int ldb, int batch_size);
+
+  template <typename Scalar>
+  Status Trsv(rocblas_fill uplo, rocblas_operation trans, rocblas_diagonal diag,
+              int n, const Scalar* A, int lda, Scalar* x, int intcx);
+
   template <typename Scalar>
   Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,
               const Scalar* A, int lda, Scalar* B, int ldb);
+
+  // Singular value decomposition.
+  // See: https://hipsolver.readthedocs.io/en/latest/api_lapackfunc.html#svds
+  // No GesvdjBatched yet.
+  template <typename Scalar>
+  Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
+               int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
+               int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -364,8 +397,9 @@ class GpuSolver {
 #if TF_ROCM_VERSION >= 40500
   // Hermitian (Symmetric) Eigen decomposition.
   template <typename Scalar>
-  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
-               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
+  Status Heevd(hipsolverEigMode_t jobz, gpuSolverFill_t uplo, int n,
+               Scalar* dev_A, int lda,
+               typename Eigen::NumTraits<Scalar>::Real* dev_W,
                int* dev_lapack_info);
 #endif
 
@@ -400,7 +434,6 @@ class GpuSolver {
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) TF_MUST_USE_RESULT;
 
-#if CUDA_VERSION >= 9020
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
@@ -410,7 +443,6 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
-#endif  // CUDA_VERSION >= 9020
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
@@ -550,6 +582,9 @@ class GpuSolver {
 #else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
+#if TF_ROCM_VERSION >= 40500
+  hipsolverHandle_t hipsolver_handle_;
+#endif
 #endif
 
   std::vector<TensorReference> scratch_tensor_refs_;

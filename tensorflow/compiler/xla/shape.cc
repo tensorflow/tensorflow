@@ -22,9 +22,19 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
+
+// Defined in .cc file to avoid inlining these large routines
+Shape::Shape() = default;
+Shape::~Shape() = default;
+Shape::Shape(const Shape&) = default;
+Shape::Shape(Shape&&) = default;
+Shape& Shape::operator=(const Shape&) = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -86,6 +96,14 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
+void Shape::Print(Printer* printer, bool print_layout) const {
+  if (print_layout) {
+    ShapeUtil::PrintHumanStringWithLayout(printer, *this);
+  } else {
+    ShapeUtil::PrintHumanString(printer, *this);
+  }
+}
+
 std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
@@ -95,22 +113,14 @@ std::string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::IsInteger() const {
-  switch (element_type()) {
-    case PrimitiveType::S8:
-    case PrimitiveType::S16:
-    case PrimitiveType::S32:
-    case PrimitiveType::S64:
-    case PrimitiveType::U8:
-    case PrimitiveType::U16:
-    case PrimitiveType::U32:
-    case PrimitiveType::U64:
-      return true;
-    case PrimitiveType::TUPLE:
-      return absl::c_any_of(tuple_shapes_,
-                            [](const Shape& s) { return s.IsInteger(); });
-    default:
-      return false;
+  if (primitive_util::IsIntegralType(element_type())) {
+    return true;
   }
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_,
+                          [](const Shape& s) { return s.IsInteger(); });
+  }
+  return false;
 }
 
 bool Shape::is_static() const {
@@ -131,18 +141,17 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   dimensions_.erase(dimensions_.begin() + dim_to_delete);
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
-    for (int64_t i = 0; i < layout_->minor_to_major().size();) {
-      if (layout_->minor_to_major(i) == dim_to_delete) {
-        layout_->mutable_minor_to_major()->erase(
-            layout_->mutable_minor_to_major()->begin() + i);
-        continue;
-      }
-      if (layout_->minor_to_major(i) > dim_to_delete) {
-        (*layout_->mutable_minor_to_major())[i] -= 1;
-      }
-      ++i;
-    }
+    layout_->DeleteDimension(dim_to_delete);  // NOLINT: optional-access
   }
+}
+
+const Shape& Shape::tuple_shapes(int index) const {
+  return tuple_shapes_.at(index);
+}
+
+Shape* Shape::add_tuple_shapes() {
+  tuple_shapes_.push_back(Shape());
+  return &tuple_shapes_.back();
 }
 
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
@@ -224,6 +233,12 @@ std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   return out;
 }
 
+ProgramShape::ProgramShape() = default;
+ProgramShape::~ProgramShape() = default;
+ProgramShape::ProgramShape(const ProgramShape&) = default;
+ProgramShape::ProgramShape(ProgramShape&&) = default;
+ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
+
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
   for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {
     *add_parameters() = Shape(shape_proto);
@@ -246,15 +261,12 @@ ProgramShapeProto ProgramShape::ToProto() const {
   return proto;
 }
 
+void ProgramShape::Print(Printer* printer) const {
+  ShapeUtil::PrintHumanString(printer, *this);
+}
+
 std::string ProgramShape::ToString() const {
-  std::vector<std::string> parameter_strings(parameters_size());
-  for (int i = 0; i < parameters_size(); ++i) {
-    parameter_strings[i] = absl::StrCat(
-        i < parameter_names_size() ? parameter_names(i) : "(unknown)", ": ",
-        ShapeUtil::HumanString(parameters(i)));
-  }
-  return absl::StrCat("(", absl::StrJoin(parameter_strings, ", "), ") -> ",
-                      ShapeUtil::HumanString(result()));
+  return ShapeUtil::HumanString(*this);
 }
 
 std::ostream& operator<<(std::ostream& out, const ProgramShape& program_shape) {

@@ -34,19 +34,13 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.util import lazy_loader
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
 _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
-
-# TODO(b/176933539): Use the regular import.
-# TODO(b/238903802): Use TypeSpec serialization methods directly.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("data.experimental.service.ShardingPolicy")
@@ -201,13 +195,6 @@ def _get_compression_proto(compression):
     return data_service_pb2.DataServiceMetadata.COMPRESSION_OFF
   raise ValueError(f"Invalid `compression` argument: {compression}. "
                    f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
-
-
-def _decide_compression(compression, data_transfer_protocol):
-  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
-      data_transfer_protocol is not None):
-    return COMPRESSION_NONE
-  return compression
 
 
 def _to_tensor(dataset_id):
@@ -520,7 +507,6 @@ def _distribute(processing_mode,
   """
   processing_mode = _get_validated_sharding_policy(processing_mode)
   _validate_compression(compression)
-  compression = _decide_compression(compression, data_transfer_protocol)
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
     dataset_id = _register_dataset(service, dataset, compression=compression)
@@ -535,7 +521,6 @@ def _distribute(processing_mode,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         data_transfer_protocol=data_transfer_protocol,
-        compression=compression,
         cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
 
@@ -834,7 +819,6 @@ def _register_dataset(service, dataset, compression, dataset_id=None):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
-  dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
   metadata = data_service_pb2.DataServiceMetadata(
@@ -915,7 +899,6 @@ def _from_dataset_id(processing_mode,
                      max_outstanding_requests=None,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
-                     compression="AUTO",
                      cross_trainer_cache=None,
                      target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
@@ -965,8 +948,6 @@ def _from_dataset_id(processing_mode,
       dispatcher for task changes.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
       data with the tf.data service. By default, data is transferred using gRPC.
-    compression: An indication of how the dataset's elements were compressed, so
-      that `from_dataset_id` can uncompress them if necessary.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -989,16 +970,11 @@ def _from_dataset_id(processing_mode,
     data_service_metadata = None
     dataset_id_val = tensor_util.constant_value(dataset_id)
     try:
-      if isinstance(dataset_id_val, str) or isinstance(dataset_id_val, bytes):
-        data_service_metadata = (
-            _pywrap_server_lib.TF_DATA_GetDataServiceMetadataByID(
-                dataset_id_val, address, protocol))
-      else:
-        # TODO(b/236725000): Remove this after the forward compatibility window
-        # has passed.
-        data_service_metadata = (
-            _pywrap_server_lib.TF_DATA_GetDataServiceMetadata(
-                dataset_id_val, address, protocol))
+      data_service_metadata = (
+          _pywrap_server_lib.TF_DATA_GetDataServiceMetadataByID(
+              dataset_id_val, address, protocol
+          )
+      )
     except NotImplementedError as err:
       raise ValueError(
           "The tf.data service is running an earlier version of TensorFlow "
@@ -1027,7 +1003,6 @@ def _from_dataset_id(processing_mode,
     protocol, address = service
   else:
     protocol, address = _parse_service(service)
-  _validate_compression(compression)
   if job_name is not None:
     if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
       raise ValueError(

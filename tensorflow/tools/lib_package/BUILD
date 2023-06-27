@@ -3,7 +3,6 @@
 
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
@@ -137,41 +136,18 @@ pkg_tar(
 genrule(
     name = "clicenses_generate",
     srcs = [
-        "//third_party/eigen3:LICENSE",
-        "//third_party/fft2d:LICENSE",
         "//third_party/icu/data:LICENSE",
-        "@boringssl//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
-        "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
-        "@double_conversion//:LICENSE",
-        "@eigen_archive//:COPYING.MPL2",
-        "@farmhash_archive//:COPYING",
-        "@fft2d//:readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif//:COPYING",
-        "@highwayhash//:LICENSE",
-        "@icu//:icu4c/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
-        "@lmdb//:LICENSE",
         "@local_config_tensorrt//:LICENSE",
-        "@nasm//:LICENSE",
-        "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
-        "@tf_runtime//third_party/llvm_derived:LICENSE",
-        "@zlib//:zlib.h",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [],
-    }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -180,11 +156,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",
@@ -195,13 +166,7 @@ genrule(
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
-        "com_github_grpc_grpc",
-        [
-            "@com_github_grpc_grpc//:LICENSE",
-            "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
-        ],
-    ) + tf_additional_license_deps(),
+    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -210,43 +175,18 @@ genrule(
 genrule(
     name = "jnilicenses_generate",
     srcs = [
-        "//third_party/eigen3:LICENSE",
-        "//third_party/fft2d:LICENSE",
         "//third_party/icu/data:LICENSE",
-        "@boringssl//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
-        "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
-        "@double_conversion//:LICENSE",
-        "@eigen_archive//:COPYING.MPL2",
-        "@farmhash_archive//:COPYING",
-        "@fft2d//:readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif//:COPYING",
-        "@com_github_grpc_grpc//:LICENSE",
-        "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
-        "@highwayhash//:LICENSE",
-        "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
-        "@lmdb//:LICENSE",
         "@local_config_tensorrt//:LICENSE",
-        "@nasm//:LICENSE",
-        "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
-        "@tf_runtime//third_party/llvm_derived:LICENSE",
-        "@zlib//:zlib.h",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [],
-    }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -255,11 +195,6 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-    }) + select({
-        "//tensorflow/core/kernels:xsmm": [
-            "@libxsmm_archive//:LICENSE.md",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",

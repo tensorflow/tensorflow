@@ -81,15 +81,32 @@ func.func @div_no_nan(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf3
   func.return %0 : tensor<*xf32>
 }
 
-// CHECK-LABEL: @truncate_div
+// CHECK-LABEL: @truncate_div_int
 // CHECK-SAME: (%[[LHS:.*]]: tensor<*xi32>, %[[RHS:.*]]: tensor<*xi32>)
-func.func @truncate_div(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
+func.func @truncate_div_int(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
     -> tensor<*xi32> {
   // CHECK: %[[RESULT:.*]] = "tf.Div"(%[[LHS]], %[[RHS]])
   // CHECK: return %[[RESULT]]
   %0 = "tf.TruncateDiv"(%arg0, %arg1)
       : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: @truncate_div_float
+// CHECK-SAME: (%[[LHS:.*]]: tensor<*xf32>, %[[RHS:.*]]: tensor<*xf32>)
+func.func @truncate_div_float(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>)
+    -> tensor<*xf32> {
+  // CHECK:  %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:  %[[XDIVY:.*]] = "tf.Div"(%[[LHS]], %[[RHS]])
+  // CHECK:  %[[MASK:.*]] = "tf.Less"(%[[XDIVY]], %[[ZERO]])
+  // CHECK:  %[[CEIL:.*]] = "tf.Ceil"(%[[XDIVY]])
+  // CHECK:  %[[FLOOR:.*]] = "tf.Floor"(%[[XDIVY]])
+  // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[MASK]], %[[CEIL]], %[[FLOOR]])
+  %0 = "tf.TruncateDiv"(%arg0, %arg1)
+      : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @mul_no_nan

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -97,7 +97,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.error_message());
+                         &stream, block_status.message());
   }
 
   VLOG(2) << "Outfeeding from GPU complete";

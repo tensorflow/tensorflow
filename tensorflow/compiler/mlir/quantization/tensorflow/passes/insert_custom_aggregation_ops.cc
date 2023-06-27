@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -33,7 +34,8 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr char kCustomAggregatorOpName[] = "tf.CustomAggregator";
+constexpr StringRef kCustomAggregatorOpName = "tf.CustomAggregator";
+constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 
 class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
@@ -74,6 +76,12 @@ class AddCustomAggregationOp : public RewritePattern {
     if (op->getName().getStringRef() == kCustomAggregatorOpName)
       return failure();
 
+    // Return early if the given op is a non-quantizable op.
+    auto call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+    if (call_op && !op->hasAttr(kQuantTraitAttrName)) {
+      return failure();
+    }
+
     bool mutated = false;
     for (Value input : op->getOperands()) {
       Type element_type = getElementTypeOrSelf(input.getType());
@@ -89,7 +97,8 @@ class AddCustomAggregationOp : public RewritePattern {
       }
 
       // Skip calibration when the given operand comes from a constant.
-      if (defining_op != nullptr && detail::isConstantLike(defining_op)) {
+      if (defining_op != nullptr &&
+          defining_op->hasTrait<OpTrait::ConstantLike>()) {
         continue;
       }
 

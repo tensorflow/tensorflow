@@ -17,8 +17,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -39,26 +40,6 @@ FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
 const int64_t FusionNodeIndexingEvaluation::kAllowedCodeDuplication = 15;
 
 namespace {
-
-// Returns which ops invalidate the cache of emitted instructions by creating a
-// new BasicBlock and setting the insertion point to the newly created
-// BasicBlock. We can only reuse cached values if they were emitted in the same
-// BasicBlock as the current BasicBlock.
-bool OpInvalidatesCache(const HloInstruction* hlo) {
-  switch (hlo->opcode()) {
-    // This list of ops was created by inspecting the code. There is no
-    // guarantee that it is complete.
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kDot:
-    case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kPad:
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-      return true;
-    default:
-      return false;
-  }
-}
 
 // Counts the number of "real" users of 'hlo'. When 'hlo' has a fusion node as
 // user, we consider the users of the fusion parameter corresponding to 'hlo' as
@@ -91,14 +72,14 @@ bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
   }
   int64_t emitted_instructions = EvaluateEmittedInstructions(producer);
   return emitted_instructions > kAllowedCodeDuplication ||
-         (OpInvalidatesCache(producer) &&
+         (ElementalIrEmitter::OpInvalidatesCache(producer) &&
           (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
 bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   for (const auto& entry : index_usage_count_) {
     if (entry.second > kAllowedCodeDuplication ||
-        (OpInvalidatesCache(entry.first) &&
+        (ElementalIrEmitter::OpInvalidatesCache(entry.first) &&
          (entry.second > 1 || UserCount(entry.first) > 1))) {
       return true;
     }

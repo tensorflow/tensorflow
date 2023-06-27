@@ -17,6 +17,7 @@
 // This file implements the entry point to compile a tf op to a kernel.
 //
 //===----------------------------------------------------------------------===//
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,9 +30,10 @@
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Host.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -49,10 +51,15 @@ namespace {
 
 static llvm::codegen::RegisterCodeGenFlags CGF;
 
-std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
+std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
+    llvm::StringRef host_triple, llvm::Module* module) {
   llvm::Triple triple(module->getTargetTriple());
   if (triple.getTriple().empty()) {
-    triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+    if (!host_triple.empty()) {
+      triple = llvm::Triple(host_triple);
+    } else {
+      triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+    }
     module->setTargetTriple(triple.getTriple());
   }
 
@@ -70,14 +77,15 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
 }
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
-StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
+StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
+                                   mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
   mlir::registerLLVMDialectTranslation(*module->getContext());
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(module, llvm_context);
 
-  auto target_machine = GetTargetMachine(llvm_module.get());
+  auto target_machine = GetTargetMachine(host_triple, llvm_module.get());
   llvm_module->setDataLayout(target_machine->createDataLayout());
 
   // Run LLVM's mid-level optimizer to clean up the IR.
@@ -105,29 +113,32 @@ StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 }
 
 Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+           llvm::StringRef host_triple,
            llvm::ArrayRef<std::string> architectures,
            llvm::ArrayRef<int64_t> tile_sizes,
            llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
-           bool embed_memref_prints, bool print_ptx, bool print_llvmir,
-           bool enable_ftz, bool index_64bit, bool jit_compile,
-           bool jit_i64_indexed_for_large_tensors) {
+           bool print_ptx, bool print_llvmir, bool enable_ftz, bool index_64bit,
+           bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
       ReadFileToString(Env::Default(), input_file.str(), &tf_code));
+
   // Compile.
   mlir::MLIRContext context;
+  llvm::SourceMgr source_mgr;
+  mlir::SourceMgrDiagnosticHandler source_mgr_handler(source_mgr, &context);
+
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
-                              unroll_factors, max_supported_rank,
-                              embed_memref_prints, print_ptx, print_llvmir,
-                              enable_ftz, index_64bit, jit_compile,
-                              jit_i64_indexed_for_large_tensors,
+                              unroll_factors, max_supported_rank, print_ptx,
+                              print_llvmir, enable_ftz, index_64bit,
+                              jit_compile, jit_i64_indexed_for_large_tensors,
                               /*apply_cl_options=*/true));
 
   // Get binary.
-  TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
+  TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(host_triple, *module));
 
   // Write .a file.
   TF_RETURN_IF_ERROR(
@@ -149,10 +160,6 @@ int main(int argc, char** argv) {
   llvm::cl::opt<bool> index_64bit("index_64bit",
                                   llvm::cl::desc("enable 64 bit indexing"),
                                   llvm::cl::init(false));
-  llvm::cl::opt<bool> embed_memref_prints(
-      "embed_memref_prints",
-      llvm::cl::desc("embed memref prints at the end of their lifetime"),
-      llvm::cl::init(false));
   llvm::cl::opt<bool> print_ptx(
       "print-ptx",
       llvm::cl::desc("print generated PTX code per target architecture."),
@@ -168,6 +175,8 @@ int main(int argc, char** argv) {
   llvm::cl::opt<bool> jit_compile(
       "jit", llvm::cl::desc("Generate only a JIT compiler invocation."),
       llvm::cl::init(false));
+  llvm::cl::opt<std::string> host_triple(
+      "host-triple", llvm::cl::desc("Override host triple for module"));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
@@ -190,16 +199,25 @@ int main(int argc, char** argv) {
       llvm::cl::init(false));
 
   tensorflow::InitMlir y(&argc, &argv);
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
+
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
+
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
+
   mlir::registerPassManagerCLOptions();
   mlir::registerMLIRContextCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(
-      input_file, output_file, architectures, tile_sizes, unroll_factors,
-      max_supported_rank, embed_memref_prints, print_ptx, print_llvmir,
-      enable_ftz, index_64bit, jit_compile, jit_i64_indexed_for_large_tensors);
+      input_file, output_file, host_triple, architectures, tile_sizes,
+      unroll_factors, max_supported_rank, print_ptx, print_llvmir, enable_ftz,
+      index_64bit, jit_compile, jit_i64_indexed_for_large_tensors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

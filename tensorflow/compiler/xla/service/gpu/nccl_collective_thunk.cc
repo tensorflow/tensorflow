@@ -15,24 +15,53 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 
-#include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+bool IsTypeSupportedByNccl(PrimitiveType element_type,
+                           Thunk::Kind reduction_op) {
+  switch (element_type) {
+    case S8:
+    case PRED:
+    case U8:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+#endif
+    case C64:
+    case C128:
+      return true;
+    case S16:
+    case U16:
+      // 16-bit integer reductions are not directly supported by NCCL and cannot
+      // be implicitly converted into other 16-bit types like ncclFloat16 as
+      // they involve actual computation and not just data movement.
+      return !IsReductionCollective(reduction_op);
+    default:
+      return false;
+  }
+}
+
+}  // namespace
 
 // This file runs collective ops (i.e. ops that communicate between multiple
 // GPUs) using NCCL.
@@ -101,6 +130,14 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
+NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                                         bool is_sync)
+    : Thunk(kind, thunk_info) {
+  if (!is_sync) {
+    async_ = std::make_unique<AsyncExecutor>();
+  }
+}
+
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
 #if XLA_ENABLE_XCCL
   return true;
@@ -109,11 +146,18 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 #endif
 }
 
+/* static */ Status NcclCollectiveThunk::CheckImplementable() {
+  if (!NcclIsEnabled()) {
+    return tsl::errors::Unimplemented("NCCL is not enabled");
+  }
+  return OkStatus();
+}
+
 #if XLA_ENABLE_XCCL
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id) {
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -148,11 +192,11 @@ StatusOr<NcclComm::Lock> LockNcclComm(
       const NcclUniqueIdCallback* unique_id_callback,
       GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
 
-  se::StreamExecutor* executor = params.stream->parent();
-  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
-                         num_local_participants, *unique_id_callback, rank);
+                         num_local_participants, *unique_id_callback, rank,
+                         stream_id);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -178,19 +222,35 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
-  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
-  TF_ASSIGN_OR_RETURN(NcclComm::Lock comm,
-                      LockNcclComm(params.nccl_params, config().replica_groups,
-                                   config().group_mode, config().op_id));
+  VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
+                                Thunk::KindToString(kind()));
+  const int64_t stream_id = IsAsync() ? 1 : 0;
+  TF_ASSIGN_OR_RETURN(
+      NcclComm::Lock comm,
+      LockNcclComm(params.nccl_params, config().replica_groups,
+                   config().group_mode, config().op_id, stream_id));
 
-  TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
+  // Run the collective on main stream or using the async executor.
+  Status status = [&]() {
+    if (!IsAsync()) {
+      return RunNcclCollective(params, *params.stream, *comm);
+    }
+    return async_->Execute(
+        [this](const ExecuteParams& params, se::Stream& stream,
+               ncclComm_t comm) {
+          return RunNcclCollective(params, stream, comm);
+        },
+        params, *comm);
+  }();
+  TF_RETURN_IF_ERROR(status);
 
   // Block host on the first call to ensure that all devices have allocated the
   // required buffers for their communicators before allowing any device to
   // continue enqueuing operations. Otherwise, the allocations can cause
   // deadlock in the CUDA driver (b/215649390).
   if (first_call_to_execute_) {
-    TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+    se::Stream* stream = IsAsync() ? params.async_comms_stream : params.stream;
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
   return OkStatus();
@@ -203,7 +263,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 std::string NcclCollectiveThunk::GetDeviceString(
     const NcclExecuteParams& nccl_params) {
-  int device_ordinal = nccl_params.stream->parent()->device_ordinal();
+  int device_ordinal = nccl_params.stream_executor->device_ordinal();
   GlobalDeviceId global_device_id = nccl_params.GetGlobalDeviceId().value();
   DeviceAssignment::LogicalID logical_id =
       nccl_params.device_assn->LogicalIdForDevice(global_device_id).value();
@@ -212,27 +272,61 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          global_device_id.value(), device_ordinal);
 }
 
-bool IsTypeSupportedByNccl(PrimitiveType element_type) {
-  switch (element_type) {
-    case S8:
-    case PRED:
-    case U8:
-    case S32:
-    case U32:
-    case S64:
-    case U64:
-    case F16:
-    case F32:
-    case F64:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
-    case BF16:
-#endif
-    case C64:
-    case C128:
-      return true;
-    default:
-      return false;
+Status NcclCollectiveThunk::AsyncExecutor::Execute(
+    absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
+    const ExecuteParams& params, ncclComm_t comm) {
+  se::Stream& async_comms_stream = *params.async_comms_stream;
+  // Wait until compute inputs are ready.
+  async_comms_stream.ThenWaitFor(params.stream);
+
+  TF_RETURN_IF_ERROR(fn(params, async_comms_stream, comm));
+
+  // Create an event on the async stream for the completion of the collective.
+  se::Event done_event(async_comms_stream.parent());
+  TF_RET_CHECK(done_event.Init());
+  async_comms_stream.ThenRecordEvent(&done_event);
+
+  int device_ordinal = async_comms_stream.parent()->device_ordinal();
+  absl::MutexLock lock(&mu_);
+  auto [_, was_inserted] =
+      done_events_.insert({device_ordinal, std::move(done_event)});
+  TF_RET_CHECK(was_inserted) << "done event has not been consumed";
+  return OkStatus();
+}
+
+Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
+  int device_ordinal = params.stream->parent()->device_ordinal();
+  auto done_event = [this, device_ordinal] {
+    absl::MutexLock lock(&mu_);
+    return done_events_.extract(device_ordinal);
+  }();
+  TF_RET_CHECK(done_event) << "done event not found";
+  params.stream->ThenWaitFor(&done_event.mapped());
+  return OkStatus();
+}
+
+NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
+    Thunk::Kind kind, ThunkInfo thunk_info,
+    NcclCollectiveThunk::AsyncExecutor& async)
+    : Thunk(kind, std::move(thunk_info)), async_(async) {}
+
+Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
+  return async_.Await(params);
+}
+
+Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
+  Shape shape = GetShape(operand);
+  if (!LayoutUtil::IsDenseArray(shape)) {
+    return tsl::errors::Unimplemented(
+        absl::StrFormat("input is not a dense array: %s",
+                        shape.ToString(/*print_layout=*/true)));
   }
+  if (!IsTypeSupportedByNccl(shape.element_type(), reduction_op)) {
+    return tsl::errors::Unimplemented(absl::StrFormat(
+        "element type %s not suppored by NCCL",
+        primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
+  }
+  return OkStatus();
 }
 
 }  // namespace gpu

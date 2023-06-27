@@ -32,6 +32,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool use_4d_tensor = true);
+
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
@@ -50,18 +53,18 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes() override { return memory_limit_; }
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
-      return se::port::Status{se::port::error::INVALID_ARGUMENT,
-                              "Requested negative byte size!"};
+      return tsl::Status{absl::StatusCode::kInvalidArgument,
+                         "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return se::port::Status{se::port::error::UNAVAILABLE,
-                              absl::StrCat("Requested memory size (", byte_size,
-                                           ") exceeds the max memory limit (",
-                                           memory_limit_, ").")};
+      return tsl::Status{absl::StatusCode::kUnavailable,
+                         absl::StrCat("Requested memory size (", byte_size,
+                                      ") exceeds the max memory limit (",
+                                      memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -69,8 +72,8 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::Status{
-          se::port::error::UNAVAILABLE,
+      return tsl::Status{
+          absl::StatusCode::kUnavailable,
           absl::StrCat("Failed to allocate the requested memory size (",
                        byte_size, ").")};
     }
@@ -78,7 +81,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return se::port::StatusOr<se::DeviceMemory<uint8>>(
+    return tsl::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }

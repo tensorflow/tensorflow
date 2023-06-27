@@ -167,7 +167,7 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
         LOG(QFATAL)
             << "Could not open file \"" << env
             << "\" to read flags for environment variable \"" << envvar
-            << "\".  (We assumed \"" << env
+            << "\". (We assumed \"" << env
             << "\" was a file name because it did not start with a \"--\".)";
       }
     }

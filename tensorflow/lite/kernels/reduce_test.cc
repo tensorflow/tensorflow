@@ -38,6 +38,10 @@ using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
 using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
 
+template <typename T>
+using ProdOpFullyConstModel =
+    BaseFullyConstOpModel<T, BuiltinOperator_REDUCE_PROD, true>;
+
 using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD, true>;
 using ProdOpDynamicModel =
     BaseDynamicOpModel<BuiltinOperator_REDUCE_PROD, true>;
@@ -415,7 +419,11 @@ TEST(ConstUint8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({163, 168, 192}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              testing::AnyOf(ElementsAreArray({163, 168, 192}),
+                             ElementsAreArray({163, 169, 192})));
 }
 
 TEST(ConstInt8MeanOpTest, Rounding) {
@@ -425,7 +433,11 @@ TEST(ConstInt8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({34, 39, 63}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              testing::AnyOf(ElementsAreArray({34, 39, 63}),
+                             ElementsAreArray({34, 40, 63})));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -780,9 +792,11 @@ TEST(ConstUint8SumOpTest, NotKeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({-0.823529, -0.815686}, kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 0.4 + 0.3 + 0.5 = 1.0 (clamped)
+      // 0.2 + 0.4 + 0.6 = 1.0 (clamped)
+      ElementsAreArray(ArrayFloatNear({1.0, 1.0}, kQuantizedTolerance)));
 }
 
 TEST(ConstUint8SumOpTest, NotKeepDimsRescaling) {
@@ -828,9 +842,12 @@ TEST(ConstUint8SumOpTest, KeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear({-0.407843, -0.313726, 0.0941177},
-                                              kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 0.4 + 0.2 = 0.6
+      // 0.3 + 0.4 = 0.7
+      // 0.5 + 0.6 = 1.0 (clamped)
+      ElementsAreArray(ArrayFloatNear({0.6, 0.7, 1.0}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8SumOpTest, NotKeepDims) {
@@ -844,9 +861,11 @@ TEST(DynamicUint8SumOpTest, NotKeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({1.48235, 1.64706}, kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 1.3 + -4.8 = -3.5
+      // -3.6 + 0.24 = -3.36
+      ElementsAreArray(ArrayFloatNear({-3.5, -3.36}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8SumOpTest, KeepDims) {
@@ -862,7 +881,9 @@ TEST(DynamicUint8SumOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({6.47059, 10.698}, kQuantizedTolerance)));
+      // 11.14 + 7.423 = 12.0 (clamped)
+      // -0.14 + 0.879 = 0.739
+      ElementsAreArray(ArrayFloatNear({12.0, 0.739}, kQuantizedTolerance)));
 }
 
 TEST(ConstInt8SumOpTest, Rescale) {
@@ -881,6 +902,34 @@ TEST(ConstInt8SumOpTest, Rescale) {
 }
 
 // Tests for reduce_prod
+TEST(FullyConstFloatProdOpTest, SmallInput) {
+  const std::vector<int32_t> data = {2, 3, 4};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {3}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({24}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(FullyConstFloatProdOpTest, LargeInput) {
+  const std::vector<int32_t> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {9}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({362880}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(ConstFloatProdOpTest, AllInputsAreConstantLargeOutput) {
+  const std::vector<int> data = {1,  2,  3,  4,  5,  6,  7,  8,  9,
+                                 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  ProdOpFullyConstModel<int> m({TensorType_INT32, {2, 1, 3, 3}}, data,
+                               {TensorType_INT32, {1}}, {1}, {1}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 3}));
+  EXPECT_THAT(m.GetOutput<int>(), ElementsAreArray(data));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+}
 
 TEST(ConstFloatProdOpTest, NotKeepDimsLarge) {
   const std::vector<float> data = {

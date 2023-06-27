@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+
 # copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
@@ -22,6 +24,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -91,11 +94,11 @@ _test_size_override = {
         ":tflite_driver",
         ":tflite_driver_delegate_providers",
         ":util",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -116,7 +119,7 @@ test_suite(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mlir_convert",
     srcs = ["mlir_convert.py"],
     data = [
@@ -124,17 +127,16 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":_pywrap_string_util",
-        ":generate_examples_lib",
-        ":generate_examples_report",
+        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:test_util",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
     srcs_version = "PY3",
@@ -145,10 +147,14 @@ py_library(
         # copybara:uncomment_begin(b/186563810)
         # "//third_party/py/tensorflow_addons",
         # copybara:uncomment_end
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:rnn",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
     srcs_version = "PY3",
@@ -159,7 +165,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
     srcs_version = "PY3",
@@ -167,11 +173,14 @@ py_library(
         ":_pywrap_string_util",
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
     python_version = "PY3",
@@ -179,14 +188,11 @@ py_binary(
     deps = [
         ":generate_examples_lib",
         ":mlir_convert",
-        ":op_tests",
-        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
     srcs_version = "PY3",
@@ -201,7 +207,7 @@ cc_library(
         ":split",
         ":test_runner",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
     ],
 )
 
@@ -227,6 +233,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
+        "//third_party/eigen3",
     ],
 )
 
@@ -262,23 +269,29 @@ cc_library(
     hdrs = ["tflite_driver.h"],
     deps = [
         ":join",
+        ":result_expectations",
         ":split",
         ":test_runner",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core:headers",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
-        "//tensorflow/lite/kernels/gradient:gradient_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
-        "//tensorflow/lite/kernels/parse_example:parse_example",
+        "//tensorflow/lite/kernels/gradient:gradient_ops",
+        "//tensorflow/lite/kernels/parse_example",
         "//tensorflow/lite/kernels/perception:perception_ops",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:ios": [],
         "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
@@ -349,10 +362,10 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -384,9 +397,9 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "//tensorflow/lite:string_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite:string_util",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
@@ -588,6 +601,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "result_expectations",
+    srcs = ["result_expectations.cc"],
+    hdrs = ["result_expectations.h"],
+    deps = [
+        ":split",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # A selective built tflite for testing.
 tflite_custom_cc_library(
     name = "test_tflite_lib",
@@ -612,7 +640,7 @@ cc_test(
         ":test_tflite_lib",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -627,7 +655,7 @@ pybind_extension(
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

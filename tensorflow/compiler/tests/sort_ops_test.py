@@ -240,7 +240,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testTopK(self):
     supported_types = set([
         dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32, np.int64, np.uint64
+        np.int32, np.uint32, np.int64, np.uint64, np.uint8, np.int8,
     ])
     for dtype in supported_types.intersection(self.numeric_types):
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
@@ -248,6 +248,9 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       # no longer unique.
       if dtype in (dtypes.bfloat16.as_numpy_dtype, np.float16):
         array_size = 20
+        k_options = [0, 1, 2, 10, 20]
+      elif dtype in (dtypes.uint8.as_numpy_dtype, dtypes.int8.as_numpy_dtype):
+        array_size = 111
         k_options = [0, 1, 2, 10, 20]
       else:
         array_size = 200 * 1000

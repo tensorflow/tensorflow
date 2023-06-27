@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 
 namespace xla {
 
@@ -82,6 +83,11 @@ class Traceback {
   }
 
  private:
+  // Each frame is a pair of a code object and a "lasti" instruction location
+  // in bytes. The size of _Py_CODEUNIT has changed across different Python
+  // versions; the lasti value here has already been multiplied by
+  // sizeof(_Py_CODEUNIT) if needed and is suitable for passing to functions
+  // like PyCode_Addr2Line().
   absl::InlinedVector<std::pair<PyCodeObject*, int>, 32> frames_;
 
   // Protected by GIL.

@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -245,10 +246,13 @@ class ShardedVariableSpec(type_spec.TypeSpec):
     return self._variable_specs
 
   def _to_components(self, value):
-    return value.variables
+    return tuple(value.variables)
 
   def _from_components(self, variables):
     return ShardedVariable(variables)
+
+  def _cast(self, value, _):
+    return value
 
 
 class ShardedVariableMixin(trackable.Trackable):
@@ -725,16 +729,16 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
-    obj_map, resource_map = {}, {}
+    resource_list = []
     for v in self._variables + [self._saving_variable]:
-      v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-      obj_map.update(v_obj_map)
-      resource_map.update(v_resource_map)
-    obj_map[self] = ShardedVariable([obj_map[self._saving_variable]],
-                                    name=self.name)
-    return obj_map, resource_map
+      resource_list.extend(v._export_to_saved_model_graph(  # pylint:disable=protected-access
+          object_map, tensor_map, options, **kwargs))
+    object_map[self] = ShardedVariable([object_map[self._saving_variable]],
+                                       name=self.name)
+    return resource_list
 
   @property
   def _unique_id(self):
@@ -888,7 +892,8 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
-ops.register_tensor_conversion_function(ShardedVariable, _var_to_tensor)
+tensor_conversion_registry.register_tensor_conversion_function(
+    ShardedVariable, _var_to_tensor)
 
 ShardedVariable._overload_all_operators()  # pylint: disable=protected-access
 
@@ -906,3 +911,30 @@ def embedding_lookup(params,
   return embedding_ops.embedding_lookup(params.variables, ids,
                                         partition_strategy, name,
                                         validate_indices, max_norm)
+
+
+# Separately override safe_embedding_lookup_sparse, to avoid conversion of
+# ShardedVariable to tensor.
+@dispatch.dispatch_for_api(embedding_ops.safe_embedding_lookup_sparse)
+def safe_embedding_lookup_sparse(
+    embedding_weights: ShardedVariable,
+    sparse_ids,
+    sparse_weights=None,
+    combiner='mean',
+    default_id=None,
+    name=None,
+    partition_strategy='div',
+    max_norm=None,
+    allow_fast_lookup=False,
+):
+  """Pass the individual shard variables as a list."""
+  return embedding_ops.safe_embedding_lookup_sparse(
+      embedding_weights.variables,
+      sparse_ids,
+      sparse_weights=sparse_weights,
+      combiner=combiner,
+      default_id=default_id,
+      name=name,
+      partition_strategy=partition_strategy,
+      max_norm=max_norm,
+      allow_fast_lookup=allow_fast_lookup)

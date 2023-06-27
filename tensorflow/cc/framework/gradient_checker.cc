@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/gradient_checker.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"

@@ -188,14 +188,14 @@ func.func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
     -> tensor<?x8x?x64xf32> {
   %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
-  %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32>
+  %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>)
       -> tensor<4xi32>
   // CHECK:      Shape info for %3 = mhlo.dynamic_reshape %arg0, %2 : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
   // CHECK-NEXT:   s0 with
-  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32> -> tensor<4xi32>[0]
+  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>) -> tensor<4xi32>[0]
   // CHECK-NEXT:   8
   // CHECK-NEXT:   s0 with
-  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32> -> tensor<4xi32>[2]
+  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>) -> tensor<4xi32>[2]
   // CHECK-NEXT:   64
   %3 = "mhlo.dynamic_reshape"(%arg0, %2)
       : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
@@ -293,7 +293,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x6
   %0 = mhlo.constant dense<512> : tensor<1xi32>
   %1 = shape.shape_of %arg1 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %2 = shape.num_elements %1 : tensor<4xindex> -> index
-  %3 = mhlo.cstr_reshapable %2, %arg2 : index, tensor<4xi32>
+  %3 = mhlo.cstr_reshapable %2, %arg2 : (index, tensor<4xi32>) -> !shape.witness
   %4 = "mhlo.dynamic_reshape"(%arg1, %arg2) : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
   %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>} : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
   %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]> : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
@@ -320,7 +320,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x6
   // CHECK-NEXT:   8
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %17 = shape.num_elements %16 : tensor<4xindex> -> index
-  %18 = mhlo.cstr_reshapable %17, %15 : index, tensor<2xi32>
+  %18 = mhlo.cstr_reshapable %17, %15 : (index, tensor<2xi32>) -> !shape.witness
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     %21 = "mhlo.dynamic_reshape"(%6, %15) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     shape.assuming_yield %21 : tensor<?x512xf32>

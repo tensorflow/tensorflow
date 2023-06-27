@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -345,6 +346,7 @@ cc_library(
         ":concat_split_util",
         ":shared_batch_scheduler",
         ":threadsafe_status",
+        ":warmup",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -359,10 +361,27 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "warmup",
+    srcs = ["warmup.cc"],
+    hdrs = ["warmup.h"],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

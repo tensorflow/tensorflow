@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
 #include <memory>
 #include <set>
@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -419,7 +419,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_THAT(visit_status.error_message(),
+  ASSERT_THAT(visit_status.message(),
               ::testing::ContainsRegex("cycle is detecte"));
 }
 
@@ -507,6 +507,46 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
   auto clone =
       computation->CloneWithReplacements(&replacements, extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
+}
+
+TEST_F(HloComputationTest, CloneInContext) {
+  HloComputation::Builder builder(TestName());
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  HloInstruction* param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  HloInstruction* lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  const HloComputation& computation =
+      *module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  std::unique_ptr<HloInstruction> param3 =
+      HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters = {param3.get()};
+  HloCloneContext clone_context(module.get());
+
+  std::unique_ptr<HloComputation> clone = computation.CloneInContext(
+      clone_context, &replacements, extra_parameters);
+
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));

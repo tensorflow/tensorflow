@@ -17,27 +17,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/backend.h"
 
-#include <algorithm>
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
+namespace se = ::stream_executor;
 
 BackendOptions& BackendOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
@@ -105,17 +104,36 @@ Backend::CreateDefaultBackend() {
   return CreateBackend(backend_options);
 }
 
-StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal,
+                                                se::StreamPriority priority) {
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
-  return BorrowStream(executor);
+  return BorrowStream(executor, priority);
 }
 
-StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor,
+                                                se::StreamPriority priority) {
   absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
     stream_pools_.emplace(executor, std::make_unique<StreamPool>());
   }
-  return stream_pools_.at(executor)->BorrowStream(executor);
+  return stream_pools_.at(executor)->BorrowStream(executor, priority);
+}
+
+StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
+    int device_ordinal, int num_streams, se::StreamPriority priority) {
+  absl::MutexLock l(&mu_);
+  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  if (!stream_pools_.contains(executor)) {
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+  }
+
+  std::vector<StreamPool::Ptr> ptrs;
+  for (int i = 0; i < num_streams; i++) {
+    StreamPool::Ptr ptr =
+        stream_pools_.at(executor)->BorrowStream(executor, priority);
+    ptrs.push_back(std::move(ptr));
+  }
+  return ptrs;
 }
 
 Backend::Backend(se::Platform* platform, Compiler* compiler,
@@ -138,11 +156,11 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tsl::port::MaxParallelism();
-    intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
+    intra_op_thread_pool_ = std::make_unique<IntraOpThreadPool>(num_threads);
   }
 }
 
-Backend::~Backend() {}
+Backend::~Backend() = default;
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();

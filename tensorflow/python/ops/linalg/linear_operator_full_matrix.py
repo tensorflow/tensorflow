@@ -16,6 +16,7 @@
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
@@ -163,7 +164,9 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
         dtypes.complex128,
     ]
 
-    matrix = ops.convert_to_tensor_v2_with_dispatch(matrix, name="matrix")
+    matrix = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        matrix, name="matrix"
+    )
 
     dtype = matrix.dtype
     if dtype not in allowed_dtypes:

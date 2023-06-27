@@ -46,6 +46,12 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
                             .HostMemory("output"),
                         DebugIdentityOp);
 
+REGISTER_KERNEL_BUILDER(Name("DebugIdentityV3")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("input")
+                            .HostMemory("output"),
+                        DebugIdentityV3Op);
+
 // Register debug NaN-counter (non-ref and ref) ops.
 #define REGISTER_DEBUG_NAN_COUNT(type)                                    \
   REGISTER_KERNEL_BUILDER(                                                \

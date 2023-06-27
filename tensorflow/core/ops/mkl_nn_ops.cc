@@ -236,15 +236,18 @@ REGISTER_OP("_MklNativeFusedConv2D")
     .Input("input: T")
     .Input("filter: T")
     .Input("args: TArgs")
+    .Input("host_args : num_host_args * float")
     .Output("output: T")
-    .Attr("T: {float, bfloat16}")
+    .Attr("T: {bfloat16, float}")
     .Attr("TArgs: list(type)")
     .Attr("num_args: int >= 0")
+    .Attr("num_host_args: int >=0 = 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrStringWithExplicit())
-    .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetFilterFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
@@ -683,6 +686,20 @@ on the quantized input.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_QuantizedMaxPool3D")
+    .Input("input: T")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Output("output: T")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: quantizedtype")
+    .SetShapeFn(shape_inference::Pool3DShape);
 
 REGISTER_OP("_MklQuantizedAvgPool")
     .Input("input:           T")
@@ -1834,6 +1851,22 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklFusedInstanceNorm")
+    .Input("x: T")
+    .Input("gamma: T")
+    .Input("beta: T")
+    .Output("y: T")
+    .Attr("T: {float, bfloat16}")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .Attr("reduction_axes: list(int)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(
+        R"doc(oneDNN version of fused instance normalization operator.
+        Do not invoke this operator directly in Python.
+        Graph rewrite pass is expected to invoke this operator.)doc");
+
 REGISTER_OP("_MklFusedMish")
     .Input("features: T")
     .Output("activations: T")
@@ -1856,6 +1889,11 @@ REGISTER_OP("_MklFusedBatchMatMulV2")
     .Attr("adj_y: bool = false")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::BatchMatMulV2Shape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
@@ -1881,6 +1919,21 @@ REGISTER_OP("_MklLayerNorm")
     .Attr("T: {float, bfloat16}")
     .Attr("epsilon: float = 0.001")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("_MklSoftmax")
+    .Input("logits: T")
+    .Output("softmax: T")
+    .Attr("T: {bfloat16, float} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    })
+    .Doc(R"doc(
+oneDNN version of Softmax operator. Uses oneDNN APIs to perform softmax
+operation.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
 
 }  // namespace tensorflow
 

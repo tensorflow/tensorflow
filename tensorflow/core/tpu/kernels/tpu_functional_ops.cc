@@ -16,7 +16,17 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_functional_ops.h"
 
 #include <algorithm>
+#include <functional>
+#include <map>
 #include <memory>
+#include <numeric>
+#include <optional>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
@@ -145,7 +155,7 @@ Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
     if (next != edge->dst()) {
       VLOG(3) << "Looked through Enter/Switch node " << next->DebugString();
     }
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+    TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*next, num_cores_per_replica,
                                                 /*add_metadata=*/false));
     if (sharding.has_value() && sharding->tile_assignment_devices_size() > 0) {
@@ -197,7 +207,7 @@ bool IsSupportedTPUOp(const string& op_name) {
 // Sets the sharding attributes for an XlaSharding node.
 void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
                             int rank, int shard_dim) {
-  auto sharding = absl::make_optional<xla::OpSharding>();
+  auto sharding = std::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
   std::vector<int64_t> dims(rank, 1LL);
@@ -484,18 +494,14 @@ Status MaybeRegisterFingerprint(
     if (node->type_string() == "TPUCompile" ||
         node->type_string() == "_TPUCompileMlir") {
       num_dynamic_shapes = node->attrs().Find("NumDynamicShapes")->i();
-      if (num_dynamic_shapes <= 0) {
-        break;
-      }
+      if (num_dynamic_shapes <= 0) break;
       int visited = 0;
       // TPUCompileOp/_TPUCompileMlirOp take Shape nodes as inputs.
       // The number of Shape nodes matches the number of dynamic shaped inputs.
       // The Shape nodes come from the input nodes:
       //   [TPU Input] --> [Input Shape] --> [TPUCompileOp]
       for (auto in_node : node->in_nodes()) {
-        if (in_node->type_string() != "Shape") {
-          continue;
-        }
+        if (in_node->type_string() != "Shape") continue;
         for (auto input_node : in_node->in_nodes()) {
           auto iter = named_input_shapes.find(input_node->name());
           if (iter != named_input_shapes.end()) {
@@ -503,9 +509,7 @@ Status MaybeRegisterFingerprint(
           }
         }
         visited++;
-        if (visited == num_dynamic_shapes) {
-          break;
-        }
+        if (visited == num_dynamic_shapes) break;
       }
       std::string metadata = node->attrs().Find("metadata")->s();
       metadata_proto.ParseFromString(metadata);
@@ -534,7 +538,7 @@ Status MaybeRegisterFingerprint(
   auto status =
       tpu::ComputeArgumentShapes(metadata_proto, input_shapes, &arg_shapes);
   if (!status.ok()) {
-    VLOG(2) << status.error_message();
+    VLOG(2) << status.message();
     return OkStatus();
   }
   uint64 tf_fingerprint =
@@ -810,7 +814,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -995,7 +999,7 @@ Status CreateConcatAndSplitNodesForOutputTensor(
 
     Node* split_vec_node = nullptr;
     TensorShape split_vec_shape;
-    split_vec_shape.AddDim(1);
+    TF_RETURN_IF_ERROR(split_vec_shape.AddDimWithStatus(1));
     split_vec_shape.set_dim(0, last_dim_vec.size());
 
     Tensor split_vec_tensor(DT_INT32, split_vec_shape);
@@ -1410,7 +1414,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   TF_RETURN_IF_ERROR(
       InstantiatePartition(*init_graph, fname, device, &fhandle, nullptr));
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.stats_collector = ctx->stats_collector();
@@ -1569,7 +1573,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     functions.push_back(DeviceAndFHandle{.device = target, .handle = handle});
   }
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
 
   // Blocking on threads in the same thread pool is disallowed because
   // concurrent warm-up requests can exhaust the default thread pool.
@@ -1801,6 +1805,13 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
 Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
     ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata) {
+  if (device_ordinal >= tpu_metadata.topology.num_tpu_devices_per_task()) {
+    return errors::InvalidArgument(
+        "There are ", tpu_metadata.topology.num_tpu_devices_per_task(),
+        " TPU devices, however selected device_ordinal: ", device_ordinal,
+        " exceeds the range");
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       GetShardingFromNodeDef(variable->def(), /*add_metadata=*/false));
@@ -2004,7 +2015,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
     std::map<int, InferredShape>& arg_shapes,
     GraphShapeInfo* tpu_inferred_info) {
   auto shape_inference_graph_interim =
-      absl::make_unique<Graph>(graph->flib_def());
+      std::make_unique<Graph>(graph->flib_def());
   CopyGraph(*graph, shape_inference_graph_interim.get());
 
   for (Node* node : shape_inference_graph_interim->nodes()) {
@@ -2036,9 +2047,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
           });
     }
 
-    for (auto& func : to_remove) {
-      func();
-    }
+    for (auto& func : to_remove) func();
 
     int resource_arg_index = node->attrs().Find("index")->i();
 
@@ -2080,7 +2089,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
     if (!input_node_status.ok()) {
       VLOG(2) << "Skip because cannot retrieve input node 0 of "
               << replicated_input_node->name() << " because "
-              << input_node_status.ToString();
+              << input_node_status;
       continue;
     }
 
@@ -2122,7 +2131,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
         continue;
       }
 
-      auto sharding = absl::make_optional<xla::OpSharding>();
+      auto sharding = std::make_optional<xla::OpSharding>();
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.
@@ -2393,6 +2402,15 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
               coordinates_end);
           node->AddAttr("device_assignment", tpu_metadata->device_assignment);
         }
+
+        if (tpu_metadata->topology.num_tpu_devices_per_task() <
+            tpu_metadata->num_cores_per_replica) {
+          return errors::InvalidArgument(
+              "num_cores_per_replica: ", tpu_metadata->num_cores_per_replica,
+              " in the graph is larger than the number of available TPU "
+              "devices: ",
+              tpu_metadata->topology.num_tpu_devices_per_task());
+        }
       }
     }
   }
@@ -2514,11 +2532,9 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
       }
       if (ordinal == -1) {
         ordinal = attr->i();
-      } else {
-        if (ordinal != attr->i()) {
-          return errors::InvalidArgument(
-              "Can only partition graphs that use a single device ordinal.");
-        }
+      } else if (ordinal != attr->i()) {
+        return errors::InvalidArgument(
+            "Can only partition graphs that use a single device ordinal.");
       }
       node->ClearAttr(kDeviceOrdinalAttr);
       node->AddAttr(kDeviceOrdinalAttr, device_ordinal);
@@ -2686,7 +2702,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.stats_collector = ctx->stats_collector();
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
@@ -2709,9 +2725,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
        ordinal_selector = ordinal_selector_](const Status& status) {
         delete local_cm;
         rendez->Unref();
-        if (!status.ok()) {
-          ctx->SetStatus(status);
-        }
+        if (!status.ok()) ctx->SetStatus(status);
         done();
         if (req_id >= 0) {
           ordinal_selector->DequeueFromCoreSelector(device_ordinal, req_id);

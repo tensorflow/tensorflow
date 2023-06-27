@@ -46,82 +46,88 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     shutil.rmtree(self._save_dir)
 
   @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(compression=[None, "GZIP"])))
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[None, "GZIP"]),
+      )
+  )
   def testBasic(self, compression):
     dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._test_dir, compression=compression)
+    self.evaluate(dataset.save(self._test_dir, compression=compression))
     dataset2 = dataset_ops.Dataset.load(
-        self._test_dir, dataset.element_spec, compression=compression)
+        self._test_dir, dataset.element_spec, compression=compression
+    )
     self.assertDatasetProduces(dataset2, range(42))
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCardinality(self):
     dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._test_dir)
+    self.evaluate(dataset.save(self._test_dir))
     dataset2 = dataset_ops.Dataset.load(self._test_dir, dataset.element_spec)
     self.assertEqual(self.evaluate(dataset2.cardinality()), 42)
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCustomShardFunction(self):
     dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._test_dir, shard_func=lambda x: x // 21)
+    self.evaluate(dataset.save(self._test_dir, shard_func=lambda x: x // 21))
     dataset2 = dataset_ops.Dataset.load(self._test_dir, dataset.element_spec)
     expected = []
     for i in range(21):
       expected.extend([i, i + 21])
     self.assertDatasetProduces(dataset2, expected)
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testCustomReaderFunction(self):
     dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._test_dir, shard_func=lambda x: x % 7)
+    self.evaluate(dataset.save(self._test_dir, shard_func=lambda x: x % 7))
     dataset2 = dataset_ops.Dataset.load(
         self._test_dir,
         dataset.element_spec,
-        reader_func=lambda x: x.flat_map(lambda y: y))
+        reader_func=lambda x: x.flat_map(lambda y: y),
+    )
     expected = []
     for i in range(7):
       expected.extend(range(i, 42, 7))
     self.assertDatasetProduces(dataset2, expected)
 
   @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(compression=[None, "GZIP"])))
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(compression=[None, "GZIP"]),
+      )
+  )
   def testSaveInsideFunction(self, compression):
     dataset = dataset_ops.Dataset.range(42)
+
     @def_function.function
     def save_fn():
       dataset.save(self._test_dir, compression=compression)
+
     save_fn()
     dataset = dataset_ops.Dataset.load(
-        self._test_dir, dataset.element_spec, compression=compression)
+        self._test_dir, dataset.element_spec, compression=compression
+    )
     self.assertDatasetProduces(dataset, range(42))
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testElementSpecOptional(self):
     range_dataset = dataset_ops.Dataset.range(42)
-    dict_dataset = dataset_ops.Dataset.from_tensor_slices({"a": [1, 2],
-                                                           "b": [3, 4]})
+    dict_dataset = dataset_ops.Dataset.from_tensor_slices(
+        {"a": [1, 2], "b": [3, 4]}
+    )
     tuple_dataset = dataset_ops.Dataset.from_tensor_slices(([1, 2], [3, 4]))
-    dataset = dataset_ops.Dataset.zip((range_dataset, dict_dataset,
-                                       tuple_dataset))
-    dataset.save(self._test_dir)
+    dataset = dataset_ops.Dataset.zip(
+        (range_dataset, dict_dataset, tuple_dataset)
+    )
+    self.evaluate(dataset.save(self._test_dir))
     dataset_loaded = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetsEqual(dataset, dataset_loaded)
 
-  @combinations.generate(test_base.graph_only_combinations())
-  def testElementSpecRequired(self):
-    dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._test_dir)
-    with self.assertRaises(ValueError):
-      _ = dataset_ops.Dataset.load(self._test_dir)
-
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatAndPrefetch(self):
     """This test reproduces github.com/tensorflow/tensorflow/issues/49165."""
     dataset1 = dataset_ops.Dataset.from_tensor_slices(np.random.rand(16, 32))
-    dataset1.save(self._test_dir)
+    self.evaluate(dataset1.save(self._test_dir))
     dataset = dataset_ops.Dataset.load(self._test_dir)
     dataset = dataset.shuffle(buffer_size=16)
     dataset = dataset.batch(16)
@@ -138,11 +144,14 @@ class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
     return dataset_ops.Dataset.load(self._save_dir)
 
   @combinations.generate(
-      combinations.times(test_base.eager_only_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+      )
+  )
   def test(self, verify_fn):
     dataset = dataset_ops.Dataset.range(42)
-    dataset.save(self._save_dir)
+    self.evaluate(dataset.save(self._save_dir))
     verify_fn(self, self._build_ds, num_outputs=42)
 
 
@@ -184,6 +193,7 @@ class SaveCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
     with self.assertRaises(TypeError):
       dataset.save(
           dataset, self._save_dir, checkpoint_args=checkpoint_args)
+
 
 if __name__ == "__main__":
   test.main()

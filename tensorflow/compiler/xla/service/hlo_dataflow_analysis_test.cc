@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/async_op_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -91,7 +91,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
 
   std::unique_ptr<HloComputation> CreateR0F32UnaryOpComputation(
       HloOpcode opcode) {
-    HloComputation::Builder builder(TestName() + "." + HloOpcodeString(opcode));
+    HloComputation::Builder builder(
+        absl::StrCat(TestName(), ".", HloOpcodeString(opcode)));
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
     builder.AddInstruction(
@@ -2057,6 +2058,55 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
               UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 
+TEST_F(HloDataflowAnalysisTest, AllGatherStartAndDoneWithTuple) {
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY entry {
+      p0 = f32[2] parameter(0)
+      p1 = bf16[2] parameter(1)
+      start = ((f32[2], bf16[2]), (f32[4], bf16[4])) all-gather-start(p0, p1), dimensions={0}
+      ROOT done = (f32[4], bf16[4]) all-gather-done(start)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  const HloDataflowAnalysis& analysis = RunAnalysis(/*ssa_form=*/false);
+  Status status = analysis.Verify();
+  EXPECT_TRUE(status.ok()) << status.ToString();
+
+  HloInstruction* done = module_->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  HloInstruction* param0 = start->mutable_operand(0);
+  HloInstruction* param1 = start->mutable_operand(1);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(start, /*index=*/{0, 0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(start, /*index=*/{0, 1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1, 0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(start, /*index=*/{1, 1}));
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(done, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(done, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(done, /*index=*/{1}));
+
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param0).GetUses(),
+      UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0, 0}}));
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param1).GetUses(),
+      UnorderedElementsAre(HloUse{start, 1, {}}, HloUse{done, 0, {0, 1}}));
+
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param0, {})));
+  EXPECT_THAT(HloValuesAt(start, /*index=*/{0, 1}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param1, {})));
+  EXPECT_THAT(HloValuesAt(done, /*index=*/{0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(start, {1, 0})));
+  EXPECT_THAT(HloValuesAt(done, /*index=*/{1}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(start, {1, 1})));
+}
+
 INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));
@@ -3054,6 +3104,35 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, DUSFusionWithOutputOperandAliasing) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      dus = f32[10] dynamic-update-slice(p0, p1, p2)
+      ROOT tuple = (f32[5], f32[10]) tuple(p1, dus)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = (f32[5], f32[10]) fusion(p0, p1, p2), kind=kLoop, output_to_operand_aliasing={{0}: (1, {})}, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});  // discovered
+  expected_pairs.push_back({HloOperandIndex{1, {}}, {0}});  // annotated
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
   const char* kModule = R"(
     HloModule test
@@ -3075,6 +3154,31 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
   EXPECT_THAT(in_place_pairs, IsEmpty());
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusionWithOutputOperandAliasing) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT add = f32[10] add(p0, p1)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT fusion = f32[10] fusion(p0, p1), kind=kLoop, output_to_operand_aliasing={{}: (0, {})}, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
 TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {

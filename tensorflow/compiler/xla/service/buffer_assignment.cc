@@ -18,33 +18,37 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
+#include <iterator>
 #include <memory>
-#include <numeric>
 #include <ostream>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
-#include "tensorflow/compiler/xla/service/hlo_live_range.h"
-#include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/numbers.h"
 
 namespace xla {
@@ -55,48 +59,59 @@ using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
 using memory_space_assignment::PresetAssignments;
-using ::tensorflow::strings::HumanReadableNumBytes;
+using ::tsl::strings::HumanReadableNumBytes;
 
-// Given the interference map of a graph (the list of interfering node indices
-// for each node), perform graph coloring such that interfering nodes are
-// assigned to different colors. Returns the assigned color of the nodes, where
-// the colors are represented as integer values [0, color_count).
-std::vector<int64_t> ColorInterferenceGraph(
-    const std::vector<std::vector<int64_t>>& interference_map) {
-  const int64_t node_count = interference_map.size();
-
-  // Sort the nodes such that we assign nodes with more interference first. This
-  // relies on the common heuristic of assigning the most constrained node
-  // first, but it would be good to investigate other ordering heuristics too.
-  std::vector<int64_t> nodes(node_count);
-  std::iota(nodes.begin(), nodes.end(), 0);
-  absl::c_sort(nodes, [&interference_map](const int64_t i, const int64_t j) {
-    return interference_map[i].size() > interference_map[j].size();
-  });
-
-  const int64_t kColorUnassigned = -1;
-  std::vector<int64_t> assigned_colors(node_count, kColorUnassigned);
-  for (int64_t node : nodes) {
-    // Mark the colors that are already assigned to the neighbors.
-    std::vector<bool> available_colors(node_count, true);
-    for (int64_t neighbor : interference_map[node]) {
-      int64_t color = assigned_colors[neighbor];
-      if (color != kColorUnassigned) {
-        available_colors[color] = false;
-      }
+absl::flat_hash_map<int64_t, const HloInstruction*> BuildIdToHloInstructionMap(
+    const HloModule* module) {
+  // Build a map from a unique_id to corresponding HloInstruction in the module.
+  absl::flat_hash_map<int64_t, const HloInstruction*> id_to_hlo_instruction;
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      id_to_hlo_instruction[instruction->unique_id()] = instruction;
     }
-
-    // Find the color that is not yet assigned to the neighbors.
-    int64_t color = kColorUnassigned;
-    for (color = 0; color < available_colors.size(); ++color) {
-      if (available_colors[color]) {
-        break;
-      }
-    }
-    CHECK_NE(color, kColorUnassigned);
-    assigned_colors[node] = color;
   }
-  return assigned_colors;
+  return id_to_hlo_instruction;
+}
+
+StatusOr<absl::flat_hash_map<int64_t, const HloValue*>>
+BuildIdToLogicalBufferMap(
+    const BufferAssignmentProto& proto,
+    const absl::flat_hash_map<int64_t, const HloInstruction*>&
+        id_to_hlo_instruction,
+    const std::unique_ptr<HloAliasAnalysis>& alias_analysis) {
+  absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
+  // Process each logical buffer in the proto.
+  for (const LogicalBufferProto& logical_buffer_proto :
+       proto.logical_buffers()) {
+    TF_RET_CHECK(logical_buffer_proto.has_defined_at())
+        << "Expected logical buffer to have location information in the proto.";
+    TF_RET_CHECK(id_to_hlo_instruction.contains(
+        logical_buffer_proto.defined_at().instruction_id()))
+        << "Expected hlo instruction "
+        << "with the id '" << logical_buffer_proto.defined_at().instruction_id()
+        << "' in the proto to also exist in the "
+           "HLO module.";
+    // Assumption: An hlo module loaded from an hlo proto
+    // preserves each instruction's unique_id. An instruction's name is a
+    // deprecated field in the LocationProto.
+    const HloInstruction* hlo_instruction = id_to_hlo_instruction.at(
+        logical_buffer_proto.defined_at().instruction_id());
+
+    std::vector<int64_t> shape_idx_vals;
+    absl::c_copy(logical_buffer_proto.defined_at().shape_index(),
+                 std::back_inserter(shape_idx_vals));
+    ShapeIndex proto_shape_index(shape_idx_vals);
+
+    // Look up logical buffer by hlo instruction and shape index.
+    auto& logical_buffer = alias_analysis->dataflow_analysis().GetUniqueValueAt(
+        hlo_instruction, proto_shape_index);
+
+    // Assign color to a logical buffer from the proto.
+    logical_buffer.set_color(logical_buffer_proto.color());
+
+    id_to_logical_buffer[logical_buffer_proto.id()] = &logical_buffer;
+  }
+  return id_to_logical_buffer;
 }
 
 }  // namespace
@@ -380,6 +395,10 @@ bool BufferAssignment::HasAllocation(const HloValue& value) const {
   return allocation_index_for_value_.contains(&value);
 }
 
+bool BufferAssignment::HasAllocation(HloValue::Id value_id) const {
+  return HasAllocation(dataflow_analysis().GetValue(value_id));
+}
+
 bool BufferAssignment::HasAllocation(const HloBuffer& buffer) const {
   return allocation_index_for_value_.contains(buffer.values()[0]);
 }
@@ -587,7 +606,8 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 
 // Combines allocations of temporary buffers of the same color into one big
 // BufferAllocation.
-void BufferAssignment::CombineTempAllocations() {
+void BufferAssignment::CombineTempAllocations(
+    const absl::flat_hash_set<BufferValue::Color>& private_stack_colors) {
   VLOG(1) << "CombineTempAllocations()";
   // Stores the combined allocations.
   std::deque<BufferAllocation> combined_allocations;
@@ -636,10 +656,20 @@ void BufferAssignment::CombineTempAllocations() {
 
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
-      // the base offset of the allocation.
+      // the base offset of the allocation. For private stack color, we assume
+      // each allocation object corresponds to one of the independent executions
+      // of the private stack computations, so it is safe to reuse offsets in
+      // that case.
       int64_t alignment = color_alignment_(color);
-      const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
-      combined_allocation->set_size(base + temp_allocation.size());
+      int64_t base;
+      bool is_private_stack = private_stack_colors.contains(color);
+      if (is_private_stack) {
+        base = 0;
+        combined_allocation->set_size(std::max(base, temp_allocation.size()));
+      } else {
+        base = RoundUpTo(combined_allocation->size(), alignment);
+        combined_allocation->set_size(base + temp_allocation.size());
+      }
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const HloValue* value = buffer_offset_size.first;
         const int64_t offset = buffer_offset_size.second.offset;
@@ -651,10 +681,16 @@ void BufferAssignment::CombineTempAllocations() {
         combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
       }
 
-      combined_allocation->peak_buffers_.insert(
-          combined_allocation->peak_buffers_.end(),
-          temp_allocation.peak_buffers_.begin(),
-          temp_allocation.peak_buffers_.end());
+      if (is_private_stack) {
+        if (temp_allocation.size() == combined_allocation->size()) {
+          combined_allocation->peak_buffers_ = temp_allocation.peak_buffers_;
+        }
+      } else {
+        combined_allocation->peak_buffers_.insert(
+            combined_allocation->peak_buffers_.end(),
+            temp_allocation.peak_buffers_.begin(),
+            temp_allocation.peak_buffers_.end());
+      }
     }
     // Replace all existing temporary allocations with the new combined
     // allocations.
@@ -953,6 +989,70 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 }
 
 /* static */
+StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
+    const BufferAssignmentProto& proto, const HloModule* module,
+    BufferValue::SizeFunction buffer_size,
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+  // Create alias and dataflow analysis.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                      HloAliasAnalysis::Run(module, can_share_buffer));
+
+  // Build a map from a unique_id to corresponding HloInstruction in the module.
+  auto id_to_hlo_instruction = BuildIdToHloInstructionMap(module);
+
+  // Build a map from logical buffer id in the proto to hlo value in the
+  // existing dataflow analysis.
+  absl::flat_hash_map<int64_t, const HloValue*> id_to_logical_buffer;
+  TF_ASSIGN_OR_RETURN(
+      id_to_logical_buffer,
+      BuildIdToLogicalBufferMap(proto, id_to_hlo_instruction, alias_analysis));
+
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      absl::WrapUnique(new BufferAssignment(
+          module, /*hlo_ordering=*/nullptr, std::move(buffer_size),
+          /*color_alignment=*/nullptr, std::move(alias_analysis),
+          /*hlo_live_range=*/nullptr));
+
+  // Process each buffer allocation entry in the proto to create a new
+  // allocation.
+  for (const auto& alloc_proto : proto.buffer_allocations()) {
+    auto* allocation = buffer_assignment->NewEmptyAllocation(
+        alloc_proto.size(), alloc_proto.color());
+    CHECK(allocation->index() == alloc_proto.index())
+        << "Expected allocations in BufferAssignment proto to be sorted by "
+           "index.";
+    if (alloc_proto.is_entry_computation_parameter()) {
+      std::vector<int64_t> shape_idx_vals;
+      absl::c_copy(alloc_proto.parameter_shape_index(),
+                   std::back_inserter(shape_idx_vals));
+      ShapeIndex shape_index(shape_idx_vals);
+      allocation->set_entry_computation_parameter(
+          alloc_proto.parameter_number(), shape_index, false);
+    }
+
+    // Process each logical buffer assigned to the current allocation and create
+    // buffer assignment entries.
+    for (const auto& assignee : alloc_proto.assigned()) {
+      HloValue::Id logical_buffer_id = assignee.logical_buffer_id();
+      const auto& buffer_val = id_to_logical_buffer[logical_buffer_id];
+      buffer_assignment->AddAssignment(allocation, *buffer_val,
+                                       assignee.offset(), assignee.size());
+    }
+    CHECK_EQ(allocation->maybe_live_out(), alloc_proto.maybe_live_out())
+        << "Dataflow analysis differs from proto.";
+  }
+
+  // Ensure each buffer in the proto has an allocation assigned.
+  TF_RET_CHECK(proto.logical_buffers_size() ==
+               buffer_assignment->allocation_index_for_value_.size());
+  for (auto& logical_buffer_proto : proto.logical_buffers()) {
+    TF_RET_CHECK(buffer_assignment->HasAllocation(
+        *id_to_logical_buffer[logical_buffer_proto.id()]));
+  }
+  return buffer_assignment;
+}
+
+/* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
@@ -960,12 +1060,13 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
     std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
-    std::unique_ptr<PresetAssignments> preset_assignments) {
+    std::unique_ptr<PresetAssignments> preset_assignments,
+    const PrivateStacks& private_stacks) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), std::move(can_share_buffer));
+      std::move(color_alignment), std::move(can_share_buffer), private_stacks);
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -1400,12 +1501,34 @@ Status BufferAssigner::AssignBuffersForComputations(
 
 flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>>
 BufferAssigner::SplitBuffersByColor(
-    const flat_hash_set<const HloValue*>& buffers) {
+    const flat_hash_set<const HloValue*>& buffers) const {
   flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>> color_map;
   for (auto buffer : buffers) {
     color_map[buffer->color()].insert(buffer);
   }
   return color_map;
+}
+
+absl::flat_hash_map<const HloComputation*, absl::flat_hash_set<const HloValue*>>
+BufferAssigner::SplitBuffersByPrivateStackComputation(
+    const absl::flat_hash_set<const HloValue*>& buffers,
+    absl::Span<const HloComputation* const> private_stack_computations,
+    const CallGraph& call_graph) const {
+  absl::flat_hash_map<const HloComputation*,
+                      absl::flat_hash_set<const HloValue*>>
+      computation_map;
+  for (const HloValue* value : buffers) {
+    bool found_computation = false;
+    for (const HloComputation* computation : private_stack_computations) {
+      if (call_graph.InstructionIsNestedIn(value->instruction(), computation)) {
+        found_computation = true;
+        computation_map[computation].insert(value);
+        break;
+      }
+    }
+    CHECK(found_computation);
+  }
+  return computation_map;
 }
 
 Status BufferAssigner::AssignPresetBuffers(
@@ -1462,7 +1585,8 @@ Status BufferAssigner::AssignPresetBuffers(
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
-    bool run_whole_module_heap_simulation, BufferAssignment* assignment) {
+    bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+    const PrivateStacks& private_stacks) {
   // Run the sequence of instructions through the heap simulator.  The
   // heuristic that seems to give the best results is lazy-best-fit, with all
   // runs of alloc / free calls sorted in decreasing size order.
@@ -1510,15 +1634,48 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
       options.alloc_constants = allocate_buffers_for_constants_;
-      options.buffers_to_assign = &single_colored_set.second;
-
-      TF_ASSIGN_OR_RETURN(
-          HeapSimulator::Result<HloValue> result,
-          HeapSimulator::Run(
-              get_heap_algorithm(alignment), assignment->module(), schedule,
-              assignment->alias_analysis(), assignment->buffer_size_, options));
-      AssignBuffersFromHeapSimulator(result, assignment,
-                                     single_colored_set.first);
+      auto private_stacks_it = private_stacks.find(color);
+      if (private_stacks_it != private_stacks.end()) {
+        // For private stack colors, we collect all of the buffers that are
+        // dominated by the private stack computation and run heap simulation on
+        // that computation. The reason why we don't perform a whole-module heap
+        // simulation is that all buffers that participate in an async operation
+        // are treated as live for the duration of the async operation in
+        // whole-module heap simulation. Performing heap simulation from the
+        // private stack computation allows better temporal reuse of buffers.
+        auto computation_map = SplitBuffersByPrivateStackComputation(
+            single_colored_set.second, private_stacks_it->second,
+            assignment->alias_analysis().dataflow_analysis().call_graph());
+        for (const HloComputation* private_stack_computation :
+             private_stacks_it->second) {
+          VLOG(2) << "private stack computation: "
+                  << private_stack_computation->name();
+          auto computation_map_it =
+              computation_map.find(private_stack_computation);
+          CHECK(computation_map_it != computation_map.end());
+          options.buffers_to_assign = &computation_map_it->second;
+          const HloInstructionSequence* instruction_sequence =
+              hlo_ordering.SequentialOrder(*private_stack_computation);
+          TF_ASSIGN_OR_RETURN(
+              HeapSimulator::Result<HloValue> result,
+              HeapSimulator::Run(
+                  get_heap_algorithm(alignment), *private_stack_computation,
+                  *instruction_sequence, assignment->alias_analysis(),
+                  assignment->buffer_size_, &schedule, options));
+          AssignBuffersFromHeapSimulator(result, assignment,
+                                         single_colored_set.first);
+        }
+      } else {
+        options.buffers_to_assign = &single_colored_set.second;
+        TF_ASSIGN_OR_RETURN(
+            HeapSimulator::Result<HloValue> result,
+            HeapSimulator::Run(get_heap_algorithm(alignment),
+                               assignment->module(), schedule,
+                               assignment->alias_analysis(),
+                               assignment->buffer_size_, options));
+        AssignBuffersFromHeapSimulator(result, assignment,
+                                       single_colored_set.first);
+      }
     }
   } else {
     // Run the heap-simulation on a per-computation basis. Buffers for
@@ -1713,7 +1870,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const PrivateStacks& private_stacks) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
@@ -1779,7 +1937,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
           << multiheap_size_constraint_per_heap;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get()));
+      assignment.get(), private_stacks));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get
@@ -1816,7 +1974,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // performed after all buffers have been assigned, and after maybe_live_out
   // is marked, since it is used to determine whether an allocation contains
   // temporary buffers or not.
-  assignment->CombineTempAllocations();
+  absl::flat_hash_set<BufferValue::Color> private_stack_colors;
+  for (const auto& [color, computations] : private_stacks) {
+    private_stack_colors.insert(color);
+  }
+  assignment->CombineTempAllocations(private_stack_colors);
 
   XLA_VLOG_LINES(2, assignment->ToString());
   TF_RETURN_IF_ERROR(assignment->ComputeSummaryStats());

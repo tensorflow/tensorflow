@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
-#include "absl/container/flat_hash_set.h"
+#include <cstdint>
+#include <memory>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -38,11 +43,10 @@ bool ElementIsF32OrF16(const Shape& shape) {
 
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  // We say that some floating-point math ops are cheap on the GPU. Unlike other
-  // intrinsics that can be expanded into many instructions, Div and Rsqrt are
-  // lowered into single hardware instructions.
+  // Some floating-point math ops are cheap on the GPU.
   switch (instruction.opcode()) {
     case HloOpcode::kDivide:
+    case HloOpcode::kSqrt:
     case HloOpcode::kRsqrt:
     case HloOpcode::kExp:
       if (ElementIsF32OrF16(instruction.shape())) {
@@ -81,6 +85,11 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
           !IsProducerConsumerFusible(*producer, *consumer)) {
     return !fusible;
   }
+
+  if (CreatesHeavyComputation(*producer, *consumer)) {
+    return "the fusion would create a heavy computation";
+  }
+
   if (NoFusionPossible fusible =
           !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return !fusible;
@@ -99,7 +108,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // The following checks are potentially expensive.
   if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer,
+          !FusionFitsInBudget(*consumer, *producer, device_info_,
                               /*is_consumer_producer_fusion=*/true)) {
     return !too_large;
   }
@@ -145,6 +154,11 @@ HloInstruction* GpuInstructionFusion::FuseInstruction(
       InstructionFusion::FuseInstruction(fusion_instruction, producer);
   evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
   return new_producer;
+}
+
+std::unique_ptr<FusionQueue> GpuInstructionFusion::GetFusionQueue(
+    HloComputation* computation) {
+  return InstructionFusion::GetFusionQueue(computation);
 }
 
 }  // namespace gpu

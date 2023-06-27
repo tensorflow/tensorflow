@@ -16,12 +16,12 @@
 # pylint: disable=missing-docstring,g-direct-tensorflow-import
 
 import collections
+from functools import partial
 import string
 import sys
 import traceback
 
 import numpy as np
-from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -38,15 +38,19 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -63,6 +67,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -153,9 +158,11 @@ def _stack(t, length):
       raise ValueError(
           "Attempted to stack an unhandled variant-dtype tensor of "
           f"type {shapes_and_types[0].type!r} ({t!r}).")
-  ones = array_ops.ones_like(array_ops.shape(t))
+  shape = array_ops.shape(t)
+  ones = array_ops.ones_like(shape)
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
+  length = math_ops.cast(length, shape.dtype)
   multiples = array_ops.concat([length, ones], 0)
   t = array_ops.tile(array_ops.expand_dims(t, 0), multiples)
   return wrap(t, True)
@@ -574,8 +581,8 @@ class WhileOp:
     for i, out_ta in enumerate(output_tas):
       inp = inputs[i]
       new_output_tas.append(
-          control_flow_ops.cond(not_all_done, lambda: out_ta,
-                                lambda: out_ta.write(0, inp)))
+          tf_cond.cond(not_all_done, lambda: out_ta,
+                       lambda: out_ta.write(0, inp)))
     # pylint: enable=cell-var-from-loop
     return not_all_done, indices, inputs, new_output_tas
 
@@ -647,7 +654,7 @@ class WhileOp:
       # not be used. Notice that the value returned by the loop is based on
       # TensorArrays and not directly on these returned values.
       # pylint: disable=cell-var-from-loop
-      new_output = control_flow_ops.cond(
+      new_output = tf_cond.cond(
           not_all_done,
           lambda: true_fn(control_inp, body_pfor, body_output, stacked),
           lambda: constant_op.constant([], dtype=out_dtype))
@@ -760,7 +767,7 @@ class WhileOp:
                   list(new_inputs[num_outputs:]) + new_output_tas)
       return tuple(new_args)
 
-    while_outputs = control_flow_ops.while_loop(
+    while_outputs = while_loop.while_loop(
         cond, body, init_values, shape_invariants=shape_invariants)
     output_tas = while_outputs[-len(self._outputs):]
     outputs = []
@@ -850,7 +857,8 @@ class _PforInput:
       if inp.is_stacked:
         shape = array_ops.shape(inp.t)
         rank_diff = array_ops.reshape(max_rank - ranks[i], [1])
-        ones = array_ops.tile([1], rank_diff)
+        ones = constant_op.constant([1], dtype=shape.dtype)
+        ones = array_ops.tile(ones, rank_diff)
         new_shape = array_ops.concat([shape[:1], ones, shape[1:]], axis=0)
         self._inputs[i] = wrap(array_ops.reshape(inp.t, new_shape), True)
 
@@ -1085,7 +1093,13 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
   else:
     logging.debug(msg)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
-  iters = pfor_input.pfor.loop_len_vector[0]
+  iter_vec = pfor_input.pfor.loop_len_vector
+  # Use constant value if available, so that output shapes are static.
+  iter_vec_value = tensor_util.constant_value(iter_vec)
+  if iter_vec_value is not None:
+    iters = iter_vec_value[0].item()
+  else:
+    iters = iter_vec[0]
 
   def while_body(i, *ta_list):
     """Body of while loop."""
@@ -1103,14 +1117,14 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
     # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
       assert isinstance(out, ops.Tensor)
-      outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
+      outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
-  ta_list = control_flow_ops.while_loop(
+  ta_list = while_loop.while_loop(
       lambda i, *ta: i < iters, while_body, [0] +
       [tensor_array_ops.TensorArray(dtype, iters) for dtype in output_dtypes
       ])[1:]
-  return tuple([wrap(ta.concat(), True) for ta in ta_list])
+  return tuple([wrap(ta.stack(), True) for ta in ta_list])
 
 
 class PForConfig:
@@ -1308,7 +1322,9 @@ class PFor:
     loop_len_value = tensor_util.constant_value(loop_len)
     if loop_len_value is not None:
       loop_len = loop_len_value
-    self._loop_len_vector = array_ops.reshape(loop_len, [1])
+      self._loop_len_vector = ops.convert_to_tensor([loop_len])
+    else:
+      self._loop_len_vector = array_ops.reshape(loop_len, [1])
     self._all_indices_partitioned = all_indices_partitioned
     if all_indices_partitioned:
       assert all_indices is not None
@@ -1748,14 +1764,17 @@ def _convert_adjust_saturation(pfor_input):
 def _flatten_first_two_dims(x):
   """Merges first two dimensions."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([[-1], old_shape[2:]], axis=0)
+  first_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, old_shape[2:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
 def _unflatten_first_dim(x, first_dim):
   """Splits first dimension into [first_dim, -1]."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([first_dim, [-1], old_shape[1:]], axis=0)
+  first_dim = math_ops.cast(first_dim, old_shape.dtype)
+  second_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, second_dim, old_shape[1:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
@@ -1813,19 +1832,23 @@ def _convert_batch_to_space_nd(pfor_input):
   crops = pfor_input.unstacked_input(2)
 
   inp_shape = array_ops.shape(inp)
-  n = pfor_input.pfor.loop_len_vector
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
 
   # Reshape and transpose to move the vectorization axis inside the axes that
   # will move to space.
   # Reshape to 4D and transpose
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [n[0], block_size, inp_shape[1] // block_size, -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [n[0], block_size, inp_shape[1] // block_size, neg_one]
   inp = array_ops.reshape(inp, new_shape)
+
   inp = array_ops.transpose(inp, [1, 0, 2, 3])
   # Reshape back to merge the block, vectorization and batch dimension, and
   # restore the other dimensions.
   new_shape = array_ops.concat([n * inp_shape[1], inp_shape[2:]], axis=0)
   inp = array_ops.reshape(inp, new_shape)
+
   # Call batch_to_space and then split the new batch axis.
   output = gen_array_ops.batch_to_space_nd(inp, block_shape, crops)
   output = _unflatten_first_dim(output, n)
@@ -1838,14 +1861,19 @@ def _convert_space_to_batch_nd(pfor_input):
   block_shape = pfor_input.unstacked_input(1)
   paddings = pfor_input.unstacked_input(2)
 
-  n = pfor_input.pfor.loop_len_vector
   inp_shape = array_ops.shape(inp)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
+
   inp = _flatten_first_two_dims(inp)
   output = gen_array_ops.space_to_batch_nd(inp, block_shape, paddings)
   output_shape = array_ops.shape(output)
+
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [block_size, n[0], -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [block_size, n[0], neg_one]
   output = array_ops.reshape(output, new_shape)
+
   output = array_ops.transpose(output, [1, 0, 2])
   new_shape = array_ops.concat(
       [n, block_size * inp_shape[1:2], output_shape[1:]], axis=0)
@@ -1875,13 +1903,14 @@ def _channel_flatten_input(x, data_format):
   cache_key = (graph, x.ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
+    neg_ones = constant_op.constant([-1], dtype=x_shape.dtype)
     if data_format == b"NCHW":
       order = [1, 0, 2, 3, 4]
-      shape = array_ops.concat([x_shape[1:2], [-1], x_shape[3:]], axis=0)
+      shape = array_ops.concat([x_shape[1:2], neg_ones, x_shape[3:]], axis=0)
       reverse_order = order
     else:
       order = [1, 2, 3, 0, 4]
-      shape = array_ops.concat([x_shape[1:4], [-1]], axis=0)
+      shape = array_ops.concat([x_shape[1:4], neg_ones], axis=0)
       reverse_order = [3, 0, 1, 2, 4]
     # Move S dimension next to C dimension.
     x = array_ops.transpose(x, order)
@@ -2029,13 +2058,13 @@ def _convert_conv2d_backprop_filter(pfor_input):
           use_cudnn_on_gpu=use_cudnn_on_gpu,
           data_format=data_format,
           dilations=dilations)
-      return i + 1, ta.write(i, array_ops.expand_dims(output, 0))
+      return i + 1, ta.write(i, output)
 
     n = array_ops.reshape(pfor_input.pfor.loop_len_vector, [])
-    _, ta = control_flow_ops.while_loop(
+    _, ta = while_loop.while_loop(
         lambda i, ta: i < n, while_body,
         (0, tensor_array_ops.TensorArray(inputs.dtype, n)))
-    output = ta.concat()
+    output = ta.stack()
     return wrap(output, True)
   else:
     # We merge the stack dimension with the channel dimension of the gradients
@@ -2182,7 +2211,8 @@ def _convert_identity_n(pfor_input):
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+  new_shape = array_ops.concat([n, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
 
 
@@ -2205,15 +2235,18 @@ def _convert_fill(pfor_input):
 def _convert_broadcast_to(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = pfor_input.pfor.loop_len_vector
+  new_shape = array_ops.concat([n, shape], axis=0)
 
   # Expand dims of stacked t to broadcast against the new shape.
   # TODO(davmre): consider factoring out common code with
   # `expanddim_inputs_for_broadcast`, which has similar logic but with
   # implicit shapes (of input Tensors) rather than explicit shapes.
-  rank_diff = array_ops.shape(new_shape)[0] - array_ops.rank(t)
-  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
   t_shape = array_ops.shape(t)
+  t_rank = math_ops.cast(array_ops.rank(t), t_shape.dtype)
+  rank_diff = array_ops.shape(new_shape)[0] - t_rank
+  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
+  ones = math_ops.cast(ones, t_shape.dtype)
   t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
 
   return wrap(
@@ -2363,9 +2396,12 @@ def _convert_slice(pfor_input):
     # the output would be ragged. This case is not supported. But `size` having
     # some negative values and some loop-variant `begin`s is OK (and it's hard
     # to tell the difference statically).
-    original_unstacked_shape = _stack(
-        array_ops.shape(t)[1:], pfor_input.pfor.loop_len_vector).t
-    broadcast_size = _stack(size, pfor_input.pfor.loop_len_vector).t
+    t_shape = array_ops.shape(t)
+    size = math_ops.cast(size, t_shape.dtype)
+    begin = math_ops.cast(begin, t_shape.dtype)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, t_shape.dtype)
+    original_unstacked_shape = _stack(t_shape[1:], n).t
+    broadcast_size = _stack(size, n).t
     result_shape = array_ops.where(
         math_ops.less(broadcast_size, 0),
         original_unstacked_shape - begin + broadcast_size + 1, broadcast_size)
@@ -2408,7 +2444,7 @@ def _convert_pack(pfor_input):
   if axis >= 0:
     axis += 1
   return wrap(
-      array_ops.stack([x.t for x in pfor_input.inputs], axis=axis), True)
+      array_ops_stack.stack([x.t for x in pfor_input.inputs], axis=axis), True)
 
 
 @RegisterPFor("Unpack")
@@ -2418,7 +2454,8 @@ def _convert_unpack(pfor_input):
   if axis >= 0:
     axis += 1
   num = pfor_input.get_attr("num")
-  return [wrap(x, True) for x in array_ops.unstack(value, axis=axis, num=num)]
+  return [wrap(x, True) for x
+          in array_ops_stack.unstack(value, axis=axis, num=num)]
 
 
 @RegisterPFor("Pad")
@@ -2748,7 +2785,7 @@ def _convert_matmul(pfor_input):
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
       perm = array_ops.where(
           math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
-      new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
+      new_shape = array_ops_stack.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
 
@@ -2835,7 +2872,7 @@ def _convert_clip_by_value(pfor_input):
   t = pfor_input.stacked_input(0)
   clip_value_min = pfor_input.unstacked_input(1)
   clip_value_max = pfor_input.unstacked_input(2)
-  return wrap(gen_math_ops.clip_by_value(t, clip_value_min, clip_value_max),
+  return wrap(gen_math_ops._clip_by_value(t, clip_value_min, clip_value_max),
               True)
 
 
@@ -3301,8 +3338,8 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
   del kw_args
   inputs = [pfor_input.unstacked_input(i) for i in range(pfor_input.num_inputs)]
   # inputs[0] is "shape"
-  inputs[0] = array_ops.concat([pfor_input.pfor.loop_len_vector, inputs[0]],
-                               axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inputs[0].dtype)
+  inputs[0] = array_ops.concat([n, inputs[0]], axis=0)
   # TODO(b/222761732): Turn this warning back on when legacy RNGs are
   #   deprecated.
   # logging.warning(
@@ -3336,7 +3373,8 @@ def _convert_random_with_param(pfor_input):
     loop_dim = array_ops.shape(shape)[0]
     stacked_samples = _transpose_dim_to_front(samples, loop_dim)
   else:
-    shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+    shape = array_ops.concat([n, shape], axis=0)
     stacked_samples = _create_op(
         pfor_input.op_type,
         inputs=[shape, param],
@@ -3868,7 +3906,7 @@ def _stack_tensor_list_shape(shape, first_dim):
       return first_dim
   else:
     shape = array_ops.reshape(shape, [-1])
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         math_ops.reduce_any(shape < 0),
         lambda: constant_op.constant(-1),
         lambda: array_ops.concat([first_dim, shape], axis=0))
@@ -3910,8 +3948,9 @@ def _untile_variant(t):
 def _convert_optional_from_value(pfor_input):
   pfor_input.stack_inputs()
   return wrap(
-      gen_dataset_ops.optional_from_value([x.t for x in pfor_input.inputs]),
-      True)
+      gen_optional_ops.optional_from_value([x.t for x in pfor_input.inputs]),
+      True,
+  )
 
 
 @RegisterPFor("OptionalGetValue")
@@ -3922,12 +3961,15 @@ def _convert_optional_get_value(pfor_input):
   output_shapes = []
   for shape in original_output_shapes:
     shape = tensor_shape.TensorShape(shape)
+    loop_len_value = tensor_util.constant_value(pfor_input.pfor.loop_len_vector)
     loop_len_shape = tensor_shape.TensorShape(
-        [tensor_util.constant_value(pfor_input.pfor.loop_len_vector)])
+        [loop_len_value[0] if loop_len_value is not None else None]
+    )
     shape = loop_len_shape.concatenate(shape)
     output_shapes.append(shape.as_proto())
-  results = gen_dataset_ops.optional_get_value(handle, output_types,
-                                               output_shapes)
+  results = gen_optional_ops.optional_get_value(
+      handle, output_types, output_shapes
+  )
   return [wrap(t, True) for t in results]
 
 
@@ -3974,8 +4016,8 @@ def _stack_tensor_list(handle, dtype, loop_len_vector, element_shape=None):
     elem = _stack(elem, loop_len_vector).t
     return i + 1, list_ops.tensor_list_set_item(h, i, elem)
 
-  return control_flow_ops.while_loop(lambda i, _: i < length, _body_fn,
-                                     [0, new_handle])[1]
+  return while_loop.while_loop(lambda i, _: i < length, _body_fn,
+                               [0, new_handle])[1]
 
 
 @RegisterPFor("TensorListGetItem")
@@ -4078,8 +4120,8 @@ def _convert_tensor_array_push_back(pfor_input):
   else:
     # PopBack has an element shape set when it's the gradient of PushBack, only
     # used when the list is uninitialized.
-    vectorized_shape = array_ops.concat(
-        [pfor_input.pfor.loop_len_vector, element_shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, element_shape.dtype)
+    vectorized_shape = array_ops.concat([n, element_shape], axis=0)
 
   output_handle, tensor = gen_list_ops.tensor_list_pop_back(
       input_handle=handle, element_dtype=pfor_input.get_attr("element_dtype"),
@@ -4099,7 +4141,7 @@ def _convert_tensor_list_concat_v2(pfor_input):
   # Note that element_shape attribute can have incomplete shapes. This doesn't
   # seem to work well when creating another list and then doing a concat on it.
   # Hence we try to find the dynamic shape here.
-  element_shape = control_flow_ops.cond(
+  element_shape = tf_cond.cond(
       length > 0, lambda: array_ops.shape(
           list_ops.tensor_list_get_item(handle, 0, element_dtype, None)),
       lambda: constant_op.constant([0, 0], dtype=dtypes.int32))
@@ -4116,8 +4158,8 @@ def _convert_tensor_list_concat_v2(pfor_input):
 
   new_handle = list_ops.tensor_list_reserve(new_element_shape, length,
                                             element_dtype)
-  new_handle = control_flow_ops.while_loop(lambda i, _: i < length,
-                                           _transpose_elem, [0, new_handle])[1]
+  new_handle = while_loop.while_loop(lambda i, _: i < length, _transpose_elem,
+                                     [0, new_handle])[1]
   output, lengths = gen_list_ops.tensor_list_concat_v2(
       input_handle=new_handle,
       element_dtype=element_dtype,
@@ -4230,7 +4272,7 @@ def _convert_tensor_list_scatter(pfor_input):
 
     unique_indices_loop_idx = array_ops.reshape(array_ops.tile(
         loop_idx[None, :], [scatters_per_op, 1]), [-1])
-    scatter_indices = array_ops.stack(
+    scatter_indices = array_ops_stack.stack(
         [unique_indices.idx, unique_indices_loop_idx],
         axis=1)
     # This op does *not* guarantee last-update-wins on GPU, so semantics may not
@@ -4470,6 +4512,7 @@ def _convert_function_call(func, converter, inputs):
   assert isinstance(func.graph, func_graph.FuncGraph), func
   assert isinstance(converter, PFor)
 
+  graph_outputs = func.graph.outputs[:len(func.function_type.flat_outputs)]
   # TODO(agarwal): consider caching this function definition.
   @def_function.function
   def f(*args):
@@ -4479,17 +4522,16 @@ def _convert_function_call(func, converter, inputs):
     for inp, arg in zip(func.graph.inputs, args):
       converter._add_conversion(inp, arg)
     # Convert output tensors.
-    return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+    return tuple([converter._convert_helper(x).t for x in graph_outputs])
 
   call_outputs = f(*inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
+  assert len(call_outputs) == len(graph_outputs)
   outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+  for call_output, output_tensor in zip(call_outputs, graph_outputs):
     func_output = converter._convert_helper(output_tensor)
     outputs.append(
-        wrap(call_output, func_output.is_stacked,
-             func_output.is_sparse_stacked))
+        wrap(call_output, func_output.is_stacked, func_output.is_sparse_stacked)
+    )
   return outputs
 
 
@@ -4597,7 +4639,7 @@ def _convert_if(pfor_input):
       outputs.append(wrap(out, True))
     return outputs
   else:
-    outputs = control_flow_ops.cond(
+    outputs = tf_cond.cond(
         cond,
         lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
         lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
@@ -4645,7 +4687,7 @@ def _convert_stateless_case(pfor_input):
       new_branches.append(new_function)
 
     outputs = []
-    outputs = control_flow_ops.switch_case(branch_idx, new_branches)
+    outputs = control_flow_switch_case.switch_case(branch_idx, new_branches)
     return [wrap(t, True) for t in outputs]
 
 
@@ -4738,7 +4780,7 @@ class WhileV2:
           if inp.is_stacked:
             # Shapes may be tf.constant(-1) for fully dynamic, in which case
             # slicing is an error.
-            element_shape = control_flow_ops.cond(
+            element_shape = tf_cond.cond(
                 math_ops.equal(array_ops.rank(element_shape), 0),
                 lambda: element_shape,
                 lambda: element_shape[1:])
@@ -4756,10 +4798,8 @@ class WhileV2:
             size=length,
             dynamic_size=True,
             infer_shape=False)
-          _, output_ta = control_flow_ops.while_loop(
-              lambda index, _: index < length,
-              _init_loop_body,
-              [0, output_ta])
+          _, output_ta = while_loop.while_loop(lambda index, _: index < length,
+                                               _init_loop_body, [0, output_ta])
         else:
           output_ta = tensor_array_ops.TensorArray(
             inp.t.dtype,
@@ -4819,10 +4859,9 @@ class WhileV2:
             tensor_shape.TensorShape([None])
             + tensor_shape.TensorShape(shape_and_type.shape)[1:],
             user_list_len, shape_and_type.dtype)
-        _, new_inp, out_ta = control_flow_ops.while_loop(
+        _, new_inp, out_ta = while_loop.while_loop(
             lambda index, unused_new_inp, unused_new_out_ta: index < length,
-            _split_vectorized_ta_element,
-            [0, new_inp, output_tas[i]])
+            _split_vectorized_ta_element, [0, new_inp, output_tas[i]])
       else:
         # Partition the inputs.
         if stacked:
@@ -4899,15 +4938,16 @@ class WhileV2:
             # should not get executed. Hence we simply return `new_inputs` to
             # make sure the graph construction code completes.
             with ops.control_dependencies([
-                control_flow_ops.Assert(
-                    False, ["pfor ERROR: this branch should never execute"])]):
+                control_flow_assert.Assert(
+                    False, ["pfor ERROR: this branch should never execute"])
+            ]):
               return [array_ops.identity(x) for x in new_inputs]
           else:
             return [out.t for out in outputs]
 
     # If all are done, we simply return `new_inputs`. Else we need to run the
     # body function.
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         not_all_done,
         true_fn,
         lambda: list(new_inputs)), mismatching_stacked_indices
@@ -5020,8 +5060,10 @@ class WhileV2:
           [tensor_shape.TensorShape([]), tensor_shape.TensorShape([None])]
           + output_shapes + ta_shape_invariants)
 
-      while_outputs = control_flow_ops.while_loop(
-          cond, body, init_values,
+      while_outputs = while_loop.while_loop(
+          cond,
+          body,
+          init_values,
           shape_invariants=shape_invariants,
           parallel_iterations=self._parallel_iterations)
       if indices_to_stack:
@@ -5063,9 +5105,8 @@ class WhileV2:
                 output_list = list_ops.tensor_list_reserve(
                     tensor_shape.TensorShape(shape_and_type.shape), length,
                     shape_and_type.dtype)
-                _, output_list = control_flow_ops.while_loop(
-                    lambda index, _: index < length,
-                    _stack_loop_body,
+                _, output_list = while_loop.while_loop(
+                    lambda index, _: index < length, _stack_loop_body,
                     [0, output_list])
                 outputs.append(output_list)
               else:

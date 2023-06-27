@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -106,8 +106,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, num_segments->type, kTfLiteInt32);
 
-  if (IsDynamicTensor(data) || !IsConstantTensor(segment_ids) ||
-      !IsConstantTensor(num_segments)) {
+  if (IsDynamicTensor(data) || !IsConstantOrPersistentTensor(segment_ids) ||
+      !IsConstantOrPersistentTensor(num_segments)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

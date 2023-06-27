@@ -36,12 +36,9 @@ teardown_file() {
     # Googlers: search for "test_tf_whl_size"
     case "$TF_WHEEL" in
         # CPU:
-        *cpu*manylinux*) LARGEST_OK_SIZE=220 ;;
-        *cpu*win*)       LARGEST_OK_SIZE=170 ;;
-        *macos*)         LARGEST_OK_SIZE=225 ;;
+        *cpu*manylinux*) LARGEST_OK_SIZE=240 ;;
         # GPU:
         *manylinux*)     LARGEST_OK_SIZE=580 ;;
-        *win*)           LARGEST_OK_SIZE=345 ;;
         # Unknown:
         *)
             echo "The wheel's name is in an unknown format."

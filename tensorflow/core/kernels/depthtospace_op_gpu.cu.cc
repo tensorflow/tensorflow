@@ -248,6 +248,12 @@ template struct functor::DepthToSpaceOpFunctor<GPUDevice, Eigen::half,
 template struct functor::DepthToSpaceOpFunctor<GPUDevice, Eigen::half,
                                                FORMAT_NHWC>;
 
+// Instantiate the GPU implementations for Eigen::bfloat16.
+template struct functor::DepthToSpaceOpFunctor<GPUDevice, Eigen::bfloat16,
+                                               FORMAT_NCHW>;
+template struct functor::DepthToSpaceOpFunctor<GPUDevice, Eigen::bfloat16,
+                                               FORMAT_NHWC>;
+
 // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
 template struct functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW>;
 

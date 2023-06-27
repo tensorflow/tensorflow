@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,7 +58,8 @@ class DynamicDimensionInference {
       HloModule* module,
       CustomCallInferenceHandler custom_call_handler = nullptr,
       ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore,
-      const AssertionGenerator& assertion_generator = nullptr);
+      const AssertionGenerator& assertion_generator = nullptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_ = {});
 
   std::string ToString() const;
 
@@ -67,6 +68,10 @@ class DynamicDimensionInference {
   // dimension. Otherwise returns nullptr.
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64_t dim) const;
+
+  const HloInstruction* GetDynamicSize(const HloInstruction* inst,
+                                       const ShapeIndex& index,
+                                       int64_t dim) const;
 
   // Returns dynamic sizes of all dimensions of `inst`'s leaf node at `index`.
   // Static sizes are represented by nullptr.
@@ -102,7 +107,8 @@ class DynamicDimensionInference {
  private:
   explicit DynamicDimensionInference(
       HloModule* module, CustomCallInferenceHandler custom_call_handler,
-      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator);
+      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator,
+      const absl::flat_hash_set<absl::string_view>& execution_threads_);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -173,6 +179,8 @@ class DynamicDimensionInference {
   ShapeCheckMode shape_check_mode_;
 
   AssertionGenerator assertion_generator_;
+
+  const absl::flat_hash_set<absl::string_view>& execution_threads_;
 };
 
 }  // namespace xla

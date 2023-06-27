@@ -38,6 +38,9 @@ namespace port {
 // Snappy compression/decompression support
 bool Snappy_Compress(const char* input, size_t length, string* output);
 
+bool Snappy_CompressFromIOVec(const struct iovec* iov,
+                              size_t uncompressed_length, string* output);
+
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result);
 bool Snappy_Uncompress(const char* input, size_t length, char* output);

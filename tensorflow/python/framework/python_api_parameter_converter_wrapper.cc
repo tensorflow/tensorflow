@@ -15,9 +15,9 @@ limitations under the License.
 // Note: This library is only used by python_api_parameter_converter_test.  It
 // is not meant to be used in other circumstances.
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/python/framework/python_api_parameter_converter.h"
 
 namespace py = pybind11;

@@ -2,6 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
     licenses = ["notice"],
 )
@@ -23,5 +24,5 @@ py_library(
     name = "xla_ops_grad",
     srcs = ["xla_ops_grad.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:framework_ops"],
+    deps = ["//tensorflow/python/framework:ops"],
 )

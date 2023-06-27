@@ -43,11 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/subprocess.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
@@ -334,7 +334,7 @@ void DoInfoCommand(const HloModule& module,
     std::cout << "HloInstruction " << instr->name() << std::endl;
     std::cout << "  Parent computation: " << instr->parent()->name()
               << std::endl;
-    std::cout << "  Opcode: " << HloOpcodeString(instr->opcode()) << std::endl;
+    std::cout << "  Opcode: " << instr->opcode() << std::endl;
     std::cout << "  Shape: " << ShapeUtil::HumanStringWithLayout(instr->shape())
               << std::endl;
     std::cout << "  Metadata:" << std::endl;
@@ -400,10 +400,15 @@ void DoExtractCommand(const HloModule& module,
   }
 
   auto extracted_module = ExtractModule(instr, height);
-  std::cout << extracted_module->ToString(
-                   HloPrintOptions::ShortParsable().set_print_backend_config(
-                       hlo_render_options.show_backend_config))
-            << std::endl;
+  std::string module_str = extracted_module->ToString(
+      HloPrintOptions::ShortParsable().set_print_backend_config(
+          hlo_render_options.show_backend_config));
+
+  std::string outfile_name =
+      tsl::io::GetTempFilename(absl::StrCat(node_name, "-extracted.hlo"));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), outfile_name, module_str));
+  std::cout << outfile_name << std::endl;
 }
 
 // Checks if there is a use-def path from `from` to `to`.
@@ -461,7 +466,7 @@ void RenderAndDisplayGraph(
 
   // Ignore UNAVAILABLE errors; these are expected when there's no URL renderer
   // plugin registered.
-  if (url_result.status().code() != tensorflow::error::UNAVAILABLE) {
+  if (url_result.status().code() != tsl::error::UNAVAILABLE) {
     std::cerr << "Unable to render graph as URL: " << url_result.status()
               << std::endl;
     std::cerr << "Trying as HTML..." << std::endl;
@@ -611,7 +616,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {
       return RenderGraph(*comp, /*label=*/"",
                          comp->parent()->config().debug_options(), format,
-                         /*hlo_execution_profile=*/nullptr, hlo_render_options);
+                         hlo_render_options);
     });
   } else {
     RenderAndDisplayGraph(opts, [&](RenderedGraphFormat format) {

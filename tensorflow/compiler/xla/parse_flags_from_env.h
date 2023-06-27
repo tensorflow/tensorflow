@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PARSE_FLAGS_FROM_ENV_H_
 
 // This module exports ParseFlagsFromEnvAndDieIfUnknown(), which allows other
-// modules to parse flags from an environtment variable, or (if the first
+// modules to parse flags from an environment variable, or (if the first
 // non-whitespace in the variable value is not '-'), a file named by that
 // environment variable.
 //

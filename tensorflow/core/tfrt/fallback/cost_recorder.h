@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -26,29 +27,50 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
-#include "tfrt/host_context/shared_context.h"  // from @tf_runtime
-
-namespace tfrt {
-class HostContext;
-}  // namespace tfrt
 
 namespace tensorflow {
 namespace tfrt_stub {
-class CostRecorder : public tfrt::SharedContext {
+
+// Thread-safe.
+// Maintains the execution durations by `op_key`. Note that `op_key` is only
+// unique within a model.
+class CostRecorder {
  public:
-  explicit CostRecorder(tfrt::HostContext* host) {}
+  explicit CostRecorder(uint64_t normalize_ratio = 1)
+      : normalize_ratio_(normalize_ratio) {}
 
-  void RecordCost(int64_t op_key, const uint64_t execution_time);
+  // Records an execution duration for the op keyed by `op_key`.
+  void RecordCost(int64_t op_key, uint64_t execution_time);
 
-  size_t size();
-  Status WriteToFile();
+  // Returns the normalized average execution duration of the op keyed by
+  // `op_key`. If there is no record for `op_key`, returns the uint32_t::max to
+  // avoid stream merging. Note that we don't use uint64_t::max because
+  // otherwise adding op costs would cause overflow. (See details in
+  // go/tfrt-stream-analysis-doc.)
+  uint64_t GetCost(int64_t op_key) const;
+
+  // Writes the op cost map (in format of `OpCostMapProto`) to a file specified
+  // by the env var name `MesuredCostPathEnvVarName()`.
+  // TODO(b/263837451): Fix the op_key unstableness during serialization.
+  Status WriteToFile() const;
+
+  size_t size() const;
+
+  static const char* MesuredCostPathEnvVarName() {
+    return "TF_TFRT_MEASURED_COST_PATH";
+  }
 
  private:
-  tensorflow::mutex op_cost_map_mutex_;
-  // Map op key to {sum of op execution time in microseconds, number of op}.
+  // Normalize the cost values by dividing by this.
+  uint64_t normalize_ratio_;
+
+  mutable tensorflow::mutex op_cost_map_mutex_;
+  // Map op key to {sum of op execution duration in nanoseconds, #occurences of
+  // the op}.
   absl::flat_hash_map<int64_t, std::pair<uint64_t, uint64_t>> op_cost_map_
       TF_GUARDED_BY(op_cost_map_mutex_);
 };
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

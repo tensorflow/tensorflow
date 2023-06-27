@@ -9,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -81,7 +82,7 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
     alwayslink = 1,
 )
@@ -139,7 +140,7 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
 

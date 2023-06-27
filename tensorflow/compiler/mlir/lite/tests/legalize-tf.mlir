@@ -147,7 +147,7 @@ func.func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 }
 
 func.func @fakeQuantArgsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
-  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 5, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantArgsFalse
@@ -156,7 +156,7 @@ func.func @fakeQuantArgsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 }
 
 func.func @fakeQuantArgsTrue(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
-  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 5, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantArgsTrue
@@ -167,7 +167,7 @@ func.func @fakeQuantArgsTrue(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> 
 func.func @fakeQuantVarsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
   %arg1 = "tf.Const"() { value = dense<-0.1> : tensor<f32> } : () -> tensor<f32>
   %arg2 = "tf.Const"() { value = dense<0.2> : tensor<f32> } : () -> tensor<f32>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 5, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsFalse
@@ -176,6 +176,43 @@ func.func @fakeQuantVarsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 }
 
 func.func @fakeQuantVarsTrue(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {min = 0.0 : f32, max = 1.0 : f32, num_bits = 5, narrow_range = true} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantVarsTrue
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 5 : i64}
+}
+
+func.func @fakeQuantArgsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantArgsFalse
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>}
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantArgsTrue4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantArgsTrue
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantVarsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %arg1 = "tf.Const"() { value = dense<-0.1> : tensor<f32> } : () -> tensor<f32>
+  %arg2 = "tf.Const"() { value = dense<0.2> : tensor<f32> } : () -> tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantVarsFalse
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>}
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantVarsTrue4Bits(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<8x8x8x8xf32> {
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {min = 0.0 : f32, max = 1.0 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
@@ -558,6 +595,16 @@ func.func @floor_div(tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  return
 }
 
+func.func @floor_div_i16(tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16> {
+^bb0(%arg0: tensor<8x16xi16>, %arg1: tensor<8x16xi16>):
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16>
+  func.return %0 : tensor<8x16xi16>
+
+// CHECK-LABEL: floor_div_i16
+// CHECK:  tfl.floor_div %arg0, %arg1 : tensor<8x16xi16>
+// CHECK:  return
+}
+
 func.func @not_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
   func.return %0 : tensor<8x16xi1>
@@ -700,6 +747,14 @@ func.func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: addV2
 // CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
+}
+
+func.func @addV2I16(%arg0: tensor<1xi16>, %arg1: tensor<1xi16>) -> tensor<1xi16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi16>, tensor<1xi16>) -> tensor<1xi16>
+  func.return %0 : tensor<1xi16>
+
+// CHECK-LABEL: addV2I16
+// CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi16>
 }
 
 func.func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
@@ -1252,84 +1307,84 @@ func.func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x
 }
 
 func.func @strided_slice(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   func.return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice
-  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func.func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<10x10xf32> {
   %cst = arith.constant dense<-1> : tensor<1xi32>
   %cst_1 = arith.constant dense<0> : tensor<1xi32>
   %cst_2 = arith.constant dense<1> : tensor<1xi32>
-  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64, offset = false} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
   func.return %0 : tensor<10x10xf32>
   // CHECK-LABEL: strided_slice_with_constant_attributes
   // CHECK-DAG: [[BEGIN:%cst.*]] = arith.constant dense<-1> : tensor<1xi32>
   // CHECK-DAG: [[END:%cst.*]] = arith.constant dense<0> : tensor<1xi32>
   // CHECK-DAG: [[STRIDES:%cst.*]] = arith.constant dense<1> : tensor<1xi32>
-  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
 }
 
 func.func @strided_slice_with_string(%arg0: tensor<12x2x2x5x!tf_type.string>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
   func.return %0 : tensor<1x2x2x5x!tf_type.string>
   // CHECK-LABEL: strided_slice_with_string
-  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5x!tf_type.string>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5x!tf_type.string>
 }
 
 func.func @strided_slice_with_unranked_input_and_i64_parameters(%arg0: tensor<*xf32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>, %arg3: tensor<1xi64>) -> tensor<*xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<*xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<*xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<*xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
   // CHECK-LABEL: strided_slice_with_unranked_input_and_i64_parameters
   // CHECK-DAG: [[BEGIN:%.*]] = "tfl.cast"(%arg1) : (tensor<1xi64>) -> tensor<1xi32>
   // CHECK-DAG: [[END:%.*]] = "tfl.cast"(%arg2) : (tensor<1xi64>) -> tensor<1xi32>
   // CHECK-DAG: [[STRIDES:%.*]] = "tfl.cast"(%arg3) : (tensor<1xi64>) -> tensor<1xi32>
-  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<*xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<*xf32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<*xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<*xf32>
 }
 
 func.func @strided_slice_with_i64_parameters(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>, %arg3: tensor<1xi64>) -> tensor<1x2x2x5xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1x2x2x5xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1x2x2x5xf32>
   func.return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_with_i64_parameters
   // CHECK-DAG: [[BEGIN:%.*]] = "tfl.cast"(%arg1) : (tensor<1xi64>) -> tensor<1xi32>
   // CHECK-DAG: [[END:%.*]] = "tfl.cast"(%arg2) : (tensor<1xi64>) -> tensor<1xi32>
   // CHECK-DAG: [[STRIDES:%.*]] = "tfl.cast"(%arg3) : (tensor<1xi64>) -> tensor<1xi32>
-  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func.func @strided_slice_with_i64_constant_attributes(%arg0: tensor<10x10x10xf32>) -> tensor<10x10xf32> {
   %cst = arith.constant dense<-1> : tensor<1xi64>
   %cst_1 = arith.constant dense<0> : tensor<1xi64>
   %cst_2 = arith.constant dense<1> : tensor<1xi64>
-  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<10x10x10xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<10x10xf32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64, offset = false} : (tensor<10x10x10xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<10x10xf32>
   func.return %0 : tensor<10x10xf32>
   // CHECK-LABEL: strided_slice_with_i64_constant_attributes
   // CHECK-DAG: [[BEGIN:%cst.*]] = arith.constant dense<-1> : tensor<1xi32>
   // CHECK-DAG: [[END:%cst.*]] = arith.constant dense<0> : tensor<1xi32>
   // CHECK-DAG: [[STRIDES:%cst.*]] = arith.constant dense<1> : tensor<1xi32>
-  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
 }
 
 func.func @strided_slice_non_zero_ellipsis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   func.return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_ellipsis_mask
-  // CHECK:  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  // CHECK:  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func.func @strided_slice_non_zero_new_axis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   func.return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_new_axis_mask
-  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 2 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 2 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func.func @strided_slice_big_dims(%arg0: tensor<5x6x7xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>, %arg3: tensor<3xi32>) -> tensor<1x1x5x6x7xf32> {
-  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
   func.return %0 : tensor<1x1x5x6x7xf32>
   // CHECK-LABEL: strided_slice_big_dims
-  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, offset = false, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
 }
 
 func.func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
@@ -1531,6 +1586,13 @@ func.func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32
   // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
 }
 
+func.func @floor_mod_i16(%arg0: tensor<5xi16>, %arg1: tensor<5xi16>) -> tensor<5xi16> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
+  func.return %0 : tensor<5xi16>
+  // CHECK-LABEL: floor_mod_i16
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
+}
+
 func.func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
   %0 = "tf.Exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
@@ -1589,8 +1651,8 @@ func.func @conv2d_backprop_input(%arg0: tensor<4xi32>, %arg1: tensor<3x3x1x32xf3
   // CHECK: %[[CST:.*]] = arith.constant dense<[2, 0, 1, 3]> : tensor<4xi32>
   // CHECK: %[[ARG0:.*]] = "tfl.transpose"(%arg1, %[[CST]]) : (tensor<3x3x1x32xf32>, tensor<4xi32>) -> tensor<1x3x3x32xf32>
   // CHECK: %[[CST_0:.*]] = "tfl.no_value"() {value} : () -> none
-  // CHECK: %[[ARG1:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
-  // CHECK: %[[ARG3:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
+  // CHECK: %[[ARG1:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
+  // CHECK: %[[ARG3:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
   // CHECK: %[[RESULT:.*]] = tfl.add %[[ARG1]], %[[ARG3]] {fused_activation_function = "NONE"} : tensor<15x28x28x1xf32>
   // CHECK: return %[[RESULT]] : tensor<15x28x28x1xf32>
 }
@@ -1803,24 +1865,27 @@ func.func @maximum_with_6d_broadcasting(%arg0: tensor<1x1x1x1x8x16xf32>, %arg1: 
 
 // -----
 
-func.func @add_with_int32_5d_inputs(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
+func.func @test5DAddWithImplicitBroadcast(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
   %0 = "tf.Add"(%arg0, %arg1): (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
   func.return %0 : tensor<1x1x1x3x4xi32>
-// CHECK-LABEL: add_with_int32_5d_inputs
-// CHECK: [[CST:%.*]] = arith.constant dense<[1, 1, 1, 3, 4]> : tensor<5xi64>
-// CHECK: [[BCT:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-// CHECK: [[BCT_0:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-// CHECK:  tfl.add [[BCT]], [[BCT_0]]
+// CHECK-LABEL: test5DAddWithImplicitBroadcast
+// CHECK: %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
 }
 
-// CHECK-LABEL: testAddWithBroadcastToOps
-func.func @testAddWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
-  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
-  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: tfl.add [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6xi32>
+func.func @test6DAddWithImplicitBroadcast(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
+// CHECK-LABEL: test6DAddWithImplicitBroadcast
+// CHECK:  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   func.return %0 : tensor<1x2x3x4x5x6xi32>
+}
+
+func.func @add_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32> {
+  %0 = "tf.Add"(%arg0, %arg1): (tensor<1x1x1x1x1x3x1xi32>, tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x1x1x3x4xi32>
+// CHECK-LABEL: add_with_int32_7d_inputs
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x1x1x1x1x3x1xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %1 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<1x1x1x1x1x1x4xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x1x1x1x1x3x4xi32>
 }
 
 // CHECK-LABEL: testSubWithBroadcastToOps
@@ -2276,6 +2341,24 @@ func.func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi6
 // CHECK:  return
 }
 
+func.func @mul_i16(%arg0: tensor<14xi16>, %arg1: tensor<14xi16>) -> tensor<14xi16> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi16>, tensor<14xi16>) -> tensor<14xi16>
+  func.return %0: tensor<14xi16>
+
+// CHECK-LABEL: mul_i16
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi16>
+// CHECK:  return
+}
+
+func.func @mul_ui32(%arg0: tensor<14xui32>, %arg1: tensor<14xui32>) -> tensor<14xui32> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xui32>, tensor<14xui32>) -> tensor<14xui32>
+  func.return %0: tensor<14xui32>
+
+// CHECK-LABEL: mul_ui32
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xui32>
+// CHECK:  return
+}
+
 func.func @mul_complex32(%arg0: tensor<14xcomplex<f32>>, %arg1: tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>> {
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xcomplex<f32>>, tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>>
   func.return %0: tensor<14xcomplex<f32>>
@@ -2452,3 +2535,123 @@ func.func @sign(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK: %[[RES0:.*]] = "tfl.sign"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return %[[RES0]] : tensor<8xf32>
 }
+
+func.func @bitcast(%arg0: tensor<8xi32>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcast
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastI32ToI16(%arg0: tensor<8xi32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastI32ToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToUI32(%arg0: tensor<8x2xi16>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcastI16ToUI32
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastFloatToI16(%arg0: tensor<8xf32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastFloatToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToFloat(%arg0: tensor<8x2xi16>) -> tensor<8xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: bitcastI16ToFloat
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
+}
+
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testBitwiseXor
+  // CHECK: %[[RES0:.*]] = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testRightShift
+  // CHECK: %[[RES0:.*]] = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+func.func @sigmoidGrad(%arg0: tensor<?x32xf32>, %arg1: tensor<?x32xf32>) -> tensor<?x32xf32> {
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> tensor<?x32xf32>
+  func.return %0 : tensor<?x32xf32>
+// CHECK-LABEL: sigmoidGrad
+// CHECK-NEXT: [[ONE:%.+]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK-NEXT: [[SUB:%.+]] = tfl.sub([[ONE]], %arg0) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<?x32xf32>) -> tensor<?x32xf32>
+// CHECK-NEXT: [[MUL0:%.+]] = tfl.mul %arg0, [[SUB]] {fused_activation_function = "NONE"} : tensor<?x32xf32>
+// CHECK-NEXT: [[MUL1:%.+]] =  tfl.mul %arg1, [[MUL0]] {fused_activation_function = "NONE"} : tensor<?x32xf32>
+// CHECK: return [[MUL1]]
+}
+
+func.func @batchmatmul2fullyconnected(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = "tf.Const"() {value = dense<[[1.0], [2.0]]> : tensor<2x1xf32>} : () -> tensor<2x1xf32>
+  %1 = "tf.BatchMatMulV2"(%arg0, %0) : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+
+  // CHECK-LABEL: batchmatmul2fullyconnected
+  // CHECK-DAG:  %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32> 
+  // CHECK:  %0 = "tfl.transpose"(%cst, %cst_0) : (tensor<2x1xf32>, tensor<2xi32>) -> tensor<1x2xf32> 
+  // CHECK-DAG:  %1 = "tfl.no_value"() {value} : () -> none
+  // CHECK:  %2 = "tfl.fully_connected"(%arg0, %0, %1) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK:  return %2 : tensor<4x128x1xf32>
+}
+
+func.func @approx_top_k_with_max_k_last_reduction_dimension(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_with_max_k_last_reduction_dimension
+  // CHECK-DAG:  %cst = arith.constant dense<4> : tensor<i32>
+  // CHECK:  %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<1x4xf32>, tensor<i32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+
+func.func @approx_top_k_with_min_k(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_with_min_k
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+
+func.func @approx_top_k_reduction_dimension_not_last_dim(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_reduction_dimension_not_last_dim
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+

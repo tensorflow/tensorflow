@@ -76,45 +76,18 @@ Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
 }
 
 Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
-                             int64_t stride, Padding padding_type,
-                             int64_t* output_size, int64_t* padding_size) {
+                             int dilation_rate, int64_t stride,
+                             Padding padding_type, int64_t* output_size,
+                             int64_t* padding_size) {
   if (padding_type == Padding::EXPLICIT) {
     return errors::Internal(
         "GetWindowedOutputSize does not handle EXPLICIT padding; call "
-        "GetWindowedOutputSizeVerbose instead");
-  }
-  int64_t padding_after_unused;
-  return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
-                                      padding_type, output_size, padding_size,
-                                      &padding_after_unused);
-}
-
-Status GetWindowedOutputSizeV2(int64_t input_size, int64_t filter_size,
-                               int64_t dilation_rate, int64_t stride,
-                               Padding padding_type, int64_t* output_size,
-                               int64_t* padding_size) {
-  if (padding_type == Padding::EXPLICIT) {
-    return errors::Internal(
-        "GetWindowedOutputSizeV2 does not handle EXPLICIT padding; call "
         "GetWindowedOutputSizeVerboseV2 instead");
   }
   int64_t padding_after_unused;
   return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
                                         stride, padding_type, output_size,
                                         padding_size, &padding_after_unused);
-}
-
-Status Get3dOutputSize(const std::array<int64_t, 3>& input,
-                       const std::array<int64_t, 3>& window,
-                       const std::array<int64_t, 3>& strides,
-                       Padding padding_type, std::array<int64_t, 3>* output_ptr,
-                       std::array<int64_t, 3>* padding_ptr) {
-  for (size_t i = 0; i < input.size(); ++i) {
-    TF_RETURN_IF_ERROR(GetWindowedOutputSize(input[i], window[i], strides[i],
-                                             padding_type, &(*output_ptr)[i],
-                                             &(*padding_ptr)[i]));
-  }
-  return OkStatus();
 }
 
 Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
@@ -125,7 +98,7 @@ Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
                          std::array<int64_t, 3>* output_ptr,
                          std::array<int64_t, 3>* padding_ptr) {
   for (size_t i = 0; i < input.size(); ++i) {
-    TF_RETURN_IF_ERROR(GetWindowedOutputSizeV2(
+    TF_RETURN_IF_ERROR(GetWindowedOutputSize(
         input[i], window[i], dilations[i], strides[i], padding_type,
         &(*output_ptr)[i], &(*padding_ptr)[i]));
   }

@@ -297,13 +297,21 @@ class MirrorPadGradOp : public OpKernel {
     TensorShape output_shape;
     typename TTypes<Tpaddings>::ConstMatrix paddings = in1.matrix<Tpaddings>();
     for (int d = 0; d < dims; ++d) {
-      const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
-      const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
+      const int64_t before = paddings(d, 0);  // Pad before existing elements.
+      const int64_t after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument(
                       "Paddings must be non-negative: ", before, ", ", after));
 
-      const int64_t out_size = in0.dim_size(d) - (before + after);
+      const int64_t in_size = in0.dim_size(d);
+      const int64_t total_padding = before + after;
+      OP_REQUIRES(
+          context, total_padding < in_size && total_padding >= 0,
+          errors::InvalidArgument(
+              "Total paddings must be less than the input dimension size: ",
+              total_padding, " was not less than ", in_size));
+
+      const int64_t out_size = in_size - total_padding;
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
                     errors::InvalidArgument("paddings must be no greater "
@@ -317,7 +325,7 @@ class MirrorPadGradOp : public OpKernel {
                                             before, ", ", after,
                                             " not less than ", out_size));
       }
-      output_shape.AddDim(out_size);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(out_size));
     }
 
     if (output_shape == in0.shape()) {

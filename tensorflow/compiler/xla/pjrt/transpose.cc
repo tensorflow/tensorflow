@@ -70,11 +70,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <stack>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
@@ -86,8 +92,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose_kernels.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -496,8 +502,8 @@ void TransposePlan::Execute(
     absl::BlockingCounter counter(nodes_.size());
     for (absl::Span<Node const> nodes : nodes_) {
       schedule_work([&, nodes]() {
-        tensorflow::profiler::TraceMe traceme("Transpose::Execute",
-                                              /*level=*/2);
+        tsl::profiler::TraceMe traceme("Transpose::Execute",
+                                       /*level=*/2);
         execute_by_type(nodes);
         counter.DecrementCount();
       });
@@ -1324,19 +1330,6 @@ std::string TransposePlan::ToString() const {
       outer_block_elems_b_, inner_block_elems_, transformation_str,
       scratch_size_, nodes_str);
 }
-
-struct TransposePlanCacheKey {
-  size_t elem_size_in_bytes;
-  absl::InlinedVector<int64_t, 4> dims;
-  absl::InlinedVector<int64_t, 4> permutation;
-  bool input_layout_is_tiling;
-  absl::InlinedVector<int64_t, 4> input_layout;
-  absl::InlinedVector<int64_t, 4> output_tiling;
-  TransposePlan::Transformation transformation;
-  int num_threads;
-
-  bool operator==(const TransposePlanCacheKey& other) const;
-};
 
 bool TransposePlanCacheKey::operator==(
     const TransposePlanCacheKey& other) const {

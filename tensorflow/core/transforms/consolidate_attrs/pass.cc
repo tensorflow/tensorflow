@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ScopeExit.h"
@@ -28,10 +29,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
+#include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 namespace mlir {
 namespace tfg {
@@ -57,7 +60,7 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
     SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
     for (int64_t &dim : dims)
       if (dim < -1) dim = -1;
-    inferred = RankedTensorType::get(dims, element_type);
+    inferred = GetTypeFromTFTensorShape(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }
@@ -202,7 +205,8 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
   auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
-  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
+  for (const auto &it :
+       llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
@@ -421,7 +425,7 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     if (auto ranked = type.dyn_cast<RankedTensorType>()) {
       input_shapes.push_back(ShapeAttr::get(&getContext(), ranked.getShape()));
     } else {
-      input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
+      input_shapes.push_back(ShapeAttr::get(&getContext(), std::nullopt));
     }
   }
 
@@ -449,7 +453,7 @@ DictionaryAttr PrepareAttributesForExportPassImpl::prepareAttributesFor(
     auto shape = ShapeAttr::get(&getContext(),
                                 type.isa<RankedTensorType>()
                                     ? type.cast<RankedTensorType>().getShape()
-                                    : Optional<ArrayRef<int64_t>>());
+                                    : std::optional<ArrayRef<int64_t>>());
     attrs.set(output_shapes_id_, ArrayAttr::get(&getContext(), {shape}));
   }
   auto element_type = type.cast<TensorType>().getElementType();
@@ -582,7 +586,7 @@ class MaterializeOutputShapesBase : public RewritePattern {
       if (auto ranked = result.getType().dyn_cast<RankedTensorType>()) {
         shapes.push_back(ShapeAttr::get(op->getContext(), ranked.getShape()));
       } else {
-        shapes.push_back(ShapeAttr::get(op->getContext(), llvm::None));
+        shapes.push_back(ShapeAttr::get(op->getContext(), std::nullopt));
       }
     }
     rewriter.updateRootInPlace(op, [&] {

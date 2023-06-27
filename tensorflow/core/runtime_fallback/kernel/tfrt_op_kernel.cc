@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tfrt_op_kernel.h"
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "llvm/Support/raw_ostream.h"
@@ -115,7 +121,7 @@ void TFRTOpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
   CtxFailure(file, line, s);
 }
 
-const llvm::Optional<std::string>& TFRTOpKernelConstruction::error() {
+const std::optional<std::string>& TFRTOpKernelConstruction::error() {
   return error_;
 }
 
@@ -129,7 +135,7 @@ TFRTOpKernelContext::TFRTOpKernelContext(
 
 const Tensor& TFRTOpKernelContext::output(int index) { return outputs_[index]; }
 
-const llvm::Optional<std::string>& TFRTOpKernelContext::error() {
+const std::optional<std::string>& TFRTOpKernelContext::error() {
   return error_;
 }
 
@@ -170,9 +176,7 @@ DataType TFRTOpKernelContext::expected_output_dtype(int i) const {
   return op_meta_->output_type(i);
 }
 
-void TFRTOpKernelContext::CtxFailure(const Status& s) {
-  error_ = s.error_message();
-}
+void TFRTOpKernelContext::CtxFailure(const Status& s) { error_ = s.message(); }
 void TFRTOpKernelContext::CtxFailureWithWarning(const Status& s) {
   CtxFailure(s);
 }
@@ -236,7 +240,7 @@ TFRTOpMeta TFRTOpMetaBuilder::BuildMeta() const {
   return TFRTOpMeta(output_types_);
 }
 
-TFRTOpMetaMap::TFRTOpMetaMap() {}
+TFRTOpMetaMap::TFRTOpMetaMap() = default;
 
 void TFRTOpMetaMap::RegisterOpMeta(const TFRTOpMetaBuilder& op_builder) {
   auto insert_result = op_metas_.insert(
@@ -264,7 +268,7 @@ llvm::ManagedStatic<TFRTOpKernelFactories> tfrt_forwarding_kernel_factories;
 // Forwarding kernel registration.
 //////////////////////////////////////////////////////////////////////
 
-TFRTOpKernelFactories::TFRTOpKernelFactories() {}
+TFRTOpKernelFactories::TFRTOpKernelFactories() = default;
 
 void TFRTOpKernelFactories::RegisterFactory(StringPiece kernel_class_name,
                                             TFRTOpKernelReg kernel_info) {

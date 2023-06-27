@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -44,6 +45,18 @@ enum class CudnnConvKind {
                        // (optionally) side_input) => output
 };
 
+enum class CudnnfMHAKind {
+  kBmmBmm,
+  kScaleBiasMaskSoftmax,
+  kScaleBiasMaskSoftmaxDropout,
+  kScaleMaskSoftmax,
+  kScaleMaskSoftmaxDropout,
+  kSoftmaxDropout,
+  kSoftmax,
+  kScaleBiasSoftmax,
+  kScaleBiasSoftmaxDropout,
+};
+
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
@@ -60,16 +73,22 @@ bool IsLegacyCublasMatmul(const HloInstruction& hlo);
 // Matrix multiplication that calls into cublasLt.
 bool IsCublasLtMatmul(const HloInstruction& hlo);
 
+// Scaled matrix multiplication in FP8. Calls into cublasLt.
+bool IsCublasLtMatmulF8(const HloInstruction& hlo);
+
 // A call to cuBLAS general matrix multiplication API.
-extern const char* const kGemmCallTarget;
+extern const absl::string_view kGemmCallTarget;
 
 // A call to cuBLAS Lt API matrix multiplication.
-extern const char* const kCublasLtMatmulCallTarget;
+extern const absl::string_view kCublasLtMatmulCallTarget;
+
+// A call to cuBLASLt for scaled matrix multiplication in FP8.
+extern const absl::string_view kCublasLtMatmulF8CallTarget;
 
 // A call to cuBLAS for a triangular solve.
 //
 // Like cudnn convolutions, this op returns a tuple (result, scratch_memory).
-extern const char* const kTriangularSolveCallTarget;
+extern const absl::string_view kTriangularSolveCallTarget;
 
 // A call to cuDNN for convolution (forward, backward filter, or backward input)
 // is represented as a CustomCall HLO with a call target equal to one of these
@@ -97,10 +116,15 @@ extern const char* const kTriangularSolveCallTarget;
 // location in memory that the conv can write into, but which it can't legally
 // read from, at least until it's written something first.  But that's exactly
 // the definition of an output buffer.)
-extern const char* const kCudnnConvForwardCallTarget;
-extern const char* const kCudnnConvBackwardInputCallTarget;
-extern const char* const kCudnnConvBackwardFilterCallTarget;
-extern const char* const kCudnnConvBiasActivationForwardCallTarget;
+extern const absl::string_view kCudnnConvForwardCallTarget;
+extern const absl::string_view kCudnnConvBackwardInputCallTarget;
+extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
+extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+
+// cuDNN specific convolution helper (emitted together with a int8x32
+// convolution, if reordering is required).
+extern const absl::string_view kCudnnConvReorderFilterCallTarget;
+extern const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget;
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
@@ -109,6 +133,40 @@ extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 // one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to cuDNN convolution
+// reordering helper (required for int8x32 convolutions).
+bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
+
+// The fused_mha_rewriter phase where each of the MHA signatures are pattern
+// matched and rewritten into a custom-call with specific custom-call target.
+// The custom-call target specifies the MHA signature. For example,  BMM1 - Bias
+// - Scale - Mask - Softmax - BMM2 pattern can have the target as
+// cudnn$fmhaBiasScaleMaskSoftmax.
+// The fMHA signatures currently supported by cudnn are:
+// 1.BMM1 - BMM2
+// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
+// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
+// 4. BMM1 - Scale - Mask - Softmax - BMM2
+// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
+// 6. BMM1 - Softmax - Dropout - BMM2
+// 7. BMM1 - Softmax - BMM2
+// 8. BMM1 - scale - Bias - Softmax - BMM2
+extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
+
+bool IsCustomCallTofMHA(const HloInstruction& hlo);
+
+StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+
+std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 
 }  // namespace gpu
 }  // namespace xla

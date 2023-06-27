@@ -16,6 +16,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/infeed_ops.h"
 
 #include <algorithm>
+#include <deque>
+#include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -23,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -41,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -60,8 +64,8 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 
   ApiConverter::ToC(shape, &c_shape);
 
-  tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(&c_shape,
-                                                             &c_infeed_shape);
+  stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(
+      &c_shape, &c_infeed_shape);
   xla::Shape infeed_shape = ApiConverter::FromC(&c_infeed_shape);
   ApiConverter::Destroy(&c_shape);
   ApiConverter::Destroy(&c_infeed_shape);
@@ -160,7 +164,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
 // `LinearizerBufferList` (aka `std::deque<LinearizerBuffer>`)
 // object, so the `Encode()` and `Decode()` methods are not implemented.
 struct LinearizedBuffersWrapper {
-  explicit LinearizedBuffersWrapper() {}
+  explicit LinearizedBuffersWrapper() = default;
   explicit LinearizedBuffersWrapper(LinearizerBufferList bufs,
                                     std::vector<tensorflow::Tensor> ts)
       : buffers(std::move(bufs)), tensors(std::move(ts)) {}
@@ -378,7 +382,7 @@ class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
  public:
   explicit StreamExecutorInfeedEnqueueOp(OpKernelConstruction* ctx)
       : TpuInfeedEnqueueOp(ctx,
-                           absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+                           std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorInfeedEnqueueOp(const StreamExecutorInfeedEnqueueOp&) = delete;
@@ -390,7 +394,7 @@ class StreamExecutorInfeedEnqueueTupleOp : public TpuInfeedEnqueueTupleOp {
  public:
   explicit StreamExecutorInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
       : TpuInfeedEnqueueTupleOp(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorInfeedEnqueueTupleOp(
@@ -405,7 +409,7 @@ class StreamExecutorInfeedEnqueuePrelinearizedBufferOp
   explicit StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
       OpKernelConstruction* ctx)
       : InfeedEnqueuePrelinearizedBufferOp(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.

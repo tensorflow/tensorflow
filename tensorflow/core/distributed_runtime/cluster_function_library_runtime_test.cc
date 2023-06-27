@@ -12,7 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
+
+#include <map>
 
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
@@ -31,9 +34,19 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
  public:
   ClusterFunctionLibraryRuntimeTest() {
     SessionOptions options;
-    TF_CHECK_OK(test::TestCluster::MakeTestCluster(options, 2, &cluster_));
+    TF_CHECK_OK(test::TestCluster::MakeTestCluster(
+        test::TestClusterConfig().Options(options).Jobs(
+            {test::TestJob{"localhost", 2}}),
+        &cluster_));
     GrpcChannelSpec spec;
-    TF_CHECK_OK(spec.AddHostPortsJob("localhost", cluster_->targets()));
+
+    std::map<int, string> host_ports;
+    int i = 0;
+    for (const auto& target : cluster_->targets("localhost")) {
+      host_ports[i++] = target;
+    }
+
+    TF_CHECK_OK(spec.AddHostPortsJob("localhost", host_ports));
     ChannelCreationFunction channel_func =
         ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
     grpc_worker_env_.reset(CreateGrpcWorkerEnv());
@@ -45,7 +58,9 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     worker_session_.reset(new WorkerSession(
         "cluster_test_session", "/job:localhost/replica:0/task:0",
         std::move(worker_cache), std::unique_ptr<DeviceMgr>(),
-        std::unique_ptr<GraphMgr>(), nullptr));
+        std::unique_ptr<GraphMgr>(), nullptr,
+        [](WorkerSession* worker_session, bool called,
+           DeviceMgr* remote_device_mgr) { return nullptr; }));
 
     cluster_flr_.reset(new ClusterFunctionLibraryRuntime(worker_session_.get(),
                                                          true, nullptr));

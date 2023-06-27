@@ -39,26 +39,30 @@ class Profiler {
     // the delegate.
     DELEGATE_OPERATOR_INVOKE_EVENT = 1 << 2,
 
+    // A delegate op invoke event that profiles a delegate op in the
+    // Operator-wise Profiling section and not in the Delegate internal section.
+    DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT = 1 << 3,
+
     // The event is a recording of runtime instrumentation such as the overall
     // TFLite runtime status, the TFLite delegate status (if a delegate
     // is applied), and the overall model inference latency etc.
     // Note, the delegate status and overall status are stored as separate
     // event_metadata fields. In particular, the delegate status is encoded
     // as DelegateStatus::full_status().
-    GENERAL_RUNTIME_INSTRUMENTATION_EVENT = 1 << 3,
+    GENERAL_RUNTIME_INSTRUMENTATION_EVENT = 1 << 4,
 
     // Telemetry events. Users and code instrumentations should invoke Telemetry
     // calls instead of using the following types directly.
     // See experimental/telemetry:profiler for definition of each metadata.
     //
     // A telemetry event that reports model and interpreter level events.
-    TELEMETRY_EVENT = 1 << 4,
+    TELEMETRY_EVENT = 1 << 5,
     // A telemetry event that reports model and interpreter level settings.
-    TELEMETRY_REPORT_SETTINGS = 1 << 5,
+    TELEMETRY_REPORT_SETTINGS = 1 << 6,
     // A telemetry event that reports delegate level events.
-    TELEMETRY_DELEGATE_EVENT = 1 << 6,
+    TELEMETRY_DELEGATE_EVENT = 1 << 7,
     // A telemetry event that reports delegate settings.
-    TELEMETRY_DELEGATE_REPORT_SETTINGS = 1 << 7,
+    TELEMETRY_DELEGATE_REPORT_SETTINGS = 1 << 8,
   };
 
   virtual ~Profiler() {}
@@ -168,6 +172,16 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
+class ScopedDelegateProfiledOperatorProfile : public ScopedProfile {
+ public:
+  ScopedDelegateProfiledOperatorProfile(Profiler* profiler, const char* tag,
+                                        int node_index)
+      : ScopedProfile(
+            profiler, tag,
+            Profiler::EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT,
+            static_cast<uint32_t>(node_index)) {}
+};
+
 // Similar to ScopedProfile but has extra event metadata for EndEvent.
 class ScopedRuntimeInstrumentationProfile {
  public:
@@ -215,6 +229,11 @@ class ScopedRuntimeInstrumentationProfile {
 
 #define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, tag, node_index) \
   tflite::ScopedDelegateOperatorProfile TFLITE_VARNAME_UNIQ(               \
+      _profile_, __COUNTER__)((profiler), (tag), (node_index))
+
+#define TFLITE_SCOPED_DELEGATE_PROFILED_OPERATOR_PROFILE(profiler, tag, \
+                                                         node_index)    \
+  tflite::ScopedDelegateProfiledOperatorProfile TFLITE_VARNAME_UNIQ(    \
       _profile_, __COUNTER__)((profiler), (tag), (node_index))
 
 #define TFLITE_ADD_RUNTIME_INSTRUMENTATION_EVENT(                          \

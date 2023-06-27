@@ -30,12 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace mlir {
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
+using tsl::Status;
+using tsl::StatusOr;
 
 namespace {
 inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -45,11 +44,16 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
+  tensorflow::GraphdefToMlirOptions options{
+      debug_info_file,        xla_compile_device_type,
+      prune_unused_nodes,     convert_legacy_fed_inputs,
+      graph_as_function,      upgrade_legacy,
+      enable_shape_inference, unconditionally_use_set_output_shapes,
+      enable_soft_placement};
+
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
-      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, control_output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, unconditionally_use_set_output_shapes, context);
+      input, input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, options, context);
   if (!module_or.status().ok()) return nullptr;
   return std::move(module_or).value();
 }
@@ -59,11 +63,14 @@ static TranslateToMLIRRegistration GraphdefToMlirTranslate(
 
 static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
+  tensorflow::GraphdefToMlirOptions options{
+      debug_info_file,        xla_compile_device_type,
+      prune_unused_nodes,     convert_legacy_fed_inputs,
+      graph_as_function,      upgrade_legacy,
+      enable_shape_inference, unconditionally_use_set_output_shapes};
   auto module_or = tensorflow::GraphdefToSplattedMlirTranslateFunction(
-      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, control_output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, unconditionally_use_set_output_shapes, context);
+      input, input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, options, context);
   if (!module_or.status().ok()) return nullptr;
   return std::move(module_or).value();
 }

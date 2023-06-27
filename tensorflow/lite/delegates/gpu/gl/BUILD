@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -20,23 +21,23 @@ cc_library(
         ":compiler",
         ":compiler_options",
         ":gl_call",
-        ":request_gpu_info",
         ":node_shader",
         ":object",
         ":object_manager",
         ":portable",
+        ":request_gpu_info",
         ":runtime",
         ":runtime_options",
         ":stats",
         ":variable",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow/lite/delegates/gpu:tflite_gpu_binary_release": [],
         "//conditions:default": [

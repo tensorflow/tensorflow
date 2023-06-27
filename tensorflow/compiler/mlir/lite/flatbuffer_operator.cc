@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -178,11 +179,11 @@ static bool ConvertBoolAttrForOptionWriter(
   return b;
 }
 
-// Overloading of ConvertBoolAttrForOptionWriter which takes Optional<bool> as
-// an input. If value is not specified, false is set for the attribute.
+// Overloading of ConvertBoolAttrForOptionWriter which takes std::optional<bool>
+// as an input. If value is not specified, false is set for the attribute.
 static bool ConvertBoolAttrForOptionWriter(
-    mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
-  return b.has_value() ? b.getValue() : false;
+    std::optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
+  return b.has_value() ? b.value() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(

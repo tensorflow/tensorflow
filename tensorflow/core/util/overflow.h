@@ -24,7 +24,7 @@ namespace tensorflow {
 
 // Multiply two nonnegative int64's, returning negative for overflow
 // If any of the arguments is negative, return negative too.
-inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
+inline int64_t MultiplyWithoutOverflow(int64_t x, int64_t y) {
   if (TF_PREDICT_FALSE(x < 0)) return -1;
   if (TF_PREDICT_FALSE(y < 0)) return -1;
   if (TF_PREDICT_FALSE(x == 0)) return 0;
@@ -42,7 +42,23 @@ inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
     if (uxy / ux != uy) return -1;
   }
 
-  // Cast back to signed. A negative value will signal an error.
+  // Cast back to signed. A negative value signals an overflow.
+  return static_cast<int64_t>(uxy);
+}
+
+// Add two nonnegative int64's, returning negative for overflow
+// If any of the arguments is negative, return negative too.
+inline int64_t AddWithoutOverflow(int64_t x, int64_t y) {
+  if (TF_PREDICT_FALSE((x < 0)) || (y < 0)) return -1;
+
+  // Add in uint64 rather than int64 since signed overflow is undefined.
+  // Negative values will wrap around to large unsigned values in the casts
+  // (see section 4.7 [conv.integral] of the C++14 standard).
+  const uint64 ux = x;
+  const uint64 uy = y;
+  const uint64 uxy = ux + uy;
+
+  // Cast back to signed. A negative value signals an overflow.
   return static_cast<int64_t>(uxy);
 }
 

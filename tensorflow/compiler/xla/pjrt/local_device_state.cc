@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 
+#include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -31,7 +35,8 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                    AllocationModel allocation_model,
                                    int max_inflight_computations,
                                    bool allow_event_reuse,
-                                   bool use_callback_stream)
+                                   bool use_callback_stream, int device_ordinal,
+                                   std::optional<StreamOptions> stream_options)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       compute_semaphore_(
@@ -41,23 +46,45 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
+  device_ordinal_ =
+      device_ordinal != -1 ? device_ordinal : executor->device_ordinal();
+
+  int num_device_to_host_streams =
+      stream_options.has_value() ? stream_options->num_device_to_host_streams
+                                 : kNumDeviceToHostStreams;
+  int num_device_to_device_streams =
+      stream_options.has_value() ? stream_options->num_device_to_device_streams
+                                 : kNumDeviceToDeviceStreams;
   compute_stream_ = std::make_unique<se::Stream>(executor);
+  if (stream_options.has_value()) {
+    compute_stream_->implementation()->SetPriority(stream_options->priority);
+  }
   host_to_device_stream_ = std::make_unique<se::Stream>(executor);
+  if (stream_options.has_value()) {
+    host_to_device_stream_->implementation()->SetPriority(
+        stream_options->priority);
+  }
   compute_stream_->Init();
   host_to_device_stream_->Init();
   if (use_callback_stream) {
     callback_stream_map_ =
         absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>();
   }
-  device_to_host_streams_.reserve(kNumDeviceToHostStreams);
-  for (int i = 0; i < kNumDeviceToHostStreams; ++i) {
+  device_to_host_streams_.reserve(num_device_to_host_streams);
+  for (int i = 0; i < num_device_to_host_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
+    if (stream_options.has_value()) {
+      stream->implementation()->SetPriority(stream_options->priority);
+    }
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
   }
-  device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
-  for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
+  device_to_device_streams_.reserve(num_device_to_device_streams);
+  for (int i = 0; i < num_device_to_device_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
+    if (stream_options.has_value()) {
+      stream->implementation()->SetPriority(stream_options->priority);
+    }
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
@@ -109,7 +136,7 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
                                            std::function<void()> callback) {
-  tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
+  tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
     absl::MutexLock lock(&mu_);
@@ -144,6 +171,16 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   return device_to_device_streams_.at(i).get();
 }
 
+std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
+  absl::MutexLock lock(&mu_);
+  std::vector<se::Stream*> result;
+  result.reserve(device_to_device_streams_.size());
+  for (const auto& stream : device_to_device_streams_) {
+    result.push_back(stream.get());
+  }
+  return result;
+}
+
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   absl::MutexLock lock(&mu_);
   if (usage_stream_pool_.empty()) {
@@ -155,7 +192,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
     usage_stream_pool_.pop();
     auto status = stream->RefreshStatus();  // Can return error::Unimplemented
     // Stream may fail with "ABORTED: Bad connection".
-    if (status.code() != tensorflow::error::ABORTED) {
+    if (status.code() != tsl::error::ABORTED) {
       CHECK(stream->ok()) << status;
     }
     return stream;
@@ -165,7 +202,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   auto status = stream->RefreshStatus();  // Can return error::Unimplemented
   // Stream may fail with "ABORTED: Bad connection".
-  if (status.code() != tensorflow::error::ABORTED) {
+  if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
   absl::MutexLock lock(&mu_);

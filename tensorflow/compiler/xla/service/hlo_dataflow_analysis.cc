@@ -27,19 +27,20 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -87,12 +88,14 @@ using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                                          bool bitcast_defines_value,
-                                         const CanShareBuffer& can_share_buffer)
+                                         const CanShareBuffer& can_share_buffer,
+                                         const ForwardsValue& forwards_value)
     : module_(module),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
       call_graph_(CallGraph::Build(&module)),
-      can_share_buffer_(can_share_buffer) {}
+      can_share_buffer_(can_share_buffer),
+      forwards_value_(forwards_value) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
@@ -414,9 +417,13 @@ bool HloDataflowAnalysis::Phi(
     PrimitiveType ty = shape.element_type();
     bool is_array = shape.IsArray();
     absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
-      DCHECK(ty == input->shape().element_type() &&
-             (!is_array || ShapeUtil::ElementsIn(shape) ==
-                               ShapeUtil::ElementsIn(input->shape())));
+      DCHECK(
+          ty == input->shape().element_type() &&
+          (!is_array ||
+           ShapeUtil::ElementsIn(shape) ==
+               ShapeUtil::ElementsIn(input->shape()) ||
+           ShapeUtil::ArraySize(shape) == ShapeUtil::ArraySize(input->shape())))
+          << shape.ToString() << " vs." << input->shape().ToString();
     });
   }
 
@@ -1028,11 +1035,17 @@ bool HloDataflowAnalysis::UpdateAllGatherDoneValueSet(
     HloInstruction* all_gather_done) {
   CHECK_EQ(all_gather_done->opcode(), HloOpcode::kAllGatherDone);
   bool changed = false;
-  // AllGatherDone forwards the operand value at {1} to its output.
+  // AllGatherDone forwards the operand value at {1} to its output. If the
+  // output is a tuple, then that tuple is defined by all-gather-done, so
+  // only update the value set for tuple leaf elements (arrays).
   for (auto& pair : GetInstructionValueSet(all_gather_done)) {
     const ShapeIndex& output_index = pair.first;
     HloValueSet& value_set = pair.second;
 
+    if (!ShapeUtil::GetSubshape(all_gather_done->shape(), output_index)
+             .IsArray()) {
+      continue;
+    }
     ShapeIndex operand_index = {1};
     for (int64_t i : output_index) {
       operand_index.push_back(i);
@@ -1136,60 +1149,125 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
 bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
+  bool changed = false;
   switch (instruction->opcode()) {
-    case HloOpcode::kAddDependency:
-      return UpdateAddDependencyValueSet(instruction);
-    case HloOpcode::kAllGatherStart:
-      return UpdateAllGatherStartValueSet(instruction);
-    case HloOpcode::kAllGatherDone:
-      return UpdateAllGatherDoneValueSet(instruction);
-    case HloOpcode::kAsyncStart:
-      return UpdateAsyncStartValueSet(instruction);
-    case HloOpcode::kAsyncUpdate:
-      return UpdateAsyncUpdateValueSet(instruction);
-    case HloOpcode::kAsyncDone:
-      return UpdateAsyncDoneValueSet(instruction);
-    case HloOpcode::kBitcast:
-      return UpdateBitcastValueSet(instruction);
-    case HloOpcode::kSetDimensionSize:
-      return UpdateSetDimensionSizeValueSet(instruction);
-    case HloOpcode::kDomain:
-      return UpdateDomainValueSet(instruction);
-    case HloOpcode::kCopy:
-      return UpdateCopyValueSet(instruction);
-    case HloOpcode::kGetTupleElement:
-      return UpdateGetTupleElementValueSet(instruction);
-    case HloOpcode::kTuple:
-      return UpdateTupleValueSet(instruction);
-    case HloOpcode::kParameter:
-      return UpdateParameterValueSet(instruction);
-    case HloOpcode::kCall:
-      return UpdateCallValueSet(instruction);
-    case HloOpcode::kWhile:
-      return UpdateWhileValueSet(instruction);
-    case HloOpcode::kSend:
-      return UpdateSendValueSet(instruction);
-    case HloOpcode::kRecvDone:
-      return UpdateRecvDoneValueSet(instruction);
-    case HloOpcode::kCopyStart:
-      return UpdateCopyStartValueSet(instruction);
-    case HloOpcode::kCopyDone:
-      return UpdateCopyDoneValueSet(instruction);
-    case HloOpcode::kConditional:
-      return UpdateConditionalValueSet(instruction);
-    case HloOpcode::kAllReduceDone:
-      return UpdateAllReduceDoneValueSet(instruction);
-    case HloOpcode::kCollectivePermuteStart:
-      return UpdateCollectivePermuteStartValueSet(instruction);
-    case HloOpcode::kCollectivePermuteDone:
-      return UpdateCollectivePermuteDoneValueSet(instruction);
-    case HloOpcode::kOptimizationBarrier:
-      return UpdateOptimizationBarrierValueSet(instruction);
+    case HloOpcode::kAddDependency: {
+      changed = UpdateAddDependencyValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAllGatherStart: {
+      changed = UpdateAllGatherStartValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAllGatherDone: {
+      changed = UpdateAllGatherDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAsyncStart: {
+      changed = UpdateAsyncStartValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAsyncUpdate: {
+      changed = UpdateAsyncUpdateValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAsyncDone: {
+      changed = UpdateAsyncDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kBitcast: {
+      changed = UpdateBitcastValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kSetDimensionSize: {
+      changed = UpdateSetDimensionSizeValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kDomain: {
+      changed = UpdateDomainValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCopy: {
+      changed = UpdateCopyValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kGetTupleElement: {
+      changed = UpdateGetTupleElementValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kTuple: {
+      changed = UpdateTupleValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kParameter: {
+      changed = UpdateParameterValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCall: {
+      changed = UpdateCallValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kWhile: {
+      changed = UpdateWhileValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kSend: {
+      changed = UpdateSendValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kRecvDone: {
+      changed = UpdateRecvDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCopyStart: {
+      changed = UpdateCopyStartValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCopyDone: {
+      changed = UpdateCopyDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kConditional: {
+      changed = UpdateConditionalValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kAllReduceDone: {
+      changed = UpdateAllReduceDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCollectivePermuteStart: {
+      changed = UpdateCollectivePermuteStartValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kCollectivePermuteDone: {
+      changed = UpdateCollectivePermuteDoneValueSet(instruction);
+      break;
+    }
+    case HloOpcode::kOptimizationBarrier: {
+      changed = UpdateOptimizationBarrierValueSet(instruction);
+      break;
+    }
     default:
-      // Instruction does not forward HloValues (it defines all values in its
-      // output). No update is necessary.
-      return false;
+      break;
   }
+
+  if (forwards_value_ != nullptr) {
+    for (auto& [index, value_set] : GetInstructionValueSet(instruction)) {
+      if (std::optional<ForwardedOperand> forwarded_operand =
+              forwards_value_(instruction, index);
+          forwarded_operand.has_value()) {
+        HloValueSet& operand_value_set =
+            GetValueSet(instruction->operand(forwarded_operand->operand_number),
+                        forwarded_operand->operand_index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return changed;
 }
 
 void HloDataflowAnalysis::Propagate() {
@@ -1332,12 +1410,21 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       // HloValueSet. should_define may be provided to define a subset of
       // values.
       auto define_all_values =
-          [this,
-           &instruction](std::function<bool(const ShapeIndex&)> should_define =
-                             [](const ShapeIndex&) { return true; }) {
+          [this, &instruction](
+              absl::FunctionRef<bool(const ShapeIndex&)> should_define =
+                  [](const ShapeIndex&) { return true; }) {
             for (auto& pair : GetInstructionValueSet(instruction)) {
               const ShapeIndex& index = pair.first;
-              if (should_define(index)) {
+
+              bool defines_value;
+              if (forwards_value_ != nullptr &&
+                  forwards_value_(instruction, index).has_value()) {
+                defines_value = false;
+              } else {
+                defines_value = should_define(index);
+              }
+
+              if (defines_value) {
                 HloValue* value =
                     NewHloValue(instruction, index, /*is_phi=*/false);
                 GetValueSet(instruction, index).AddValue(value);
@@ -1431,9 +1518,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           break;
         case HloOpcode::kAllGatherStart:
           // AllGatherStart produces a tuple of
-          // {aliased operand, destination buffer}.
-          define_value_at(/*index=*/{});
-          define_value_at(/*index=*/{1});
+          // {aliased operands, destination buffers}. If there is more than
+          // one operand, then both aliased operands and destination buffers
+          // will be tuples themselves. all-gather-start will define all tuples
+          // and all tuple leaves (arrays) in tuple sub-index 1 (destination
+          // buffers).
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                       .IsTuple() ||
+                   index.front() == 1;
+          });
           break;
         case HloOpcode::kAllGatherDone:
           // AllGatherDone's output aliases its input tuple element {1}.
@@ -1446,11 +1540,14 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           break;
         case HloOpcode::kCollectivePermuteStart:
           // CollectivePermuteStart produces a tuple of
-          // {aliased operand, destination buffer, U32 context, U32 context}.
+          // {aliased operand, destination buffer, contexts}, where the context
+          // data are optional.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
-          define_value_at(/*index=*/{2});
-          define_value_at(/*index=*/{3});
+          for (int i = 2; i < instruction->shape().tuple_shapes_size(); ++i) {
+            define_value_at(/*index=*/{i});
+          }
+
           if (instruction->operand_count() > 1) {
             CHECK_EQ(instruction->operand_count(), 4);
             if (instruction->operand(1)->shape().IsTuple()) {
@@ -1534,12 +1631,14 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer) {
+    const CanShareBuffer& can_share_buffer,
+    const ForwardsValue& forwards_value) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
-      module, ssa_form, bitcast_defines_value, can_share_buffer));
+  auto dataflow_analysis = absl::WrapUnique(
+      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
+                              can_share_buffer, forwards_value));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -1834,7 +1933,26 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     }
     return in_place_pairs;
   } else if (instruction->opcode() == HloOpcode::kFusion) {
-    return GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    const auto& aliasing_pairs =
+        Cast<HloFusionInstruction>(instruction)->output_to_operand_aliasing();
+    // WARNING: The users of fusion's output_to_operand_aliasing should be aware
+    // that the annotated output-operand-aliasing pairs should not conflict with
+    // those discovered by GetFusionInstructionInPlaceInputOutputPairs.
+    // TODO (b/259460539): Make sure the annotated and discovered pairs do not
+    // conflict (possibly through implementing a new pass)
+    auto in_place_pairs =
+        GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    if (!aliasing_pairs.empty()) {
+      for (const auto& pair : aliasing_pairs) {
+        ShapeIndex output_shape_index = pair.first;
+        int64_t operand_index = pair.second.first;
+        ShapeIndex operand_shape_index = pair.second.second;
+        in_place_pairs.push_back(
+            {HloOperandIndex{operand_index, {operand_shape_index}},
+             output_shape_index});
+      }
+    }
+    return in_place_pairs;
   }
 
   return {};

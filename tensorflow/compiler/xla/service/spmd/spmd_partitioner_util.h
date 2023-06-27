@@ -23,15 +23,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
@@ -149,6 +150,18 @@ Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding);
 // since this can be before layout assignment.
 int64_t ShapeSizeInBytes(const Shape& shape);
 
+// Creates a table lookup HLO using the ordinal as the offset.
+template <typename NativeT>
+HloInstruction* TableLookup(absl::Span<const NativeT> table, PrimitiveType type,
+                            HloInstruction* ordinal, SpmdBuilder* b) {
+  HloInstruction* table_hlo = b->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<NativeT>(table)));
+  HloInstruction* value = b->AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(type, {1}), table_hlo, {ordinal}, {1}));
+  return b->AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(type, {}), value));
+}
+
 // Returns the shard shape for a partition without padding due to uneven
 // sharding.
 Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
@@ -229,6 +242,8 @@ class MultiplyAddDivideOffsetCalculation {
 
   OffsetCalculation operator-(
       const MultiplyAddDivideOffsetCalculation& other) const;
+  OffsetCalculation operator+(
+      const MultiplyAddDivideOffsetCalculation& other) const;
 
   bool operator==(const MultiplyAddDivideOffsetCalculation& other) const {
     return multiplier_ == other.multiplier_ && offset_ == other.offset_ &&
@@ -280,6 +295,7 @@ class OffsetCalculation {
   bool IsConstant() const;
 
   OffsetCalculation operator-(const OffsetCalculation& other) const;
+  OffsetCalculation operator+(const OffsetCalculation& other) const;
   bool operator==(const OffsetCalculation& other) const;
   int64_t Calculate(int64_t shard_ordinal) const;
   HloInstruction* Calculate(HloInstruction* shard_ordinal,
@@ -316,6 +332,20 @@ std::optional<HloInstruction*> ExchangeHalo(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdBuilder* b);
 
+// A compact version of halo exchange, which generates fewer collective permutes
+// when the halo ranges are far from the current shard while the final result
+// size is small. It tries to reuse the same collective permute to do as many
+// disjoint communications as possible. It also includes data masking. pad_value
+// can be nullptr, which means the value in padding regions doesn't matter.
+HloInstruction* ExchangeHaloCompact(
+    HloInstruction* hlo, const Shape& base_shape,
+    const OffsetCalculation& left_halo_size_function,
+    const OffsetCalculation& right_halo_size_function,
+    HloInstruction* pad_value, int64_t dim, const HloSharding& sharding,
+    HloInstruction* shard_ordinal,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64_t* next_channel_id, SpmdBuilder* b);
+
 // Exchanges halos and performs pad/dynamic-slice on the concatenated data such
 // that the result starts with the first needed element on each shard. It also
 // masks off invalid data due to padding.
@@ -334,6 +364,9 @@ std::optional<HloInstruction*> ExchangeHalo(
 //  offset_on_padded_shape: the offset HLO (S32) that represents the start of
 //   each shard on the padded full shape.
 //  pad_value: the padding value used on the full shape.
+//  force_mask_in_compact: If true, masking is always applied if it uses
+//   ExchangeHaloCompact. An example is that certain cases in pad can skip
+//   masking in non-compact halo exchange, but not in compact ones.
 std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     HloInstruction* hlo, const Shape& base_shape,
     const OffsetCalculation& left_halo_size_function,
@@ -343,7 +376,8 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     HloInstruction* offset_on_padded_shape, HloInstruction* pad_value,
     HloInstruction* partition_ordinal,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64_t* next_channel_id, SpmdBuilder* b, bool mask_invalid_region = true);
+    int64_t* next_channel_id, SpmdBuilder* b, bool mask_invalid_region = true,
+    bool force_mask_in_compact = false);
 
 // Uses halo exchange to change from right-padding to left-padding for uneven
 // tiled sharding on the given dimensions. Tiled sharding always pads uneven
@@ -383,7 +417,7 @@ hlo_sharding_util::GroupedSharding AlignGroupsWith(
     const hlo_sharding_util::GroupedSharding& reference,
     bool ignore_group_order = false);
 
-// Align device groups between the two ahrdings. Equivalent in calling
+// Align device groups between the two shardings. Equivalent in calling
 // GroupShardingOnDims on the two sharding AlignGroupsWith and then
 // UngroupSharding
 HloSharding AlignShardingOnDims(const HloSharding& sharding,
@@ -402,7 +436,12 @@ Shape GetPerGroupBaseShape(
     const hlo_sharding_util::GroupedSharding& grouped_sharding,
     const Shape& original_base_shape);
 
-// Creates the nested partitioner state for in-group patitioning.
+// Returns the partition id within a group.
+HloInstruction* GetInGroupPartitionId(
+    HloInstruction* partition_id,
+    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+
+// Creates the nested partitioner state for in-group partitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
     const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);

@@ -22,35 +22,31 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <new>
 #include <string>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_test_util.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 
-namespace tflite {
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
 
-namespace ops {
-namespace builtin {
-TfLiteRegistration* Register_PADV2();
-TfLiteRegistration* Register_NEG();
-}  // namespace builtin
-}  // namespace ops
+namespace tflite {
 
 namespace {
 
@@ -63,13 +59,14 @@ TEST(BasicInterpreter, ZeroInterpreter) {
 
   Interpreter interpreter;
 
-#ifndef NDEBUG
+#if (!defined(NDEBUG)) || defined(__ANDROID__) || \
+    (defined(__APPLE__) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE))
   const char* kExpectedLog = "INFO: Initialized TensorFlow Lite runtime";
-#else
-  const char* kExpectedLog = "";
-#endif
   EXPECT_THAT(testing::internal::GetCapturedStderr(),
               testing::HasSubstr(kExpectedLog));
+#else
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), testing::IsEmpty());
+#endif
 
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
@@ -573,7 +570,7 @@ TEST(BasicInterpreter, ResizingTensorsStrictInvalid) {
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
-  // Invalid becuase `dims_signature` is not specified.
+  // Invalid because `dims_signature` is not specified.
   ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
@@ -610,6 +607,17 @@ TEST(BasicInterpreter, ResizingTensorsStrict) {
 
   // Assert that ResizeInputTensor works for this value.
   ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a smaller rank isn't permitted.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {8}), kTfLiteError);
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a larger rank isn't permitted either.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 4, 1}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 }
@@ -1439,6 +1447,14 @@ TEST(TestDelegateOwnership, ProperlyDisposed) {
 // CancellationData contains the data required to cancel a call to Invoke().
 struct CancellationData {
   bool is_cancelled = false;
+
+  // The following fields are used for `Cancel` API.
+  Interpreter* interpreter = nullptr;
+  // Return value of interpreter->Cancel().
+  TfLiteStatus cancellation_status = kTfLiteError;
+  // How many times should the cancel op invoke interpreter->Cancel within one
+  // test case.
+  uint cancel_count = 1;
 };
 
 // Indicates whether Invoke() has been cancelled based on the value of the
@@ -1449,13 +1465,208 @@ bool CheckCancellation(void* data) {
   return cancellation_data->is_cancelled;
 }
 
-static struct CancellationData cancellation_data_;
+CancellationData& GetCancellationData() {
+  static CancellationData* data = []() -> CancellationData* {
+    return new CancellationData();
+  }();
+  return *data;
+}
 
-// Test fixture to test cancellation within the Interpreter.
-class CancellationTest : public InterpreterTest {
+// Sets output size to the input size in OkOp::Prepare(). Code exists to have
+// a framework in Prepare. The input and output tensors are not used.
+auto GetOpPrepare() {
+  return [](TfLiteContext* context, TfLiteNode* node) {
+    const TfLiteTensor* in_tensor;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+    TfLiteTensor* out_tensor;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
+    TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
+    return context->ResizeTensor(context, out_tensor, new_size);
+  };
+}
+
+// Test suite for Interpreter::Cancel.
+class CancelTest : public InterpreterTest {
+ protected:
+  TfLiteRegistration CancelOpRegistration() {
+    TfLiteRegistration reg{};
+    reg.prepare = GetOpPrepare();
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      if (GetCancellationData().cancel_count--) {
+        std::thread([]() {
+          GetCancellationData().cancellation_status =
+              GetCancellationData().interpreter->Cancel();
+        }).join();
+      }
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  TfLiteRegistration OkOpRegistration() {
+    TfLiteRegistration reg{};
+    reg.prepare = GetOpPrepare();
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  void MakeCancelNode(int input, int output) {
+    TfLiteRegistration op = CancelOpRegistration();
+    ASSERT_EQ(interpreter_->AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                  nullptr, &op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  TfLiteRegistration CancelAndCallOpRegistartion() {
+    TfLiteRegistration reg{};
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      const TfLiteTensor* in_tensor;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
+      TfLiteTensor* out_tensor;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
+      TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
+      TF_LITE_ENSURE_STATUS(
+          context->ResizeTensor(context, out_tensor, new_size));
+      auto* subgraphs =
+          reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphs();
+      Subgraph* callee_subgraph = (*subgraphs)[1].get();
+      return callee_subgraph->AllocateTensors();
+    };
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      if (GetCancellationData().cancel_count--) {
+        std::thread([]() {
+          GetCancellationData().cancellation_status =
+              GetCancellationData().interpreter->Cancel();
+        }).join();
+      }
+      auto* subgraphs =
+          reinterpret_cast<Subgraph*>(context->impl_)->GetSubgraphs();
+      Subgraph* callee_subgraph = (*subgraphs)[1].get();
+      return callee_subgraph->Invoke();
+    };
+    return reg;
+  }
+
+  void MakeCancelAndCallNode(int input, int output) {
+    TfLiteRegistration op = CancelAndCallOpRegistartion();
+    ASSERT_EQ(interpreter_->AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                  nullptr, &op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  void SetUpCalleeSubgraph() {
+    TfLiteRegistration op = OkOpRegistration();
+    auto* subgraph = interpreter_->subgraph(1);
+    ASSERT_EQ(
+        subgraph->AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr, &op),
+        kTfLiteOk);
+    ASSERT_EQ(subgraph->ResizeInputTensor(0, {3}), kTfLiteOk);
+  }
+
+  // Adds an OkOp with input tensor `input` and output tensor `output`.
+  void MakeOkNode(int input, int output) {
+    TfLiteRegistration op = OkOpRegistration();
+    ASSERT_EQ(interpreter_->AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                  nullptr, &op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  void SetUp() final {
+    // Set up the interpreter. Create the input and output tensors.
+    int num_tensors = 3;
+    ASSERT_EQ(interpreter_->AddTensors(num_tensors), kTfLiteOk);
+    interpreter_->SetInputs({0});
+    interpreter_->SetOutputs({2});
+    TfLiteQuantizationParams quantized;
+    for (int tensor_index = 0; tensor_index < num_tensors; tensor_index++) {
+      ASSERT_EQ(interpreter_->SetTensorParametersReadWrite(
+                    tensor_index, kTfLiteFloat32, "", {3}, quantized),
+                kTfLiteOk);
+    }
+
+    // Sets up the optional callee subgraph for testing control flow-like ops.
+    AddSubgraphs(1);
+    auto* subgraph = interpreter_->subgraph(1);
+    num_tensors = 2;
+    ASSERT_EQ(subgraph->AddTensors(num_tensors), kTfLiteOk);
+    subgraph->SetInputs({0});
+    subgraph->SetOutputs({1});
+    TfLiteQuantization quant{kTfLiteNoQuantization, nullptr};
+    for (int tensor_index = 0; tensor_index < num_tensors; tensor_index++) {
+      ASSERT_EQ(subgraph->SetTensorParametersReadWrite(
+                    tensor_index, kTfLiteFloat32, "", {3}, quant),
+                kTfLiteOk);
+    }
+
+    GetCancellationData().interpreter = interpreter_.get();
+    GetCancellationData().cancellation_status = kTfLiteError;
+    GetCancellationData().cancel_count = 1;
+  }
+};
+
+TEST_F(CancelTest, CancellationNotSupported) {
+  EXPECT_EQ(kTfLiteError, interpreter_->Cancel());
+}
+
+TEST_F(CancelTest, CancellationSupported) {
+  MakeCancelNode(0, 1);
+  MakeOkNode(1, 2);
+  interpreter_->EnableCancellation();
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  // "Cancel node" will call interpreter Cancel() in node 0.
+  EXPECT_EQ(kTfLiteCancelled, interpreter_->Invoke());
+  ASSERT_EQ(kTfLiteOk, GetCancellationData().cancellation_status);
+}
+
+TEST_F(CancelTest, CancelBeforeInvoke) {
+  MakeOkNode(0, 1);
+  MakeOkNode(1, 2);
+  interpreter_->EnableCancellation();
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(kTfLiteOk, interpreter_->Cancel());
+  EXPECT_EQ(kTfLiteOk, interpreter_->Invoke());
+}
+
+TEST_F(CancelTest, CancelOnlyAffectsOngoingInvoke) {
+  MakeCancelNode(0, 1);
+  MakeOkNode(1, 2);
+  interpreter_->EnableCancellation();
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  // "Cancel node" will call interpreter Cancel().
+  EXPECT_EQ(kTfLiteCancelled, interpreter_->Invoke());
+  ASSERT_EQ(kTfLiteOk, GetCancellationData().cancellation_status);
+
+  // The second invoke, the "cancel node" will not call interpreter Cancel().
+  EXPECT_EQ(kTfLiteOk, interpreter_->Invoke());
+}
+
+TEST_F(CancelTest, CancellationAffectsOtherSubgraphs) {
+  MakeCancelAndCallNode(0, 1);
+  MakeOkNode(1, 2);
+  SetUpCalleeSubgraph();
+
+  interpreter_->EnableCancellation();
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  // "CancelAndCall node" will call interpreter Cancel() then invoke callee
+  // subgraph. The cancellation should be populated to the callee subgraph
+  // thus terminate the invocation.
+  EXPECT_EQ(kTfLiteCancelled, interpreter_->Invoke());
+  ASSERT_EQ(kTfLiteOk, GetCancellationData().cancellation_status);
+
+  // The second invoke, the "cancel node" will not call interpreter Cancel().
+  EXPECT_EQ(kTfLiteOk, interpreter_->Invoke());
+}
+
+// Test fixture to test SetCancellationFunction within the Interpreter.
+class SetCancellationFunctionTest : public InterpreterTest {
  public:
   TfLiteStatus Invoke() { return interpreter_->Invoke(); }
-  void Cancel() { cancellation_data_.is_cancelled = true; }
+  void Cancel() { GetCancellationData().is_cancelled = true; }
 
   // Adds an CancelOp with input tensor `input` and output tensor `output`.
   void MakeCancelNode(int input, int output) {
@@ -1478,21 +1689,10 @@ class CancellationTest : public InterpreterTest {
  private:
   // Build the kernel registration for an op that cancels the operation.
   TfLiteRegistration CancelOpRegistration() {
-    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
-
-    // Set output size to the input size in CancelOp::Prepare(). Code exists to
-    // have a framework in Prepare. The input and output tensors are not used.
-    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor;
-      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
-      TfLiteTensor* out_tensor;
-      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
-      TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
-      return context->ResizeTensor(context, out_tensor, new_size);
-    };
-
+    TfLiteRegistration reg{};
+    reg.prepare = GetOpPrepare();
     reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
-      cancellation_data_.is_cancelled = true;
+      GetCancellationData().is_cancelled = true;
       return kTfLiteOk;
     };
     return reg;
@@ -1500,19 +1700,8 @@ class CancellationTest : public InterpreterTest {
 
   // Build the kernel registration for an op that returns kTfLiteOk.
   TfLiteRegistration OkOpRegistration() {
-    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
-
-    // Set output size to the input size in OkOp::Prepare(). Code exists to have
-    // a framework in Prepare. The input and output tensors are not used.
-    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
-      const TfLiteTensor* in_tensor;
-      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &in_tensor));
-      TfLiteTensor* out_tensor;
-      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &out_tensor));
-      TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
-      return context->ResizeTensor(context, out_tensor, new_size);
-    };
-
+    TfLiteRegistration reg{};
+    reg.prepare = GetOpPrepare();
     reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     };
@@ -1520,7 +1709,7 @@ class CancellationTest : public InterpreterTest {
   }
 
   void SetUp() final {
-    cancellation_data_.is_cancelled = false;
+    GetCancellationData().is_cancelled = false;
 
     // Set up the interpreter. Create the input and output tensors.
     int num_tensors = 3;
@@ -1533,32 +1722,32 @@ class CancellationTest : public InterpreterTest {
                     tensor_index, kTfLiteFloat32, "", {3}, quantized),
                 kTfLiteOk);
     }
-    interpreter_->SetCancellationFunction(&cancellation_data_,
+    interpreter_->SetCancellationFunction(&GetCancellationData(),
                                           &CheckCancellation);
   }
 };
 
-TEST_F(CancellationTest, CancelBeforeInvoke) {
+TEST_F(SetCancellationFunctionTest, CancelBeforeInvoke) {
   // Cancel prior to calling Invoke.
-  CancellationTest::MakeOkNode(1, 2);
+  SetCancellationFunctionTest::MakeOkNode(1, 2);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
-  CancellationTest::Cancel();
-  TfLiteStatus invoke_error_code = CancellationTest::Invoke();
+  SetCancellationFunctionTest::Cancel();
+  TfLiteStatus invoke_error_code = SetCancellationFunctionTest::Invoke();
   ASSERT_EQ(invoke_error_code, kTfLiteError);
 }
 
-TEST_F(CancellationTest, CancelDuringInvoke) {
+TEST_F(SetCancellationFunctionTest, CancelDuringInvoke) {
   // Tests a model which sets the cancel in order to test cancellation works
   // between ops.
   //
   // The first op will set the cancellation bit to true. The second op returns
   // `kTfLiteOk` if executed.
-  CancellationTest::MakeCancelNode(0, 1);
-  CancellationTest::MakeOkNode(1, 2);
+  SetCancellationFunctionTest::MakeCancelNode(0, 1);
+  SetCancellationFunctionTest::MakeOkNode(1, 2);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 
-  TfLiteStatus invoke_error_code = CancellationTest::Invoke();
+  TfLiteStatus invoke_error_code = SetCancellationFunctionTest::Invoke();
   ASSERT_EQ(invoke_error_code, kTfLiteError);
 }
 
@@ -2062,13 +2251,14 @@ class TestLazyDelegateProvider : public InterpreterTest {
             std::unique_ptr<SimpleDelegateInterface>(
                 new DummyLazyDelegate(return_error))),
         TfLiteDelegateFactory::DeleteSimpleDelegate);
-    mutable_lazy_delegate_providers()->push_back([=](int /*num_threads*/) {
-      return Interpreter::TfLiteDelegatePtr(
-          TfLiteDelegateFactory::CreateSimpleDelegate(
-              std::unique_ptr<SimpleDelegateInterface>(
-                  new DummyLazyDelegate(return_error))),
-          TfLiteDelegateFactory::DeleteSimpleDelegate);
-    });
+    mutable_lazy_delegate_providers()->push_back(
+        [=](TfLiteContext* /*context*/) {
+          return Interpreter::TfLiteDelegatePtr(
+              TfLiteDelegateFactory::CreateSimpleDelegate(
+                  std::unique_ptr<SimpleDelegateInterface>(
+                      new DummyLazyDelegate(return_error))),
+              TfLiteDelegateFactory::DeleteSimpleDelegate);
+        });
 
     if (create_dyanmic_tensor) {
       // Mark the output as dynamic tensor.

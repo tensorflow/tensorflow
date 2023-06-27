@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -60,10 +60,10 @@ StatusOr<Layout> MatchBatchDim(const Layout& layout,
 StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto in_top_k_op = mlir::cast<mlir::TF::InTopKV2Op>(op);
 
-  mlir::Value predictions = in_top_k_op.predictions();
+  mlir::Value predictions = in_top_k_op.getPredictions();
   TF_ASSIGN_OR_RETURN(const Layout predictions_layout,
                       ExtractRequiredLayoutFromOperand(predictions));
-  mlir::Value targets = in_top_k_op.targets();
+  mlir::Value targets = in_top_k_op.getTargets();
   TF_ASSIGN_OR_RETURN(const Layout targets_layout,
                       ExtractRequiredLayoutFromOperand(targets));
 
@@ -110,7 +110,7 @@ StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   }
 
   mlir::OpBuilder builder(op);
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   // Apply any input relayouts.
   if (relayout_predictions) {
     TF_ASSIGN_OR_RETURN(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -21,9 +22,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
@@ -34,7 +35,7 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
 
 XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat,
                            const XStatMetadata* metadata,
-                           absl::optional<int64_t> type)
+                           std::optional<int64_t> type)
     : stat_(stat), metadata_(metadata), plane_(plane), type_(type) {}
 
 std::string XStatVisitor::ToString() const {
@@ -94,7 +95,7 @@ void XPlaneVisitor::BuildEventTypeMap(
     uint64 metadata_id = event_metadata.first;
     const auto& metadata = event_metadata.second;
     for (const auto& event_type_getter : event_type_getter_list) {
-      absl::optional<int64_t> event_type = event_type_getter(metadata.name());
+      std::optional<int64_t> event_type = event_type_getter(metadata.name());
       if (event_type.has_value()) {
         auto result = event_type_by_id_.emplace(metadata_id, *event_type);
         DCHECK(result.second);  // inserted
@@ -112,11 +113,11 @@ const XEventMetadata* XPlaneVisitor::GetEventMetadata(
   return &XEventMetadata::default_instance();
 }
 
-absl::optional<int64_t> XPlaneVisitor::GetEventType(
+std::optional<int64_t> XPlaneVisitor::GetEventType(
     int64_t event_metadata_id) const {
   const auto it = event_type_by_id_.find(event_metadata_id);
   if (it != event_type_by_id_.end()) return it->second;
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void XPlaneVisitor::BuildStatTypeMap(
@@ -125,7 +126,7 @@ void XPlaneVisitor::BuildStatTypeMap(
     uint64 metadata_id = stat_metadata.first;
     const auto& metadata = stat_metadata.second;
     for (const auto& stat_type_getter : stat_type_getter_list) {
-      absl::optional<int64_t> stat_type = stat_type_getter(metadata.name());
+      std::optional<int64_t> stat_type = stat_type_getter(metadata.name());
       if (stat_type.has_value()) {
         auto result = stat_type_by_id_.emplace(metadata_id, *stat_type);
         DCHECK(result.second);  // inserted
@@ -144,11 +145,11 @@ const XStatMetadata* XPlaneVisitor::GetStatMetadata(
   return &XStatMetadata::default_instance();
 }
 
-absl::optional<int64_t> XPlaneVisitor::GetStatType(
+std::optional<int64_t> XPlaneVisitor::GetStatType(
     int64_t stat_metadata_id) const {
   const auto it = stat_type_by_id_.find(stat_metadata_id);
   if (it != stat_type_by_id_.end()) return it->second;
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 const XStatMetadata* XPlaneVisitor::GetStatMetadataByType(

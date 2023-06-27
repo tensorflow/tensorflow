@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExtensionTypeSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
@@ -27,6 +31,18 @@ tf_module {
   member {
     name: "StructuredTensor"
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "extension_type"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "float8_e4m3fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member_method {
     name: "async_clear_error"

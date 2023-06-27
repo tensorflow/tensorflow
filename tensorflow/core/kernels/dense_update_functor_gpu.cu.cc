@@ -17,9 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/dense_update_functor.h"
-
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 
 namespace tensorflow {
 
@@ -64,7 +63,6 @@ TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_KERNELS);
   template struct functor::DenseUpdate<GPUDevice, T, ASSIGN>;
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 #undef DEFINE_GPU_KERNELS
 
 }  // end namespace tensorflow

@@ -125,8 +125,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
                                      "test_out.py", out_file))
     return count, report, errors, out_file.getvalue()
 
-  def _upgrade_multiple(self, old_file_texts):
-    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+  def _upgrade_multiple(self, upgrade_compat_v1_import, old_file_texts):
+    upgrader = ast_edits.ASTCodeUpgrader(
+        tf_upgrade_v2.TFAPIChangeSpec(True, upgrade_compat_v1_import))
     results = []
     for old_file_text in old_file_texts:
       in_file = io.StringIO(old_file_text)
@@ -377,14 +378,12 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
     added_names_message = """Some function names in
 self.reordered_function_names are not in reorders_v2.py.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     removed_names_message = """%s in self.reorders_v2 does not match
 any name in self.reordered_function_names.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     self.assertTrue(
         reordered_function_names.issubset(function_reorders),
@@ -418,16 +417,15 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
             "dilation_rate_a, strides_a, name_a, data_format_a)\n")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text,
-                     ("tf.nn.pool(input=input_a, window_shape=window_shape_a,"
-                      " pooling_type=pooling_type_a, padding=padding_a, "
-                      "dilations=dilation_rate_a, strides=strides_a, "
-                      "name=name_a, data_format=data_format_a)\n"))
+                     ("tf.nn.pool(input_a, window_shape_a, pooling_type_a, "
+                      "padding=padding_a, dilations=dilation_rate_a, "
+                      "strides=strides_a, name=name_a, "
+                      "data_format=data_format_a)\n"))
 
   def testReorder(self):
     text = "tf.boolean_mask(a, b, c, d)\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text,
-                     "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
+    self.assertEqual(new_text, "tf.boolean_mask(a, b, name=c, axis=d)\n")
 
   def testLearningRateDecay(self):
     for decay in ["tf.train.exponential_decay",
@@ -1034,8 +1032,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         )
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     expected_text = (
-        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
-        "name=name, dtype=output_dtype)\n"
+        "tf.random.categorical(logits, samples, seed=seed, name=name, "
+        "dtype=output_dtype)\n"
         )
     self.assertEqual(new_text, expected_text)
 
@@ -1044,8 +1042,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         )
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     expected_text = (
-        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
-        "name=name, dtype=output_dtype)\n"
+        "tf.random.categorical(logits, samples, seed=seed, name=name, "
+        "dtype=output_dtype)\n"
         )
     self.assertEqual(new_text, expected_text)
 
@@ -1065,7 +1063,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     )
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     expected_text = (
-        "tf.nn.convolution(input=input, filters=filter, padding=padding, "
+        "tf.nn.convolution(input, filters=filter, padding=padding, "
         "strides=strides, dilations=dilation_rate, name=name, "
         "data_format=data_format)"
     )
@@ -1074,8 +1072,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
   def test_substr(self):
     text = "tf.substr(input, pos, len, name, unit)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual("tf.strings.substr(input=input, pos=pos, len=len, "
-                     "name=name, unit=unit)\n", new_text)
+    self.assertEqual("tf.strings.substr(input, pos, len, name=name, "
+                     "unit=unit)\n", new_text)
     self.assertEqual(errors, [])
 
   def testColocateGradientsWithOps(self):
@@ -1090,8 +1088,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertIn("tf.gradients no longer takes", report)
 
     text = "tf.gradients(y, x, grad_ys, name, colocate, gate)\n"
-    expected = ("tf.gradients(ys=y, xs=x, grad_ys=grad_ys, name=name, "
-                "gate_gradients=gate)\n")
+    expected = ("tf.gradients(y, x, grad_ys, name, gate_gradients=gate)\n")
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
@@ -1132,12 +1129,12 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
   def testArgmin(self):
     text = "tf.argmin(input, name=n, dimension=1, output_type=type)"
-    expected_text = "tf.argmin(input=input, name=n, axis=1, output_type=type)"
+    expected_text = "tf.argmin(input, name=n, axis=1, output_type=type)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
-    text = "tf.argmin(input, 0)"
-    expected_text = "tf.argmin(input=input, axis=0)"
+    text = "tf.argmin(input, 0, n)"
+    expected_text = "tf.argmin(input, 0, name=n)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1146,19 +1143,29 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
-  def testArgmax(self):
-    text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
-    expected_text = "tf.argmax(input=input, name=n, axis=1, output_type=type)"
+    text = "tf.arg_min(input, dimension=0)"
+    expected_text = "tf.argmin(input, axis=0)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
-    text = "tf.argmax(input, 0)"
-    expected_text = "tf.argmax(input=input, axis=0)"
+  def testArgmax(self):
+    text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
+    expected_text = "tf.argmax(input, name=n, axis=1, output_type=type)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.argmax(input, 0, n)"
+    expected_text = "tf.argmax(input, 0, name=n)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
     text = "tf.arg_max(input, 0)"
     expected_text = "tf.argmax(input, 0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.arg_max(input, dimension=0)"
+    expected_text = "tf.argmax(input, axis=0)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1193,7 +1200,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
     text = "tf.batch_to_space(input, crops, block_size, name)"
     expected_text = (
-        "tf.batch_to_space(input=input, crops=crops, block_shape=block_size, "
+        "tf.batch_to_space(input, crops=crops, block_shape=block_size, "
         "name=name)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
@@ -1297,39 +1304,37 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
   def testSparseMatmul(self):
     text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
-    expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
-                     "a_is_sparse=e, b_is_sparse=f, name=g)\n")
+    expected_text = ("tf.linalg.matmul(a, b, c, d, a_is_sparse=e, "
+                     "b_is_sparse=f, name=g)\n")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
   def testWeightedMoments(self):
     text = "tf.nn.weighted_moments(x, axes, freq, name, kd)"
     expected_text = (
-        "tf.nn.weighted_moments(x=x, axes=axes, frequency_weights=freq, "
-        "name=name, keepdims=kd)")
+        "tf.nn.weighted_moments(x, axes, freq, name=name, keepdims=kd)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
   def testSparseAdd(self):
-    text = "tf.sparse.add(a, b, t)"
-    expected_text = "tf.sparse.add(a=a, b=b, threshold=t)"
+    text = "tf.sparse.add(a, b, thresh=t)"
+    expected_text = "tf.sparse.add(a, b, threshold=t)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
   def testSparseConcat(self):
     text = "tf.sparse.concat(ax, inp, name, exp, concat)"
     expected_text = (
-        "tf.sparse.concat(axis=ax, sp_inputs=inp, name=name, "
-        "expand_nonconcat_dims=exp, axis=concat)")
+        "tf.sparse.concat(ax, inp, name=name, expand_nonconcat_dims=exp, "
+        "axis=concat)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
   def testSeparableConv2D(self):
     text = "tf.nn.separable_conv2d(inp, d, pt, strides, pad, rate, name, fmt)"
     expected_text = (
-        "tf.nn.separable_conv2d(input=inp, depthwise_filter=d, "
-        "pointwise_filter=pt, strides=strides, padding=pad, "
-        "dilations=rate, name=name, data_format=fmt)")
+        "tf.nn.separable_conv2d(inp, d, pt, strides, pad, dilations=rate, "
+        "name=name, data_format=fmt)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1338,16 +1343,16 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu, "
         "data_format)")
     expected_text = (
-        "tf.nn.conv2d(input=input, filters=filter, strides=strides, "
-        "padding=padding, data_format=data_format)")
+        "tf.nn.conv2d(input, filters=filter, strides=strides, padding=padding, "
+        "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
     text = (
         "tf.nn.conv2d(input, filter=filter, strides=strides, padding=padding, "
         "use_cudnn_on_gpu=use_cudnn_on_gpu)")
-    expected_text = ("tf.nn.conv2d(input=input, filters=filter, "
-                     "strides=strides, padding=padding)")
+    expected_text = ("tf.nn.conv2d(input, filters=filter, strides=strides, "
+                     "padding=padding)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1380,8 +1385,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
     text = "tf.nn.space_to_batch(input, paddings, block_size, name)"
     expected_text = (
-        "tf.space_to_batch(input=input, paddings=paddings, "
-        "block_shape=block_size, name=name)")
+        "tf.space_to_batch(input, paddings=paddings, block_shape=block_size, "
+        "name=name)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1395,15 +1400,15 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
   def testDepthToSpace(self):
     text = "tf.nn.depth_to_space(input, block_size, name, data_format)"
     expected_text = (
-        "tf.nn.depth_to_space(input=input, block_size=block_size, "
-        "name=name, data_format=data_format)")
+        "tf.nn.depth_to_space(input, block_size, name=name, "
+        "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
   def testEmbeddingLookup(self):
     text = ("tf.nn.embedding_lookup(params, ids, partition_strategy, name, "
             "validate_indices, max_norm)")
-    expected_text = ("tf.nn.embedding_lookup(params=params, ids=ids, "
+    expected_text = ("tf.nn.embedding_lookup(params, ids, "
                      "partition_strategy=partition_strategy, name=name, "
                      "max_norm=max_norm)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -1412,10 +1417,9 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
   def testEmbeddingLookupSparse(self):
     text = ("tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, "
             "partition_strategy, name, combiner, max_norm)")
-    expected_text = ("tf.nn.embedding_lookup_sparse(params=params, "
-                     "sp_ids=sp_ids, sp_weights=sp_weights, "
-                     "partition_strategy=partition_strategy, name=name, "
-                     "combiner=combiner, max_norm=max_norm)")
+    expected_text = ("tf.nn.embedding_lookup_sparse(params, sp_ids, "
+                     "sp_weights, partition_strategy=partition_strategy, "
+                     "name=name, combiner=combiner, max_norm=max_norm)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1428,8 +1432,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
   def testSpaceToDepth(self):
     text = "tf.nn.space_to_depth(input, block_size, name, data_format)"
-    expected_text = ("tf.nn.space_to_depth(input=input, block_size=block_size, "
-                     "name=name, data_format=data_format)")
+    expected_text = ("tf.nn.space_to_depth(input, block_size, name=name, "
+                     "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1579,8 +1583,8 @@ tf.print('abc')
         self.assertIn(s, new_text)
 
   def testCond(self):
-    text = "tf.cond(a, b, c, True)"
-    expected_text = "tf.cond(pred=a, true_fn=b, false_fn=c)"
+    text = "tf.cond(a, b, c, True, d)"
+    expected_text = "tf.cond(a, b, c, name=d)"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
     self.assertIn("tf.cond", errors[0])
@@ -1589,16 +1593,16 @@ tf.print('abc')
   def testParens(self):
     text = """
 def _log_prob(self, x):
-  return tf.reduce_logsumexp(
+  return tf.debugging.assert_all_finite(
       (self.mixture_distribution.logits + self.distribution.log_prob(
           x[..., tf.newaxis])),
-          axis=-1)"""
+          message='Nans or Infs found')"""
     expected_text = """
 def _log_prob(self, x):
-  return tf.reduce_logsumexp(
-      input_tensor=(self.mixture_distribution.logits + self.distribution.log_prob(
+  return tf.debugging.assert_all_finite(
+      x=(self.mixture_distribution.logits + self.distribution.log_prob(
           x[..., tf.newaxis])),
-          axis=-1)"""
+          message='Nans or Infs found')"""
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -1662,10 +1666,11 @@ def _log_prob(self, x):
     self.assertEqual(expected, new_text)
 
   def test_sample_distorted_bounding_box(self):
-    # pylint: disable=line-too-long
-    text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"
-    expected = "tf.image.sample_distorted_bounding_box(image_size=a, bounding_boxes=b, seed=c, min_object_covered=e, aspect_ratio_range=f, area_range=g, max_attempts=h, use_image_if_no_bounding_boxes=i, name=j)"
-    # pylint: enable=line-too-long
+    text = ("tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, "
+            "j)")
+    expected = ("tf.image.sample_distorted_bounding_box(a, b, c, "
+                "min_object_covered=e, aspect_ratio_range=f, area_range=g, "
+                "max_attempts=h, use_image_if_no_bounding_boxes=i, name=j)")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
@@ -1678,7 +1683,6 @@ def _log_prob(self, x):
   def test_contrib_framework_argsort(self):
     text = "tf.contrib.framework.argsort"
     expected = "tf.argsort"
-    # pylint: enable=line-too-long
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
@@ -1939,8 +1943,18 @@ def _log_prob(self, x):
   def test_saved_model_load(self):
     text = "tf.saved_model.load(sess, ['foo_graph'])"
     expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
-    _, _, _, new_text = self._upgrade(text)
+    _, report, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
+
+  def test_saved_model_loader_load(self):
+    text = "tf.saved_model.loader.load(sess, ['foo_graph'])"
+    expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
 
   def test_saved_model_load_v2(self):
     text = "tf.saved_model.load_v2('/tmp/blah')"
@@ -2054,28 +2068,24 @@ def _log_prob(self, x):
 
   def test_sdca_to_raw_ops(self):
     text = "tf.train.sdca_fprint(input_tensor)"
-    expected_text = "tf.raw_ops.SdcaFprint(input=input_tensor)"
+    expected_text = "tf.raw_ops.SdcaFprint(input_tensor)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "tf.train.sdca_fprint(input, name=n)"
-    expected_text = "tf.raw_ops.SdcaFprint(input=input, name=n)"
+    expected_text = "tf.raw_ops.SdcaFprint(input, name=n)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "tf.train.sdca_shrink_l1(w, l, ll)"
-    expected_text = "tf.raw_ops.SdcaShrinkL1(weights=w, l1=l, l2=ll)"
+    expected_text = "tf.raw_ops.SdcaShrinkL1(w, l, ll)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = (
         "tf.train.sdca_optimizer(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)")
     expected_text = (
-        "tf.raw_ops.SdcaOptimizer(sparse_example_indices=a, "
-        "sparse_feature_indices=b, sparse_feature_values=c, dense_features=d, "
-        "example_weights=e, example_labels=f, sparse_indices=g, "
-        "sparse_weights=h, dense_weights=i, example_state_data=j, loss_type=k, "
-        "l1=l, l2=m, num_loss_partitions=n, num_inner_iterations=o)")
+        "tf.raw_ops.SdcaOptimizer(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -2356,21 +2366,32 @@ def _log_prob(self, x):
                   report)
     self.assertEmpty(errors)
 
-  def test_api_spec_reset_between_files(self):
-    for old_symbol, new_symbol in [
-        ("tf.conj(a)", "tf.math.conj(a)"),
-        ("tf.to_int32(x)", "tf.cast(x, dtype=tf.int32)")]:
-
-      ## Test that the api spec is reset in between files:
-      import_header = "import tensorflow.compat.v2 as tf\n"
-      text_a = import_header + old_symbol
-      expected_text_a = import_header + old_symbol
-      text_b = old_symbol
-      expected_text_b = new_symbol
-      results = self._upgrade_multiple([text_a, text_b])
-      result_a, result_b = results[0], results[1]
-      self.assertEqual(result_a[3], expected_text_a)
-      self.assertEqual(result_b[3], expected_text_b)
+  @parameterized.parameters(
+      [False,
+       "import tensorflow.compat.v2 as tf\ntf.conj(a)",
+       "import tensorflow.compat.v2 as tf\ntf.conj(a)",
+       "tf.conj(a)",
+       "tf.math.conj(a)"],
+      [False,
+       "import tensorflow.compat.v2 as tf\ntf.to_int32(x)",
+       "import tensorflow.compat.v2 as tf\ntf.to_int32(x)",
+       "tf.to_int32(x)",
+       "tf.cast(x, dtype=tf.int32)"],
+      # Verify that upgrade_compat_v1_import option persists between files
+      [True,
+       "import tensorflow.compat.v1 as tf\ntf.conj(a)",
+       "import tensorflow.compat.v2 as tf\ntf.math.conj(a)",
+       "import tensorflow.compat.v1 as tf\ntf.to_int32(x)",
+       "import tensorflow.compat.v2 as tf\ntf.cast(x, dtype=tf.int32)"],
+  )  # pyformat: disable
+  def test_api_spec_reset_between_files(self,
+                                        upgrade_compat_v1_import,
+                                        text_a, expected_text_a,
+                                        text_b, expected_text_b):
+    results = self._upgrade_multiple(upgrade_compat_v1_import, [text_a, text_b])
+    result_a, result_b = results[0], results[1]
+    self.assertEqual(result_a[3], expected_text_a)
+    self.assertEqual(result_b[3], expected_text_b)
 
   def test_model_to_estimator_checkpoint_warning(self):
     text = "tf.keras.estimator.model_to_estimator(model)"

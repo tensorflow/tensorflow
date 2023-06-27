@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
@@ -113,7 +113,7 @@ const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
     ss << "T#" << tensor_idx;
   if (model && tensor_idx != -1) {
     const SubGraph* subgraph = model->subgraphs()->Get(subgraph_idx);
-    if (subgraph) {
+    if (subgraph && subgraph->tensors()) {
       auto tensor = subgraph->tensors()->Get(tensor_idx);
       if (tensor && tensor->type() == tflite::TensorType_INT32) {
         ss << get_tensor_data_str(tensor, model);
@@ -141,7 +141,9 @@ void dump_tensor_detail(std::stringstream& out_stream,
                         const int subgraph_idx, const tflite::Model* model,
                         ModelStats* stats) {
   out_stream << tensor_str(tensor_idx, subgraph_idx);
-  out_stream << "(" << tensor->name()->str() << ") ";
+  if (tensor->name()) {
+    out_stream << "(" << tensor->name()->str() << ") ";
+  }
   // Prints `shape_signature` instead of `shape` if it's available since it
   // supports dynamic shapes.
   if (tensor->shape_signature()) {
@@ -449,19 +451,21 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     out_stream << ") -> [";
     dump_tensor_list(out_stream, subgraph->outputs(), i);
     out_stream << "]\n";
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
-      const Operator* op = subgraph->operators()->Get(j);
-      const OperatorCode* op_code =
-          model->operator_codes()->Get(op->opcode_index());
-      out_stream << "  ";  // indents for operators
-      dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
-      if (check_gpu_compatibility) {
-        auto status =
-            CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
-        if (!status.ok()) {
-          gpu_incompatible_nodes.push_back(j);
-          out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
-                     << "\n";
+    if (subgraph->operators()) {
+      for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+        const Operator* op = subgraph->operators()->Get(j);
+        const OperatorCode* op_code =
+            model->operator_codes()->Get(op->opcode_index());
+        out_stream << "  ";  // indents for operators
+        dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
+        if (check_gpu_compatibility) {
+          auto status =
+              CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
+          if (!status.ok()) {
+            gpu_incompatible_nodes.push_back(j);
+            out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
+                       << "\n";
+          }
         }
       }
     }
@@ -477,10 +481,12 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     // Dump Subgraph Tensors.
     out_stream << "\nTensors of " << subgraph_str(i) << "\n";
     auto tensors = subgraph->tensors();
-    for (int j = 0; j < tensors->Length(); ++j) {
-      auto tensor = tensors->Get(j);
-      out_stream << "  ";  // indents for tensors
-      dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
+    if (tensors) {
+      for (int j = 0; j < tensors->Length(); ++j) {
+        auto tensor = tensors->Get(j);
+        out_stream << "  ";  // indents for tensors
+        dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
+      }
     }
     out_stream << "\n";
   }

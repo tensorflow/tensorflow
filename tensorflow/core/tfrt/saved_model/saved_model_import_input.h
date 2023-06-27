@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_IMPORT_INPUT_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_IMPORT_INPUT_H_
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
@@ -31,7 +34,7 @@ class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
       const GraphDebugInfo& debug_info,
       bool run_placer_grappler_on_nested_functions = false,
-      bool enable_tfrt_gpu = false);
+      bool enable_tfrt_gpu = false, bool use_bridge_for_gpu = false);
 
   TfrtSavedModelMLIRImportInput(
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info,

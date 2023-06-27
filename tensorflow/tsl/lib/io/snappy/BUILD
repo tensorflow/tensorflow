@@ -1,4 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 # Snappy targets.
 
@@ -8,6 +11,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/lib/io:__pkg__",
         "//tensorflow/tsl/lib/io:__pkg__",
@@ -35,6 +39,7 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = True,
 )
@@ -76,7 +81,7 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "snappy_test",
     size = "small",
     srcs = ["snappy_test.cc"],

@@ -245,7 +245,7 @@ Status GrpcSession::RunHelper(
   TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
 
   // Look for an extended error returned in the response body.
-  if (resp->status_code() != error::Code::OK) {
+  if (resp->status_code() != absl::StatusCode::kOk) {
     return resp->status();
   }
 

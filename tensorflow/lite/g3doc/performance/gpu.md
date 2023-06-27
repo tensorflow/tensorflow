@@ -37,6 +37,7 @@ following ops in 16-bit and 32-bit float precision:
 *   `DEPTHWISE_CONV_2D v1-2`
 *   `EXP`
 *   `FULLY_CONNECTED`
+*   `LOGICAL_AND`
 *   `LOGISTIC`
 *   `LSTM v2 (Basic LSTM only)`
 *   `MAX_POOL_2D`

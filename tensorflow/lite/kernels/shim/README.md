@@ -121,6 +121,9 @@ This is because `OpKernelShim` is a static interface using the CRTP pattern.
 Similarly, the context classes: `InitContext`, `InvokeContext` and
 `ShapeInferenceContext` are all static interfaces in the same way.
 
+The class `MyOp` can also be templatized. See `test_op/tmpl_op.h` for an
+example.
+
 ### Context Interfaces
 
 An op kernel written using this library has access to a number of *context*

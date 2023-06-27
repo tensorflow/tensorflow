@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/gtl/flatset.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -533,7 +534,7 @@ TEST(FlatSet, CustomCmp) {
 
 // Test unique_ptr handling.
 typedef std::unique_ptr<int> UniqInt;
-static UniqInt MakeUniq(int i) { return UniqInt(new int(i)); }
+static UniqInt MakeUniq(int i) { return std::make_unique<int>(i); }
 
 struct HashUniq {
   size_t operator()(const UniqInt& p) const { return *p; }

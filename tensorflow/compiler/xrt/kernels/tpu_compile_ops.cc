@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
@@ -127,7 +129,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (tpu::OpsApiFn()
+        if (stream_executor::tpu::OpsApiFn()
                 ->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }
@@ -141,7 +143,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   // If the RPC was cancelled before we registered the cancellation callback,
   // don't compile the TPU program.
   OP_REQUIRES(ctx, !already_cancelled,
-              errors::Cancelled("RPC cancelled, not compiling TPU program"));
+              absl::CancelledError("RPC cancelled, not compiling TPU program"));
 
   // We only want to abort the process if a cancellation actually occurs during
   // compilation; we must deregister the callback in the success case. It
@@ -164,14 +166,15 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref mesh_state_unref(mesh_state);
 
   const Tensor& computation_input = ctx->input(0);
-  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(computation_input.shape()),
-              errors::Internal("computation input should be a string scalar"));
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsScalar(computation_input.shape()),
+      absl::InternalError("computation input should be a string scalar"));
 
   xrt::XLAComputation computation_proto;
   OP_REQUIRES(
       ctx,
       computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "Unable to parse computation input to XLAComputation"));
 
   const xrt::XLAComputationConfig& config = computation_proto.config();
@@ -242,7 +245,7 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
   auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseCompilationCell());
   ResourceMgr* rm = GetTPUConfigResourceMgr();
-  OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
+  OP_REQUIRES(ctx, rm != nullptr, absl::InternalError("No resource manager."));
 
   // Process-wide cache of Tpu executables.
   tpu::TpuCompilationCacheInterface* cache;

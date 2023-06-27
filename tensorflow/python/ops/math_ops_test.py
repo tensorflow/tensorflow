@@ -57,6 +57,19 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(out_bf16, expected, 1e-3)
 
+  def testCountNonzero(self):
+    # simple case
+    x = np.array([[0, -2, 0], [4, 0, 0]], dtype=np.int32)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # boolean input
+    x = math_ops.not_equal(x, 0)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # would overflow if int8 would be used for internal calculations
+    x = 2 * np.ones(512, dtype=np.int8)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 512)
+
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
@@ -685,6 +698,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = self.numpySafeTruncateDivInt(nums, divs)
     self.assertAllEqual(tf_result, np_result)
 
+  def testTruncateDivideFloat(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.truncatediv(nums, divs)
+    np_result = np.trunc(nums / divs)
+    self.assertAllEqual(tf_result, np_result)
+
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):
     op = math_ops.divide(
@@ -813,12 +832,26 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
-                            (dtypes.float32), (dtypes.float64),
-                            (dtypes.complex64), (dtypes.complex128))
+  _SUPPORTED_DTYPES = [dtypes.int8, dtypes.uint8,
+                       dtypes.int16, dtypes.uint16,
+                       dtypes.int32, dtypes.uint32,
+                       dtypes.int64, dtypes.uint64,
+                       dtypes.bfloat16, dtypes.float16,
+                       dtypes.float32, dtypes.float64,
+                       dtypes.complex64, dtypes.complex128]
+
+  @parameterized.parameters(*_SUPPORTED_DTYPES)
   def testBasic(self, dtype):
-    nums = np.arange(-10, 10, .25).reshape(80, 1)
-    divs = np.arange(-3, 3, .25).reshape(1, 24)
+    if dtype.is_unsigned:
+      nums = np.arange(0, 120, 3).reshape(40, 1)
+      divs = np.arange(0, 48, 4).reshape(1, 12)
+    elif dtype.is_integer:
+      nums = np.arange(-120, 120, 3).reshape(80, 1)
+      divs = np.arange(-48, 48, 4).reshape(1, 24)
+    else:
+      nums = np.arange(-10, 10, .25).reshape(80, 1)
+      divs = np.arange(-3, 3, .25).reshape(1, 24)
+    assert 0 in divs, "Bad test set-up"
 
     tf_nums = constant_op.constant(nums, dtype=dtype)
     tf_divs = constant_op.constant(divs, dtype=dtype)
@@ -833,6 +866,35 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with test_util.use_gpu():
       tf_result = math_ops.div_no_nan(tf_nums, tf_divs)
       self.assertAllCloseAccordingToType(tf_result, np_result)
+
+  @parameterized.product(
+      type_x=_SUPPORTED_DTYPES + [float, int],
+      type_y=_SUPPORTED_DTYPES + [float, int])
+  def testSameSupportedTypesAsDivide(self, type_x, type_y):
+    def one(type_):
+      if type_ is int:
+        return 1
+      elif type_ is float:
+        return 1.0
+      else:
+        return constant_op.constant(1, dtype=type_)
+
+    x = one(type_x)
+    y = one(type_y)
+
+    divide_raises = False
+    try:
+      divide_result = math_ops.divide(x, y)
+    except TypeError:
+      divide_raises = True
+
+    if divide_raises:
+      with self.assertRaises(TypeError):
+        _ = math_ops.div_no_nan(x, y)
+    else:
+      divide_no_nan_result = math_ops.div_no_nan(x, y)
+      self.assertEqual(divide_no_nan_result.dtype, divide_result.dtype)
+      self.assertAllEqual(divide_no_nan_result, divide_result)
 
   @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
                             (dtypes.float32), (dtypes.float64),

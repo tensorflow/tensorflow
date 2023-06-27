@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,9 +28,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tsl {
@@ -73,7 +75,7 @@ class EventNode {
     child->parents_.push_back(this);
   }
 
-  absl::optional<int64_t> GetGroupId() const { return group_id_; }
+  std::optional<int64_t> GetGroupId() const { return group_id_; }
 
   std::string GetGroupName() const;
 
@@ -84,7 +86,7 @@ class EventNode {
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  absl::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
+  std::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -116,7 +118,7 @@ class EventNode {
   XEventVisitor visitor_;
   std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
-  absl::optional<int64_t> group_id_;
+  std::optional<int64_t> group_id_;
   // Root event level.
   // By default root_level_ is set to 0, which means it is not a root event.
   // Events with root_level_ greater than 0 are considered as root events.
@@ -145,12 +147,12 @@ using ContextGroupMap = absl::flat_hash_map<
 class EventForest {
  public:
   void AddSpace(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       tensorflow::profiler::XSpace* space);
 
   void AddPlanes(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       const std::vector<tensorflow::profiler::XPlane*>& planes);
 
@@ -169,7 +171,7 @@ class EventForest {
 
  private:
   void AddPlane(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       tensorflow::profiler::XPlane* plane);
 
@@ -201,12 +203,17 @@ class EventForest {
   void ProcessTfDataSteps();
 
   // Processes the TF loops and registers the first TF executor event of each
-  // iteraton to `tf_loop_root_events_`.
+  // iteration to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
 
-  // Processes the worker thread by connecting a FunctionRun with the following
-  // eager ops (e.g., for Keras callback).
-  void ProcessWorker();
+  // Find the events of event_type which own ALL the given stat_types. If found,
+  // apply the given function to the node. The query predicates are
+  //     - The node's ContextStat contains stat_types(i.e. stat_types is a
+  //     subset of ContextStat) *AND*
+  //     - The node's event type in event_node_map_ is event_type.
+  void FindEventNodeAndApply(
+      int64_t event_type, const std::vector<int64_t>& stat_types,
+      const std::function<void(EventNode&, const std::vector<uint64>&)>& cb);
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
@@ -229,6 +236,24 @@ void GroupTfEvents(tensorflow::profiler::XSpace* space);
 
 // Returns true if the given space has TF's loop ops.
 bool CheckLoopOp(const tensorflow::profiler::XSpace& space);
+
+// Adds step names from GroupMetadataMap to "Steps" line in plane.
+// The event name is updated when converted to trace events.
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line);
+
+void GroupHostAndPlanes(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
+
+void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
+                       const GroupMetadataMap& group_metadata_map);
+
+void GroupTpuEventsOSS(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest);
 
 }  // namespace profiler
 }  // namespace tsl

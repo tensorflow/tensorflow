@@ -27,7 +27,6 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_strategy
@@ -35,9 +34,9 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
@@ -47,10 +46,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tsl.protobuf import coordination_config_pb2
 
 
 # pylint: disable=line-too-long
@@ -201,7 +200,8 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   def _from_local_devices(cls, devices, communication_options=None):
     """A convenience method to create an object with a list of devices."""
     obj = cls(communication_options=communication_options)
-    obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
+    obj.extended._initialize_local(  # pylint: disable=protected-access
+        tfconfig_cluster_resolver.TFConfigClusterResolver(), devices=devices)
     return obj
 
   @property
@@ -261,7 +261,7 @@ class _CollectiveAllReduceStrategyExperimental(
       communication=collective_util.CommunicationImplementation.AUTO):
     """A convenience method to create an object with a list of devices."""
     obj = cls(communication)
-    obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
+    obj.extended._initialize_local(tfconfig_cluster_resolver.TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
 
 
@@ -329,8 +329,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise ValueError(
           "cluster_resolver and devices cannot be set at the same time")
 
-    self._cluster_resolver = cluster_resolver or TFConfigClusterResolver()
-    if not isinstance(self._cluster_resolver, ClusterResolver):
+    self._cluster_resolver = cluster_resolver or tfconfig_cluster_resolver.TFConfigClusterResolver()
+    if not isinstance(self._cluster_resolver, cluster_resolver_lib.ClusterResolver):
       raise ValueError("cluster_resolver must be an instance of "
                        "tf.distribute.cluster_resolver.ClusterResolver")
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
@@ -360,7 +360,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def _initialize_local_devices(self, cluster_resolver, worker_device):
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
     # some cases.
-    if isinstance(cluster_resolver, TFConfigClusterResolver):
+    if isinstance(cluster_resolver, tfconfig_cluster_resolver.TFConfigClusterResolver):
       num_gpus = context.num_gpus()
       num_tpus = 0
     else:
@@ -485,11 +485,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       if context.context().coordination_service is None:
         coordinated_jobs = ["chief", "worker"]
         if task_type in coordinated_jobs:
+          coordinated_job_config = []
+          for job in coordinated_jobs:
+            if job in cluster_spec.jobs:
+              coordinated_job_config.append(
+                  coordination_config_pb2.CoordinatedJob(
+                      name=job,
+                      num_tasks=cluster_spec.num_tasks(job)))
           context.context().configure_coordination_service(
               service_type="standalone",
               service_leader=multi_worker_util.coordination_leader(
                   cluster_spec),
-              coordinated_jobs=coordinated_jobs)
+              coordinated_jobs=coordinated_job_config)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and
@@ -533,7 +540,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     local_devices, local_device_type = self._initialize_local_devices(
         cluster_resolver, self._worker_device)
     if local_device_type == "TPU":
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
@@ -729,7 +736,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       ValueError: if `task_type` is not in the `cluster_spec`.
     """
     if cluster_spec:
-      cluster_resolver = SimpleClusterResolver(
+      cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
@@ -844,7 +851,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # collective ops are to be launched sequentially.
       return super()._replica_ctx_all_reduce(reduce_op, value, options)
 
-    replica_context = ds_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     assert replica_context, (
         "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
         "replica context")

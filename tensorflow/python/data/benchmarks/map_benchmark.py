@@ -17,12 +17,13 @@ import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import while_loop
 
 
 class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -34,7 +35,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
                          benchmark_id):
       dataset = dataset_ops.Dataset.range(10000)
       for _ in range(chain_length):
-        dataset = dataset_ops.MapDataset(
+        dataset = map_op._MapDataset(  # pylint: disable=protected-access
             dataset, fn, use_inter_op_parallelism=use_inter_op_parallelism)
       self.run_and_report_benchmark(
           dataset,
@@ -73,7 +74,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
                          benchmark_id):
       dataset = dataset_ops.Dataset.from_tensors(
           tuple(0 for _ in range(fan_out))).repeat(None)
-      dataset = dataset_ops.MapDataset(
+      dataset = map_op._MapDataset(  # pylint: disable=protected-access
           dataset, fn, use_inter_op_parallelism=use_inter_op_parallelism)
       self.run_and_report_benchmark(
           dataset,
@@ -113,7 +114,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
       def body(i, x):
         return math_ops.add(i, 1), x
 
-      return control_flow_ops.while_loop(math_ops.less, body, [i, x])
+      return while_loop.while_loop(math_ops.less, body, [i, x])
 
     num_elements = 1
     dataset = dataset.map(fn)

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 
+#include <array>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -36,10 +39,10 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::RemainingResultsConverter;
 
 using ::xla::runtime::Executable;
-using ::xla::runtime::HostContextAsyncTaskRunner;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
 
@@ -197,7 +200,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 
   Eigen::DefaultDevice singleThreadedDevice;
   Eigen::ThreadPool thread_pool(num_threads);
-  llvm::Optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
+  std::optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
   if (num_threads > 0) multiThreadedDevice.emplace(&thread_pool, num_threads);
 
   Eigen::DSizes<ssize_t, rank> dsizes;

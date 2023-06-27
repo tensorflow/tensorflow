@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -45,6 +46,8 @@ std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "ADAM";
     case OptimizationAlgorithm::kMomentum:
       return "Momentum";
+    case OptimizationAlgorithm::kLion:
+      return "Lion";
     case OptimizationAlgorithm::kRmsProp:
       return "RMSProp";
     case OptimizationAlgorithm::kCenteredRmsProp:
@@ -87,6 +90,8 @@ std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "ADAM";
     case OptimizationAlgorithm::kMomentum:
       return "Momentum";
+    case OptimizationAlgorithm::kLion:
+      return "Lion";
     case OptimizationAlgorithm::kRmsProp:
       return "RMSProp";
     case OptimizationAlgorithm::kCenteredRmsProp:
@@ -138,6 +143,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
       *count = 2;
       return OkStatus();
     case OptimizationAlgorithm::kMomentum:
+      *count = 1;
+      return OkStatus();
+    case OptimizationAlgorithm::kLion:
       *count = 1;
       return OkStatus();
     case OptimizationAlgorithm::kRmsProp:
@@ -304,6 +312,11 @@ Status GetOptimizationAlgorithmStateVariables(
       add_state_variable("momenta");
       break;
     }
+    case OptimizationAlgorithm::kLion: {
+      add_state_variable("parameters");
+      add_state_variable("momenta");
+      break;
+    }
     case OptimizationAlgorithm::kRmsProp: {
       add_state_variable("parameters");
       add_state_variable("ms");
@@ -398,6 +411,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
       OptimizationAlgorithm::kFtrl,
       OptimizationAlgorithm::kAdam,
       OptimizationAlgorithm::kMomentum,
+      OptimizationAlgorithm::kLion,
       OptimizationAlgorithm::kRmsProp,
       OptimizationAlgorithm::kCenteredRmsProp,
       OptimizationAlgorithm::kMdlAdagradLight,

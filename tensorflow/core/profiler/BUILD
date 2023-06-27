@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -29,7 +30,13 @@ tf_proto_library(
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+    ],
     visibility = ["//visibility:public"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+    ],
 )
 
 tf_proto_library(
@@ -37,7 +44,9 @@ tf_proto_library(
     srcs = ["profiler_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_options_proto"],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
@@ -49,28 +58,27 @@ exports_files(
 tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
-    has_services = 1,
     cc_api_version = 2,
-    create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
-        ":profiler_options_proto",
-        ":profiler_service_monitor_result_proto",
+        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_service_proto"],
 )
 
 tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
-    has_services = 1,
     cc_api_version = 2,
-    create_grpc_library = True,
     make_default_target_header_only = True,
-    protodeps = [":profiler_service_proto"],
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto",
+    ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+    exports = ["//tensorflow/tsl/profiler/protobuf:profiler_analysis_proto"],
 )
 
 tf_proto_library(
@@ -82,8 +90,13 @@ tf_proto_library(
         "tfprof_output.proto",
     ],
     cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ] + tf_additional_all_protos(),
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:profile_proto",
+    ],
 )
 
 cc_library(
@@ -91,6 +104,7 @@ cc_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing/cc/ops:__pkg__",
     ],
     deps = [
         "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",
@@ -109,12 +123,17 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@linenoise",
     ],
 )

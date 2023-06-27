@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -46,7 +47,7 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 }
 
 absl::Status BufferDescriptor::PerformSelector(
-    const GpuInfo& gpu_info, const std::string& selector,
+    const GpuInfo& gpu_info, absl::string_view selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {

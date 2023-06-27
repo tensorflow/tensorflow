@@ -65,7 +65,9 @@ int64_t GetTransferredTensorBytes(func::CallOp from_graph,
       if (IsQUI8Type(input_type) || IsQI8Type(input_type)) {
         total_size_transferred += input_type.getNumElements() * 8;
       } else {
-        total_size_transferred += input_type.cast<ShapedType>().getSizeInBits();
+        auto s_type = input_type.cast<ShapedType>();
+        total_size_transferred +=
+            s_type.getNumElements() * s_type.getElementTypeBitWidth();
       }
     }
   }
@@ -106,7 +108,7 @@ void GetOpCostPass::runOnOperation() {
         !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
       if (!hardware) return;
-      float cost = GetCostForOp(op, hardware.getValue());
+      float cost = GetCostForOp(op, *hardware);
       UpdateCost(op, cost, &builder);
     }
   });

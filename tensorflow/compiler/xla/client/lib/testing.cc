@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 
+#include <memory>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -84,8 +87,7 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
       // an on-device computation.
-      CHECK_EQ(literal_status.status().code(),
-               tensorflow::error::UNIMPLEMENTED);
+      CHECK_EQ(literal_status.status().code(), tsl::error::UNIMPLEMENTED);
       return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
     }
     return client->TransferToServer(literal_status.value()).value();

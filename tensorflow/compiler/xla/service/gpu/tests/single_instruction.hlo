@@ -1,0 +1,43 @@
+// RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
+
+// CHECK-DAG: sqrt.approx.f32
+
+HloModule Test
+
+ENTRY main {
+  a = f32[] parameter(0)
+  ROOT b = f32[] sqrt(a)
+}
+
+// -----
+
+// CHECK-DAG: sqrt.approx.f32
+
+HloModule Test
+
+ENTRY main {
+  a = f16[] parameter(0)
+  ROOT b = f16[] sqrt(a)
+}
+
+// -----
+
+// CHECK-DAG: rsqrt.approx.f32
+
+HloModule Test
+
+ENTRY main {
+  a = f32[] parameter(0)
+  ROOT b = f32[] rsqrt(a)
+}
+
+// -----
+
+// CHECK-DAG: ex2.approx.ftz.f32
+
+HloModule Test
+
+ENTRY main {
+  a = f32[] parameter(0)
+  ROOT b = f32[] exponential(a)
+}

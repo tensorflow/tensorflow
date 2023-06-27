@@ -132,39 +132,39 @@ Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 1> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 2> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 3> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 4> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 5> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 6> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 7> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 8> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, const int index);
+    const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, int index);
 
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
@@ -699,7 +699,8 @@ class XlaConcatNDShared : public OpKernel {
             "'paddings' must not exceed expected output shape dimension ",
             max_dim_size, " at index ", i, ", but got ", paddings_[i], ".");
       }
-      output_shape.AddDim(max_dim_size - paddings_[i]);
+      TF_RETURN_IF_ERROR(
+          output_shape.AddDimWithStatus(max_dim_size - paddings_[i]));
     }
 
     return OkStatus();

@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_HOST_ALLOCATOR_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_DEVICE_HOST_ALLOCATOR_H_
 
+#include <vector>
+
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
 // Allocator for pinned CPU RAM that is made known to a StreamExecutor-based
@@ -34,10 +37,13 @@ class DeviceHostAllocator : public tsl::SubAllocator {
         numa_node_(numa_node) {
     CHECK(stream_exec_ != nullptr);
   }
-  ~DeviceHostAllocator() override {}
+
+  ~DeviceHostAllocator() override = default;
 
   void* Alloc(size_t alignment, size_t num_bytes,
               size_t* bytes_received) override {
+    tsl::profiler::TraceMe traceme("DeviceHostAllocator::Alloc");
+
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
@@ -53,6 +59,8 @@ class DeviceHostAllocator : public tsl::SubAllocator {
   }
 
   void Free(void* ptr, size_t num_bytes) override {
+    tsl::profiler::TraceMe traceme("DeviceHostAllocator::Free");
+
     if (ptr != nullptr) {
       VisitFree(ptr, numa_node_, num_bytes);
       stream_exec_->HostMemoryDeallocate(ptr);

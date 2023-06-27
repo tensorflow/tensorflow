@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -121,6 +124,12 @@ class MlirTensor : public TracingTensorHandle {
     return ptr->getKind() == kMlir;
   }
 
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
+  }
+
  private:
   Value value_;
 };
@@ -158,7 +167,7 @@ class MlirAbstractOp : public TracingOperation {
   Status SetAttrType(const char* attr_name,
                      tensorflow::DataType dtype) override;
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override;
+                      int num_dims) override;
   Status SetAttrFunction(const char* attr_name,
                          const AbstractOperation* value) override;
   Status SetAttrFunctionName(const char* attr_name, const char* value,
@@ -182,7 +191,7 @@ class MlirAbstractOp : public TracingOperation {
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override;
 
-  Status SetOpName(const char* const op_name) override;
+  Status SetOpName(const char* op_name) override;
 
   MLIRContext* GetContext() { return context_; }
 
@@ -247,9 +256,9 @@ class MlirFunctionContext : public TracingContext {
     RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
-    func_ =
-        func::FuncOp::create(builder_.getUnknownLoc(), name,
-                             builder_.getFunctionType(llvm::None, llvm::None));
+    func_ = func::FuncOp::create(
+        builder_.getUnknownLoc(), name,
+        builder_.getFunctionType(std::nullopt, std::nullopt));
     module_->push_back(func_);
     builder_ = OpBuilder::atBlockBegin(func_.addEntryBlock());
   }
@@ -536,7 +545,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   tensorflow::GraphExportConfig configs;
-  fdef_.reset(new tensorflow::FunctionDef());
+  fdef_ = std::make_unique<tensorflow::FunctionDef>();
   TF_RETURN_IF_ERROR(
       ConvertMlirFunctionToFunctionLibraryDef(func_, configs, fdef_.get()));
   *f = fdef_.get();

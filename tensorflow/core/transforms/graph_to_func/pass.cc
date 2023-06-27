@@ -49,8 +49,7 @@ struct GraphToFuncPass : impl::GraphToFuncBase<GraphToFuncPass> {
     GraphOp graph = *ops_list.begin();
     auto status = GraphToFunc(graph, feeds_, fetches_, control_rets_);
     if (!status.ok()) {
-      emitError(graph.getLoc())
-          << "GraphToFunc failed: " << status.error_message();
+      emitError(graph.getLoc()) << "GraphToFunc failed: " << status.message();
       signalPassFailure();
     }
   }

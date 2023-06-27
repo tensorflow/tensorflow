@@ -21,6 +21,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
@@ -144,7 +145,7 @@ class _Merge(Layer):
                  array_ops.expand_dims(batch_size, axis=-1)])
             x_transposed = array_ops.reshape(
                 x,
-                array_ops.stack(
+                array_ops_stack.stack(
                     [batch_size, math_ops.reduce_prod(x_shape[1:])], axis=0))
             x_transposed = array_ops.transpose(x_transposed, perm=(1, 0))
             x_transposed = array_ops.reshape(x_transposed, new_shape)

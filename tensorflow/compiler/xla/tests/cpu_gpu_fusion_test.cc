@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -66,9 +66,8 @@ class CpuGpuFusionTest : public HloTestBase {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
-    for (int i = 0; i < Arity; ++i) {
-      new (&operand_data[i]) Array2D<float>(test_width, test_height);
-    }
+    std::fill(std::begin(operand_data), std::end(operand_data),
+              Array2D<float>(test_width, test_height));
     Array2D<T> answer_data(test_width, test_height);
     for (int i = 0; i < test_width; ++i) {
       for (int j = 0; j < test_height; ++j) {
@@ -275,8 +274,8 @@ XLA_TEST_F(CpuGpuFusionTest, RandomizedParallelPartition) {
   std::uniform_int_distribution<int> distribution(128, 1024);
   const int64_t rand_dim0_size = distribution(generator);
   const int64_t dim1_size = 1024;
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(F32, {rand_dim0_size, dim1_size}, {1, 0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {rand_dim0_size, dim1_size}, {1, 0});
   // Build simple fusion computation: y = x^2 (elementwise).
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewVerifiedModule();

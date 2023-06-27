@@ -27,12 +27,12 @@ namespace {
 
 TEST_F(OpenCLOperationTest, OneHot) {
   auto status = OneHotTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, OneHotBatch) {
   auto status = OneHotBatchTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

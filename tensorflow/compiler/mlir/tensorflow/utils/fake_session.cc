@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -102,7 +107,7 @@ Status FakeSession::LocalDeviceManager(
     const tensorflow::DeviceMgr** deviceMgrPtr) {
   Initialize();
   if (kSessionOptions->fail_to_fetch_local_device_manager)
-    return Status(tensorflow::error::UNKNOWN, "No Local Device Manager");
+    return Status(absl::StatusCode::kUnknown, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
   return ::tensorflow::OkStatus();
 }
@@ -171,7 +176,7 @@ Status FakeSession::Run(
 
       outputs->push_back(t);
     } else if (absl::StartsWith(output_name, "var")) {
-      return Status(tensorflow::error::NOT_FOUND,
+      return Status(absl::StatusCode::kNotFound,
                     "Can't find variable " + output_name + " in session");
     } else {
       // Create a scalar float tensor.

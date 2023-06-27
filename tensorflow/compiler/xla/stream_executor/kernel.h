@@ -70,15 +70,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_KERNEL_H_
 
 #include <array>
+#include <cstring>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_cache_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -361,8 +363,7 @@ class KernelArgsArrayBase {
   virtual uint64_t number_of_shared_bytes() const = 0;
 
   // Gets the list of argument addresses.
-  virtual port::ArraySlice<const void *> argument_addresses()  // non-absl ok
-      const = 0;
+  virtual absl::Span<const void *const> argument_addresses() const = 0;
 
   // Gets an iterator to the arguments in the array.
   virtual KernelArgIterator arg_iterator() const = 0;
@@ -448,10 +449,9 @@ class KernelArgsArray : public KernelArgsArrayBase {
   }
 
   // Gets the list of argument addresses.
-  port::ArraySlice<const void *> argument_addresses()  // non-absl ok
-      const override {
-    return port::ArraySlice<const void *>(  // non-absl ok
-        argument_addresses_.data(), number_of_argument_addresses_);
+  absl::Span<const void *const> argument_addresses() const override {
+    return absl::Span<const void *const>(argument_addresses_.data(),
+                                         number_of_argument_addresses_);
   }
 
   // Gets an iterator to the arguments in the array.
@@ -519,12 +519,6 @@ class TypedKernel : public KernelBase {
   TypedKernel(StreamExecutor *parent, internal::KernelInterface *implementation)
       : KernelBase(parent, implementation) {}
 
- private:
-  // Stream needs access to the specific parameter-packing functionality that
-  // the TypedKernel provides for its corresponding type signature (and no other
-  // type signatures).
-  friend class Stream;
-
   // This is the main entry point into the magic. Packs the parameters (which
   // must type check against the class template) into the args and sizes
   // arrays.
@@ -537,13 +531,19 @@ class TypedKernel : public KernelBase {
   // passed into this method must live at least as long as the kernel args
   // structure.
   void PackParams(KernelArgsArray<kNumberOfParameters> *args,
-                  Params &... params) const {
+                  const Params &...params) const {
     PackOneParamFromList(args, params...);
   }
 
+ private:
+  // Stream needs access to the specific parameter-packing functionality that
+  // the TypedKernel provides for its corresponding type signature (and no other
+  // type signatures).
+  friend class Stream;
+
   template <typename T, typename... RestOfParams>
   void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args,
-                            const T &arg, const RestOfParams &... rest) const {
+                            const T &arg, const RestOfParams &...rest) const {
     PackOneParam(args, arg);
     PackOneParamFromList(args, rest...);
   }
@@ -684,8 +684,8 @@ struct KernelInvocationChecker {
   template <int kArgumentNumber, bool kShouldStaticAssert>
   static constexpr bool CheckParam(
       typename std::enable_if<kArgumentNumber >= 0>::type *dummy = nullptr) {
-    typedef typename std::tuple_element<kArgumentNumber, ParamTuple>::type
-        ParamT;
+    typedef
+        typename std::tuple_element<kArgumentNumber, ParamTuple>::type ParamT;
     typedef typename std::tuple_element<kArgumentNumber, ArgTuple>::type ArgT;
     return Compatible<ParamT, ArgT, kShouldStaticAssert, kArgumentNumber>() &&
            CheckParam<kArgumentNumber - 1, kShouldStaticAssert>();
@@ -718,8 +718,9 @@ struct KernelParamsOk {
 // See above.
 template <typename... Params, typename... Args>
 struct KernelParamsOk<TypedKernel<Params...>, Args...> {
-  static constexpr bool kResult = KernelInvocationChecker<
-      std::tuple<Params...>, std::tuple<Args...>>::CheckAllNoStaticAssert();
+  static constexpr bool kResult =
+      KernelInvocationChecker<std::tuple<Params...>,
+                              std::tuple<Args...>>::CheckAllNoStaticAssert();
 };
 
 }  // namespace stream_executor
