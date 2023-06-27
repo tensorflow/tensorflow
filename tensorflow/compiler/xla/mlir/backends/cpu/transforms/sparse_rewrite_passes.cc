@@ -109,9 +109,8 @@ struct SparseBroadcastInDimCallRewriter {
            "Need argument and broadcast dimensions");
     assert(op.getResults().size() == 1 && "Need one output tensor");
     // Broadcast dimensions are passed in as a constant of dense int elements.
-    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
-    auto broadcast_dimensions =
-        dims_constant.getValue().cast<DenseIntElementsAttr>();
+    auto dims_constant = op.getInputs()[1];
+    auto broadcast_dimensions = getDenseIntAttrFromConstant(dims_constant);
     // Reconstruct the broadcast_in_dim operation.
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
