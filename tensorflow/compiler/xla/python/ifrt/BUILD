@@ -1,3 +1,4 @@
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package_group(
@@ -268,4 +269,41 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@tf_runtime//:ref_count",
     ],
+)
+
+cc_library(
+    name = "serdes",
+    srcs = ["serdes.cc"],
+    hdrs = ["serdes.h"],
+    deps = [
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "serdes_test",
+    srcs = ["serdes_test.cc"],
+    deps = [
+        ":serdes",
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "serdes_proto",
+    srcs = ["serdes.proto"],
 )
