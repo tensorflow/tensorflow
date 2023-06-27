@@ -349,7 +349,6 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
       if (key.symbol_id != kRootSymbolId) {
         OpMetrics& op_metrics = op_metric_by_symbol[key.symbol_id.value()];
         SetOpMetricsFromHloEvent(event, &op_metrics);
-        total_op_time_ps += op_metrics.self_time_ps();
       }
     });
   });
@@ -357,6 +356,7 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
   for (auto& [program_id, op_metric_by_symbol] : flat_op_metric) {
     for (auto& [symbol_id, op_metrics] : op_metric_by_symbol) {
       AdjustFlopsAndBytesAccessed(op_metrics);
+      total_op_time_ps += op_metrics.self_time_ps();
       result.add_metrics_db()->Swap(&op_metrics);
     }
   }
