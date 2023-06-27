@@ -1027,7 +1027,7 @@ Status MaxPool3DTransposer::TransposeNode(TransposeContext* context,
   auto* data_fanin_node = data_fanin.node_view();
   if (!ShouldProcess(*context, *node) ||
       !IsFanoutPortRankN(*data_fanin_node, data_fanin.index(), 5)) {
-    return Status::OK();
+    return OkStatus();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, 5);
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
@@ -1468,7 +1468,7 @@ Status MergeTransposer::TransposeNode(TransposeContext* context,
   DCHECK(IsMerge(*node->node()));
   const int rank = GetFaninPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
-    return Status::OK();
+    return OkStatus();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) ||
@@ -1721,7 +1721,7 @@ Status SplitTransposer::TransposeNode(TransposeContext* context,
   int rank = 4;
   if (!IsFanoutPortsRankN(*node, ports, 4)) {
     if (!IsFanoutPortsRankN(*node, ports, 5)) {
-      return Status::OK();
+      return OkStatus();
     } else {
       rank = 5;
     }
@@ -1746,7 +1746,7 @@ Status SplitVTransposer::TransposeNode(TransposeContext* context,
   int rank = 4;
   if (!IsFanoutPortsRankN(*node, ports, 4)) {
     if (!IsFanoutPortsRankN(*node, ports, 5)) {
-      return Status::OK();
+      return OkStatus();
     } else {
       rank = 5;
     }
@@ -1927,7 +1927,7 @@ Status StridedSliceTransposer::TransposeNode(TransposeContext* context,
   DCHECK(IsStridedSlice(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
-    return Status::OK();
+    return OkStatus();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) || !HasOnlyBeginEndMask(*node) ||
@@ -1955,7 +1955,7 @@ Status SwitchTransposer::TransposeNode(TransposeContext* context,
   DCHECK(IsSwitch(*node->node()));
   const int rank = GetFaninPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
-    return Status::OK();
+    return OkStatus();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) ||
@@ -1973,7 +1973,7 @@ Status TernaryOpTransposer::TransposeNode(TransposeContext* context,
   DCHECK(IsTernaryOp(*node->node()));
   const int rank = GetFanoutPortRank(*node, 0);
   if (rank != 4 && rank != 5) {
-    return Status::OK();
+    return OkStatus();
   }
   ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   if (!ShouldProcess(*context, *node) ||
