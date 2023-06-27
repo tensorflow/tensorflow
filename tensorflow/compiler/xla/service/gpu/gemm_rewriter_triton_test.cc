@@ -92,7 +92,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseConstant) {
+TEST_F(GemmRewriterTritonTest, DoNotFuseNonScalarConstant) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -107,7 +107,7 @@ ENTRY e {
 })"));
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
+              GmockMatch(m::Fusion(m::Parameter(), m::Constant())));
 }
 
 using TritonDotAnalysisTest = HloTestBase;

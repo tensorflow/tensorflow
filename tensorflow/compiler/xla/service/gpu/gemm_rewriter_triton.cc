@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -36,16 +38,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -55,6 +62,25 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
+  for (int dim = 0; dim < TensorIterationSpec::kMaxDimsPerTensor; ++dim) {
+    if (dim_iteration_specs_[dim].size() != other[dim].size()) {
+      return false;
+    }
+    for (int fragment = 0; fragment < dim_iteration_specs_[dim].size();
+         ++fragment) {
+      if (dim_iteration_specs_[dim][fragment].stride !=
+              other[dim][fragment].stride ||
+          dim_iteration_specs_[dim][fragment].count !=
+              other[dim][fragment].count) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 namespace {
 
 // Batch dimensions of an operand of a dot instruction.
@@ -93,10 +119,10 @@ int64_t NonContractingDimensionIndex(const HloInstruction& dot,
 }
 
 // Data types that are tested to work in the triton GEMM emitter.
-bool IsSupportedDataType(PrimitiveType t, GpuVersion gpu_version) {
+bool IsSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
-  switch (t) {
+  switch (type) {
     case PRED:
     case S8:
     case S16:
@@ -112,21 +138,19 @@ bool IsSupportedDataType(PrimitiveType t, GpuVersion gpu_version) {
   }
 }
 
-Status RequireTritonFusibleConvert(const HloInstruction* input,
-                                   GpuVersion gpu_version) {
-  if (!IsSupportedDataType(input->operand(0)->shape().element_type(),
-                           gpu_version)) {
-    return Unimplemented("unsupported data type");
+// Let input and output data volumes of a fusion grow by small amounts.
+constexpr int64_t kIoToleranceBytes = 1024;
+
+// Difference of input and output data volumes of an instruction.
+int64_t InputMinusOutputBytes(const HloInstruction& hlo) {
+  CHECK(!hlo.shape().IsTuple());
+  int64_t output_size = ShapeUtil::ByteSizeOf(hlo.shape());
+  int64_t input_size = 0;
+  for (const HloInstruction* operand : hlo.operands()) {
+    CHECK(!operand->shape().IsTuple());
+    input_size += ShapeUtil::ByteSizeOf(operand->shape());
   }
-  // TODO(b/266862494): Can pick up almost any
-  // convert, but if it's reducing the data volume it should rather be fused
-  // to the output of the producer kernel. However not all operations support
-  // output fusion - then it should be fused here anyway!
-  if (ShapeUtil::ByteSizeOf(input->operand(0)->shape()) >
-      ShapeUtil::ByteSizeOf(input->shape())) {
-    return FailedPrecondition("narrowing conversion");
-  }
-  return OkStatus();
+  return input_size - output_size;
 }
 
 // Handles numbers of dimensions of a target HLO instruction
@@ -140,6 +164,13 @@ class DimensionOrder {
     int64_t target_dim_number;
     int subdim_number;
     int64_t size;
+    bool operator==(const DimDescription& other) const {
+      return target_dim_number == other.target_dim_number &&
+             subdim_number == other.subdim_number && size == other.size;
+    }
+    std::string ToString() const {
+      return absl::StrCat(target_dim_number, ":", subdim_number, ":", size);
+    }
   };
   // Sequence describing all dimensions of HLO's output shape
   // in layout minor-to-major (physical) order.
@@ -169,34 +200,35 @@ class DimensionOrder {
 
   // Transforms the DimensionOrder so that from a description of the output
   // of `hlo` it becomes a description of the input of `hlo`.
-  Status HandleInstruction(const HloInstruction* hlo) {
+  FusionDecision HandleInstruction(const HloInstruction* hlo) {
     VLOG(7) << hlo->ToString();
-    if (hlo->opcode() == HloOpcode::kParameter) {
-      return OkStatus();
+    if (hlo->opcode() == HloOpcode::kParameter ||
+        hlo->opcode() == HloOpcode::kConstant) {
+      return FusionDecision{};
     } else if (hlo->opcode() == HloOpcode::kTranspose ||
                hlo->opcode() == HloOpcode::kCopy) {
       return HandleCopyOrTranspose(hlo);
     } else if (hlo->operand_count() > 0 &&
                IsTritonSupportedElementwise(
                    hlo->opcode(), hlo->operand(0)->shape().element_type())) {
-      return OkStatus();
+      return FusionDecision{};
     } else if (hlo->opcode() == HloOpcode::kBitcast) {
       return HandleBitcast(hlo);
     } else if (hlo->opcode() == HloOpcode::kReshape) {
       if (!ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(),
                                        hlo->shape())) {
-        return Unimplemented("Non-bitcast reshape.");
+        return "Non-bitcast reshape.";
       }
       return HandleBitcast(hlo);
     } else if (hlo_query::IsScalarConstant(hlo) ||
                hlo_query::IsBroadcastOfScalarConstant(*hlo)) {
       // Dimension order collapses on a scalar, for simplicity leave it equal
       // to the output one for now.
-      return OkStatus();
+      return FusionDecision{};
     } else {
-      return Unimplemented("Instruction: %s", hlo->ToString());
+      return "Unimplemented instruction.";
     }
-    return OkStatus();
+    return FusionDecision{};
   }
 
   // Get the raw data of the dimension order.
@@ -208,20 +240,32 @@ class DimensionOrder {
     return splittable_dimension_index_;
   }
 
+  // Tells that two dimension orders describe the same tensor physical layout.
+  bool IsPhysicallyEquivalent(const DimensionOrder& other) const;
+
+  std::string ToString() const {
+    return absl::StrJoin(dim_order_, "-",
+                         [](std::string* out, const DimDescription& d) {
+                           absl::StrAppend(out, d.ToString());
+                         });
+  }
+
  private:
   // See HandleInstruction() for the general description of Handle*().
-  Status HandleBitcast(const HloInstruction* hlo);
-  Status HandleCopyOrTranspose(const HloInstruction* hlo);
+  FusionDecision HandleBitcast(const HloInstruction* hlo);
+  FusionDecision HandleCopyOrTranspose(const HloInstruction* hlo);
 
   DimOrderVector dim_order_;
-  int64_t splittable_dimension_index_;
+  const int64_t splittable_dimension_index_;
 };
 
-DotFusionAnalysis::TensorIterationSpec DimensionOrderToTensorIterationSpec(
+using DimIterationSpec = TensorIterationSpec::DimIterationSpec;
+
+TensorIterationSpec DimensionOrderToTensorIterationSpec(
     const DimensionOrder& order) {
   const DimensionOrder::DimOrderVector& dim_order_vector =
       order.GetDimOrderVector();
-  DotFusionAnalysis::TensorIterationSpec tensor_spec;
+  TensorIterationSpec tensor_spec;
   int64_t accumulated_stride = 1;
   for (int dim_order_index = 0; dim_order_index < dim_order_vector.size();
        ++dim_order_index) {
@@ -234,8 +278,7 @@ DotFusionAnalysis::TensorIterationSpec DimensionOrderToTensorIterationSpec(
       continue;
     }
 
-    DotFusionAnalysis::DimIterationSpec& dim_spec =
-        tensor_spec[dim.target_dim_number];
+    DimIterationSpec& dim_spec = tensor_spec[dim.target_dim_number];
     if (dim_order_index > 0 &&
         dim_order_vector[dim_order_index - 1].target_dim_number ==
             dim.target_dim_number) {
@@ -255,12 +298,17 @@ DotFusionAnalysis::TensorIterationSpec DimensionOrderToTensorIterationSpec(
     accumulated_stride *= dim.size;
   }
   // Create all absent dimensions as degenerate ones to simplify later queries.
-  for (DotFusionAnalysis::DimIterationSpec& dim_spec : tensor_spec) {
+  for (DimIterationSpec& dim_spec : tensor_spec) {
     if (dim_spec.empty()) {
       dim_spec.push_back({/*stride=*/0, /*count=*/1, /*subfragments=*/{1}});
     }
   }
   return tensor_spec;
+}
+
+bool DimensionOrder::IsPhysicallyEquivalent(const DimensionOrder& other) const {
+  return DimensionOrderToTensorIterationSpec(*this) ==
+         DimensionOrderToTensorIterationSpec(other);
 }
 
 DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
@@ -285,7 +333,7 @@ DimensionOrder DimensionOrder::FromDotOutput(const HloInstruction& dot) {
   return DimensionOrder(&dot);
 }
 
-Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
+FusionDecision DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   const Shape& operand_shape = hlo->operand(0)->shape();
   DimOrderVector operand_dim_order;
   operand_dim_order.reserve(dim_order_.size());
@@ -299,7 +347,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
        ++out_dim) {
     if (operand_remaining_size >= out_dim->size) {
       if (operand_remaining_size % out_dim->size) {
-        return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
+        return "Unsupported bitcast";
       }
       // Output dimension fragment completely fits into the operand one:
       // just copy it as is.
@@ -317,7 +365,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
         // If there is a remaining fragment of a previous operand dimension
         // assign it first.
         if (out_remaining_size % operand_remaining_size) {
-          return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
+          return "Unsupported bitcast";
         }
         operand_dim_order.push_back(
             {out_dim->target_dim_number, subdim_index, operand_remaining_size});
@@ -335,7 +383,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
           // assign the remainder of the output and carry over the remainder
           // of the operand.
           if (operand_dim_size % out_remaining_size) {
-            return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
+            return "Unsupported bitcast";
           }
           operand_remaining_size = operand_dim_size / out_remaining_size;
           new_fragment_size = out_remaining_size;
@@ -356,7 +404,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   int subdim_index = operand_dim_order.back().subdim_number + 1;
   while (operand_dim_iter != operand_shape.layout().minor_to_major().cend()) {
     if (operand_shape.dimensions(*operand_dim_iter) != 1) {
-      return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
+      return "Unsupported bitcast";
     }
     operand_dim_order.push_back(
         {operand_dim_order.back().target_dim_number, subdim_index, 1});
@@ -365,10 +413,11 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   }
 
   dim_order_ = operand_dim_order;
-  return OkStatus();
+  return FusionDecision{};
 }
 
-Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
+FusionDecision DimensionOrder::HandleCopyOrTranspose(
+    const HloInstruction* hlo) {
   // Every HLO dimension can correspond to a group of subdimensions in
   // dim_order_. For the easier handling of permutations: group dim_order_ by
   // dimension, apply permutations, then finally remove the grouping.
@@ -417,25 +466,25 @@ Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
       dim_order_.push_back(subdim);
     }
   }
-  return OkStatus();
+  return FusionDecision{};
 }
 
 // Tells if the dimension order is supported by the triton GEMM emitter.
 // Only the dimension indicated by SplittableDimensionIndex() can be split
 // physically once by other dimensions. Other ones can be only split logically.
 // All subdimensions within a dimension have to be ordered.
-Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
-  std::array<int, DotFusionAnalysis::kMaxDimsPerTensor> subdim_counters = {
+FusionDecision RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
+  std::array<int, TensorIterationSpec::kMaxDimsPerTensor> subdim_counters = {
       -1, -1, -1, -1};
-  std::array<int, DotFusionAnalysis::kMaxDimsPerTensor> split_counters = {
+  std::array<int, TensorIterationSpec::kMaxDimsPerTensor> split_counters = {
       -1, -1, -1, -1};
   const DimensionOrder::DimOrderVector& dim_order_vector =
       order.GetDimOrderVector();
+  VLOG(8) << order.ToString();
   for (int i = 0; i < dim_order_vector.size(); i++) {
     const auto [dim_number, subdim_number, size] = dim_order_vector[i];
-    VLOG(8) << dim_number << "\t" << subdim_number << "\t" << size;
     if (subdim_counters[dim_number] != subdim_number - 1) {
-      return Unimplemented("Transpose within a dimension.");
+      return "Transpose within a dimension.";
     }
     ++subdim_counters[dim_number];
     if (size == 1) {
@@ -445,29 +494,183 @@ Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
       ++split_counters[dim_number];
       if (dim_number == order.SplittableDimensionIndex()) {
         if (split_counters[dim_number] > 1) {
-          return Unimplemented("2nd split of a splittable dimension.");
+          return "2nd split of a splittable dimension.";
         }
       } else if (split_counters[dim_number] > 0) {
-        return Unimplemented("Split of a non-splittable dimension.");
+        return "Split of a non-splittable dimension.";
       }
     }
   }
-  return OkStatus();
+  return FusionDecision{};
 }
 
-// Transforms dim_order describing the output of `hlo` into a
+// Tells if an instruction has no input into which it could be fused.
+// More cases should be added here.
+bool CanNotBeFusedIntoAProducer(const HloInstruction& hlo) {
+  return hlo_query::AllOperandsAreParametersOrConstants(hlo);
+}
+
+// Tells that fusing an instruction is efficient.
+bool IsInputWorthFusing(const HloInstruction& hlo) {
+  return hlo_query::AllOperandsAreParametersOrConstants(hlo) ||
+         InputMinusOutputBytes(hlo) < kIoToleranceBytes;
+}
+
+// Checks if the instruction is possible and profitable to fuse.
+// If so tries to transform dim_order describing output of `hlo` into a
 // description of its input if it is supported by the triton GEMM emitter.
-Status CanFuse(const HloInstruction* hlo, DimensionOrder& dim_order,
-               const GpuVersion gpu_version) {
-  if (hlo->opcode() == HloOpcode::kConvert) {
-    return RequireTritonFusibleConvert(hlo, gpu_version);
-  } else if (hlo->IsElementwise() && hlo->opcode() != HloOpcode::kCopy) {
-    // Temporarily forbid fusing elementwise operations
-    // other than copy and convert.
-    return Unimplemented("Unsupported elementwise operation");
+FusionDecision CanFuse(const HloInstruction& hlo, DimensionOrder& dim_order,
+                       const GpuVersion gpu_version) {
+  if (hlo.opcode() == HloOpcode::kTuple ||
+      hlo.opcode() == HloOpcode::kGetTupleElement) {
+    return "Unsupported instruction.";
   }
-  TF_RETURN_IF_ERROR(dim_order.HandleInstruction(hlo));
+  if (hlo.opcode() == HloOpcode::kConvert &&
+      (!IsSupportedDataType(hlo.operand(0)->shape().element_type(),
+                            gpu_version) ||
+       !IsSupportedDataType(hlo.shape().element_type(), gpu_version))) {
+    return "Unsupported data type.";
+  }
+  if (hlo.IsConstant() && !ShapeUtil::IsScalar(hlo.shape())) {
+    return "Not fusing a non-scalar constant.";
+  }
+  if (!CanNotBeFusedIntoAProducer(hlo) && !IsInputWorthFusing(hlo)) {
+    return "Not obviously profitable to fuse as input.";
+  }
+
+  if (NoFusionPossible decision = !dim_order.HandleInstruction(&hlo)) {
+    return !decision;
+  }
   return RequireTritonGemmSupportedDimOrder(dim_order);
+}
+
+// Clone an instruction into the fusion.
+void Fuse(HloInstruction& hlo,
+          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+              old_to_new_mapping,
+          std::vector<HloInstruction*>& call_operands,
+          HloComputation::Builder& builder) {
+  if (old_to_new_mapping.contains(&hlo)) {
+    return;
+  }
+  VLOG(3) << "Fusing " << hlo.ToString();
+  if (hlo.opcode() == HloOpcode::kParameter ||
+      hlo.opcode() == HloOpcode::kGetTupleElement) {
+    old_to_new_mapping[&hlo] =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            call_operands.size(), hlo.shape(),
+            absl::StrCat("parameter_", call_operands.size())));
+    call_operands.push_back(&hlo);
+  } else {
+    std::vector<HloInstruction*> hlo_new_operands;
+    for (HloInstruction* operand : hlo.operands()) {
+      const auto iter = old_to_new_mapping.find(operand);
+      if (iter != old_to_new_mapping.end()) {
+        hlo_new_operands.push_back(iter->second);
+      } else {
+        hlo_new_operands.push_back(
+            builder.AddInstruction(HloInstruction::CreateParameter(
+                call_operands.size(), operand->shape(),
+                absl::StrCat("parameter_", call_operands.size()))));
+        call_operands.push_back(operand);
+      }
+    }
+    old_to_new_mapping[&hlo] = builder.AddInstruction(
+        hlo.CloneWithNewOperands(hlo.shape(), hlo_new_operands));
+  }
+}
+
+// Every parameter requires a separate piece of shared memory for asynchronous
+// loads. Multiple parameters are approximately equivalent to multiple pipeline
+// stages.
+constexpr int kMaxParameterPerScope = 4;
+
+// Tells the number of parameter instructions in a container.
+template <typename T>
+int64_t CountParameters(const T& instructions) {
+  return absl::c_count_if(instructions, [](const auto& instruction) {
+    return instruction.first->opcode() == HloOpcode::kParameter;
+  });
+}
+
+// Tells how many new parameters does a fusion gain by fusing the operation as
+// an input.
+int64_t NumAddedParameters(const HloInstruction& hlo) {
+  // Non-scalar constant is equivalent to a parameter: one input, one output.
+  if (hlo.opcode() == HloOpcode::kConstant &&
+      !ShapeUtil::IsScalar(hlo.shape())) {
+    return 0;
+  }
+  // All other instructions add all own inputs and remove own single output.
+  return hlo.operand_count() - 1;
+}
+
+// Fuse an instruction with all its fusible inputs.
+// If an input is not fusible stop there and make a parameter of the new
+// fusion, otherwise put it onto stack and check its own inputs first.
+void FuseWithInputsRecursively(
+    HloInstruction* root, DimensionOrder root_dim_order,
+    // Dimension orders describing inputs of corresponding instructions.
+    absl::flat_hash_map<const HloInstruction*, DimensionOrder>& dim_orders,
+    const GpuVersion gpu_version,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+        old_to_new_mapping,
+    std::vector<HloInstruction*>& call_operands,
+    HloComputation::Builder& builder) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::stack<HloInstruction*> to_fuse;
+  // Currently only one physically unique dim order per scope is supported.
+  // Let it change while the scope has one input; afterwards require all
+  // of them to be physically compatible.
+  DimensionOrder* reference_dim_order = nullptr;
+  if (CanFuse(*root, root_dim_order, gpu_version)) {
+    to_fuse.push(root);
+    // root_dim_order went through output -> input transformation here.
+    CHECK(dim_orders.insert({root, root_dim_order}).second) << root->ToString();
+    reference_dim_order = &root_dim_order;
+  }
+  // Number of parameters the fusion will gain after fusing all entries of
+  // to_fuse.
+  int64_t num_parameters_to_add = 1;
+  visited.insert(root);
+  while (!to_fuse.empty()) {
+    bool top_is_ready_to_fuse = true;
+    HloInstruction* hlo = to_fuse.top();
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      if (visited.insert(operand).second) {
+        const int64_t current_num_parameters = CountParameters(dim_orders);
+        // Stop adding new parameters.
+        if (current_num_parameters + num_parameters_to_add >=
+                kMaxParameterPerScope &&
+            NumAddedParameters(*operand) > 0) {
+          continue;
+        }
+        // Operand's output is described by its consumer's input.
+        DimensionOrder operand_dim_order(dim_orders.at(hlo));
+        // CanFuse() makes output -> input transformation of
+        // operand_dim_order if succeeds.
+        if (CanFuse(*operand, operand_dim_order, gpu_version)) {
+          if (current_num_parameters <= 1) {
+            reference_dim_order = &operand_dim_order;
+          } else if (!operand_dim_order.IsPhysicallyEquivalent(
+                         *reference_dim_order)) {
+            continue;
+          }
+          to_fuse.push(operand);
+          num_parameters_to_add += NumAddedParameters(*operand);
+          // Save the dimension order description of operand's input.
+          CHECK(dim_orders.insert({operand, operand_dim_order}).second)
+              << operand->ToString();
+          top_is_ready_to_fuse = false;
+        }
+      }
+    }
+    if (top_is_ready_to_fuse) {
+      Fuse(*hlo, old_to_new_mapping, call_operands, builder);
+      to_fuse.pop();
+      num_parameters_to_add -= NumAddedParameters(*hlo);
+    }
+  }
 }
 
 // Extracts into fused computations parts of HLO graph including dot()
@@ -490,72 +693,28 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     std::string suggested_name = absl::StrCat("triton_gemm_", dot->name());
     HloComputation::Builder builder(
         absl::StrCat(suggested_name, "_computation"));
+    std::vector<HloInstruction*> call_operands;
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
-    absl::flat_hash_set<const HloInstruction*> visited;
-    std::vector<HloInstruction*> call_operands;
-    // Traverse and fuse dot() inputs bottom-up starting from direct operands.
-    // If an input is not fusible stop there and make it a parameter of the new
-    // fusion, otherwise put it onto stack and check its own inputs first.
-    std::stack<HloInstruction*> to_fuse;
-    // Dimension orders describing inputs of corresponding instructions.
-    absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
-    to_fuse.push(dot);
-    while (!to_fuse.empty()) {
-      bool top_is_ready_to_fuse = true;
-      HloInstruction* hlo = to_fuse.top();
-      for (HloInstruction* operand : hlo->mutable_operands()) {
-        if (visited.insert(operand).second) {
-          DimensionOrder operand_dim_order = [&] {
-            // Direct dot inputs are described by default dimension orders.
-            if (operand == dot->operand(0)) {
-              return DimensionOrder::FromDotOperand(*dot, 0);
-            } else if (operand == dot->operand(1)) {
-              return DimensionOrder::FromDotOperand(*dot, 1);
-            }
-            // Otherwise operand's output is described by its consumer's input.
-            return DimensionOrder(dim_orders.at(hlo));
-          }();
-          // CanFuse() makes output -> input transformation of
-          // operand_dim_order if succeeds.
-          if (CanFuse(operand, operand_dim_order, gpu_version_).ok()) {
-            VLOG(3) << "Fusing " << operand->ToString();
-            to_fuse.push(operand);
-            // Save the dimension order description of operand's input.
-            dim_orders.insert({operand, operand_dim_order});
-            top_is_ready_to_fuse = false;
-          }
-        }
-      }
-      if (top_is_ready_to_fuse) {
-        if (hlo->opcode() == HloOpcode::kParameter ||
-            hlo->opcode() == HloOpcode::kGetTupleElement) {
-          old_to_new_mapping[hlo] =
-              builder.AddInstruction(HloInstruction::CreateParameter(
-                  call_operands.size(), hlo->shape(),
-                  absl::StrCat("parameter_", call_operands.size())));
-          call_operands.push_back(hlo);
-        } else {
-          std::vector<HloInstruction*> hlo_new_operands;
-          for (HloInstruction* operand : hlo->operands()) {
-            const auto iter = old_to_new_mapping.find(operand);
-            if (iter != old_to_new_mapping.end()) {
-              hlo_new_operands.push_back(iter->second);
-            } else {
-              hlo_new_operands.push_back(
-                  builder.AddInstruction(HloInstruction::CreateParameter(
-                      call_operands.size(), operand->shape(),
-                      absl::StrCat("parameter_", call_operands.size()))));
-              call_operands.push_back(operand);
-            }
-          }
-          old_to_new_mapping[hlo] = builder.AddInstruction(
-              hlo->CloneWithNewOperands(hlo->shape(), hlo_new_operands));
-        }
-        to_fuse.pop();
-      }
-    }
+
+    // Separate traversal from LHS and RHS inputs of the dot: they use
+    // differently shaped tiles but may go through same HLO graph nodes.
+    // Direct dot inputs have well defined dimension orders.
+
+    auto fuse_inputs = [&](int operand_number) {
+      absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
+      FuseWithInputsRecursively(
+          dot->mutable_operand(operand_number),
+          DimensionOrder::FromDotOperand(*dot, operand_number), dim_orders,
+          gpu_version_, old_to_new_mapping, call_operands, builder);
+      return CountParameters(dim_orders) <= kMaxParameterPerScope;
+    };
+    TF_RET_CHECK(fuse_inputs(0));
+    TF_RET_CHECK(fuse_inputs(1));
+
+    Fuse(*dot, old_to_new_mapping, call_operands, builder);
+
     HloComputation* computation =
         dot->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                             /*is_entry=*/false);
@@ -579,7 +738,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     } else {
       TF_RETURN_IF_ERROR(ReplaceInstruction(dot, dot_fusion));
     }
-    VLOG(5) << computation->ToString();
+    XLA_VLOG_LINES(5, computation->ToString());
     return OkStatus();
   }
 
@@ -624,7 +783,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   for (const HloInstruction* param : analysis.ScopeParameters(scope)) {
     // If an operand of dot does not read any parameters its K dimension
     // does not need analysis for fragmentation.
-    const DotFusionAnalysis::DimIterationSpec* spec =
+    const DimIterationSpec* spec =
         analysis.IterSpec(scope, param, contracting_dim_idx);
     // Split contracting dimension is not implemented yet.
     CHECK_EQ(spec->size(), 1);
@@ -838,8 +997,8 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
     absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
     DimensionOrder dot_operand_dim_order =
         DimensionOrder::FromDotOperand(*dot, operand_number, split_k);
-    TF_CHECK_OK(dot_operand_dim_order.HandleInstruction(dot_operand));
-    TF_CHECK_OK(RequireTritonGemmSupportedDimOrder(dot_operand_dim_order))
+    CHECK(dot_operand_dim_order.HandleInstruction(dot_operand));
+    CHECK(RequireTritonGemmSupportedDimOrder(dot_operand_dim_order))
         << dot_computation->ToString();
     dim_orders.insert({dot_operand, dot_operand_dim_order});
     visited.insert(dot_operand);
@@ -860,14 +1019,17 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
             {hlo_operand, DimensionOrder(dim_orders.at(hlo))});
         CHECK(inserted);
         DimensionOrder& hlo_operand_dim_order = it->second;
-        TF_CHECK_OK(hlo_operand_dim_order.HandleInstruction(hlo_operand));
-        TF_CHECK_OK(RequireTritonGemmSupportedDimOrder(hlo_operand_dim_order))
+        CHECK(hlo_operand_dim_order.HandleInstruction(hlo_operand));
+        CHECK(RequireTritonGemmSupportedDimOrder(hlo_operand_dim_order))
             << " " << dot_computation->ToString();
         to_process.push(hlo_operand);
       }
     }
 
+    // For now all parameters of one scope have to use the same tiling.
     for (const HloInstruction* parameter : parameters_[scope]) {
+      CHECK(dim_orders.at(parameter).IsPhysicallyEquivalent(
+          dim_orders.at(*parameters_[scope].cbegin())));
       iter_specs_[scope][parameter] =
           DimensionOrderToTensorIterationSpec(dim_orders.at(parameter));
     }
@@ -879,12 +1041,12 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
             .second);
 }
 
-const DotFusionAnalysis::DimIterationSpec* DotFusionAnalysis::IterSpec(
+const DimIterationSpec* DotFusionAnalysis::IterSpec(
     const DotFusionAnalysis::Scope scope, const HloInstruction* hlo,
     const int dimension) const {
   auto ret = iter_specs_.at(scope).find(hlo);
   if (ret != iter_specs_.at(scope).end()) {
-    return &ret->second.at(dimension);
+    return &ret->second[dimension];
   }
   return nullptr;
 }
@@ -956,7 +1118,7 @@ bool IsTritonHandledGEMM(const HloInstruction& dot,
     while (!queue.empty()) {
       const HloInstruction* current = queue.front();
       queue.pop();
-      if (!CanFuse(current, dim_order, gpu_version).ok()) {
+      if (!CanFuse(*current, dim_order, gpu_version)) {
         continue;
       }
       // Stop as soon as a profitable operation is fused.
