@@ -216,6 +216,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
  )
  
  add_mlir_dialect_library(StablehloRegister
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -156,7 +156,7 @@
+ 
+ def CHLO_BroadcastMaxOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_maximum",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Maximum operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -169,7 +169,7 @@
+ 
+ def CHLO_BroadcastMinOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_minimum",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Minimum operator (with optional broadcasting)";
+ 
+   string description = [{
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
@@ -786,6 +807,64 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -13,6 +13,54 @@
+   // expected-error @+1{{'chlo.broadcast_add' op requires compatible element types for all operands and results}}
+   %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
+   func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++// CHECK-LABEL: func @broadcast_max_quantized
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_maximum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f16, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_maximum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f16, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++// CHECK-LABEL: func @broadcast_min_quantized
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_minimum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f16, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_minimum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f16, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
