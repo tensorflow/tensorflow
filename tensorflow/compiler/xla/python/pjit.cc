@@ -133,8 +133,6 @@ class PjitFunctionCache {
   absl::flat_hash_map<Key, std::unique_ptr<Value>> functions_;
 };
 
-constexpr int PjitFunctionCache::kDefaultCapacity;
-
 PjitFunctionCache::PjitFunctionCache(int capacity) : lru_list_(capacity) {}
 
 std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::DefaultCache() {
