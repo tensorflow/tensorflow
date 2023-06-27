@@ -191,9 +191,9 @@ class BaseGPUDevice : public LocalDevice {
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
-#ifdef TF_GPU_USE_PJRT
-  std::unique_ptr<AsyncValueAllocator> pjrt_allocator_;
-#endif  // TF_GPU_USE_PJRT
+
+  // PJRT AsyncValueTensor allocator.
+  std::unique_ptr<Allocator> pjrt_allocator_;
 
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
