@@ -54,7 +54,6 @@ body:
     id: tfversion
     attributes:
       label: TensorFlow Version
-      description:
       placeholder: e.g., tf 2.8
     validations:
       required: true
@@ -62,7 +61,6 @@ body:
     id: Code
     attributes:
       label: Custom Code
-      description:
       options:
         - "Yes"
         - "No"
@@ -72,58 +70,36 @@ body:
     id: OS
     attributes:
       label: OS Platform and Distribution
-      description:
       placeholder: e.g., Linux Ubuntu 16.04
-    validations:
-      required: false
   - type: input
     id: Mobile
     attributes:
       label: Mobile device
-      description:
       placeholder: e.g., Linux Ubuntu 16.04
-    validations:
-      required: false
   - type: input
     id: Python
     attributes:
       label: Python version
-      description:
       placeholder: e.g., 3.9
-    validations:
-      required: false
   - type: input
     id: Bazel
     attributes:
       label: Bazel version
       description: If compiling from source
-      placeholder:
-    validations:
-      required: false
   - type: input
     id: Compiler
     attributes:
       label: GCC/Compiler version
       description: If compiling from source
-      placeholder:
-    validations:
-      required: false
   - type: input
     id: Cuda
     attributes:
       label: CUDA/cuDNN version
-      description:
-      placeholder:
-    validations:
-      required: false
   - type: input
     id: Gpu
     attributes:
       label: GPU model and memory
       description: If compiling from source
-      placeholder:
-    validations:
-      required: false
   - type: textarea
     id: what-happened
     attributes:
