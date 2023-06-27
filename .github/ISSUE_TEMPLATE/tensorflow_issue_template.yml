@@ -21,13 +21,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please make sure that this is a bug. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub.
+        Please make sure that this is a bug. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub.
 
   - type: dropdown
     id: tf-nightly
     attributes:
       label: Have you reproduced the bug with TF nightly?
-      description: It is strongly suggested that you have reproduced the bug with [TF nightly](https://www.tensorflow.org/install/pip#nightly)
+      description: It is strongly suggested that you reproduce the bug with [TF nightly](https://www.tensorflow.org/install/pip#nightly)
       options:
         - "Yes"
         - "No"
@@ -37,7 +37,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)  You can also obtain the TensorFlow version with: <br> 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
+        You can collect some of this information using our [environment capture script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh). You can also obtain the TensorFlow version with the following: <br> 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
 
   - type: dropdown
     id: source
@@ -96,7 +96,7 @@ body:
     id: Bazel
     attributes:
       label: Bazel version
-      description: if compiling from source
+      description: If compiling from source
       placeholder:
     validations:
       required: false
@@ -104,7 +104,7 @@ body:
     id: Compiler
     attributes:
       label: GCC/Compiler version
-      description: if compiling from source
+      description: If compiling from source
       placeholder:
     validations:
       required: false
@@ -120,7 +120,7 @@ body:
     id: Gpu
     attributes:
       label: GPU model and memory
-      description: if compiling from source
+      description: If compiling from source
       placeholder:
     validations:
       required: false
@@ -130,7 +130,6 @@ body:
       label: Current Behaviour?
       description: Also tell us, what did you expect to happen?
       placeholder: Tell us what you see!
-      value: "A bug happened!"
     validations:
       required: true
   - type: textarea
