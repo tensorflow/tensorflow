@@ -94,7 +94,7 @@ REQUIRED_PACKAGES = [
     'jax >= 0.3.15',
     'libclang >= 13.0.0',
     # TODO(b/263178356): numpy 1.24 breaks TF's tests
-    'numpy >= 1.22, <1.24',
+    'numpy >= 1.22, <= 1.24.3',
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
