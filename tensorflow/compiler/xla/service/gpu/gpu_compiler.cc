@@ -1842,6 +1842,10 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   for (int64_t o : user_index) {
     output = output->mutable_operand(o);
   }
+  const HloInstruction* non_bitcast_root = output;
+  if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
+    non_bitcast_root = non_bitcast_root->operand(0);
+  }
   std::queue<HloInstruction*> q;
   absl::flat_hash_set<HloInstruction*> visited;
   q.push(fusion_param);
@@ -1859,10 +1863,22 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
       if (visited.contains(hlo)) {
         continue;
       }
-      if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
-           hlo->opcode() == HloOpcode::kCopy) &&
-          hlo->opcode() != HloOpcode::kBitcast &&
-          hlo->opcode() != HloOpcode::kTuple) {
+      if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+          hlo->opcode() == HloOpcode::kDynamicSlice &&
+          non_bitcast_root->operand(0) == hlo->operand(0)) {
+        // We can still share the buffer in this case if the same slice is
+        // accessed by the DUS and the DS. So compare all the slice start
+        // operands of 'hlo' and 'non_bitcast_root'.
+        for (int64_t i = 1; i < hlo->operand_count(); ++i) {
+          if (hlo->operand(i) != non_bitcast_root->operand(i + 1)) {
+            return false;
+          }
+        }
+      } else if ((!hlo->IsElementwiseOnOperand(
+                      hlo->operand_index(hlo_operand)) ||
+                  hlo->opcode() == HloOpcode::kCopy) &&
+                 hlo->opcode() != HloOpcode::kBitcast &&
+                 hlo->opcode() != HloOpcode::kTuple) {
         return false;
       }
       visited.insert(hlo);
