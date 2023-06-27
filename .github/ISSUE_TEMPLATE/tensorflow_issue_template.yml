@@ -27,7 +27,7 @@ body:
     id: tf-nightly
     attributes:
       label: Have You Reproduced the Bug With TensorFlow Nightly?
-      description: It is strongly suggested that you reproduce the bug with [TF nightly](https://www.tensorflow.org/install/pip#nightly)
+      description: It is strongly suggested that you reproduce the bug with [TensorFlow Nightly](https://www.tensorflow.org/install/pip#nightly)
       options:
         - "Yes"
         - "No"
