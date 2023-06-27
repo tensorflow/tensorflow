@@ -19,14 +19,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
 
+using func::FuncOp;
 using mlir::ModuleOp;
 using tsl::Status;
 
@@ -48,14 +54,33 @@ class LegalizationOpConfigTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
+  tsl::StatusOr<FuncOp> GetMain() {
+    func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
+    if (!main) {
+      return absl::NotFoundError("Could not find main function");
+    }
+    return main;
+  }
+
  protected:
   MLIRContext context_;
   OwningOpRef<ModuleOp> module_;
 };
 
-TEST_F(LegalizationOpConfigTest, ExpectsLegalizationWithMlir) {
+TEST_F(LegalizationOpConfigTest, FailsWithExpectsLegalizationWithMlir) {
   TF_EXPECT_OK(CreateMlirModule());
-  EXPECT_FALSE(IsLegalizedWithMlir(*module_->getOperation()));
+  EXPECT_FALSE(IsOpLegalizedWithMlir(*module_->getOperation()));
+}
+
+TEST_F(LegalizationOpConfigTest, ExpectsFalseForNonMlirOps) {
+  TF_EXPECT_OK(CreateMlirModule());
+  TF_ASSERT_OK_AND_ASSIGN(FuncOp main, GetMain());
+
+  main.walk([&](Operation* op) { EXPECT_FALSE(IsOpLegalizedWithMlir(*op)); });
+}
+
+TEST_F(LegalizationOpConfigTest, ExpectsTrueForTypeID) {
+  EXPECT_TRUE(IsTypeLegalizedWithMlir(TypeID::get<TF::ModOp>()));
 }
 
 }  // namespace mhlo

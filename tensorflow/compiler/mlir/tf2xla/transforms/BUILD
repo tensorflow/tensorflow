@@ -252,6 +252,7 @@ cc_library(
         "passes.h",
     ],
     deps = [
+        ":legalization_op_config",
         ":legalize_tf",
         ":legalize_utils",
         ":tf_xla_passes_inc_gen",
@@ -494,7 +495,13 @@ cc_library(
     name = "legalization_op_config",
     srcs = ["legalization_op_config.cc"],
     hdrs = ["legalization_op_config.h"],
-    deps = ["@llvm-project//mlir:IR"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 tf_cc_test(
@@ -503,9 +510,14 @@ tf_cc_test(
     deps = [
         ":legalization_op_config",
         ":test_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )

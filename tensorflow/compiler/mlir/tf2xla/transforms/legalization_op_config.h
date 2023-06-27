@@ -17,13 +17,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_LEGALIZATION_OP_CONFIG_H_
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 
 namespace mlir {
 namespace mhlo {
 
 // Given the Operation, return True if the op is legalized with MLIR.
 // Returns false if it is legalized with an old TF2XLA Kernel.
-bool IsLegalizedWithMlir(Operation& op);
+bool IsOpLegalizedWithMlir(Operation& op);
+
+// Given the type ID, check if it's legalized with MLIR.
+bool IsTypeLegalizedWithMlir(const TypeID& type_id);
 
 }  // namespace mhlo
 }  // namespace mlir
