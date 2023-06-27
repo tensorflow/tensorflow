@@ -2120,9 +2120,16 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     launch_config.few_waves = false;
   }
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(element_shape, gpu_device_info,
-                                                launch_config, op));
+  // Do not use experimental block size if row_vectorized or few_waves flags are
+  // enabled.
+  bool use_experimental_block_size =
+      hlo_module_config_.debug_options()
+          .xla_gpu_enable_experimental_block_size() &&
+      !launch_config.row_vectorized && !launch_config.few_waves;
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(element_shape, gpu_device_info, launch_config,
+                                op, use_experimental_block_size));
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
       BuildKernelThunkForFusion(fusion, launch_dimensions));
