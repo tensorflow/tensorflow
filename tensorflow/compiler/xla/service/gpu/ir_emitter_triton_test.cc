@@ -882,8 +882,9 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   const HloInstruction* instr = module->entry_computation()->root_instruction();
-  if (instr->opcode() == HloOpcode::kReduce) {
+  if (!instr->IsCustomFusion()) {
     instr = instr->operand(0);
+    ASSERT_TRUE(instr->IsCustomFusion());
   }
   EXPECT_THAT(
       instr,
@@ -922,8 +923,9 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   const HloInstruction* instr = module->entry_computation()->root_instruction();
-  if (instr->opcode() == HloOpcode::kReduce) {
+  if (!instr->IsCustomFusion()) {
     instr = instr->operand(0);
+    ASSERT_TRUE(instr->IsCustomFusion());
   }
   EXPECT_THAT(
       instr,
