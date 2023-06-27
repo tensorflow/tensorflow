@@ -573,8 +573,8 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
       [](mlir::Attribute attr) { return attr.cast<mlir::DictionaryAttr>(); }));
   auto generic_func = rewriter.create<ml::LLVMFuncOp>(
       func.getLoc(), func.getSymName(), generic_func_ty, func.getLinkage(),
-      func.getDsoLocal(), func.getCConv(), GetExtraAttrs(func), arg_attrs,
-      func.getFunctionEntryCount());
+      func.getDsoLocal(), func.getCConv(), /*comdat=*/nullptr,
+      GetExtraAttrs(func), arg_attrs, func.getFunctionEntryCount());
 
   // Convert generic address spaces back to original ones within the function
   // body.
