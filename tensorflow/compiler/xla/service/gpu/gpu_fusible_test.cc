@@ -369,6 +369,31 @@ TEST_F(GpuFusibleTest,
   EXPECT_FALSE(IsInputFusibleReduction(*reduce));
 }
 
+TEST_F(GpuFusibleTest, CustomFusionIsNotFusibleAsConsumer) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_fusion {
+  p0 = f16[20,3]{1,0} parameter(0)
+  p1 = f16[3,40]{1,0} parameter(1)
+  dot = f16[20,40]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT c = f16[20,40]{0,1} copy(dot)
+}
+
+ENTRY e {
+  p0 = f16[20,3]{1,0} parameter(0)
+  n = f16[20,3]{1,0} negate(p0)
+  p1 = f16[3,40]{1,0} parameter(1)
+  ROOT r = f16[20,40]{0,1} fusion(n, p1),
+    kind=kCustom,
+    calls=triton_fusion
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsProducerConsumerFusible(*root->operand(0), *root));
+}
+
 TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionCompatible) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {

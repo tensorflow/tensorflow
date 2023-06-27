@@ -111,6 +111,9 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsTransposeInputFusion(const HloInstruction& instr) {
+  if (instr.IsCustomFusion()) {
+    return false;
+  }
   return instr.opcode() == HloOpcode::kFusion &&
          HasAnyTiledTransposeRoot(instr.called_computations()[0]);
 }

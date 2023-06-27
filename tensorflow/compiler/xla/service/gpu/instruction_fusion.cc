@@ -67,6 +67,11 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
   if (producer->opcode() == HloOpcode::kFusion) {
     return "the producer is a fusion";
   }
+
+  if (consumer->IsCustomFusion()) {
+    return "the consumer is a custom fusion";
+  }
+
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
