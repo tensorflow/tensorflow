@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -63,7 +62,6 @@ StatusOr<bool> RunOptimizer(
                                                 direction, should_process);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
   return pass.Run(module);
 }
 
@@ -1009,6 +1007,12 @@ ENTRY entry {
           IsAllGather)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
+  const int64_t while_count = absl::c_count_if(
+      module->entry_computation()->instructions(),
+      [](const HloInstruction* instruction) {
+        return HloPredicateIsOp<HloOpcode::kWhile>(instruction);
+      });
+  EXPECT_EQ(while_count, 1);
 }
 
 TEST_F(DataParallelCollectiveOptimizerTest,
