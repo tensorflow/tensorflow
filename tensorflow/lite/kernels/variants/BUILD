@@ -8,13 +8,16 @@ cc_library(
         exclude = ["list_kernels/*test*"],
     ),
     hdrs = ["list_ops_lib.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":list_ops_util",
         ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -65,6 +68,24 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "list_set_item_test",
+    srcs = ["list_kernels/list_set_item_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/tflite_micro/tensorflow/lite/micro:memory_helpers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -120,6 +141,7 @@ cc_test(
     deps = [
         ":list_ops_subgraph_test_util",
         ":tensor_array",
+        "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",

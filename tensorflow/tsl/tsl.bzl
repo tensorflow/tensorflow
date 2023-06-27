@@ -423,7 +423,7 @@ def tsl_grpc_cc_dependencies():
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
     outputs = _get_transitive_headers([], ctx.attr.deps)
-    return struct(files = outputs)
+    return DefaultInfo(files = outputs)
 
 _transitive_hdrs = rule(
     attrs = {
