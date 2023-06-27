@@ -48,7 +48,7 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
                           cpu_tensor->shape(), cpu_tensor->dtype(),
                           /*fast_mem=*/false, layout_preference));
   const xla::Layout* device_layout = &(shape.layout());
-  // The device id should matche the local_hardware_id in
+  // The device id should match the local_hardware_id in
   // tensorflow/compiler/xla/pjrt/pjrt_client.h.
   TF_ASSIGN_OR_RETURN(
       const int pjrt_device_id,

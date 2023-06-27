@@ -510,6 +510,8 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":pjrt_tensor_buffer",
+        ":pjrt_tensor_buffer_util",
         ":variable_info",
         ":variable_info_util",
         ":xla_tensor",
@@ -519,6 +521,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
@@ -528,6 +531,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -1488,6 +1492,30 @@ cc_library(
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:local_device",
+    ],
+)
+
+cc_library(
+    name = "pjrt_tensor_buffer",
+    hdrs = ["pjrt_tensor_buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "pjrt_tensor_buffer_util",
+    srcs = ["pjrt_tensor_buffer_util.cc"],
+    hdrs = ["pjrt_tensor_buffer_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_tensor_buffer",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/core:framework",
     ],
 )
 

@@ -74,7 +74,7 @@ void PreparePjRtExecutableArguments(
     int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
-    std::vector<xla::PjRtBuffer*>* args,
+    bool use_pjrt_tensor_buffer, std::vector<xla::PjRtBuffer*>* args,
     absl::flat_hash_set<int>* non_donatable_input_indices);
 
 // Populates the OpKernelContext outputs with the outputs of the
@@ -89,6 +89,7 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
+    bool use_pjrt_tensor_buffer,
     std::vector<std::unique_ptr<xla::PjRtBuffer>>& executable_outputs,
     OpKernelContext* ctx);
 

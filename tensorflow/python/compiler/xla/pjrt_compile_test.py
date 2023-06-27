@@ -17,11 +17,12 @@
 This feature is still under active development and is protected behind the
 `--tf_xla_use_device_api` flag in the `TF_XLA_FLAGS` environment variable.
 """
-
+import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 
@@ -94,6 +95,30 @@ class PjrtCompileTest(test.TestCase):
   # op instead of _XlaCompile/_XlaRun ops.
   def test_xla_compile_and_run(self):
     pass
+
+  def test_xla_launch_and_tf_kernel_on_gpu_device(self):
+    @def_function.function(jit_compile=True)
+    def const_fn():
+      return constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    @def_function.function(jit_compile=True)
+    def matmul_fn(x):
+      return math_ops.matmul(x, x)
+
+    # The following tests XlaLaunch kernel interoperation with legacy TF
+    # GPU kernel.
+    #
+    # The following use case is tested:
+    # host -> h2d transfer -> XLA op (GPU) -> TF op (GPU) -> dh2 transfer.
+    host_t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    with ops.device("/device:GPU:0"):
+      xla_t = const_fn()
+      xla_result = matmul_fn(host_t)
+      result = math_ops.matmul(xla_result, xla_t)  # TF GPU kernel.
+
+    ref_t = np.array([[1.0, 2.0], [3.0, 4.0]])
+    ref_result = np.matmul(np.matmul(ref_t, ref_t), ref_t)
+    self.assertAllClose(result.numpy(), ref_result, atol=1e-05)
 
 
 if __name__ == "__main__":
