@@ -546,10 +546,17 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm60-only",
+    ]},
+    backends = [
+        "gpu",
+        "gpu_p100",
+    ],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
