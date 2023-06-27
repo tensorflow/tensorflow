@@ -1,5 +1,5 @@
-name: Tensorflow Issue Template
-description: Use this template to report Tensorflow-related issues.
+name: TensorFlow Issue Template
+description: Use this template to report TensorFlow-related issues.
 body:
   - type: dropdown
     id: issue-type
@@ -43,7 +43,7 @@ body:
     id: source
     attributes:
       label: Source
-      description: Tensorflow installed from
+      description: TensorFlow installed from
       options:
         - source
         - binary
@@ -53,7 +53,7 @@ body:
   - type: input
     id: tfversion
     attributes:
-      label: Tensorflow Version
+      label: TensorFlow Version
       description:
       placeholder: e.g., tf 2.8
     validations:
