@@ -1,3 +1,4 @@
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
@@ -6,7 +7,6 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
@@ -835,7 +835,7 @@ cuda_py_strict_test(
     ],
 )
 
-tf_xla_py_test(
+tf_xla_py_strict_test(
     name = "run_eager_op_as_function_xla_test",
     size = "small",
     srcs = ["run_eager_op_as_function_xla_test.py"],
@@ -1285,12 +1285,23 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
+        "//tensorflow/python/framework:op_def_registry",
+        "//tensorflow/python/framework:ops",
+        "@gast_archive//:gast",
     ],
 )
 
