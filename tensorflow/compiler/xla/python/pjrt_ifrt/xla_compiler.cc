@@ -41,8 +41,7 @@ class XlaCompileOptionsSerDes
   }
 
   absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
-    const XlaCompileOptions& options =
-        llvm::cast<XlaCompileOptions>(serializable);
+    const auto& options = llvm::cast<XlaCompileOptions>(serializable);
 
     XlaCompileOptionsProto proto;
     TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
