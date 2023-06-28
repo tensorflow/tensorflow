@@ -214,7 +214,9 @@ float8_e4m3b11fnuz = (
     if hasattr(ml_dtypes, 'float8_e4m3b11fnuz')
     else ml_dtypes.float8_e4m3fn
 )
+float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
 float8_e5m2 = ml_dtypes.float8_e5m2
+float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -229,6 +231,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
     PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
+    PrimitiveType.F8E4M3FNUZ: np.dtype(float8_e4m3fnuz),
+    PrimitiveType.F8E5M2FNUZ: np.dtype(float8_e5m2fnuz),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),

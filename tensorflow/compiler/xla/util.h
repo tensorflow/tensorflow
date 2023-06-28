@@ -339,6 +339,12 @@ std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 // Returns a string which can losslessly round trip to a float8 E4M3B11.
 std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
 
+// Returns a string which can losslessly round trip to a float8 E5M2FNUZ.
+std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
+std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -527,9 +533,11 @@ auto SignAndMagnitude(T x) {
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
   const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
   const BitType x_sign = x_bits ^ x_abs_bits;
-  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11>) {
-    //  f8e4m3b11 does not support -0, adjust negative numbers to fill in the
-    //  gap.
+  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11> ||
+                std::is_same_v<T, tsl::float8_e4m3fnuz> ||
+                std::is_same_v<T, tsl::float8_e5m2fnuz>) {
+    //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
+    //  numbers to fill in the gap.
     if (x_sign) {
       x_abs_bits -= 1;
     }

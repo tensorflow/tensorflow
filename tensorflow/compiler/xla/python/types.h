@@ -66,7 +66,9 @@ struct NumpyScalarTypes {
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
   std::optional<pybind11::object> np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e4m3fnuz;
   pybind11::object np_float8_e5m2;
+  pybind11::object np_float8_e5m2fnuz;
   pybind11::object np_float16;
   pybind11::object np_float32;
   pybind11::object np_float64;

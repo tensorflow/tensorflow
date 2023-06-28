@@ -3980,6 +3980,14 @@ template <>
 struct MinMaxFiniteValue<tsl::float8_e4m3b11>
     : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3b11> {};
 
+template <>
+struct MinMaxFiniteValue<tsl::float8_e5m2fnuz>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2fnuz> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3fnuz>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fnuz> {};
+
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.
 template <typename T>

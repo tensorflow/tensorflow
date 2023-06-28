@@ -5014,10 +5014,30 @@ cc_library(
 )
 
 cc_library(
+    name = "float8_fnuz_ir_emitter",
+    srcs = [
+        "float8_fnuz_ir_emitter.cc",
+    ],
+    hdrs = [
+        "float8_fnuz_ir_emitter.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
+cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        ":float8_fnuz_ir_emitter",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

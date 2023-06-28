@@ -73,6 +73,8 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
     sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
+    sizeof(float) / 4,   // F8E4M3FNUZ = 24
+    sizeof(float) / 4,   // F8E5M2FNUZ = 25
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 

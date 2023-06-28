@@ -44,6 +44,10 @@ int SignificandWidth(PrimitiveType type) {
       return std::numeric_limits<tsl::float8_e4m3fn>::digits;
     case F8E4M3B11FNUZ:
       return std::numeric_limits<tsl::float8_e4m3b11>::digits;
+    case F8E5M2FNUZ:
+      return std::numeric_limits<tsl::float8_e5m2fnuz>::digits;
+    case F8E4M3FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3fnuz>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -83,6 +87,10 @@ int UnderflowExponent(PrimitiveType type) {
       return std::numeric_limits<tsl::float8_e4m3fn>::min_exponent;
     case F8E4M3B11FNUZ:
       return std::numeric_limits<tsl::float8_e4m3b11>::min_exponent;
+    case F8E5M2FNUZ:
+      return std::numeric_limits<tsl::float8_e5m2fnuz>::min_exponent;
+    case F8E4M3FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3fnuz>::min_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -109,8 +117,59 @@ int OverflowExponent(PrimitiveType type) {
       return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
     case F8E4M3B11FNUZ:
       return std::numeric_limits<tsl::float8_e4m3b11>::max_exponent;
+    case F8E5M2FNUZ:
+      return std::numeric_limits<tsl::float8_e5m2fnuz>::max_exponent;
+    case F8E4M3FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3fnuz>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
+
+int ExponentBias(PrimitiveType type) {
+  switch (type) {
+    case F32:
+    case BF16:
+    case F16:
+    case F64:
+    case F8E5M2:
+    case F8E4M3FN:
+      return (1 << (ExponentWidth(type) - 1)) - 1;
+    case F8E4M3B11FNUZ:
+      return 11;
+    case F8E4M3FNUZ:
+      return 8;
+    case F8E5M2FNUZ:
+      return 16;
+    default:
+      LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
+
+bool HasInfinity(PrimitiveType type) {
+  switch (type) {
+    case F32:
+      return std::numeric_limits<float>::has_infinity;
+    case F64:
+      return std::numeric_limits<double>::has_infinity;
+    case BF16:
+      return std::numeric_limits<bfloat16>::has_infinity;
+    case F16:
+      return std::numeric_limits<half>::has_infinity;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::has_infinity;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::has_infinity;
+    case F8E4M3B11FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3b11>::has_infinity;
+    case F8E5M2FNUZ:
+      return std::numeric_limits<tsl::float8_e5m2fnuz>::has_infinity;
+    case F8E4M3FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3fnuz>::has_infinity;
+    // Assumes types not enumerated are non-floating point types without an
+    // infinity.
+    default:
+      return false;
   }
 }
 
