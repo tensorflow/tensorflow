@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
@@ -55,7 +55,7 @@ TEST(DcnAnalysis, SetupMessageInfoTest) {
       host_trace_builder.GetOrCreateEventMetadata(2);
   event_metadata_2->set_name(std::string(kMegaScaleDcnSend));
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(/*num_tpu_tensor_cores*/ 4,
                                           /*is_megacore*/ false);
   dcn_events_processor.SetupMessageInfo(plane);
@@ -149,7 +149,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 10);
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -257,7 +257,7 @@ TEST(DcnAnalysis, CreateLoopBackMessageTest) {
       *xplane_builder.GetOrCreateStatMetadata("duration_us"), 1000);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 1000);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -307,7 +307,7 @@ TEST(DcnAnalysis, CreateZeroDurationMessageTest) {
       *xplane_builder.GetOrCreateStatMetadata("duration_us"), 0);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 512);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -339,7 +339,7 @@ TEST(DcnAnalysis, CreateMissingKeyTest) {
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 100);
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
