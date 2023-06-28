@@ -347,6 +347,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
