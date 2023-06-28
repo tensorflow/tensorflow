@@ -123,7 +123,7 @@ ENTRY e {
   std::string xla_gpu_load_autotune_results_from_;
 };
 
-TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
+TEST_F(PersistedAutotuningTest, DISABLED_ON_GPU_ROCM(WriteResultsOnEachCompilation)) {
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
   xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
 
