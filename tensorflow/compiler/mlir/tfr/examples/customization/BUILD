@@ -32,7 +32,6 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],

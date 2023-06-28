@@ -281,7 +281,6 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
@@ -314,7 +313,6 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
@@ -383,7 +381,6 @@ tf_py_test(
     srcs = ["python/tfr_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_pip"],
     deps = [
         ":composite",
         ":tfr_gen",
@@ -412,7 +409,6 @@ tf_py_test(
     srcs = ["python/op_reg_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_pip"],
     deps = [
         ":composite",
         ":op_reg_gen",

@@ -831,7 +831,6 @@ glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
-        "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = ["execute_memzero_thunk.mlir"],
