@@ -47,7 +47,13 @@ using tsl::profiler::AnnotationStack;
 //
 // Define some type aliases so we can access the hardware channel id if it's
 // available.
-#if CUDA_VERSION >= 11060  // CUDA 11.6
+#if CUDA_VERSION >= 12000  // CUDA 12.0
+#define TF_CUPTI_HAS_CHANNEL_ID 1
+using CuptiActivityKernelTy = CUpti_ActivityKernel9;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+#elif CUDA_VERSION >= 11060  // CUDA 11.6
 #define TF_CUPTI_HAS_CHANNEL_ID 1
 using CuptiActivityKernelTy = CUpti_ActivityKernel7;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
