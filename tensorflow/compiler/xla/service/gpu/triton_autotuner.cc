@@ -347,24 +347,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     // The intermediate one does not need to be initialized.
-    const bool disable_reduced_precision_reduction =
-        instr->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
-
-    PrimitiveType output_type = root->shape().element_type();
-    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
-                                         ? PrimitiveType::F64
-                                         : PrimitiveType::F32;
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase intermediate_buffer,
-        rz_allocator.AllocateBytes(ShapeUtil::ElementsIn(root->shape()) *
-                                   ShapeUtil::ByteSizeOfPrimitiveType(
-                                       disable_reduced_precision_reduction
-                                           ? accumulator_type
-                                           : output_type) *
-                                   kMaxSplitK));
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase intermediate_buffer,
+                        rz_allocator.AllocateBytes(
+                            ShapeUtil::ByteSizeOf(root->shape()) * kMaxSplitK));
 
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
                         AutotunerUtil::CreateBuffer(rz_allocator, root->shape(),
@@ -808,11 +793,12 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
 std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability) {
   std::vector<AutotuneResult::TritonGemmKey> configs = {
-      GemmKey(32, 32, 256, 1, 1, 4),  GemmKey(64, 32, 32, 16, 1, 4),
-      GemmKey(32, 64, 64, 4, 1, 4),   GemmKey(16, 16, 256, 1, 1, 4),
-      GemmKey(16, 128, 32, 16, 1, 4), GemmKey(16, 64, 128, 1, 1, 4),
-      GemmKey(16, 128, 32, 8, 1, 4),  GemmKey(16, 16, 512, 1, 1, 4),
-      GemmKey(32, 16, 512, 1, 1, 4),  GemmKey(64, 32, 64, 1, 2, 8)};
+      GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
+      GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
+      GemmKey(16, 16, 256, 1, 1, 4), GemmKey(16, 128, 32, 16, 1, 4),
+      GemmKey(16, 64, 128, 1, 1, 4), GemmKey(16, 128, 32, 8, 1, 4),
+      GemmKey(16, 16, 512, 1, 1, 4), GemmKey(32, 16, 512, 1, 1, 4),
+      GemmKey(64, 32, 64, 1, 2, 8)};
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     absl::c_copy(
         std::vector<AutotuneResult::TritonGemmKey>{

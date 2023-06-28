@@ -558,7 +558,7 @@ message DebugOptions {
   // this field.
   float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
-  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+  reserved 226;  // Was xla_gpu_triton_gemm_disable_reduced_precision_reduction
 
   // Next id: 228
 

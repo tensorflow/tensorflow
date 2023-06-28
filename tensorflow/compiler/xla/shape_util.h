@@ -321,9 +321,6 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
-  // Prepends a major dimension sized `bound` to the shape.
-  static Shape PrependMajorDimension(int64_t bound, Shape shape);
-
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
 

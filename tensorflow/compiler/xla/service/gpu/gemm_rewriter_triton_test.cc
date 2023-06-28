@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -93,7 +92,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseNonScalarConstant) {
+TEST_F(GemmRewriterTritonTest, DoNotFuseConstant) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -108,7 +107,7 @@ ENTRY e {
 })"));
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Parameter(), m::Constant())));
+              GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
 }
 
 using TritonDotAnalysisTest = HloTestBase;
@@ -403,54 +402,7 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(3))));
 }
 
-TEST_F(TritonDotAnalysisTest, TransposeOutput) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_dot {
-  p0 = bf16[24,4]{1,0} parameter(0)
-  p1 = bf16[4,3]{1,0} parameter(1)
-  dot = bf16[24,3]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bc = bf16[12,2,3]{2,1,0} bitcast(dot)
-  ROOT t = bf16[3,12,2]{2,1,0} transpose(bc), dimensions={2,0,1}
-}
-
-ENTRY e {
-  p0 = bf16[24,4]{1,0} parameter(0)
-  p1 = bf16[4,3]{1,0} parameter(1)
-  ROOT r = bf16[3,12,2]{2,1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_dot
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  const HloComputation* dot_computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  const HloInstruction* dot_output = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot_computation);
-  EXPECT_THAT(
-      *analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, dot_output, 0),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
-                            /*subfragments=*/ElementsAre(2, 12))));
-  EXPECT_THAT(
-      *analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, dot_output, 1),
-      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3,
-                            /*subfragments=*/ElementsAre(3))));
-}
-
 using SplitKTest = HloTestBase;
-
-class SplitKTestWithMorePreciseReduction
-    : public HloTestBase,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
-        true);
-    return debug_options;
-  }
-};
 
 TEST_F(SplitKTest, MakeSplitK) {
   const std::string hlo_text = R"(
@@ -486,79 +438,6 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
-}
-
-TEST_F(SplitKTest, MakeSplitKWithOutputFusion) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  d = f16[480,16]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  c = bf16[] constant(123)
-  n = bf16[] negate(c)
-  bc = bf16[480,16]{1,0} broadcast(n)
-  cv = bf16[480,16]{1,0} convert(d)
-  ROOT a = bf16[480,16]{1,0} multiply(bc, cv)
-}
-
-ENTRY e {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-}
-
-TEST_F(SplitKTest, PreventSplitKWithNonDistributiveOperations) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  d = f16[480,16]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  c = f32[480,16]{1,0} convert(d)
-  ROOT s = f32[480,16]{1,0} tanh(c)
-}
-
-ENTRY e {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  ROOT fusion = f32[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key),
-      tsl::testing::StatusIs(
-          tsl::error::CANCELLED,
-          absl::StrFormat(
-              "Operation non-distributive over addition after dot.")));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
@@ -636,81 +515,6 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitK) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-triton_gemm_dot {
-  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
-  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
-  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
-  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
-  parameter_1 = bf16[16,128]{1,0} parameter(1)
-  ROOT dot.0 = bf16[480,16]{1,0} dot(convert.8, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  p1 = bf16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-
-  tensorflow::AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKWithOutputFusion) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  d = f16[480,16]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  c = bf16[] constant(123)
-  n = bf16[] negate(c)
-  bc = bf16[480,16]{1,0} broadcast(n)
-  cv = bf16[480,16]{1,0} convert(d)
-  ROOT a = bf16[480,16]{1,0} multiply(bc, cv)
-}
-
-ENTRY e {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
-  key.set_block_m(16);
-  key.set_block_n(16);
-  key.set_block_k(16);
-  key.set_split_k(4);
-  key.set_num_stages(1);
-  key.set_num_warps(4);
-  TF_EXPECT_OK(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
 }
 
 TEST_F(SplitKTest, SkipIndivisible) {

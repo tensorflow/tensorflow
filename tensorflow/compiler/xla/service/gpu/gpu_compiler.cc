@@ -1027,29 +1027,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
-#endif  // GOOGLE_CUDA
 
-  GpuFloatSupport bf16_support(BF16);
-  GpuFloatSupport f8e5m2_support(F8E5M2);
-  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
-  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
-
-  auto add_float_normalization = [&](HloPassPipeline& pipeline) {
-    auto& sub_pipeline =
-        pipeline.AddPass<HloPassPipeline>("float_normalization");
-    sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
-    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-      sub_pipeline.AddPass<SimplifyFPConversions>();
-    }
-  };
-
-  add_float_normalization(pipeline);
-
-#if GOOGLE_CUDA
   // By default use an externally provided thread pool.
   tsl::thread::ThreadPool* thread_pool = options.thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
@@ -1068,10 +1046,21 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
-
-  // The autotuner can insert new bf16 add reductions.
-  add_float_normalization(pipeline);
 #endif  // GOOGLE_CUDA
+
+  GpuFloatSupport bf16_support(BF16);
+  pipeline.AddPass<FloatNormalization>(&bf16_support);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+    pipeline.AddPass<SimplifyFPConversions>();
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
