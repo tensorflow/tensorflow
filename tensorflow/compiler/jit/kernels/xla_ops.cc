@@ -595,7 +595,6 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     auto run_pjrt_cluster = [ctx, pjrt_client, pjrt_executable,
                              compilation_result, done, inputs,
                              resources = resources_]() {
-      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
       // Separate scope so that VariableInfo locks are released before done() is
       // called.
       {
