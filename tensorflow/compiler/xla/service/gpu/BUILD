@@ -123,7 +123,6 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/tsl/platform:logging",
         "@llvm-project//mlir:IR",
     ],
@@ -1823,6 +1822,7 @@ xla_cc_test(
         ":gpu_fusible",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
@@ -1911,6 +1911,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
@@ -2920,12 +2921,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_fusion_analysis",
+    srcs = ["hlo_fusion_analysis.cc"],
+    hdrs = [
+        "hlo_fusion_analysis.h",
+        "kernel_mapping_scheme.h",
+    ],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_device_info",
+        ":gpu_fusible",
+        ":ir_emission_utils",
+        ":launch_dimensions",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:union_find",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
+        "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],
     hdrs = ["gpu_performance_model.h"],
     deps = [
         ":gpu_device_info",
         ":gpu_hlo_cost_analysis",
+        ":hlo_fusion_analysis",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "@com_google_absl//absl/time",
     ],

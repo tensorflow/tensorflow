@@ -302,8 +302,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
 }
 
 // Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(mlir::Type type,
-                           const HloModuleConfig& hlo_module_config) {
+int ComputeMaxUnrollFactor(mlir::Type type) {
   constexpr int kMaxUnrollFactor = 4;
 
   // Find the largest possible power of two to unroll by.
@@ -324,15 +323,14 @@ int ComputeMaxUnrollFactor(mlir::Type type,
 }
 
 // Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(mlir::Operation* op,
-                           const HloModuleConfig& hlo_module_config) {
+int ComputeMaxUnrollFactor(mlir::Operation* op) {
   mlir::Type element_shape = [&] {
     if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
       return fusion.getFusionRoots()[0]->getResult(0).getType();
     }
     return GetHloOutputs(op)[0].getType();
   }();
-  return ComputeMaxUnrollFactor(element_shape, hlo_module_config);
+  return ComputeMaxUnrollFactor(element_shape);
 }
 
 // Returns the llvm type for the indices used in the kernel that contains the
@@ -2077,7 +2075,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     int64_t n_threads_max =
         gpu_device_info.threads_per_core_limit * gpu_device_info.core_count;
     if (num_elements >= n_threads_max && !MayPreventVectorization(fusion)) {
-      unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
+      unroll_factor = ComputeMaxUnrollFactor(fusion);
     }
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
@@ -5299,9 +5297,9 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
   TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
                              num_threads, indexing_order, vector_size,
                              virtual_thread_scaling_factor);
-  return ReductionCodegenInfo(tiling_scheme, num_partial_results,
-                              reduction_dimensions.is_row_reduction,
-                              reduction_is_race_free);
+  return ReductionCodegenInfo(
+      tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
+      reduction_is_race_free, std::move(instr_index_groups));
 }
 
 // Generate a single element of the tile (update the accumulator state) for a
@@ -5871,7 +5869,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
   // emit it in a separate kernel. Treat it like a loop fusion, writing to
   // the output buffer.
   TF_RETURN_IF_ERROR([&] {
-    auto unroll_factor = ComputeMaxUnrollFactor(fusion_op, hlo_module_config_);
+    auto unroll_factor = ComputeMaxUnrollFactor(fusion_op);
     const Shape& element_shape = root->shape();
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,

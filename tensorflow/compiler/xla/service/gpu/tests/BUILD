@@ -664,6 +664,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
         "//tensorflow/compiler/xla/service/gpu:multi_output_fusion",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

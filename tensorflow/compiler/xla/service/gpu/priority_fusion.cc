@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -209,9 +210,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
 
     GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-        producer, &cost_analysis_, gpu_device_info_, fusible_users,
-        // producer, &cost_analysis_, gpu_device_info_, producer->users(),
-        /*multi_output=*/false);
+        producer, &cost_analysis_, gpu_device_info_, std::nullopt,
+        fusible_users, /*multi_output=*/false);
 
     return absl::ToInt64Nanoseconds(t.time_unfused - t.time_fused);
   }

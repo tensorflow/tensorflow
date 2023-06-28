@@ -17,10 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 
 namespace xla {
 namespace gpu {
@@ -123,13 +127,31 @@ absl::Duration ProducerInputAccessTime(
   }
   return ret;
 }
+
+// Use HloFusionAnalysis for computing the actual number of threads that the
+// IR emitter will use. Return std::nullopt if this data is not available.
+std::optional<int64_t> EstimateThreadCount(
+    const HloInstruction* instr, const GpuDeviceInfo& gpu_device_info,
+    std::optional<se::CudaComputeCapability> cc) {
+  auto fusion = DynCast<const HloFusionInstruction>(instr);
+  if (fusion != nullptr && cc.has_value()) {
+    HloFusionAnalysis fusion_analysis(fusion, &gpu_device_info, cc.value());
+    auto launch_dimensions = fusion_analysis.GetLaunchDimensions();
+    if (launch_dimensions.ok()) {
+      return launch_dimensions->launch_bound();
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 /*static*/ struct GpuPerformanceModel::RunTimes
 GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     const GpuDeviceInfo& gpu_device_info,
-    const std::vector<HloInstruction*> fused_users, bool multi_output) {
+    std::optional<se::CudaComputeCapability> cc,
+    std::vector<HloInstruction*> fused_users, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(10) << producer->fused_instructions_computation()->ToString();
@@ -179,9 +201,13 @@ GpuPerformanceModel::EstimateRunTimes(
     float utilization_by_this_consumer =
         cost_analysis->operand_utilization(*u, u->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
+
+    auto thread_count = EstimateThreadCount(u, gpu_device_info, cc);
+    int64_t upper_bound = producer_elements_out * utilization_by_this_consumer;
     absl::Duration compute_time_by_this_consumer = compute_time(
         cost_analysis->flop_count(*producer) * utilization_by_this_consumer,
-        producer_elements_out * utilization_by_this_consumer);
+        thread_count.has_value() ? std::min(*thread_count, upper_bound)
+                                 : upper_bound);
     exec_time_fused += std::max(
         compute_time_by_this_consumer,
         ProducerInputAccessTime(cost_analysis, gpu_device_info, producer, u));

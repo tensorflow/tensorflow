@@ -740,6 +740,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       hlo_module, stream_exec, options, gpu_target_config, autotune_results));
 
   const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
+  auto get_cuda_compute_capability = [&]() {
+    return stream_exec != nullptr
+               ? stream_exec->GetDeviceDescription().cuda_compute_capability()
+               : se::CudaComputeCapability();
+  };
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
@@ -763,13 +768,16 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                            gpu_device_info);
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                            gpu_device_info);
-      fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
+      fusion.AddPass<FusionMerger>(gpu_device_info,
+                                   get_cuda_compute_capability(),
+                                   ShapeSizeBytesFunction());
     }
     // Running CSE affects how many users an op has. This plays a role in what
     // we detect as a tiled transpose fusion.
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
+                                         get_cuda_compute_capability(),
                                          ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
