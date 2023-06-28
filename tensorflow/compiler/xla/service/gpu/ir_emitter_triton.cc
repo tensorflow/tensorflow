@@ -1035,18 +1035,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
                   values_rhs, rhs_offsets, rhs_mask);
 
     if (need_masking) {
-      // TODO(b/287711892): fix F16 select.
-      if (ElementType(dot_input_lhs).isF16()) {
-        dot_input_lhs = b.create<ma::MulFOp>(dot_input_lhs,
-                                             Cast(b, lhs_mask, b.getF16Type()));
-        dot_input_rhs = b.create<ma::MulFOp>(dot_input_rhs,
-                                             Cast(b, rhs_mask, b.getF16Type()));
-      } else {
-        dot_input_lhs = b.create<ma::SelectOp>(lhs_mask, dot_input_lhs,
-                                               ZerosLike(b, dot_input_lhs));
-        dot_input_rhs = b.create<ma::SelectOp>(rhs_mask, dot_input_rhs,
-                                               ZerosLike(b, dot_input_rhs));
-      }
+      dot_input_lhs = b.create<ma::SelectOp>(lhs_mask, dot_input_lhs,
+                                             ZerosLike(b, dot_input_lhs));
+      dot_input_rhs = b.create<ma::SelectOp>(rhs_mask, dot_input_rhs,
+                                             ZerosLike(b, dot_input_rhs));
     }
 
     auto accumulator_next = b.create<mt::DotOp>(
