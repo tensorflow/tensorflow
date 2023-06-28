@@ -14,6 +14,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
+    tags = [
+        "no_oss",  # TODO(b/289230931): Investigate flaky test.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
