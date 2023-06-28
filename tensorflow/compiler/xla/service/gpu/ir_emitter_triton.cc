@@ -1476,12 +1476,13 @@ StatusOr<LaunchDimensions> TritonWrapper(
       if (err) {
         log_stream.reset();
       }
-      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
-      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
       pm.getContext()->disableMultithreading();
-      pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
-                          /*printAfterOnlyOnChange=*/true,
-                          /*printAfterOnlyOnFailure=*/false, *log_stream,
+      auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+      pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                          /*shouldPrintAfterPass=*/print_always,
+                          /*printModuleScope=*/true,
+                          /*printAfterOnlyOnChange=*/false,
+                          /*printAfterOnlyOnFailure=*/true, *log_stream,
                           /*opPrintingFlags=*/{});
     } else {
       LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
@@ -1497,10 +1498,14 @@ StatusOr<LaunchDimensions> TritonWrapper(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  CHECK(mlir::succeeded(pm.run(triton_module)));
+  bool succeeded = mlir::succeeded(pm.run(triton_module));
 
   if (log_stream.has_value()) {
     log_stream->flush();
+  }
+
+  if (!succeeded) {
+    return InternalError("Failed to compile Triton kernel.");
   }
 
   const int shared_mem_bytes =
