@@ -79,7 +79,7 @@ inline bool HasTensorData(tools::ModelLoader* model_loader,
   // regardless of how the model is loaded.
   const TfLiteTensor* tensor = graph.tensor(index);
   return tensor->allocation != nullptr ||
-         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+         (model_loader->type() == tools::ModelLoader::Type::kPipeModelLoader &&
           tensor->data.data != nullptr);
 }
 
