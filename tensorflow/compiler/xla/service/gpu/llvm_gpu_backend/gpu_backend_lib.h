@@ -24,9 +24,9 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +52,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 // preliminary; multithreaded use is not recommended at this time.
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
+    const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 }  // namespace nvptx
 
@@ -62,8 +62,8 @@ namespace amdgpu {
 // The contents of the module may be changed.
 StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
-    const std::string& rocdl_dir_path);
+    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const std::string& module_config_cache_key);
 }  // namespace amdgpu
 
 }  // namespace gpu

@@ -731,7 +731,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         std::string ptx,
         nvptx::CompileToPtx(compile_module_results.llvm_module.get(),
                             device_description.cuda_compute_capability(),
-                            new_hlo_module->config()));
+                            new_hlo_module->config().debug_options()));
 
     se::GpuAsmOpts ptxas_config =
         PtxOptsFromDebugOptions(new_hlo_module->config().debug_options());

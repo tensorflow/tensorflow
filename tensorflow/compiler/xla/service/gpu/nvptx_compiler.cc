@@ -422,8 +422,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
         (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-    TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(selected_module, gpu_version, module_config));
+    TF_ASSIGN_OR_RETURN(ptx,
+                        nvptx::CompileToPtx(selected_module, gpu_version,
+                                            module_config.debug_options()));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error

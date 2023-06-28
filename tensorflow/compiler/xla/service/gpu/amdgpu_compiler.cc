@@ -152,8 +152,9 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
     TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version, module_config,
-                                      rocdl_dir_));
+        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
+                                      module_config.debug_options(), rocdl_dir_,
+                                      module_config.compilation_cache_key()));
   }
 
   return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));
