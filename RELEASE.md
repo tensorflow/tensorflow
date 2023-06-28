@@ -106,7 +106,7 @@ Keras is a framework built on top of the TensorFlow. See more details on the [Ke
 
 ## Security
 
-*   N/A
+*   Fixes correct values rank in UpperBound and LowerBound [CVE-2023-33976](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-33976)
 
 ## Thanks to our Contributors
 
