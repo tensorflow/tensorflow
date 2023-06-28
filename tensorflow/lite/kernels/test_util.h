@@ -1235,6 +1235,10 @@ class DimsAreMatcher {
 
   bool MatchAndExplain(const TfLiteTensor* arg,
                        testing::MatchResultListener* result_listener) const {
+    if (arg == nullptr) {
+      *result_listener << "tensor is null";
+      return false;
+    }
     return MatchAndExplain(arg->dims, result_listener);
   }
 
