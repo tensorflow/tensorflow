@@ -202,9 +202,7 @@ class BaseGPUDevice : public LocalDevice {
   friend class GPUDeviceTestHelper;
   class StreamGroupFactory;
 
-#ifdef TF_GPU_USE_PJRT
   core::RefCountPtr<DeviceContext> pjrt_device_context_;
-#endif  // TF_GPU_USE_PJRT
   StreamGroup* stream_;
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;
