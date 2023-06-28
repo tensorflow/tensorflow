@@ -573,7 +573,7 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
-tensorflow::dtensor::GetFunctionCacheStats
+tensorflow::dtensor::GetStats
 tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
