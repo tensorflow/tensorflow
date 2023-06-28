@@ -362,6 +362,7 @@ cc_library(
         ":tpu_api",
         ":tpu_executable_interface",
         ":tpu_executor_base",
+        ":tpu_executor_c_api_hdrs",
         ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla:shape_util",

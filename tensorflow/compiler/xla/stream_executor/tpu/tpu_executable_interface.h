@@ -80,6 +80,8 @@ class TpuExecutableInterface : public Executable {
   virtual absl::string_view fingerprint() const = 0;
 
  protected:
+  virtual Shape HostShapeToDeviceShape(const Shape& host_shape) = 0;
+
   virtual int64_t ShapeSize(const Shape& shape) = 0;
 };
 
