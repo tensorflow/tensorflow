@@ -208,6 +208,7 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
         ],
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
