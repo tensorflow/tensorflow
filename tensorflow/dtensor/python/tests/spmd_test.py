@@ -2128,6 +2128,32 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
                             Layout.replicated(self.mesh, len(new_shape)),
                             dtensor_result)
 
+  def testRawWhere(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Where op not supported yet with DTensor Xla Spmd.')
+
+    condition = constant_op.constant(
+        np.array([True, True, False, False, True, False, True, True])
+    )
+
+    # FIXME(b/285905569): The DTensor Where op can only generate local indices,
+    # which is incorrect.
+    # For now, adjust the expected result to be local indices, till this is
+    # fixed.
+    expected = gen_array_ops.where(condition)
+    expected = array_ops.concat([expected[0:2], expected[2:] - 4], 0)
+
+    condition = api.relayout(condition, self.first_dimension_sharded_layout_1d)
+
+    @polymorphic_function.function
+    def func(c):
+      return gen_array_ops.where(c)
+
+    result = func(condition)
+    self.assertDTensorEqual(
+        expected, self.first_dimension_sharded_layout, result
+    )
+
   @parameterized.named_parameters([
       {
           'testcase_name': 'FullyReplicatedInputs',
