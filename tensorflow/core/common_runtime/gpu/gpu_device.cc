@@ -443,12 +443,11 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
 
   // Note: ShapeDeterminationFns is not used in GPU.
-  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-  shape_determination_fns_ = {shape_representation_fns};
 
-  pjrt_device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext(
-      shape_determination_fns_[0], /*use_pjrt_tensor_buffer=*/true));
+  pjrt_device_context_ = core::RefCountPtr<DeviceContext>(
+      new PjRtDeviceContext(shape_fns, /*use_pjrt_tensor_buffer=*/true));
 #endif  // TF_GPU_USE_PJRT
 
   GPUProcessState::singleton()->EnableGPUDevice();

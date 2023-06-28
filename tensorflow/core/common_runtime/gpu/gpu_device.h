@@ -193,7 +193,7 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* cpu_allocator_;  // not owned
 
   // PJRT AsyncValueTensor allocator.
-  std::unique_ptr<Allocator> pjrt_allocator_;
+  std::unique_ptr<Allocator> pjrt_allocator_ = nullptr;
 
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
@@ -203,8 +203,6 @@ class BaseGPUDevice : public LocalDevice {
   class StreamGroupFactory;
 
 #ifdef TF_GPU_USE_PJRT
-  std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
-      shape_determination_fns_;
   core::RefCountPtr<DeviceContext> pjrt_device_context_;
 #endif  // TF_GPU_USE_PJRT
   StreamGroup* stream_;
