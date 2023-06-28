@@ -130,7 +130,8 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -157,7 +158,8 @@ py_strict_library(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 

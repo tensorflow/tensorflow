@@ -103,7 +103,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adadelta",
         "//third_party/py/numpy",
     ],
 )
@@ -123,7 +123,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
         "//third_party/py/numpy",
     ],
 )
@@ -145,7 +145,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad_da",
         "//third_party/py/numpy",
     ],
 )
@@ -169,7 +169,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
         "//third_party/py/numpy",
     ],
 )
@@ -858,7 +858,9 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
+        "//tensorflow/python/training:ftrl",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -878,7 +880,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:training_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -1054,7 +1056,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:momentum",
         "//third_party/py/numpy",
     ],
 )
@@ -1158,7 +1160,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adagrad",
+        "//tensorflow/python/training:proximal_adagrad",
         "//third_party/py/numpy",
     ],
 )
@@ -1178,7 +1181,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
+        "//tensorflow/python/training:proximal_gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -1379,7 +1383,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:rmsprop",
         "//third_party/py/numpy",
     ],
 )
@@ -1734,7 +1738,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )

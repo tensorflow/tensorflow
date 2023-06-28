@@ -15,57 +15,9 @@ exports_files(
     visibility = ["//tensorflow/python:__pkg__"],
 )
 
-# Files which have their own BUILD rules, but which for compatibility with
-# strict dep checking need to be direct dependencies of training_lib. Do not add
-# any new files to this list.
-filegroup(
-    name = "deprecated_inclusions_in_training_lib",
-    srcs = [
-        "adadelta.py",
-        "adagrad.py",
-        "adagrad_da.py",
-        "adam.py",
-        "basic_loops.py",
-        "checkpoint_ops.py",
-        "checkpoint_utils.py",
-        "coordinator.py",
-        "device_setter.py",
-        "evaluation.py",
-        "ftrl.py",
-        "gradient_descent.py",
-        "input.py",
-        "learning_rate_decay.py",
-        "momentum.py",
-        "monitored_session.py",
-        "moving_averages.py",
-        "optimizer.py",
-        "proximal_adagrad.py",
-        "proximal_gradient_descent.py",
-        "py_checkpoint_reader.py",
-        "quantize_training.py",
-        "queue_runner.py",
-        "queue_runner_impl.py",
-        "rmsprop.py",
-        "server_lib.py",
-        "session_manager.py",
-        "slot_creator.py",
-        "summary_io.py",
-        "supervisor.py",
-        "sync_replicas_optimizer.py",
-        "training.py",
-        "training_ops.py",
-        "warm_starting_util.py",
-    ],
-    visibility = ["//visibility:private"],
-)
-
 py_library(
     name = "training_lib",
-    srcs = [
-        "__init__.py",
-        "training.py",
-        ":deprecated_inclusions_in_training_lib",
-    ],
+    srcs = ["training.py"],
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
@@ -266,6 +218,10 @@ py_library(
     name = "device_setter",
     srcs = ["device_setter.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim/ops:__pkg__",
+    ],
     deps = [
         ":server_lib",
         "//tensorflow/python/framework:device",
@@ -278,6 +234,11 @@ py_library(
     name = "evaluation",
     srcs = ["evaluation.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_estimator/python/estimator:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         ":basic_session_run_hooks",
         ":monitored_session",
@@ -312,6 +273,11 @@ py_library(
     name = "gradient_descent",
     srcs = ["gradient_descent.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim/layers:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         ":optimizer",
         ":training_ops",
@@ -326,6 +292,10 @@ py_library(
     name = "input",
     srcs = ["input.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/contrib/training:__pkg__",
+    ],
     deps = [
         ":queue_runner",
         "//tensorflow/python/eager:context",
@@ -356,6 +326,10 @@ py_library(
     name = "momentum",
     srcs = ["momentum.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim/losses:__pkg__",
+    ],
     deps = [
         ":optimizer",
         ":training_ops",
@@ -369,6 +343,11 @@ py_library(
     name = "moving_averages",
     srcs = ["moving_averages.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_model_optimization/python/core/quantization/keras:__pkg__",
+        "//third_party/py/tf_slim/layers:__pkg__",
+    ],
     deps = [
         ":slot_creator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -391,6 +370,11 @@ py_library(
     name = "optimizer",
     srcs = ["optimizer.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim/layers:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         ":slot_creator",
         "//tensorflow/python/distribute:distribute_utils",
@@ -471,6 +455,10 @@ py_library(
     name = "queue_runner",
     srcs = ["queue_runner.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/contrib/training:__pkg__",
+    ],
     deps = [":queue_runner_impl"],
 )
 
@@ -530,6 +518,7 @@ py_library(
     deps = [
         "//tensorflow/python/summary:summary_iterator",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/summary/writer:writer_cache",
         "//tensorflow/python/util:deprecation",
     ],
 )
@@ -595,6 +584,7 @@ tf_py_test(
     grpc_enabled = True,
     python_version = "PY3",
     deps = [
+        ":training",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
         "//tensorflow/python/framework:errors",
@@ -605,7 +595,6 @@ tf_py_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
         "//third_party/py/numpy",
     ],
 )
@@ -1531,6 +1520,10 @@ py_library(
     name = "monitored_session",
     srcs = ["monitored_session.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         ":basic_session_run_hooks",
         ":coordinator",

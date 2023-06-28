@@ -1984,7 +1984,7 @@ py_strict_library(
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:_pywrap_util_port",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -2348,7 +2348,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:queue_runner_impl",
     ],
 )
 

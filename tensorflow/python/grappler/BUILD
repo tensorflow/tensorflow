@@ -322,7 +322,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:training_lib",
     ],
 )
 
@@ -457,7 +457,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
     ],
 )
 
@@ -522,7 +522,8 @@ cuda_py_strict_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:sysconfig",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/util:_pywrap_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

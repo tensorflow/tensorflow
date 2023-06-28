@@ -3168,7 +3168,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:momentum",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],

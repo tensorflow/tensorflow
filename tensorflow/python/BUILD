@@ -286,7 +286,7 @@ py_library(
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
         "//tensorflow/python/tpu:tpu_noestimator",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:evaluation",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/training:saver_test_utils",
         "//tensorflow/python/types:core",
