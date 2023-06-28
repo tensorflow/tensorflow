@@ -784,6 +784,7 @@ tpu_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:flags",
