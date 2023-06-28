@@ -495,10 +495,12 @@ cc_library(
     name = "legalization_op_config",
     srcs = ["legalization_op_config.cc"],
     hdrs = ["legalization_op_config.h"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
