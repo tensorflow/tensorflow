@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_program_serdes.h"
-
 #include <memory>
 #include <string>
 #include <utility>
@@ -40,6 +38,21 @@ namespace ifrt {
 
 namespace {
 
+// Library that provides stable serialization and deserialization of
+// `xla::ifrt::XlaProgram`. Both serialization and deserialization require
+// linking in this library.
+//
+// Serialization:
+// ```
+// TF_ASSIGN_OR_RETURN(Serialized serialized, Serialize(xla_program));
+// ```
+//
+// Deserialization:
+// ```
+// TF_ASSIGN_OR_RETURN(auto deserialized, Deserialize(serialized));
+// auto xla_program = llvm::dyn_cast<XlaProgram>(deserialized);
+// ```
+
 class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
@@ -52,6 +65,10 @@ class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
     // converts the module into StableHLO and use its portable serialization.
 
     const auto& program = llvm::cast<XlaProgram>(serializable);
+    if (program.mlir_module == nullptr) {
+      return absl::InvalidArgumentError("Unable to serialize null MLIR module");
+    }
+
     mlir::OwningOpRef<mlir::ModuleOp> module(
         llvm::cast<mlir::ModuleOp>(program.mlir_module->clone()));
 
@@ -79,30 +96,23 @@ class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
-      std::unique_ptr<DeserializeOptions> options) override {
-    auto* xla_program_deserialize_options =
-        llvm::dyn_cast_or_null<XlaDeserializeProgramOptions>(options.get());
-    if (xla_program_deserialize_options == nullptr) {
-      return absl::InvalidArgumentError(
-          "Deserializing XlaProgram requires "
-          "`xla::ifrt::XlaDeserializeProgramOptions` to be passed to "
-          "`Deserialize()` as "
-          "`xla::ifrt::DeserializeOptions`");
-    }
-
-    mlir::MLIRContext* context = xla_program_deserialize_options->mlir_context;
+      std::unique_ptr<DeserializeOptions>) override {
+    // MLIR context is created with threading disabled; otherwise, deserializing
+    // many programs may end up creating too many threads.
+    auto context = std::make_unique<mlir::MLIRContext>(
+        mlir::MLIRContext::Threading::DISABLED);
     mlir::OwningOpRef<mlir::ModuleOp> module =
-        mlir::stablehlo::deserializePortableArtifact(serialized, context);
+        mlir::stablehlo::deserializePortableArtifact(serialized, context.get());
 
     // Convert StableHLO back to MHLO to keep the contract the same before and
     // after a serialization/deserialization round trip.
-    mlir::PassManager pm(context);
+    mlir::PassManager pm(context.get());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (!mlir::succeeded(pm.run(*module))) {
       return absl::InvalidArgumentError("StableHLO => MHLO failed");
     }
 
-    return std::make_unique<XlaProgram>(std::move(module));
+    return std::make_unique<XlaProgram>(std::move(context), std::move(module));
   }
 
   static char ID;  // NOLINT
@@ -117,8 +127,6 @@ bool register_xla_program_serdes = ([]() {
 // clang-format on
 
 }  // namespace
-
-char XlaDeserializeProgramOptions::ID = 0;
 
 }  // namespace ifrt
 }  // namespace xla

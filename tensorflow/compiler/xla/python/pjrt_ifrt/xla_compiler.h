@@ -34,14 +34,18 @@ namespace ifrt {
 struct XlaProgram : llvm::RTTIExtends<XlaProgram, Program> {
   XlaProgram() = default;
   explicit XlaProgram(mlir::ModuleOp module) : mlir_module(module) {}
-  explicit XlaProgram(mlir::OwningOpRef<mlir::ModuleOp> module)
-      : mlir_module(*module), owning_mlir_module(std::move(module)) {}
+  XlaProgram(std::unique_ptr<mlir::MLIRContext> context,
+             mlir::OwningOpRef<mlir::ModuleOp> module)
+      : mlir_module(*module),
+        mlir_context(std::move(context)),
+        owning_mlir_module(std::move(module)) {}
 
   mlir::ModuleOp mlir_module;
 
   static char ID;  // NOLINT
 
  private:
+  std::unique_ptr<mlir::MLIRContext> mlir_context;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
 };
 

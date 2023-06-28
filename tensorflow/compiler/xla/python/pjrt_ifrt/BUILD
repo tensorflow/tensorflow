@@ -69,7 +69,6 @@ tf_proto_library(
 cc_library(
     name = "xla_program_serdes",
     srcs = ["xla_program_serdes.cc"],
-    hdrs = ["xla_program_serdes.h"],
     deps = [
         ":xla_ifrt",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_program_serdes.h"
-
 #include <memory>
 #include <utility>
 
@@ -51,24 +49,19 @@ module {
   }
 })";
 
-  mlir::MLIRContext context;
-
   Serialized serialized;
   {
+    auto context = std::make_unique<mlir::MLIRContext>();
     TF_ASSERT_OK_AND_ASSIGN(
         mlir::OwningOpRef<mlir::ModuleOp> module,
-        xla::ParseMlirModuleString(kMlirModuleStr, context));
-    auto program = std::make_unique<XlaProgram>(std::move(module));
+        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    auto program =
+        std::make_unique<XlaProgram>(std::move(context), std::move(module));
     TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
   }
 
-  std::unique_ptr<Serializable> deserialized;
-  {
-    auto deserialize_options =
-        std::make_unique<XlaDeserializeProgramOptions>(&context);
-    TF_ASSERT_OK_AND_ASSIGN(
-        deserialized, Deserialize(serialized, std::move(deserialize_options)));
-  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Serializable> deserialized,
+                          Deserialize(serialized, /*options=*/nullptr));
 
   auto xla_program = llvm::dyn_cast<XlaProgram>(deserialized.get());
   ASSERT_THAT(xla_program, Not(IsNull()));
