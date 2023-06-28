@@ -1770,6 +1770,26 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "priority_fusion_test",
+    srcs = ["priority_fusion_test.cc"],
+    tags = ["no_pip"],
+    deps = [
+        ":gpu_device_info_for_tests",
+        ":gpu_hlo_cost_analysis",
+        ":priority_fusion",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "multi_output_fusion",
     srcs = ["multi_output_fusion.cc"],

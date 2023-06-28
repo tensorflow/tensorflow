@@ -154,9 +154,15 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
     to_update_priority_.insert(fusion);
 
+    // When current_consumers_ is empty, we will need to dequeue a new producer
+    // next time, so we update the priorities now.
     if (current_consumers_.empty()) {
-      // When current_consumers_ is empty, we will need to dequeue a new
-      // producer next time, so we update the priorities now.
+      // Revisit costs of all updated ops. It's important to update cost
+      // analysis before recalculating priorities.
+      for (auto instruction : to_update_priority_) {
+        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+      }
+
       for (auto instruction : to_update_priority_) {
         auto reverse_it = reverse_map_.find(instruction);
         const auto new_priority = CalculateProducerPriority(instruction);
