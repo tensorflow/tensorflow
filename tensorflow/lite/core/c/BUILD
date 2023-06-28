@@ -304,10 +304,6 @@ alias(
 
 tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
-    srcs = [
-        "c_api_experimental.cc",
-        "c_api_opaque.cc",
-    ],
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
@@ -318,6 +314,7 @@ tflite_cc_library_with_c_headers_test(
     ] + c_api_experimental_visibility_allowlist(),
     deps = [
         ":c_api",
+        ":c_api_experimental_without_op_resolver",
         ":c_api_types",
         ":common",
         "//tensorflow/lite:builtin_ops",
@@ -349,6 +346,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":c_api_without_op_resolver",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
