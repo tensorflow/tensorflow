@@ -1928,10 +1928,13 @@ class ConvertMatrixDiagPartV3Op
     // two dimensions (M, N in the matrix-diag-part docs) are where we go
     // through entry by entry.
     ArrayRef<int64_t> input_shape = input_type.getShape();
+    int input_shape_size = input_shape.size();
     Shape slice_sizes(input_shape.begin(), input_shape.end());
     int slice_dimensions = slice_sizes.size();
-    slice_sizes[slice_dimensions - 2] = 1;
-    slice_sizes[slice_dimensions - 1] = 1;
+    slice_sizes[slice_dimensions - 2] =
+        std::min((int64_t)1, input_shape[input_shape_size - 2]);
+    slice_sizes[slice_dimensions - 1] =
+        std::min((int64_t)1, input_shape[input_shape_size - 1]);
 
     // Dimensions of the input we won't see in the output (M and N).
     SmallVector<int64_t, 2> collapsed_dims(
