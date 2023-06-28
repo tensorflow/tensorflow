@@ -173,6 +173,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@compute_library//:arm_compute",
+        "@compute_library//:arm_compute_core",
     ],
 )

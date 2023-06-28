@@ -1,0 +1,42 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+
+diff --git a/arm_compute/runtime/NEON/functions/NEReorderLayer.h b/arm_compute/runtime/NEON/functions/NEReorderLayer.h
+index a9ce8e3e6..eb777f192 100644
+--- a/arm_compute/runtime/NEON/functions/NEReorderLayer.h
++++ b/arm_compute/runtime/NEON/functions/NEReorderLayer.h
+@@ -49,7 +49,7 @@ public:
+     /** Prevent instances of this class from being moved (As this class contains non movable objects) */
+     NEReorderLayer &operator=(NEReorderLayer &&) = delete;
+     /** Default destructor */
+-    ~NEReorderLayer() = default;
++    ~NEReorderLayer();
+     /** Set the input and output tensors.
+      *
+      * Valid data layouts:
+diff --git a/src/runtime/NEON/functions/NEReorderLayer.cpp b/src/runtime/NEON/functions/NEReorderLayer.cpp
+index 2ab1029f0..427bf8c50 100644
+--- a/src/runtime/NEON/functions/NEReorderLayer.cpp
++++ b/src/runtime/NEON/functions/NEReorderLayer.cpp
+@@ -29,6 +29,7 @@
+ 
+ namespace arm_compute
+ {
++NEReorderLayer::~NEReorderLayer() = default;
+ 
+ NEReorderLayer::NEReorderLayer()
+     : _reorder_kernel(std::make_unique<NEReorderKernel>())

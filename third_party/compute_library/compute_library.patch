@@ -1,8 +1,77 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/BUILD.bazel b/BUILD.bazel
+index f897a1a6a..e27c5a99b 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -138,9 +138,7 @@ cc_library(
+                   "ENABLE_NEON",
+                   "ARM_COMPUTE_CPU_ENABLED",
+                   "ARM_COMPUTE_ENABLE_NEON",
+-                  "ARM_COMPUTE_ENABLE_FP16",
+                   "ARM_COMPUTE_ENABLE_I8MM",
+-                  "ENABLE_FP16_KERNELS",
+                   "ENABLE_FP32_KERNELS",
+                   "ENABLE_QASYMM8_KERNELS",
+                   "ENABLE_QASYMM8_SIGNED_KERNELS",
+@@ -174,17 +172,6 @@ cc_library(
+     visibility = ["//visibility:public"],
+ )
+ 
+-#---------------------------------------------------------------------
+-# Rule for creating file "arm_compute_version.embed"
+-genrule(
+-    name = "create_version_file",
+-    srcs = [".git/HEAD"],
+-    outs = ["arm_compute_version.embed"],
+-    cmd = "$(location //scripts:print_version_file) bazel-build-options `cat $(location :.git/HEAD)` > $@",
+-    tools = ["//scripts:print_version_file"],
+-    visibility = ["//visibility:public"],
+-)
+-
+ #---------------------------------------------------------------------
+ # Graph library
+ 
+@@ -192,7 +179,7 @@ cc_library(
+     name = "arm_compute_graph",
+     srcs = ["//src:arm_compute_graph_srcs"],
+     copts = [
+-                "-march=armv8.2-a+fp16",
++                "-march=armv8-a",
+             ] + select({
+                 "//:debug_flag": [
+                     "-O0",
+@@ -330,10 +317,10 @@ cc_library(
+         "core/NEON/kernels/**/*.hpp",
+         "**/*.inl",
+     ]) + [
+-        "//:create_version_file",
++        "arm_compute_version.embed"
+     ],
+     copts = [
+-                "-march=armv8.2-a+fp16",
++                "-march=armv8-a",
+             ] + select({
+                 "//:debug_flag": [
+                     "-O0",
 diff --git a/arm_compute_version.embed b/arm_compute_version.embed
 new file mode 100644
-index 000000000..c986ad52a
+index 000000000..3b3c7d838
 --- /dev/null
 +++ b/arm_compute_version.embed
-@@ -0,0 +1,1 @@
-+"arm_compute_version=v22.11 Build options: {} Git hash=b'1b3192e8a23513031163dc14d248f47671986121'"
-\ No newline at end of file
+@@ -0,0 +1 @@
++"arm_compute_version=v23.05 Build options: {} Git hash=b'N/A'"
