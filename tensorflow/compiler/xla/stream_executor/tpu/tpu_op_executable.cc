@@ -107,15 +107,6 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   return status.status();
 }
 
-int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
-  XLA_Shape c_shape;
-  ApiConverter::ToC(shape, &c_shape);
-  int64_t size =
-      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  ApiConverter::Destroy(&c_shape);
-  return size;
-}
-
 absl::string_view TpuOpExecutable::fingerprint() const {
   // TODO(skye): the fingerprint can be plumbed through via core_program_
   LOG(FATAL) << "TpuOpExecutable::fingerprint() unimplemented";

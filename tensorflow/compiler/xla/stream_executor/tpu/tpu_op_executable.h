@@ -60,8 +60,6 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
           cross_program_prefetch_addrs,
       const std::vector<uint32_t>& cross_program_prefetch_offsets) override;
 
-  int64_t ShapeSize(const xla::Shape& shape) override;
-
   const XLA_TpuProgram* const core_program_;
 
   const HostCommandHandler host_command_handler_;
