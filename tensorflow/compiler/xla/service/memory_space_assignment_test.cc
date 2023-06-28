@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
+#include <memory>
+#include <optional>
+
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -54,69 +58,102 @@ int64_t SizeFunction(const BufferValue& value) {
   return ShapeSize(value.shape());
 }
 
-class MemorySpaceAssignmentTest : public HloTestBase,
-                                  public ::testing::WithParamInterface<bool> {
+class MemorySpaceAssignmentTestBase : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
   const int64_t kDefaultMemorySpace = 0;
   const int64_t kAlternateMemorySpace = 1;
 
+  virtual bool allocate_across_sequential_calls() const { return false; }
+
+  HloCostAnalysis::Options DefaultHloCostAnalysisOptions() {
+    HloCostAnalysis::Options options;
+    options.shape_size = ShapeSize;
+    options.set_flops_per_second(kFlopsPerSecond);
+    options.set_bytes_per_second(kBytesPerSecond);
+    options.set_transcendentals_per_second(kTranscendentalsPerSecond);
+
+    return options;
+  }
+
+  Options DefaultMemorySpaceOptions() {
+    Options options;
+    options.async_copy_bandwidth_bytes_per_second = kAsyncCopyBandwidth;
+    options.alternate_mem_bandwidth_bytes_per_second = kAlternateMemBandwidth;
+    options.max_size_in_bytes = 128;
+    options.alignment_in_bytes = 8;
+    options.verify = true;
+    options.alternate_memory_space = kAlternateMemorySpace;
+    options.max_outstanding_prefetches = -1;
+    options.max_outstanding_evictions = -1;
+    options.allocate_across_sequential_calls =
+        allocate_across_sequential_calls();
+
+    return options;
+  }
+
+  Options UpdateMaxAsyncCopies(Options options, int64_t max_async_copies) {
+    options.max_outstanding_prefetches = max_async_copies;
+    options.max_outstanding_evictions = max_async_copies;
+
+    return options;
+  }
+
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
-      std::optional<Options> memory_space_assignment_options = std::nullopt) {
-    HloCostAnalysis::Options cost_options{ShapeSize};
-    cost_options.set_flops_per_second(kFlopsPerSecond);
-    cost_options.set_bytes_per_second(kBytesPerSecond);
-    cost_options.set_transcendentals_per_second(kTranscendentalsPerSecond);
+      std::optional<Options> memory_space_options_override = std::nullopt,
+      std::optional<HloCostAnalysis::Options> cost_options_override =
+          std::nullopt) {
+    HloCostAnalysis::Options cost_options = DefaultHloCostAnalysisOptions();
+    if (cost_options_override) {
+      cost_options = *cost_options_override;
+    }
+
     HloCostAnalysis hlo_cost_analysis(cost_options);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
     auto alias_analysis = HloAliasAnalysis::Run(module).value();
 
-    Options options;
-    if (memory_space_assignment_options.has_value()) {
-      options = *memory_space_assignment_options;
-    } else {
-      options.async_copy_bandwidth_bytes_per_second = kAsyncCopyBandwidth;
-      options.alternate_mem_bandwidth_bytes_per_second = kAlternateMemBandwidth;
+    Options memory_space_options = DefaultMemorySpaceOptions();
+    if (memory_space_options_override) {
+      memory_space_options = *memory_space_options_override;
     }
+
     auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
-                             hlo_cost_analysis, options, *module)
+                             hlo_cost_analysis, memory_space_options, *module)
                              .value();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
             /*preferred_overlap_to_async_copy_ratio=*/1.5,
             /*max_overlap_to_mem_size_async_copy_ratio=*/10.0,
-            /*mem_size_bytes=*/128));
+            /*mem_size_bytes=*/memory_space_options.max_size_in_bytes));
     return AssignMemorySpace(
-        module, /*max_outstanding_async_copies=*/-1,
+        module, memory_space_options,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
             *cost_analysis, &cache_),
-        &prefetch_interval_picker, memory_space_assignment_options);
+        &prefetch_interval_picker);
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
-      HloModule* module, int64_t max_outstanding_async_copies = -1,
-      int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
-      std::optional<Options> options = std::nullopt) {
+      HloModule* module, std::optional<Options> options_override = std::nullopt,
+      int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2) {
     InstructionHoister instruction_hoister;
     TF_CHECK_OK(instruction_hoister.Run(module).status());
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
-    return AssignMemorySpace(module, max_outstanding_async_copies,
+    return AssignMemorySpace(module, options_override,
                              /*buffer_interval_compare=*/{},
-                             &prefetch_interval_picker, options);
+                             &prefetch_interval_picker);
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
-      HloModule* module, int64_t max_outstanding_async_copies,
+      HloModule* module, std::optional<Options> options_override,
       std::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
-      PrefetchIntervalPicker* prefetch_interval_picker,
-      std::optional<Options> memory_space_assignment_options = std::nullopt) {
+      PrefetchIntervalPicker* prefetch_interval_picker) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -149,25 +186,16 @@ class MemorySpaceAssignmentTest : public HloTestBase,
           });
     }
 
-    Options options;
-    if (memory_space_assignment_options) {
-      options = *memory_space_assignment_options;
-    } else {
-      options.max_size_in_bytes = 128;
-      options.alignment_in_bytes = 8;
-      options.verify = true;
+    Options options = DefaultMemorySpaceOptions();
+    if (options_override) {
+      options = *options_override;
     }
-
-    options.alternate_memory_space = kAlternateMemorySpace;
     options.buffer_interval_compare = buffer_interval_compare;
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
     if (options.is_allowed_in_alternate_mem_fn == nullptr) {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
-    options.max_outstanding_prefetches = max_outstanding_async_copies;
-    options.max_outstanding_evictions = max_outstanding_async_copies;
-    options.allocate_across_sequential_calls = GetParam();
 
     auto alias_analysis = HloAliasAnalysis::Run(module).value();
     std::unique_ptr<HloLiveRange> hlo_live_range =
@@ -351,6 +379,12 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   MemorySpaceAssignmentCostAnalysis::Cache cache_;
+};
+
+class MemorySpaceAssignmentTest : public MemorySpaceAssignmentTestBase,
+                                  public ::testing::WithParamInterface<bool> {
+ protected:
+  bool allocate_across_sequential_calls() const override { return GetParam(); }
 };
 
 // For testing purposes, we define a cost analysis where we can control the
@@ -605,16 +639,13 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config = "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
   TF_ASSERT_OK_AND_ASSIGN(
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -678,10 +709,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config =
       "instruction_name_exact:add:op_number_exact:1:put_before_instruction:"
       "negate.3";
@@ -689,7 +717,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -753,10 +781,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config =
       "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
       "negate.1";
@@ -764,7 +789,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -828,10 +853,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config =
       "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
       "negate.5";
@@ -839,7 +861,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   // Ensure the Async copy is not scheduled.
   EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
@@ -895,10 +917,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config =
       "op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5;instruction_"
       "name_exact:add:op_number_exact:1:put_after_instruction:negate.1";
@@ -906,7 +925,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -970,10 +989,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config =
       "instruction_name_exact:add:op_number_exact:1:put_after_instruction:"
       "negate.1;op_size_gte:24:op_size_lte:24:prefetch_eagerness:0.5";
@@ -981,7 +997,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -1045,16 +1061,13 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
                                       negate3, negate4, negate5, negate6, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   auto config = "op_size_gte:25:op_size_lte:24:prefetch_eagerness:0.5";
   TF_ASSERT_OK_AND_ASSIGN(
       options.filter_update_preferred_prefetches,
       memory_space_assignment::FilterUpdatePreferredPrefetch::
           ParseFilterUpdatePreferredPrefetches(config));
-  AssignMemorySpace(module.get(), -1, 10, 2, options);
+  AssignMemorySpace(module.get(), options);
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -1100,7 +1113,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetch) {
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
+  AssignMemorySpace(module.get(),
+                    UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 0));
 
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 0);
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 0);
@@ -1109,7 +1123,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
+  AssignMemorySpace(module.get(),
+                    UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 1));
 
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 1);
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 1);
@@ -1118,7 +1133,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/2);
+  AssignMemorySpace(module.get(),
+                    UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 2));
 
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 2);
   EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 2);
@@ -1186,7 +1202,8 @@ TEST_P(MemorySpaceAssignmentTest,
                                       j, k, l, m, n, o, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
+  AssignMemorySpace(module.get(),
+                    UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 1));
 
   // We expect the second argument to multiply is prefetched c.
   EXPECT_THAT(f, op::Multiply(op::Add(), op::CopyDone()));
@@ -1371,8 +1388,7 @@ TEST_P(MemorySpaceAssignmentTest, While) {
   // exempted from using the alternate memory when allocating across sequential
   // calls is disabled. However, body_data_mul is independent and can be safely
   // be placed in the alternate memory.
-  const bool allocate_across_sequential_calls = GetParam();
-  if (!allocate_across_sequential_calls) {
+  if (!allocate_across_sequential_calls()) {
     EXPECT_THAT(tuple, op::ShapeWithLayout(tuple_shape));
     EXPECT_THAT(data, op::ShapeWithLayout(shape));
     EXPECT_THAT(iter, op::ShapeWithLayout(scalar_shape));
@@ -1836,7 +1852,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastScheduleBug) {
                     negate4, negate5, negate6, negate7, negate8, negate9, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
 
   EXPECT_EQ(add->operand(0)->shape().layout().memory_space(),
@@ -1964,7 +1980,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     buffer_interval_compare, &prefetch_interval_picker);
 
   for (const HloInstruction* instruction :
@@ -2346,7 +2362,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
   AssignMemorySpace(module.get());
   const HloInstruction* while_op =
       module->entry_computation()->GetInstructionWithName("while");
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_EQ(
         ShapeUtil::GetSubshape(while_op->shape(), {1}).layout().memory_space(),
         kAlternateMemorySpace);
@@ -2561,7 +2577,7 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalShouldBeAllocatedInAlternateMem) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Check that copy and gtes got alternate memory allocations.
     auto copy =
         module->GetComputationWithName("entry")->GetInstructionWithName("copy");
@@ -2622,7 +2638,7 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalAvoidsUnnecessaryPrefetch) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Check that copy1 doesn't get unnecessarily allocated in alternate mem
     // (due to long negate chain in true_computation) but is prefetched before
     // add.
@@ -2686,7 +2702,7 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUse) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Make sure the copy1->add edge is in alternate memory. Before conditional,
     // this should be evicted to default memory and neg uses the input from
     // default memory.
@@ -2756,7 +2772,7 @@ TEST_P(MemorySpaceAssignmentTest, ConditionalMultiUseInWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Make sure copy1/while{0}/cond_tuple{0} gets alternate memory allocation.
     // This will force an eviction and a prefetch for while body root.
     auto copy0 =
@@ -2826,7 +2842,7 @@ TEST_P(MemorySpaceAssignmentTest, NestedConditional) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Make sure alternate memory allocation gets propagated into both levels of
     // conditional.
     auto copy =
@@ -3095,7 +3111,7 @@ TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/4);
 }
 
@@ -3239,7 +3255,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
                         {iter, data, p2, tuple, while_op, while_data, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 50);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 50);
 }
 
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
@@ -3310,7 +3326,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
                         {p0, p1, add1, add2, negate8, call, add3, add4, add5});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 5);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
 
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
@@ -3376,7 +3392,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
   schedule.set_sequence(entry_computation, {p0, add1, add2, call, add3});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 5);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
 
 // TODO(berkin): This might be an incorrect input graph, investigate.
@@ -3450,7 +3466,7 @@ TEST_P(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
                         {p0, add1, add2, pred, conditional, add3});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 5);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
 
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
@@ -3571,7 +3587,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
 
   // Set a large max prefetch interval so that the buffer can be kept in
   // alternate memory.
-  AssignMemorySpace(module.get(), -1, 20);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 20);
 }
 
 TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
@@ -3676,7 +3692,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
 
   // Pick a large max prefetch interval to ensure all the while inputs are
   // allocated in the alternate memory.
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/25);
 
   // Index {0} of the while loop argument is not written inside the while loop,
@@ -3906,7 +3922,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleToTuple1) {
        negate4, negate5, negate6, add0, add1, fusion1, mul});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 5);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
   EXPECT_THAT(fusion1,
               op::Fusion(op::Tuple(
                   op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
@@ -3979,7 +3995,7 @@ TEST_P(MemorySpaceAssignmentTest, TupleToTuple2) {
                     negate5, negate6, fusion1});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), -1, 5);
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 
   EXPECT_THAT(
       fusion1,
@@ -4308,7 +4324,7 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   schedule.set_sequence(computation, {param, gte0, gte1, tuple, while0});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/50);
 
   // Ensure all parameters and while are placed in default memory.
@@ -4471,17 +4487,12 @@ TEST_P(MemorySpaceAssignmentTest,
                          negate5, negate6, add, tuple});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
     return true;
   };
-  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
-      module.get(),
-      /*max_outstanding_async_copies=*/-1,
-      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options);
 
   // Ensure that p1 is in the alternate memory and add, which has p1 as an
   // operand, has a direct dependency to p1 (no CopyStart/CopyDone).
@@ -4590,7 +4601,7 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     buffer_interval_compare, &prefetch_interval_picker);
 }
 
@@ -4689,16 +4700,12 @@ TEST_P(MemorySpaceAssignmentTest, DisallowedUseBug) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
     return use.instruction->opcode() != HloOpcode::kTanh;
   };
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    buffer_interval_compare, &prefetch_interval_picker,
-                    options);
+  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                    &prefetch_interval_picker);
 }
 
 TEST_P(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
@@ -4756,16 +4763,11 @@ TEST_P(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
     return use.instruction->opcode() != HloOpcode::kTanh;
   };
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
-                    options);
+  AssignMemorySpace(module.get(), options);
 }
 
 TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
@@ -4817,7 +4819,7 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Expect that while{1} is allocated to alternate memory space. Also expect
     // that this buffer is prefetched at the end of the while loop body but is
     // never evicted (since it has a copy in the default memory space).
@@ -4938,7 +4940,7 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Expect that while1{1} and while2{1} are allocated to alternate memory
     // space. Also expect that this buffer is prefetched at the end of the while
     // loop body but is never evicted (since it has a copy in the default memory
@@ -5017,7 +5019,7 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
   // while{1} is updated within the body.
   const HloInstruction* while_instr = FindInstruction(module.get(), "while");
   EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
               kAlternateMemorySpace);
     const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
@@ -5097,7 +5099,7 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     // Expect that while1 has one more value than while2 in its shape.
     EXPECT_EQ(
         FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
@@ -5170,7 +5172,7 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_THAT(
         module->entry_computation()->root_instruction()->operand(1),
         op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, op::Copy()));
@@ -5259,7 +5261,7 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile2) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_THAT(
         module->entry_computation()->root_instruction()->operand(1),
         op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
@@ -5334,7 +5336,7 @@ TEST_P(MemorySpaceAssignmentTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   AssignMemorySpace(module.get());
 
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_THAT(
         module->entry_computation()->root_instruction()->operand(1),
         op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
@@ -5575,7 +5577,7 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     HloInstruction* collective_permute_start =
         module->entry_computation()->GetInstructionWithName(
             "collective-permute-start");
@@ -5616,7 +5618,7 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     HloInstruction* collective_permute_start =
         module->entry_computation()->GetInstructionWithName(
             "collective-permute-start");
@@ -5663,7 +5665,7 @@ ENTRY entry {
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
-  if (GetParam()) {
+  if (allocate_across_sequential_calls()) {
     HloInstruction* collective_permute_start_1 =
         module->entry_computation()->GetInstructionWithName(
             "collective-permute-start.1");
@@ -5869,10 +5871,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   // Make instruction c reserve 64 bytes in the alternate memory. This should
   // prevent both b and c to put their outputs in the alternate memory.
   options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
@@ -5881,9 +5880,7 @@ ENTRY entry {
     }
     return 0;
   };
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
-                    options);
+  AssignMemorySpace(module.get(), options);
   auto get_memory_space = [&](absl::string_view instruction_name) {
     return module->entry_computation()
         ->GetInstructionWithName(instruction_name)
@@ -6123,15 +6120,11 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
   repack_map[{3, 32}] = 0;
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map);
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    buffer_interval_compare, &prefetch_interval_picker,
-                    options);
+  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                    &prefetch_interval_picker);
 
   // If repacking succeeds, we should find the buffer for d in alternate memory.
   const HloInstruction* d =
@@ -6243,15 +6236,11 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
       };
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    buffer_interval_compare, &prefetch_interval_picker,
-                    options);
+  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                    &prefetch_interval_picker);
 }
 
 TEST_P(MemorySpaceAssignmentTest,
@@ -6271,10 +6260,7 @@ ENTRY entry {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   // Make two instructions reserve scoped memory.
   options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
@@ -6299,9 +6285,7 @@ ENTRY entry {
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
-                    options);
+  AssignMemorySpace(module.get(), options);
   EXPECT_TRUE(repacker_ran);
 }
 
@@ -6345,17 +6329,13 @@ TEST_P(MemorySpaceAssignmentTest,
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr,
                                         /*always_return_modified=*/true);
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 10;
   options.repacker = &repacker;
   options.repack_after_every_allocation = true;
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*buffer_interval_compare=*/{}, &prefetch_interval_picker,
-                    options);
+  AssignMemorySpace(module.get(), options,
+                    /*buffer_interval_compare=*/{}, &prefetch_interval_picker);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {
@@ -6408,8 +6388,7 @@ ENTRY main {
       GetAlternateMemoryOffset(*preset_assignments, fusion_instruction);
   // We expect negate and fusion to get the same offsets.
   EXPECT_EQ(negate_offset, fusion_offset);
-  const bool allocate_across_sequential_calls = GetParam();
-  if (allocate_across_sequential_calls) {
+  if (allocate_across_sequential_calls()) {
     EXPECT_NE(negate_offset, -1);
   }
 }
@@ -6493,10 +6472,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
     return use.instruction->opcode() != HloOpcode::kAsyncStart &&
            use.instruction->opcode() != HloOpcode::kAsyncDone &&
@@ -6507,9 +6483,7 @@ ENTRY entry {
            pos.instruction->opcode() != HloOpcode::kAsyncDone &&
            pos.instruction->parent()->IsMainThread();
   };
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
-                    options);
+  AssignMemorySpace(module.get(), options);
   auto has_alternate_memory_allocation =
       [&](const HloInstruction* instruction) {
         bool result = false;
@@ -7157,14 +7131,12 @@ TEST_P(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
       computation, {lhs, first_weight, second_weight, first_dot, second_dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
+  Options options = DefaultMemorySpaceOptions();
   options.max_cross_program_prefetches = -1;
   options.max_size_in_bytes = 256;
   options.alignment_in_bytes = 8;
   options.verify = true;
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
-                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2,
-                    options);
+  AssignMemorySpace(module.get(), options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 2);
@@ -7585,17 +7557,12 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   schedule.set_sequence(computation, {lhs, rhs, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
     return true;
   };
-  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
-      module.get(),
-      /*max_outstanding_async_copies=*/-1,
-      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
@@ -7636,17 +7603,12 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  Options options;
-  options.max_size_in_bytes = 128;
-  options.alignment_in_bytes = 8;
-  options.verify = true;
+  Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
     return true;
   };
-  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
-      module.get(),
-      /*max_outstanding_async_copies=*/-1,
-      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
@@ -7665,7 +7627,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7687,7 +7649,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7712,7 +7674,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7734,7 +7696,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7755,7 +7717,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7786,7 +7748,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7866,7 +7828,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto preset_assignments = AssignMemorySpace(
-      module.get(), /*max_outstanding_async_copies=*/-1,
+      module.get(), DefaultMemorySpaceOptions(),
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -7945,7 +7907,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -8005,7 +7967,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+  AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();

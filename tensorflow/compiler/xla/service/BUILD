@@ -4461,6 +4461,7 @@ xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
+        ":hlo_cost_analysis",
         ":instruction_hoister",
         ":memory_space_assignment",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
