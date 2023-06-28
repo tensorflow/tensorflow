@@ -1860,18 +1860,25 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
       // users in addition to the tuple user.
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
-      if (visited.contains(hlo)) {
-        continue;
-      }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
-          non_bitcast_root->operand(0) == hlo->operand(0)) {
+          non_bitcast_root->operand(0) == hlo->operand(0) &&
+          hlo->shape() == non_bitcast_root->operand(1)->shape()) {
         // We can still share the buffer in this case if the same slice is
-        // accessed by the DUS and the DS. So compare all the slice start
-        // operands of 'hlo' and 'non_bitcast_root'.
-        for (int64_t i = 1; i < hlo->operand_count(); ++i) {
-          if (hlo->operand(i) != non_bitcast_root->operand(i + 1)) {
-            return false;
+        // accessed by the DUS and the DS. If they don't access the same slice,
+        // the two slices might partially overlap and read/write the same index
+        // at different times, and then we cannot guarantee that we read before
+        // it is overwritten. However if both access only a single element,
+        // there also can be no race condition.
+        if (!ShapeUtil::IsEffectiveScalar(hlo->shape()) ||
+            !ShapeUtil::IsEffectiveScalar(
+                non_bitcast_root->operand(1)->shape())) {
+          // Now compare all the slice start operands of 'hlo' and
+          // 'non_bitcast_root'.
+          for (int64_t i = 1; i < hlo->operand_count(); ++i) {
+            if (hlo->operand(i) != non_bitcast_root->operand(i + 1)) {
+              return false;
+            }
           }
         }
       } else if ((!hlo->IsElementwiseOnOperand(
@@ -1879,7 +1886,21 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
                   hlo->opcode() == HloOpcode::kCopy) &&
                  hlo->opcode() != HloOpcode::kBitcast &&
                  hlo->opcode() != HloOpcode::kTuple) {
-        return false;
+        // Even if 'hlo' is not elementwise on the operand, it is ok if we are
+        // coming from the second operand and 'hlo' is a DynamicUpdateSlice
+        // which is the non_bitcast_root. This corresponds to the special case
+        // above, where we allow a DynamicSlice if it accesses the exact same
+        // slice than the DynamicUpdateSlice. When we are coming from the first
+        // operand, IsElementwiseOnOperand() will return true for a
+        // DynamicUpdateSlice.
+        if (hlo != non_bitcast_root ||
+            hlo->opcode() != HloOpcode::kDynamicUpdateSlice ||
+            hlo->operand_index(hlo_operand) != 1) {
+          return false;
+        }
+      }
+      if (visited.contains(hlo)) {
+        continue;
       }
       visited.insert(hlo);
       q.push(hlo);
