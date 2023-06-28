@@ -191,6 +191,24 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
     xla::PjRtClient::KeyValueGetCallback kv_get,
     xla::PjRtClient::KeyValuePutCallback kv_put);
 
+// Data needed to support PJRT_Buffer_MemoryLayout. `minor_to_major` holds the
+// data in PJRT_Buffer_MemoryLayout_Tiled.minor_to_major. `tile_dims` and
+// `tile_dim_sizes` holds the data in PJRT_Buffer_MemoryLayout_Tiled.tile_dims
+// and PJRT_Buffer_MemoryLayout_Tiled.tile_dim_sizes.
+struct BufferMemoryLayoutData {
+  PJRT_Buffer_MemoryLayout c_layout;
+  std::vector<int64_t> minor_to_major;
+  std::vector<int64_t> tile_dims;
+  std::vector<size_t> tile_dim_sizes;
+};
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    const xla::Layout* cpp_layout);
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    absl::Span<int64_t const> byte_strides);
+
+xla::StatusOr<xla::Layout> ConvertToLayout(
+    const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

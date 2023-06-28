@@ -28,6 +28,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -458,6 +459,29 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     byte_strides =
         absl::Span<const int64_t>(args->byte_strides, args->num_byte_strides);
   }
+  std::optional<xla::Layout> layout = std::nullopt;
+  if (args->device_layout != nullptr) {
+    switch (args->device_layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        PJRT_ASSIGN_OR_RETURN(layout,
+                              ConvertToLayout(args->device_layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "PJRT_Buffer_MemoryLayout_Type_Strides in device_layout is not "
+            "supported in  PJRT_Client_BufferFromHostBuffer for platform '%s'",
+            args->client->client->platform_name())));
+        break;
+      }
+      default: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            absl::StrCat("Unexpected PJRT_Buffer_MemoryLayout_Type type: ",
+                         args->device_layout->type)));
+      }
+    }
+  }
 
   xla::PjRtFuture<xla::Status>::Promise promise =
       xla::PjRtFuture<xla::Status>::CreatePromise();
@@ -466,14 +490,25 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     promise.Set(xla::OkStatus());
   };
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtBuffer> buffer,
-      args->client->client->BufferFromHostBuffer(
-          args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
-          byte_strides,
-          ::pjrt::ConvertFromPjRtHostBufferSemantics(
-              args->host_buffer_semantics),
-          on_done_with_host_buffer, args->device->device));
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+  if (layout.has_value()) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer,
+        args->client->client->BufferFromHostBuffer(
+            args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
+            byte_strides,
+            ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                args->host_buffer_semantics),
+            on_done_with_host_buffer, args->device->device, &layout.value()));
+  } else {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->device->device));
+  }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   args->done_with_host_buffer =

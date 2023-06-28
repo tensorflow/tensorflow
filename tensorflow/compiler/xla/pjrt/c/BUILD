@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
@@ -63,6 +64,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -124,8 +126,10 @@ xla_cc_test(
     name = "pjrt_c_api_helpers_test",
     srcs = ["pjrt_c_api_helpers_test.cc"],
     deps = [
+        ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/time",
