@@ -22,11 +22,12 @@ from absl.testing import parameterized
 import numpy
 
 from tensorflow.core.function.capture import capture_container
+from tensorflow.core.function.polymorphism import function_cache as function_cache_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -56,7 +57,6 @@ from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 try:
@@ -65,20 +65,46 @@ except ImportError:
   attr = None
 
 
-def total_function_cache(defined):
-  return defined._list_all_concrete_functions()  # pylint: disable=protected-access
+def compiled_fn(fn=None, **tracing_options):
+  """Decorator that compiles/calls wrapped function."""
+  if fn is None:
+    return functools.partial(compiled_fn, **tracing_options)
+
+  signature = tracing_options.pop('input_signature', None)
+  function_type, default_values = function_type_utils.make_function_type(
+      fn, signature
+  )
+  tracing_options['polymorphic_type'] = function_type
+  tracing_options['default_values'] = default_values
+
+  def wrapped(*args, **kwargs):
+    bound_args = function_type.bind_with_defaults(args, kwargs, default_values)
+    return tracing_compilation.call_function(
+        bound_args.args,
+        bound_args.kwargs,
+        tracing_compilation.TracingOptions(fn, **tracing_options),
+    )
+
+  def trace(*args, **kwargs):
+    return tracing_compilation.trace_function(
+        args,
+        kwargs,
+        tracing_compilation.TracingOptions(fn, **tracing_options),
+    )
+
+  wrapped.get_concrete_function = trace
+
+  return wrapped
 
 
-# TODO(b/258247871): Do not delete these tests, migrate to use tf.function or
-# TracingCompiler.
-class DefunTest(test.TestCase, parameterized.TestCase):
+class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):
     model = variables.Variable(1.0, name='model')
     count = variables.Variable(0)
 
-    @polymorphic_function.function
+    @compiled_fn
     def forward_pass(value):
       count.assign_add(1)
       residuals = value - model
@@ -107,7 +133,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       op = v.assign_add(1.0)
 
-      @polymorphic_function.function
+      @compiled_fn
       def f():
         with ops.control_dependencies([op]):
           return 1.0
@@ -118,7 +144,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @polymorphic_function.function(reduce_retracing=True)
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(reduce_retracing=True, function_cache=function_cache)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -126,11 +154,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     func(constant_op.constant([]))
     self.assertFalse(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 1)
+    self.assertLen(function_cache, 1)
 
     func(constant_op.constant([1.0]))
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 2)
+    self.assertLen(function_cache, 2)
 
     func(constant_op.constant([1.0, 2.0]))
     self.assertTrue(unknown_dim[0])
@@ -138,7 +166,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @polymorphic_function.function(reduce_retracing=True)
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(reduce_retracing=True, function_cache=function_cache)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -150,15 +180,15 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     b0 = constant_op.constant(1.0)
     func(a, b_=[b0, constant_op.constant([])])
     self.assertFalse(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 1)
+    self.assertLen(function_cache, 1)
 
     func(a, b_=[b0, constant_op.constant([1.0])])
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 2)
+    self.assertLen(function_cache, 2)
 
     func(a, b_=[b0, constant_op.constant([1.0, 1.0])])
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 2)
+    self.assertLen(function_cache, 2)
 
     unknown_dim[0] = False
 
@@ -167,35 +197,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     a = 'bye'
     func(a, b_=[b0, constant_op.constant([])])
     self.assertFalse(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 3)
+    self.assertLen(function_cache, 3)
 
     # We relax the type traced previously.
     func(a, b_=[b0, constant_op.constant([1.0])])
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 4)
-
-  def testNestedFunctionGraphNotOutOfDate(self):
-    @polymorphic_function.function
-    def f():
-      return constant_op.constant(1.0)
-
-    class _Model(object):
-
-      @polymorphic_function.function
-      def g(self):
-        self.f = f.get_concrete_function()
-
-    model = _Model()
-    model.g()
-    concrete = model.f
-    weak_g_graph = weakref.ref(model.g.get_concrete_function().graph)
-    self.assertIs(weak_g_graph(), concrete.graph.outer_graph)
-    weak_g = weakref.ref(model.g)
-    del model
-    self.assertIsNone(weak_g())
-    self.assertIsNone(weak_g_graph())
-    self.assertIsNotNone(concrete.graph.outer_graph)
-    self.assertIs(ops.get_default_graph(), concrete.graph.outer_graph)
+    self.assertLen(function_cache, 4)
 
   def testGraphEagerIsolation(self):
     def f_py():
@@ -210,21 +217,22 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       self.assertEqual(f().shape, ())
 
-  def testDefunNumpyArraysConvertedToTensors(self):
+  def testCompilationNumpyArraysConvertedToTensors(self):
     def f(x):
       self.assertIsInstance(x, ops.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
-    defined = polymorphic_function.function(f)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(f, function_cache=function_cache)
     defined(x)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     x = random_ops.random_uniform([2, 2]).numpy()
     defined(x)
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     np_ones = numpy.ones([], numpy.float32)
     np_zeros = numpy.zeros([], numpy.float32)
@@ -233,11 +241,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     # Test that the numpy array is properly an argument to the graph function.
     self.assertEqual(1.0, defined(np_ones).numpy())
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
     self.assertEqual(0.0, defined(np_zeros).numpy())
     self.assertEqual(1.0, defined(tf_ones).numpy())
     self.assertEqual(0.0, defined(tf_zeros).numpy())
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     # Test that mutable inputs are supported.
     mutable = numpy.ones([], numpy.float32)
@@ -253,10 +261,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(0.0, defined(np_zeros.view(MyNdarray)).numpy())
 
     # We should not have triggered any re-tracing of the python function.
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testNumpyDtypeInputSupported(self):
-    @polymorphic_function.function
+    @compiled_fn
     def f(x, dtype):
       return constant_op.constant(dtype(x))
 
@@ -265,22 +273,23 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(f(1, numpy.int32).numpy(), numpy.int32(1))
     self.assertEqual(f(2, numpy.int32).numpy(), numpy.int32(2))
 
-  def testDefunNumpyArraysConvertedToTensorsInKwargs(self):
+  def testCompilationNumpyArraysConvertedToTensorsInKwargs(self):
     def f(**kwargs):
       x = kwargs.pop('x')
       self.assertIsInstance(x, ops.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
-    defined = polymorphic_function.function(f)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(f, function_cache=function_cache)
     defined(x=x)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     x = random_ops.random_uniform([2, 2]).numpy()
     defined(x=x)
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     # Test that the numpy array is properly an argument to the graph function.
     self.assertEqual(1.0, defined(x=numpy.ones([])).numpy())
@@ -289,7 +298,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(0.0, defined(x=array_ops.zeros([])).numpy())
 
   def testFuncListAttr(self):
-    @polymorphic_function.function
+    @compiled_fn
     def test_function(val):
       def fn1():
         return array_ops.ones([10])
@@ -307,7 +316,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
           [],
           [dtypes.float32],
           [
-              polymorphic_function.function(f).get_concrete_function()
+              compiled_fn(f).get_concrete_function()
               for f in (fn1, fn2, fn3, fn4, fn5)
           ],
       )
@@ -340,7 +349,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(test_function().shape, [])
 
   @test_util.run_in_graph_and_eager_modes
-  def testDefunForcesResourceVariables(self):
+  def testCompilationForcesResourceVariables(self):
     def variable_creator():
       self.v = variables.Variable(0.0)
       return self.v.read_value()
@@ -367,7 +376,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
       return cpu_result, gpu_result
 
-    defined = polymorphic_function.function(sum_gather)
+    defined = compiled_fn(sum_gather)
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
     expected = self.evaluate(sum_gather())
@@ -375,7 +384,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testCallOptionsMemory(self):
-    @polymorphic_function.function
+    @compiled_fn
     def model(x):
       return x + constant_op.constant(1.0)
 
@@ -384,7 +393,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     model(constant_op.constant(2.0))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
-  def testLayerInDefun(self):
+  def testLayerInCompilation(self):
     conv = convolutional.Conv2D(
         filters=1,
         kernel_size=2,
@@ -412,7 +421,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         self.v = None
 
-      @polymorphic_function.function
+      @compiled_fn
       def f(self):
         if self.v is None:
           self.v = variables.Variable(1.0)
@@ -432,79 +441,86 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def func(foo):
       return constant_op.constant([id(foo)])
 
-    defined = polymorphic_function.function(func)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(func, function_cache=function_cache)
     foo_1 = Foo()
     defined(foo_1)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     foo_2 = Foo()
     defined(foo_2)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheTensorDtypeCollision(self):
     def func(t):
       return t + t
 
-    defined = polymorphic_function.function(func)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(func, function_cache=function_cache)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     t = constant_op.constant([[1.0]], dtype=dtypes.complex128)
     defined(t)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheTensorShapeCollision(self):
     def func(t):
       return t + t
 
-    defined = polymorphic_function.function(func)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(func, function_cache=function_cache)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     t = constant_op.constant([1.0], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheTensorShapeDtypeCollision(self):
     def func(t):
       return t + t
 
-    defined = polymorphic_function.function(func)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(func, function_cache=function_cache)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     t = constant_op.constant([1.0], dtype=dtypes.complex128)
     defined(t)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheTensorUnknownShapesCollisionRelaxedShapes(self):
     def func(t):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = polymorphic_function.function(func, reduce_retracing=True)
+      function_cache = function_cache_lib.FunctionCache()
+      defined = compiled_fn(
+          func, reduce_retracing=True, function_cache=function_cache
+      )
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
-      self.assertLen(total_function_cache(defined), 1)
+      self.assertLen(function_cache, 1)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
       defined(p)
-      self.assertLen(total_function_cache(defined), 2)
+      self.assertLen(function_cache, 2)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[2])
       defined(p)
       # Gradual shape relaxation is performed; and the common shape between
       # [1] and [2] is one containing unknown dimensions.
-      self.assertLen(total_function_cache(defined), 2)
+      self.assertLen(function_cache, 2)
 
       t = constant_op.constant([1.0, 1.0, 1.0], dtype=dtypes.float32)
       defined(t)
       # Shape (3,) matches the relaxed shape TensorShape([None])
-      self.assertLen(total_function_cache(defined), 2)
+      self.assertLen(function_cache, 2)
 
   def testPythonFunctionWithDefaultArgs(self):
     def func(foo, bar=1, baz=2):
@@ -513,27 +529,28 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       del baz
       return
 
-    defined = polymorphic_function.function(func)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(func, function_cache=function_cache)
     defined(0, baz=20)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     defined(1)  # bar=1, baz=2
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     # This matches the previous call.
     defined(foo=1)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     defined(1, 2, 3)
-    self.assertLen(total_function_cache(defined), 3)
+    self.assertLen(function_cache, 3)
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
-    self.assertLen(total_function_cache(defined), 3)
+    self.assertLen(function_cache, 3)
 
     # This matches the previous call.
     defined(1, baz=3, bar=2)
-    self.assertLen(total_function_cache(defined), 3)
+    self.assertLen(function_cache, 3)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
     def full_function(a, b, c=3):
@@ -542,7 +559,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2)
 
-    defined = polymorphic_function.function(partial)
+    defined = compiled_fn(partial)
     func_a, func_b, func_c = defined(2)
     self.assertEqual(func_a.numpy(), a)
     self.assertEqual(func_b.numpy(), b)
@@ -553,11 +570,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(a.shape, (2,))
       return a
 
+    function_cache = function_cache_lib.FunctionCache()
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
-    defined = polymorphic_function.function(foo, input_signature=signature)
+    defined = compiled_fn(
+        foo, input_signature=signature, function_cache=function_cache
+    )
     a = array_ops.ones([2])
     self.assertAllEqual(a, defined(a))
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertAllEqual(a, defined.get_concrete_function()(a))
     self.assertAllEqual(a, defined.get_concrete_function(a)(a))
     self.assertAllEqual(
@@ -566,43 +586,45 @@ class DefunTest(test.TestCase, parameterized.TestCase):
             tensor_spec.TensorSpec((2,), dtype=dtypes.float32)
         )(a),
     )
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     def bar(a):
       self.assertEqual(a._shape_tuple(), (2, None))
       return a
 
     signature = [tensor_spec.TensorSpec((2, None), dtypes.float32)]
-    defined = polymorphic_function.function(bar, input_signature=signature)
+    defined = compiled_fn(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertAllEqual(out, a)
 
     # Changing the second dimension shouldn't create a new function.
     b = array_ops.ones([2, 3])
     out = defined(b)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertAllEqual(out, b)
 
   def testInputSignatureWithDictInPositionalArgs(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def f(*_args, **_kwargs):
       return None
 
     f(1, x=2)
-    self.assertLen(total_function_cache(f), 1)
+    self.assertLen(function_cache, 1)
     f(1, x=2)
-    self.assertLen(total_function_cache(f), 1)
+    self.assertLen(function_cache, 1)
     f(1, {'x': 2})
-    self.assertLen(total_function_cache(f), 2)
+    self.assertLen(function_cache, 2)
 
   def testInputSignatureWithCompatibleInputs(self):
     rank2_spec = tensor_spec.TensorSpec(
         shape=(None, None), dtype=dtypes.float32
     )
 
-    @polymorphic_function.function(input_signature=[rank2_spec])
+    @compiled_fn(input_signature=[rank2_spec])
     def func(a):
       self.assertEqual([None, None], a.shape.as_list())
       return array_ops.shape(a)
@@ -610,25 +632,24 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([3, 1], func([[0], [1.0], [1]]))
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       func([['wrong dtype']])
 
   def testNestedInputSignatures(self):
     def expected_foo(a, b):
       return [a, b]
 
-    @polymorphic_function.function(
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(
         input_signature=[
             [tensor_spec.TensorSpec((2, None), dtypes.float32)] * 2,
             tensor_spec.TensorSpec((1,), dtypes.float32),
-        ]
+        ],
+        function_cache=function_cache,
     )
     def foo(a, b):
       self.assertEqual(a[0]._shape_tuple(), (2, None))
@@ -640,7 +661,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     b = array_ops.ones([1])
     expected = expected_foo([a, a], b)
     out = foo([a, a], b)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], a)
@@ -652,7 +673,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     c = array_ops.ones([1])
     expected = expected_foo([a, b], c)
     out = foo([a, b], c)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -663,7 +684,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     b = b.numpy().tolist()
     c = c.numpy().tolist()
     out = foo([a, b], c)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -673,7 +694,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def expected_bar(a):
       return a
 
-    @polymorphic_function.function(
+    @compiled_fn(
         input_signature=[{
             'a': tensor_spec.TensorSpec((2, None), dtypes.float32),
             'b': tensor_spec.TensorSpec((2, None), dtypes.float32),
@@ -716,7 +737,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         TypeError, 'input_signature must be either a tuple or a list.*'
     ):
-      polymorphic_function.function(foo, input_signature=signature)
+      compiled_fn(foo, input_signature=signature)
 
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
     def foo(a, b):
@@ -726,22 +747,18 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
         [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
     ]
-    defined = polymorphic_function.function(foo, input_signature=signature)
+    defined = compiled_fn(foo, input_signature=signature)
     a = array_ops.ones([1])
 
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       defined([a, a, a], [a])
 
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
   def testUnderspecifiedInputSignature(self):
-    @polymorphic_function.function(
+    @compiled_fn(
         input_signature=[
             tensor_spec.TensorSpec([], dtypes.float32),
         ]
@@ -753,9 +770,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         return -1.0 * a
 
     x = constant_op.constant(1.0)
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(ValueError):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -767,7 +782,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2.0)
     signature = [tensor_spec.TensorSpec([], dtypes.float32)]
-    defined = polymorphic_function.function(partial, input_signature=signature)
+    defined = compiled_fn(partial, input_signature=signature)
     x = constant_op.constant(2.0)
     func_a, func_b, func_c = defined(x)
     self.assertEqual(func_a.numpy(), a)
@@ -775,11 +790,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func_c.numpy(), c)
 
   def testInputSignatureWithKeywordPositionalArgs(self):
-    @polymorphic_function.function(
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(
         input_signature=[
             tensor_spec.TensorSpec([], dtypes.float32),
             tensor_spec.TensorSpec([], dtypes.int64),
-        ]
+        ],
+        function_cache=function_cache,
     )
     def foo(flt, integer):
       return flt, integer
@@ -788,22 +806,22 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     integer = constant_op.constant(2, dtypes.int64)
 
     out1, out2 = foo(flt, integer)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt=flt, integer=integer)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(integer=integer, flt=flt)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt, integer=integer)
-    self.assertLen(total_function_cache(foo), 1)
+    self.assertLen(function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
@@ -812,7 +830,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       del kwargs
       return a, b
 
-    x = polymorphic_function.function(
+    x = compiled_fn(
         foo,
         input_signature=[
             tensor_spec.TensorSpec([], dtypes.float32),
@@ -831,39 +849,36 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     signature = [
         ragged_tensor.RaggedTensorSpec(shape=[3, None], dtype=dtypes.int32)
     ]
-    defined = polymorphic_function.function(f, input_signature=signature)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(
+        f, input_signature=signature, function_cache=function_cache
+    )
     rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
     out1 = defined(rt1)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertAllEqual(out1.values, rt1.values)
     self.assertAllEqual(out1.row_splits, rt1.row_splits)
 
     # Changing the row lengths shouldn't create a new function.
     rt2 = ragged_factory_ops.constant([[1, 2], [3, 4], [5]])
     out2 = defined(rt2)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertAllEqual(out2.values, rt2.values)
     self.assertAllEqual(out2.row_splits, rt2.row_splits)
 
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(TypeError):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function failed'
-    ):
+    with self.assertRaises(ValueError):
       defined(rt5)
 
   def testInputSignatureWithKeywordOnlyArgs(self):
@@ -878,20 +893,16 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
         tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
     ]
-    defined = polymorphic_function.function(f, input_signature=signature)
+    defined = compiled_fn(f, input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 10)
 
-    defined = polymorphic_function.function(
-        functools.partial(f, c=4), input_signature=signature
-    )
+    defined = compiled_fn(functools.partial(f, c=4), input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 11)
 
-    defined = polymorphic_function.function(
-        functools.partial(f, d=5), input_signature=signature
-    )
+    defined = compiled_fn(functools.partial(f, d=5), input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 11)
 
-    defined = polymorphic_function.function(
+    defined = compiled_fn(
         functools.partial(f, d=array_ops.constant(5)), input_signature=signature
     )
     self.assertEqual(defined(1, 2).numpy(), 11)
@@ -922,7 +933,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
             ' have a default value'
         ),
     ):
-      polymorphic_function.function(test_func, input_signature=signature)
+      compiled_fn(test_func, input_signature=signature)
 
     test_func_lambda = lambda a, *, b: a + b
     with self.assertRaisesRegex(
@@ -932,38 +943,39 @@ class DefunTest(test.TestCase, parameterized.TestCase):
             ' have a default value'
         ),
     ):
-      polymorphic_function.function(test_func_lambda, input_signature=signature)
+      compiled_fn(test_func_lambda, input_signature=signature)
 
   def testTensorKeywordArguments(self):
     def foo(a, b):
       del a
       return b
 
-    defined = polymorphic_function.function(foo)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(foo, function_cache=function_cache)
     a = constant_op.constant(2.0)
     b = constant_op.constant([1.0, 2.0])
     one = defined(a, b)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     two = defined(a=a, b=b)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     three = defined(b=b, a=a)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     four = defined(a, b=b)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     # The next call corresponds to a new input signature, hence
     # we expect another function to be defined.
     five = defined(b, a)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     six = defined(a=b, b=a)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     seven = defined(b=a, a=b)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     self.assertAllEqual(one, [1.0, 2.0])
     self.assertAllEqual(two, [1.0, 2.0])
@@ -990,14 +1002,16 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       )
 
   def testRegisterFunction(self):
-    @polymorphic_function.function
+    @compiled_fn(name='add', function_cache=function_cache_lib.FunctionCache())
     def add(x, y):
       return math_ops.add(x, y)
 
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = polymorphic_function.function(matmul)
+    defun_matmul = compiled_fn(
+        matmul, name='matmul', function_cache=function_cache_lib.FunctionCache()
+    )
 
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
@@ -1065,7 +1079,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
           )
 
   def testRegisterConcreteFunction(self):
-    @polymorphic_function.function
+    @compiled_fn(
+        name='py_add', function_cache=function_cache_lib.FunctionCache()
+    )
     def py_add(x, y):
       return math_ops.add(x, y)
 
@@ -1075,7 +1091,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(None, dtypes.float32),
     )
 
-    @polymorphic_function.function
+    @compiled_fn(
+        name='py_composite', function_cache=function_cache_lib.FunctionCache()
+    )
     def py_composite(x, y):
       return x, add(x, y)
 
@@ -1137,7 +1155,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         (v, 'Placeholder'),
     ]:
 
-      @polymorphic_function.function
+      @compiled_fn
       def test_fn():
         return captured + 1  # pylint: disable=cell-var-from-loop
 
@@ -1150,12 +1168,13 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = polymorphic_function.function(
+    defun_matmul = compiled_fn(
         matmul,
         input_signature=[
             tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
         ],
+        function_cache=function_cache_lib.FunctionCache(),
     )
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
@@ -1179,7 +1198,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def matmul(x, y):
       return math_ops.matmul(x, y)
 
-    defun_matmul = polymorphic_function.function(matmul)
+    defun_matmul = compiled_fn(
+        matmul, function_cache=function_cache_lib.FunctionCache()
+    )
 
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
@@ -1199,7 +1220,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         self.assertLen(graph._functions, 3)
 
   def testCallingFunctionWithDifferentVariables(self):
-    @polymorphic_function.function
+    @compiled_fn
     def foo(v):
       v.assign_add(1.0)
       return v.read_value()
@@ -1214,7 +1235,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     w = resource_variable_ops.ResourceVariable(0.0)
 
-    @polymorphic_function.function
+    @compiled_fn
     def bar(v):
       del v
       return constant_op.constant(1.0)
@@ -1224,7 +1245,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(float(graph_function(w)), 1.0)
 
   def testCallingFunctionWithNonTensorsFails(self):
-    @polymorphic_function.function
+    @compiled_fn
     def foo(x):
       return x
 
@@ -1234,28 +1255,28 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([
       (
-          polymorphic_function.function(
-              experimental_attributes={
+          compiled_fn(
+              attributes={
                   'api_implements': 'random_boost',
                   'api_preferred_device': 'CPU',
               }
           ),
-          polymorphic_function.function(
-              experimental_attributes={
+          compiled_fn(
+              attributes={
                   'api_implements': 'random_boost',
                   'api_preferred_device': 'GPU',
               }
           ),
       ),
       (
-          polymorphic_function.function(
-              experimental_attributes={
+          compiled_fn(
+              attributes={
                   'api_implements': 'random_boost',
                   'api_preferred_device': 'CPU',
               }
           ),
-          polymorphic_function.function(
-              experimental_attributes={
+          compiled_fn(
+              attributes={
                   'api_implements': 'random_boost',
                   'api_preferred_device': 'GPU',
               }
@@ -1319,8 +1340,8 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         'disable_meta_optimizer': False,
     })
 
-    @polymorphic_function.function(
-        experimental_attributes={
+    @compiled_fn(
+        attributes={
             'api_implements': 'foo',
             'api_preferred_device': 'CPU',
         }
@@ -1328,8 +1349,8 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def on_cpu(x):
       return x + 2
 
-    @polymorphic_function.function(
-        experimental_attributes={
+    @compiled_fn(
+        attributes={
             'api_implements': 'foo',
             'api_preferred_device': 'GPU',
         }
@@ -1337,7 +1358,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     def on_gpu(x):
       return x + 4
 
-    @polymorphic_function.function
+    @compiled_fn
     def run_on_cpu(t):
       concrete_func = on_cpu.get_concrete_function(t)
       concrete_func.add_to_graph()
@@ -1348,14 +1369,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     # Expect to run the on_cpu branch, regardless whether gpu is available.
     self.assertEqual(run_on_cpu(constant_op.constant(1)).numpy(), 3)
 
-  def testDefunFunctionSeparateGraphs(self):
+  def testCompilationFunctionSeparateGraphs(self):
     with context.graph_mode():
+      add_cache = function_cache_lib.FunctionCache()
 
-      @polymorphic_function.function
+      @compiled_fn(function_cache=add_cache)
       def add(x):
         return x + 5
 
-      @polymorphic_function.function
+      maybe_add_cache = function_cache_lib.FunctionCache()
+
+      @compiled_fn(function_cache=maybe_add_cache)
       def maybe_add(x, should_add):
         if should_add:
           return add(x)
@@ -1365,40 +1389,44 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertLen(total_function_cache(maybe_add), 1)
-        self.assertLen(total_function_cache(add), 1)
+        self.assertLen(maybe_add_cache, 1)
+        self.assertLen(add_cache, 1)
 
         maybe_add(x, False)
-        self.assertLen(total_function_cache(maybe_add), 2)
-        self.assertLen(total_function_cache(add), 1)
+        self.assertLen(maybe_add_cache, 2)
+        self.assertLen(add_cache, 1)
 
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertLen(total_function_cache(maybe_add), 3)
-        self.assertLen(total_function_cache(add), 2)
+        self.assertLen(maybe_add_cache, 3)
+        self.assertLen(add_cache, 2)
 
   def testCacheKeyOverlappingShapes(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(t):
       return t
 
     defined(array_ops.zeros([12, 1]))
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     defined(array_ops.zeros([1, 21]))
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined_again(t):
       return defined(t)
 
     defined_again.get_concrete_function(array_ops.zeros([12, 1]))
-    self.assertLen(total_function_cache(defined_again), 1)
+    self.assertLen(function_cache, 1)
     defined_again.get_concrete_function(array_ops.zeros([1, 21]))
-    self.assertLen(total_function_cache(defined_again), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheTensorSpecIdenticalToTensor(self):
-    @polymorphic_function.function
+    @compiled_fn(function_cache=function_cache_lib.FunctionCache())
     def defined(t):
       return t
 
@@ -1409,7 +1437,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     )
 
   def testCacheKeyNestedLists(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(l):
       return l
 
@@ -1417,10 +1447,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     b = constant_op.constant(2.0)
     c = constant_op.constant(3.0)
     defined([[a], b, c])
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     defined([[a, b], c])
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testCacheKeyAttrsClass(self):
     if attr is None:
@@ -1431,7 +1461,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       a = attr.ib()
       b = attr.ib()
 
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(l):
       return l
 
@@ -1441,14 +1473,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
             [constant_op.constant(2.0), constant_op.constant(3.0)],
         )
     )
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     defined(
         TestClass(
             constant_op.constant(1.0),
             [constant_op.constant(2.0), constant_op.constant(3.0)],
         )
     )
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     defined(
         TestClass(
@@ -1456,10 +1488,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(3.0),
         )
     )
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
   def testDistinctVariablesNoRetracing(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(a, b, c):
       return a + b + c
 
@@ -1469,15 +1503,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     # We generate cache keys based on unique combinations of resource ids.
     defined(x, y, z)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     # Re-arranging arguments should not cause cache miss
     # because the three inputs are still distinct
     defined(z, y, x)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
   def testRetracingOnDifferentVaribleCombinationPatterns(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(a, b, c):
       return a + b + c
 
@@ -1486,25 +1522,27 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     z = resource_variable_ops.ResourceVariable(0.0)
 
     defined(x, y, z)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     # Retracing because the first two arguments are the same
     defined(x, x, z)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     # Replacing x with y does not cause cache miss
     # because the combination stays the same as (x, x, z)
     defined(y, y, z)
-    self.assertLen(total_function_cache(defined), 2)
+    self.assertLen(function_cache, 2)
 
     # A different combination pattern causes cache miss
     defined(z, y, y)
-    self.assertLen(total_function_cache(defined), 3)
+    self.assertLen(function_cache, 3)
     defined(z, y, y)
-    self.assertLen(total_function_cache(defined), 3)
+    self.assertLen(function_cache, 3)
 
   def testDeepcopyVariableNoRetracing(self):
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def defined(a, b, c):
       return a + b + c
 
@@ -1512,26 +1550,15 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     y = resource_variable_ops.ResourceVariable(0.0)
     z = resource_variable_ops.ResourceVariable(0.0)
     defined(x, y, z)
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
 
     x_copy = copy.deepcopy(x)
     defined(x_copy, y, z)
-    self.assertLen(total_function_cache(defined), 1)
-
-  def testDecoratedMethodInspect(self):
-    class DefunnedMiniModel:
-
-      @polymorphic_function.function
-      def call(self, inputs, training=True):
-        pass
-
-    m = DefunnedMiniModel()
-    fullargspec = tf_inspect.getfullargspec(m.call)
-    self.assertIn('training', fullargspec.args)
+    self.assertLen(function_cache, 1)
 
   @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
-    @polymorphic_function.function
+    @compiled_fn
     def add_five(x):
       return x + 5
 
@@ -1551,7 +1578,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_garbage_created
   def testReferenceCycles(self):
-    fn = polymorphic_function.function(lambda x: 2.0 * x)
+    fn = compiled_fn(lambda x: 2.0 * x)
 
     fn(constant_op.constant(4.0))
     weak_fn = weakref.ref(fn)
@@ -1563,11 +1590,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapeCaching(self):
-    @polymorphic_function.function
+    @compiled_fn
     def func(x):
       return array_ops.shape(x)
 
-    @polymorphic_function.function(
+    @compiled_fn(
         input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)]
     )
     def calls_func(x):
@@ -1582,7 +1609,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testLimitedRetracing(self):
     trace_count = [0]
 
-    @polymorphic_function.function
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
     def func(x):
       trace_count[0] += 1
       return x
@@ -1598,7 +1627,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertLess(trace_count[0], 13)
 
 
-class DefunCollectionTest(test.TestCase):
+class CompilationCollectionTest(test.TestCase):
 
   def testCollectionValueAccess(self):
     """Read values from graph collections inside of defun."""
@@ -1609,7 +1638,7 @@ class DefunCollectionTest(test.TestCase):
         ops.add_to_collection('x', x)
         ops.add_to_collection('y', y)
 
-        @polymorphic_function.function
+        @compiled_fn
         def fn():
           x_const = constant_op.constant(ops.get_collection('x')[0])
           y_const = constant_op.constant(ops.get_collection('y')[0])
@@ -1628,7 +1657,7 @@ class DefunCollectionTest(test.TestCase):
       with self.session(graph=g):
         v = resource_variable_ops.ResourceVariable(1.0)
 
-        @polymorphic_function.function
+        @compiled_fn
         def f():
           return v.read_value()
 
@@ -1636,29 +1665,14 @@ class DefunCollectionTest(test.TestCase):
         self.assertEqual(1.0, float(self.evaluate(f())))
         self.assertLen(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES), 1)
 
-  def testCollectionVariableValueWrite(self):
-    """Write variable value inside defun."""
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g):
 
-        @polymorphic_function.function
-        def f():
-          v = resource_variable_ops.ResourceVariable(2.0)
-          return v
-
-        _ = f.get_concrete_function()
-        self.evaluate(variables.global_variables_initializer())
-        self.assertEqual(2.0, float(self.evaluate(f())))
-        self.assertLen(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES), 1)
-
-
-class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
+class MultiDeviceCompilationTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only
   def testMultiDeviceOutput(self):
     """Tests that functions can produce outputs on multiple devices."""
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(a, b, transpose_a):
       with ops.device('/device:CPU:0'):
         m1 = math_ops.matmul(a, b, transpose_a=transpose_a)
@@ -1675,7 +1689,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only
   def testEmptyBody(self):
-    @polymorphic_function.function
+    @compiled_fn
     def func(a, b):
       return b, a
 
@@ -1710,7 +1724,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       int_gpu = constant_op.constant(7, dtype=dtypes.int32)
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(int_cpu, resource, int_gpu):
       with ops.device('/device:CPU:0'):
         m1 = int_cpu * resource + int_gpu
@@ -1736,7 +1750,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
   def testMultiDeviceColocateWith(self):
     """Tests that function's outputs respect colocation constraints."""
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(a, b):
       with ops.colocate_with(a):
         ra = 2 * a
@@ -1766,7 +1780,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
       g1 = resource_variable_ops.ResourceVariable(3.0)
       g2 = resource_variable_ops.ResourceVariable(5.0)
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(resource1, resource2):
       with ops.device('/device:CPU:0'):
         result1 = resource1 * g2
@@ -1795,7 +1809,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       g1 = resource_variable_ops.ResourceVariable(3.0)
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(resource1, resource2):
       with ops.device('/device:CPU:0'):
         result1 = resource1 * 5
@@ -1845,13 +1859,11 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       g1 = resource_variable_ops.ResourceVariable(3.0)
 
-    @polymorphic_function.function(
-        experimental_attributes={'_noinline': True, '_nospecialize': True}
-    )
+    @compiled_fn(attributes={'_noinline': True, '_nospecialize': True})
     def inner(resource1):
       return resource1 * 2, resource1.handle
 
-    @polymorphic_function.function
+    @compiled_fn
     def outer(resource1):
       with ops.device('/device:CPU:0'):
         r1, _ = inner(resource1)
@@ -1875,12 +1887,12 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:GPU:0'):
       g1 = resource_variable_ops.ResourceVariable(3.0)
 
-    @polymorphic_function.function(experimental_attributes={'_noinline': True})
+    @compiled_fn(attributes={'_noinline': True})
     def inner(resource1):
       resource1.assign_add(2.0)
       return resource1 * 2, resource1.handle
 
-    @polymorphic_function.function
+    @compiled_fn
     def outer(resource1):
       with ops.device('/device:CPU:0'):
         r1, res1 = inner(resource1)
@@ -1923,7 +1935,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     for tensor in [cg0, cg1]:
       self.assertRegex(tensor.backing_device, 'GPU:0')
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1):
       with ops.device('/device:CPU:0'):
         m1 = rc0 * cg0
@@ -1959,7 +1971,7 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
       g2 = constant_op.constant(13.0)
       g3 = constant_op.constant(17.0)
 
-    @polymorphic_function.function
+    @compiled_fn
     def func(g1, g2, c1, g3, c2):  # pylint: disable=unused-argument
       # arguments g1 and g2 are unused and can be pruned by grappler.
       return c1 * g3 * c2
@@ -1968,11 +1980,11 @@ class MultiDeviceDefunTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
 
 
-class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
+class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
   def testBasic(self):
-    @polymorphic_function.function
+    @compiled_fn
     def fn(a, b):
       return a + b, a * b
 
@@ -1998,7 +2010,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
     )
 
   def testVariable(self):
-    @polymorphic_function.function
+    @compiled_fn
     def fn(a, b):
       return a + b, a * b
 
@@ -2017,7 +2029,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
     self.assertLen(fn_op.graph.structured_outputs, 2)
 
   def testDictReturned(self):
-    @polymorphic_function.function
+    @compiled_fn
     def fn(x, z=(1.0, 2.0), y=3.0):
       z1, z2 = z
       return {'alpha': x + y + z1, 'beta': x * y + z2}
@@ -2080,24 +2092,21 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
   def testMethod(self):
     class HasMethod(object):
 
-      @polymorphic_function.function
       def method(self, x):
         return x
 
     has_method = HasMethod()
-    # Call the function to make def_function happy
-    HasMethod.method(has_method, array_ops.ones([]))
-    class_op = HasMethod.method.get_concrete_function(
-        has_method, tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+    compiled_method = compiled_fn(has_method.method)
+    class_op = compiled_method.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
     )
     self.assertEqual(['x'], [inp.op.name for inp in class_op.inputs])
     self.assertEqual(
         [b'x'],
         [inp.op.get_attr('_user_specified_name') for inp in class_op.inputs],
     )
-    # Call the function to make def_function happy
-    has_method.method(array_ops.ones([]))
-    method_op = has_method.method.get_concrete_function(
+
+    method_op = compiled_method.get_concrete_function(
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
     )
     self.assertEqual(['x'], [inp.op.name for inp in method_op.inputs])
@@ -2121,27 +2130,25 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
   def testMethodSignature(self):
     class HasMethod(object):
 
-      @polymorphic_function.function(
-          input_signature=(
-              tensor_spec.TensorSpec(
-                  shape=None, dtype=dtypes.float64, name='y'
-              ),
-          )
-      )
       def method(self, x):
         hash(self)  # No weak proxies passed as `self`
         return x
 
     has_method = HasMethod()
-    # Call the function to make def_function happy
-    has_method.method(array_ops.ones([], dtype=dtypes.float64))
-    method_op = has_method.method.get_concrete_function()
+    compiled_method = compiled_fn(
+        has_method.method,
+        input_signature=(
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float64, name='y'),
+        ),
+    )
+
+    method_op = compiled_method.get_concrete_function()
     self.assertEqual(['y'], [inp.op.name for inp in method_op.inputs])
     self.assertEqual(
         [b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs],
     )
-    method_op2 = has_method.method.get_concrete_function()
+    method_op2 = compiled_method.get_concrete_function()
     self.assertEqual(['y'], [inp.op.name for inp in method_op2.inputs])
     self.assertEqual(
         [b'y'],
@@ -2149,7 +2156,7 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
     )
 
   def testVariadic(self):
-    @polymorphic_function.function
+    @compiled_fn
     def variadic_fn(x, *args, **kwargs):
       return x + math_ops.add_n(list(args) + list(kwargs.values()))
 
@@ -2175,13 +2182,14 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
     )
 
   def testVariadicInputSignature(self):
-    @polymorphic_function.function(
+    @compiled_fn(
         input_signature=(
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z'),
-        )
+        ),
+        name='variadic_fn',
     )
     def variadic_fn(x, *args):
       return x + math_ops.add_n(list(args))
@@ -2212,7 +2220,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
       with ops.device('cpu'):
         return test_ops.device_placement_op()
 
-    func = polymorphic_function.function(f)
+    func = compiled_fn(f)
     with ops.device('cpu:0'):
       output = self.evaluate(func())
       self.assertIn(compat.as_bytes('CPU:0'), output)
@@ -2229,9 +2237,10 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
       s3 = test_ops.device_placement_op()
       return s0, s1, s2, s3
 
-    defined = polymorphic_function.function(multi_device_fn)
+    function_cache = function_cache_lib.FunctionCache()
+    defined = compiled_fn(multi_device_fn, function_cache=function_cache)
     outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -2239,7 +2248,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
     with ops.device('/cpu:3'):
       outputs = self.evaluate(defined())
     # All function definitions are agnostic to call site devices.
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -2247,7 +2256,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/cpu:0'):
       outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
+    self.assertLen(function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])

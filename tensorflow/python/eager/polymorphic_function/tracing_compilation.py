@@ -80,9 +80,6 @@ class TracingOptions:
   # Trace generalized functions where possible to avoid future retracing.
   reduce_retracing: bool = False
 
-  # If true, XLA-based compilation is enabled.
-  jit_compile: Optional[bool] = None
-
   # If true, graph of generated Function will be destroyed with the function.
   bind_graph_to_function: bool = False
 
