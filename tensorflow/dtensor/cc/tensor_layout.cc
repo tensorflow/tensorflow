@@ -1062,9 +1062,7 @@ bool Layout::IsFullyReplicated() const {
     return false;
   }
   for (const auto& sharding_spec : sharding_specs_) {
-    if (num_shards_for_dim(sharding_spec) > 1) {
-      return false;
-    }
+    if (sharding_spec.sharding_spec() != Layout::kUnshardedDim) return false;
   }
   return true;
 }
@@ -1072,7 +1070,7 @@ bool Layout::IsFullyReplicated() const {
 bool Layout::IsLastDimReplicated() const {
   return (mesh_.IsTile() &&
           ((sharding_specs_.empty()) ||
-           (num_shards_for_dim(sharding_specs_.back()) == 1)));
+           (sharding_specs_.back().sharding_spec() == Layout::kUnshardedDim)));
 }
 
 bool Layout::IsBatchParallel() const {
