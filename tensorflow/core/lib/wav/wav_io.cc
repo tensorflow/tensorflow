@@ -294,8 +294,8 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
         "Bad bytes per sample in WAV header: Expected ",
         expected_bytes_per_sample, " but got ", bytes_per_sample);
   }
-  const uint64 expected_bytes_per_second = (uint64)bytes_per_sample * *sample_rate;
-  if ((uint64)bytes_per_second != expected_bytes_per_second) {
+  const uint64 expected_bytes_per_second = static_cast<uint64>(bytes_per_sample) * *sample_rate;
+  if (static_cast<uint64>(bytes_per_second) != expected_bytes_per_second) {
     return errors::InvalidArgument(
         "Bad bytes per second in WAV header: Expected ",
         expected_bytes_per_second, " but got ", bytes_per_second,
