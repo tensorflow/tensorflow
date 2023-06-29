@@ -8,8 +8,8 @@ set -o allexport && source "$TFCI" && set +o allexport
 
 cd "$TFCI_GIT_DIR" && mkdir -p build
 tfrun() { "$@"; }
-[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source ./ci/official/utilities/copybara.sh
-[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source ./ci/official/utilities/docker.sh
+[[ "$TFCI_COPYBARA_ENABLE" == 1 ]] && source ./ci/official/utilities/copybara.sh
+[[ "$TFCI_DOCKER_ENABLE" == 1 ]] && source ./ci/official/utilities/docker.sh
 ./ci/official/utilities/generate_index_html.sh build/index.html
 
 # Parse options and build targets into arrays, so that shelllint doesn't yell
@@ -25,7 +25,7 @@ config=( $(echo "$CONFIG_OPTIONS" ) )
 test_flags=( $(echo "$TEST_FLAGS" ) )
 set -e
 
-[[ "$TFCI_NVIDIA_SMI_ENABLE" = 1 ]] && tfrun nvidia-smi
+[[ "$TFCI_NVIDIA_SMI_ENABLE" == 1 ]] && tfrun nvidia-smi
 
 if [[ -s build_targets.txt ]]; then
   tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" "${config[@]}" "${filtered_build_targets[@]}"
@@ -33,7 +33,7 @@ fi
 
 if [[ "${PIP_WHEEL}" -eq "1" ]]; then
   # Update the version numbers to build a "nightly" package
-  [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" = 1 ]] && tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]] && tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
 
   tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_CACHE_ARGS[@]}" tensorflow/tools/pip_package:build_pip_package
   tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package build "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"

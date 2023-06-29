@@ -23,7 +23,7 @@ setup_file() {
     # Note that you could generate a list of all the affected targets with e.g.:
     # bazel query $(paste -sd "+" $BATS_FILE_TMPDIR/changed_files) --keep_going
     # Only shows Added, Changed, Modified, Renamed, and Type-changed files
-    if [[ "$(git rev-parse --abbrev-ref HEAD)" = "pull_branch" ]]; then
+    if [[ "$(git rev-parse --abbrev-ref HEAD)" == "pull_branch" ]]; then
         # TF's CI runs 'git fetch origin "pull/PR#/merge:pull_branch"'
         # To get the as-merged branch during the CI tests
         git diff --diff-filter ACMRT --name-only pull_branch^ pull_branch > $BATS_FILE_TMPDIR/changed_files
