@@ -797,6 +797,19 @@ template <PrimitiveType kType>
 using NativeTypeOf =
     typename primitive_util::PrimitiveTypeToNative<kType>::type;
 
+inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type) -> bool {
+        if constexpr (primitive_util::IsIntegralType(primitive_type)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+          return std::numeric_limits<NativeT>::min() <= x &&
+                 std::numeric_limits<NativeT>::max() >= x;
+        }
+        LOG(FATAL) << "Invalid primitive type " << PrimitiveType_Name(ty);
+      },
+      ty);
+}
+
 }  // namespace primitive_util
 }  // namespace xla
 

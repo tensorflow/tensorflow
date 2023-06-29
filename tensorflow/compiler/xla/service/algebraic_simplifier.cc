@@ -4438,8 +4438,8 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       std::optional<int64_t> max_val =
           OverflowSafeAdd(*divisor_val, iota_upper_bound);
-      if (max_val.has_value() &&
-          FitsInIntegralType(*max_val, iota->shape().element_type())) {
+      if (max_val.has_value() && primitive_util::FitsInIntegralType(
+                                     *max_val, iota->shape().element_type())) {
         return ReplaceWithNewInstruction(
             remainder,
             HloInstruction::CreateBinary(remainder->shape(),
