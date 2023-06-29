@@ -127,6 +127,12 @@ cc_library(
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
 )
 
+cc_library(
+    name = "tensorrt_rpath_stub",
+    visibility = ["//visibility:public"],
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
+)
+
 alias(
     name = "cudnn_lib",
     actual = select({
