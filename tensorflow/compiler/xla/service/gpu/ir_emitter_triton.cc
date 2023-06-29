@@ -157,19 +157,20 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return value;
   }
 
+  // All operations on bf16 are done through f32.
+  if (src_element_ty.isBF16()) {
+    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
+  }
+  if (dst_element_ty.isBF16()) {
+    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+  }
+
   // Float <=> float
   auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
   auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
   if (src_fp_element_ty && dst_fp_element_ty) {
-    // f16 <=> bf16 is a bit special, since we can neither extend, nor truncate
-    // one into the other. Instead, we first extend src to f32, and then
-    // truncate to dst.
-    if ((src_element_ty.isF16() && dst_element_ty.isBF16()) ||
-        (src_element_ty.isBF16() && dst_element_ty.isF16())) {
-      return b.create<ma::TruncFOp>(dst_ty,
-                                    b.create<ma::ExtFOp>(fp32_ty, value));
-    } else if (src_fp_element_ty.getFPMantissaWidth() >
-               dst_fp_element_ty.getFPMantissaWidth()) {
+    if (src_fp_element_ty.getFPMantissaWidth() >
+        dst_fp_element_ty.getFPMantissaWidth()) {
       return b.create<ma::TruncFOp>(dst_ty, value);
     } else {
       return b.create<ma::ExtFOp>(dst_ty, value);
