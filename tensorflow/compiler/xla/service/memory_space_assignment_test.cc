@@ -15,21 +15,54 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
+using Chunk = HeapSimulator::Chunk;
 using memory_space_assignment::AsynchronousCopy;
 using memory_space_assignment::AsynchronousCopyOrdering;
 using memory_space_assignment::AsynchronousCopyResource;
@@ -42,6 +75,15 @@ using memory_space_assignment::MemorySpaceAssignmentCostAnalysis;
 using memory_space_assignment::Options;
 using memory_space_assignment::PrefetchIntervalPicker;
 using memory_space_assignment::PresetAssignments;
+using memory_space_assignment::SlicedPrefetchOptions;
+using SliceParam = memory_space_assignment::MemorySpaceAssignment::SliceParam;
+using SliceProposal =
+    memory_space_assignment::MemorySpaceAssignment::SliceProposal;
+using SliceProposalCollection =
+    memory_space_assignment::MemorySpaceAssignment::SliceProposalCollection;
+using MSA = memory_space_assignment::MemorySpaceAssignment;
+using ::testing::_;
+using ::testing::Return;
 
 constexpr int64_t kPointerSize = 8;
 constexpr float kAsyncCopyBandwidth = 100;
@@ -1381,6 +1423,8 @@ TEST_P(MemorySpaceAssignmentTest, While) {
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_CHECK_OK(module->set_schedule(schedule));
+
+  LOG(INFO) << module->ToString(HloPrintOptions::ShortParsable());
 
   AssignMemorySpace(module.get());
 
@@ -9625,6 +9669,1241 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
                           RunMsa(module.get(), /*alternate_memory_size=*/512));
+}
+
+class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
+ protected:
+  // Used by CheckSchedule() to classify instructions in the schedule.
+  enum class InstructionClass {
+    kUnknown,
+    // A slice start that we care about, as determined by the test.
+    kRelatedSliceStart,
+    // A slice done that we care about, as determined by the test.
+    kRelatedSliceDone,
+    // A concat-bitcast that we care about, as determined by the test.
+    kRelatedConcatBitcast,
+    // A non-copy-like instruction that slices should start after.
+    kStartAfterNonCopy,
+    // A non-copy-like instruction that slices should finish before.
+    kDoneBeforeNonCopy,
+    // A copy, slice, or concat-bitcast that we don't care about.
+    kUnrelatedCopyLike,
+    // All other instructions.
+    kUnrelatedNonCopy,
+  };
+
+  static std::string InstructionClassToString(
+      InstructionClass instruction_class) {
+    switch (instruction_class) {
+      case InstructionClass::kUnknown:
+        return "unknown";
+      case InstructionClass::kRelatedSliceStart:
+        return "slice start";
+      case InstructionClass::kRelatedSliceDone:
+        return "slice done";
+      case InstructionClass::kRelatedConcatBitcast:
+        return "concat-bitcast";
+      case InstructionClass::kStartAfterNonCopy:
+        return "start after non-copy";
+      case InstructionClass::kDoneBeforeNonCopy:
+        return "done before non-copy";
+      case InstructionClass::kUnrelatedCopyLike:
+        return "unrelated copy-like";
+      case InstructionClass::kUnrelatedNonCopy:
+        return "unrelated non-copy";
+    }
+  }
+
+  // A class that can be mocked to set expectations on slice proposals. To do
+  // that, we set memory_space_assignment::Options::propose_slice_fn to a lambda
+  // that calls our mocks ProposeSlices() method.
+  class SliceProposer {
+   public:
+    SliceProposer() = default;
+    virtual ~SliceProposer() = default;
+
+    virtual StatusOr<SliceProposalCollection> ProposeSlices(
+        const Shape& shape, const SlicedPrefetchOptions& options) = 0;
+  };
+
+  class MockSliceProposer : public SliceProposer {
+   public:
+    MOCK_METHOD(StatusOr<SliceProposalCollection>, ProposeSlices,
+                (const Shape& shape, const SlicedPrefetchOptions& options),
+                (override));
+  };
+
+  // An HloInstruction* matcher for matching the asynchronous sliced copies
+  // produced by MSA. In particular, the matcher performs the following
+  // checks:
+  // - The copy is concluded with a concat-bitcast custom call
+  // - The operands to the concat-bitcast are asynchronous slices of the
+  //   expected operand
+  // - The number of slices is as expected (i.e.,
+  //   expected_slice_params_per_slice_in_spatial_order_.size())
+  // - The copy is from and to the correct memory spaces
+  // - The shape before and after the copy is the same
+  // - When the slices are sorted in expected spatial order, their slice
+  //   starts and limits are as expected
+  // - The slices are to the correct memory space
+  // - All slices have slice strides of 1
+  class AsyncSlicedCopy
+      : public ::testing::MatcherInterface<const HloInstruction*> {
+   public:
+    // The parameters in expected_slice_params_per_slice_in_spatial_order should
+    // be sorted in the order in which we expect the corresponding slices to be
+    // laid out in memory.
+    AsyncSlicedCopy(int64_t to_space, int64_t from_space,
+                    std::vector<std::vector<SliceParam>>
+                        expected_slice_params_per_slice_in_spatial_order,
+                    ::testing::Matcher<const HloInstruction*> operand)
+        : to_space_(to_space),
+          from_space_(from_space),
+          expected_slice_params_per_slice_in_spatial_order_(
+              std::move(expected_slice_params_per_slice_in_spatial_order)),
+          custom_call_matcher_(
+              memory_space_assignment::kConcatBitcastCustomCall,
+              std::vector<::testing::Matcher<const HloInstruction*>>(
+                  expected_slice_params_per_slice_in_spatial_order_.size(),
+                  op::AsyncDone(op::AsyncStart(operand)))) {}
+
+    bool MatchAndExplain(
+        const HloInstruction* instruction,
+        ::testing::MatchResultListener* listener) const override {
+      // Match the custom call.
+      if (!custom_call_matcher_.MatchAndExplain(instruction, listener)) {
+        return false;
+      }
+
+      // Check if the custom call has the proper memory space.
+      const HloInstruction* concat_bitcast = instruction;
+      if (!MatchMemorySpace(concat_bitcast, to_space_, "concat-bitcast",
+                            listener)) {
+        return false;
+      }
+
+      // Check if the copied tensor has the proper memory space.
+      const HloInstruction* copy_operand =
+          concat_bitcast->operand(0)->operand(0)->operand(0);
+      if (!MatchMemorySpace(copy_operand, from_space_, "copy operand",
+                            listener)) {
+        return false;
+      }
+
+      // Check if the copied tensor retains its shape.
+      if (!Shape::Equal().IgnoreMemorySpaceInLayout()(concat_bitcast->shape(),
+                                                      copy_operand->shape())) {
+        *listener << " has a shape of "
+                  << copy_operand->shape().ToString(/*print_layout=*/true)
+                  << " before copying but a shape of "
+                  << concat_bitcast->shape().ToString(/*print_layout=*/true)
+                  << " after copying (ignoring memory space)";
+
+        return false;
+      }
+
+      // This should already be checked in the custom call matcher.
+      CHECK_EQ(concat_bitcast->operand_count(),
+               expected_slice_params_per_slice_in_spatial_order_.size());
+
+      // Check if the slicing parameters are correct and if the slices are to
+      // the correct memory space.
+      std::vector<const HloInstruction*> sorted_slices =
+          SortSlicesInExpectedSpatialOrder(concat_bitcast);
+      for (int i = 0; i < sorted_slices.size(); ++i) {
+        const HloInstruction* slice =
+            sorted_slices[i]->async_wrapped_instruction();
+
+        if (!MatchMemorySpace(slice, to_space_, "slice", listener)) {
+          return false;
+        }
+
+        const std::vector<SliceParam>& expected_slice_params_per_dim =
+            expected_slice_params_per_slice_in_spatial_order_[i];
+        if (slice->slice_starts().empty()) {
+          *listener << " has slice (" << slice->name()
+                    << "), with no slicing parameters";
+          return false;
+        }
+        if (slice->slice_limits().size() != slice->slice_starts().size() ||
+            slice->slice_strides().size() != slice->slice_limits().size()) {
+          *listener
+              << " has slice (" << slice->name()
+              << "), with an inconsistent number slice starts/limits/strides";
+          return false;
+        }
+        if (slice->slice_starts().size() != copy_operand->shape().rank()) {
+          *listener
+              << " has slice (" << slice->name() << "), with "
+              << slice->slice_starts().size()
+              << " slice parameters (i.e., starts/limits/strides), expected "
+              << expected_slice_params_per_slice_in_spatial_order_.size();
+          return false;
+        }
+        for (int dim = 0; dim < slice->slice_starts().size(); ++dim) {
+          const SliceParam& expected_slice_params =
+              expected_slice_params_per_dim[dim];
+          if (slice->slice_starts()[dim] !=
+              expected_slice_params.start_inclusive) {
+            *listener << " has slice (" << slice->name()
+                      << "), with slice start of " << slice->slice_starts()[dim]
+                      << " at dim " << dim << ", expected "
+                      << expected_slice_params.start_inclusive;
+            return false;
+          }
+          if (slice->slice_limits()[dim] !=
+              expected_slice_params.end_exclusive) {
+            *listener << " has slice (" << slice->name()
+                      << "), with slice limit of " << slice->slice_limits()[dim]
+                      << " at dim " << dim << ", expected "
+                      << expected_slice_params.end_exclusive;
+            return false;
+          }
+          if (slice->slice_strides()[dim] != 1) {
+            *listener << " has slice (" << slice->name()
+                      << "), slice stride of " << slice->slice_strides()[dim]
+                      << " at dim " << dim << ", expected 1";
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }
+
+    void DescribeTo(std::ostream* os) const override {
+      custom_call_matcher_.DescribeTo(os);
+      std::vector<std::string> slice_parameters_per_operand;
+      for (int op_idx = 0;
+           op_idx < expected_slice_params_per_slice_in_spatial_order_.size();
+           ++op_idx) {
+        std::vector<std::string> slice_params_per_dim;
+        for (int dim = 0;
+             dim <
+             expected_slice_params_per_slice_in_spatial_order_[op_idx].size();
+             ++dim) {
+          const SliceParam& slice_params =
+              expected_slice_params_per_slice_in_spatial_order_[op_idx][dim];
+          slice_params_per_dim.push_back(absl::StrCat(
+              "dim ", dim, ": {start: ", slice_params.start_inclusive,
+              ", limit: ", slice_params.end_exclusive, "}"));
+        }
+        slice_parameters_per_operand.push_back(
+            absl::StrCat("operand ", op_idx, ": { ",
+                         absl::StrJoin(slice_params_per_dim, ", "), " }"));
+      }
+      *os << " (copying from memory space " << from_space_ << " to "
+          << to_space_
+          << ", with asynchronous slice operands using the following slice "
+             "parameters: { "
+          << absl::StrJoin(slice_parameters_per_operand, ", ") << " })";
+    }
+
+   private:
+    static bool MatchMemorySpace(const HloInstruction* instruction,
+                                 int64_t expected_memory_space,
+                                 std::string_view error_message_identifier,
+                                 ::testing::MatchResultListener* listener) {
+      if (!instruction->shape().has_layout()) {
+        *listener << " contains " << error_message_identifier << " named "
+                  << instruction->name()
+                  << " without a layout, expected a layout with memory space "
+                  << expected_memory_space;
+        return false;
+      }
+      if (instruction->shape().layout().memory_space() !=
+          expected_memory_space) {
+        *listener << " contains " << error_message_identifier << " named "
+                  << instruction->name() << " in memory space "
+                  << expected_memory_space << ", expected  "
+                  << expected_memory_space;
+        return false;
+      }
+
+      return true;
+    }
+
+    int64_t to_space_;
+    int64_t from_space_;
+    std::vector<std::vector<SliceParam>>
+        expected_slice_params_per_slice_in_spatial_order_;
+    ::xla::testing::HloCustomCallMatcher custom_call_matcher_;
+  };
+
+  // Returns an AsyncSlicedCopy matcher.
+  static inline ::testing::Matcher<const HloInstruction*> IsAsyncSlicedCopy(
+      int64_t to_space, int64_t from_space,
+      std::vector<std::vector<SliceParam>>
+          expected_slice_params_per_slice_in_spatial_order,
+      ::testing::Matcher<const HloInstruction*> operand_matcher) {
+    return ::testing::MakeMatcher(new AsyncSlicedCopy(
+        to_space, from_space, expected_slice_params_per_slice_in_spatial_order,
+        operand_matcher));
+  }
+
+  // We make our own matcher for SlicedPrefetchOptions to work around the fact
+  // third_party/tensorflow does not have any generic way to match proto
+  // buffers.
+  class SlicedPrefetchOptionsMatcher
+      : public ::testing::MatcherInterface<const SlicedPrefetchOptions&> {
+   public:
+    explicit SlicedPrefetchOptionsMatcher(
+        SlicedPrefetchOptions expected_options)
+        : expected_options_(std::move(expected_options)) {}
+
+    bool MatchAndExplain(
+        const SlicedPrefetchOptions& options,
+        ::testing::MatchResultListener* listener) const override {
+      if (options.max_slices() != expected_options_.max_slices()) {
+        *listener << " has " << options.max_slices() << " max slices, expected "
+                  << expected_options_.max_slices();
+        return false;
+      }
+
+      if (options.min_bytes() != expected_options_.min_bytes()) {
+        *listener << " has " << options.min_bytes() << " min bytes, expected "
+                  << expected_options_.min_bytes();
+        return false;
+      }
+
+      if (options.fail_on_non_alignment_boundary_slice_proposal() !=
+          expected_options_.fail_on_non_alignment_boundary_slice_proposal()) {
+        *listener
+            << " has fail_on_non_alignment_boundary_slice_proposal set to "
+            << options.fail_on_non_alignment_boundary_slice_proposal()
+            << ", expected "
+            << expected_options_
+                   .fail_on_non_alignment_boundary_slice_proposal();
+        return false;
+      }
+
+      return true;
+    }
+
+    void DescribeTo(std::ostream* os) const override {
+      *os << " has the following options: max_slices("
+          << expected_options_.max_slices() << "), min_bytes("
+          << expected_options_.min_bytes()
+          << ") fail_on_non_alignment_boundary_slice_proposal("
+          << expected_options_.fail_on_non_alignment_boundary_slice_proposal()
+          << ")";
+    }
+
+   private:
+    SlicedPrefetchOptions expected_options_;
+  };
+
+  // Returns an SlicedPrefetchOptions matcher.
+  static inline ::testing::Matcher<const SlicedPrefetchOptions&>
+  EqualsSlicedPrefetchOptions(SlicedPrefetchOptions expected_options) {
+    return ::testing::MakeMatcher(
+        new SlicedPrefetchOptionsMatcher(std::move(expected_options)));
+  }
+
+  // Slices can be passed to the concat-bitcast in any order. This function
+  // sorts a the slices in the order they should spatially (in memory). Note,
+  // this function is specific to the way we are constructing slices for the
+  // test. E.g., it relies on the first dimension of the tensor to be the
+  // slice dimension.
+  //
+  // REQUIRES:
+  // - All operands of concat_bitcast must be asynchronous slices.
+  static std::vector<const HloInstruction*> SortSlicesInExpectedSpatialOrder(
+      const HloInstruction* concat_bitcast) {
+    std::vector<const HloInstruction*> sorted_slices(
+        concat_bitcast->operands().begin(), concat_bitcast->operands().end());
+
+    absl::c_sort(sorted_slices, [](const HloInstruction* lhs,
+                                   const HloInstruction* rhs) {
+      CHECK(IsAsyncSliceDone(lhs));
+      CHECK(IsAsyncSliceDone(rhs));
+      CHECK(!lhs->async_wrapped_instruction()->slice_starts().empty());
+      CHECK(!rhs->async_wrapped_instruction()->slice_starts().empty());
+      return lhs->async_wrapped_instruction()->slice_starts().front() <
+             rhs->async_wrapped_instruction()->slice_starts().front();
+    });
+
+    return sorted_slices;
+  }
+
+  // Returns true if instruction is an async copy start.
+  static bool IsAsyncCopyStart(const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kCopyStart;
+  }
+
+  // Returns true if instruction is an async copy done.
+  static bool IsAsyncCopyDone(const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kCopyDone;
+  }
+
+  // Returns true if instruction is an async slice start.
+  static bool IsAsyncSliceStart(const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kAsyncStart &&
+           instruction->async_wrapped_instruction()->opcode() ==
+               HloOpcode::kSlice;
+  }
+
+  // Returns true if instruction is an async slice done.
+  static bool IsAsyncSliceDone(const HloInstruction* instruction) {
+    return instruction->opcode() == HloOpcode::kAsyncDone &&
+           instruction->async_wrapped_instruction()->opcode() ==
+               HloOpcode::kSlice;
+  }
+
+  // Returns true if instruction is a concat-bitcast.
+  static bool IsConcatBitcast(const HloInstruction* instruction) {
+    return instruction->IsCustomCall(
+        memory_space_assignment::kConcatBitcastCustomCall);
+  }
+
+  // Returns the index of the first instruction with the given name.
+  static StatusOr<int> FindScheduleIndexOfInstruction(
+      const std::vector<HloInstruction*>& schedule, std::string_view name,
+      InstructionClass c) {
+    for (int i = 0; i < schedule.size(); ++i) {
+      if (schedule[i]->name() == name) {
+        return i;
+      }
+    }
+
+    return NotFound(
+        "%s",
+        absl::StrCat("Could not find ", InstructionClassToString(c),
+                     " instruction ", name, " in the instruction schedule."));
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status ConcatBitcastAndSlicesAfterInstruction(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class,
+      int slices_start_after_index) {
+    for (int i = 0; i < slices_start_after_index; ++i) {
+      InstructionClass c = schedule_to_class[i];
+      const HloInstruction* instruction = schedule[i];
+
+      if (c == InstructionClass::kRelatedSliceStart ||
+          c == InstructionClass::kRelatedSliceDone ||
+          c == InstructionClass::kRelatedConcatBitcast) {
+        return FailedPrecondition(
+            "%s", absl::StrCat(InstructionClassToString(c), " ",
+                               instruction->name(), " is scheduled at ", i,
+                               ", but is expected to be after ",
+                               schedule[slices_start_after_index]->name(),
+                               " at ", slices_start_after_index, "."));
+      }
+    }
+
+    return OkStatus();
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class) {
+    bool found_non_copy_since_last_slice_start = true;
+    for (int i = 0; i < schedule_to_class.size(); ++i) {
+      InstructionClass c = schedule_to_class[i];
+
+      if (c == InstructionClass::kRelatedSliceStart &&
+          !found_non_copy_since_last_slice_start) {
+        return FailedPrecondition(
+            "%s",
+            absl::StrCat(
+                "Did not find a non-copy-like instruction between slice start ",
+                schedule[i]->name(), " at ", i,
+                " and the previous slice start."));
+      }
+
+      if (c == InstructionClass::kRelatedSliceStart) {
+        found_non_copy_since_last_slice_start = false;
+      } else if (c == InstructionClass::kUnrelatedNonCopy) {
+        found_non_copy_since_last_slice_start = true;
+      }
+    }
+
+    return OkStatus();
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status OneSliceStartAfterInstructionWithNoCopyLikeBetween(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class,
+      int slices_start_after_index) {
+    int first_slice_start_after_schedule_after = -1;
+    int first_non_copy_after_schedule_after = -1;
+    for (int i = slices_start_after_index + 1;
+         i < schedule_to_class.size() &&
+         (first_slice_start_after_schedule_after == -1 ||
+          first_non_copy_after_schedule_after == -1);
+         ++i) {
+      if (first_slice_start_after_schedule_after == -1 &&
+          schedule_to_class[i] == InstructionClass::kRelatedSliceStart) {
+        first_slice_start_after_schedule_after = i;
+        continue;
+      }
+      if (first_non_copy_after_schedule_after == -1 &&
+          schedule_to_class[i] == InstructionClass::kUnrelatedNonCopy) {
+        first_non_copy_after_schedule_after = i;
+        continue;
+      }
+    }
+    if (first_slice_start_after_schedule_after == -1) {
+      return NotFound(
+          "%s", absl::StrCat("Could not find a slice start instruction "
+                             "after start after instruction ",
+                             schedule[slices_start_after_index]->name(), " at ",
+                             slices_start_after_index, "."));
+    }
+    if (first_non_copy_after_schedule_after == -1) {
+      return NotFound(
+          "%s", absl::StrCat("Could not a find non-copy-like instruction "
+                             "after start after instruction ",
+                             schedule[slices_start_after_index]->name(), " at ",
+                             slices_start_after_index, "."));
+    }
+    if (first_slice_start_after_schedule_after >
+        first_non_copy_after_schedule_after) {
+      return FailedPrecondition(
+          "%s", absl::StrCat(
+                    "Unexpectedly found a non-copy-like instruction at ",
+                    first_non_copy_after_schedule_after, ", between ",
+                    schedule[slices_start_after_index]->name(), " at ",
+                    slices_start_after_index, ", and the first slice start at ",
+                    first_slice_start_after_schedule_after, "."));
+    }
+
+    return OkStatus();
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status ConcatBitcastAndSlicesBeforeInstruction(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class,
+      int slices_done_before_index) {
+    for (int i = slices_done_before_index + 1; i < schedule_to_class.size();
+         ++i) {
+      InstructionClass c = schedule_to_class[i];
+      const HloInstruction* instruction = schedule[i];
+
+      if (c == InstructionClass::kRelatedSliceStart ||
+          c == InstructionClass::kRelatedSliceDone ||
+          c == InstructionClass::kRelatedConcatBitcast) {
+        return FailedPrecondition(
+            "%s", absl::StrCat(InstructionClassToString(c), " ",
+                               instruction->name(), " is scheduled at ", i,
+                               ", but is expected to be before ",
+                               schedule[slices_done_before_index]->name(),
+                               " at ", slices_done_before_index, "."));
+      }
+    }
+
+    return OkStatus();
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status
+  ConcatBitcastAndSliceDonesBeforeInstructionWithNoCopyLikeBetween(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class,
+      int slices_done_before_index) {
+    bool found_non_copy = false;
+    for (int i = slices_done_before_index - 1; i >= 0; --i) {
+      InstructionClass c = schedule_to_class[i];
+      const HloInstruction* instruction = schedule[i];
+
+      if (c == InstructionClass::kUnrelatedNonCopy) {
+        found_non_copy = true;
+        continue;
+      }
+
+      if (found_non_copy && (c == InstructionClass::kRelatedSliceDone ||
+                             c == InstructionClass::kRelatedConcatBitcast)) {
+        return FailedPrecondition(
+            "%s",
+            absl::StrCat("Found non-copy instruction between ",
+                         InstructionClassToString(c), " ", instruction->name(),
+                         " at ", i, ", and slice done before instruction ",
+                         schedule[slices_done_before_index]->name(), " at ",
+                         slices_done_before_index, "."));
+      }
+    }
+
+    return OkStatus();
+  }
+
+  // REQUIRES:
+  // - Concat-bitcast and all slices were found in the schedule used to
+  //   construct schedule_to_class.
+  static Status ConcatBitcastAfterSliceDones(
+      const std::vector<HloInstruction*>& schedule,
+      const std::vector<InstructionClass>& schedule_to_class) {
+    int concat_bitcast_index = -1;
+    for (int i = 0; i < schedule_to_class.size(); ++i) {
+      InstructionClass c = schedule_to_class[i];
+      const HloInstruction* instruction = schedule[i];
+
+      if (concat_bitcast_index == -1 &&
+          c == InstructionClass::kRelatedConcatBitcast) {
+        concat_bitcast_index = i;
+        continue;
+      }
+      if (concat_bitcast_index != -1 &&
+          c == InstructionClass::kRelatedSliceDone) {
+        return FailedPrecondition(
+            "%s", absl::StrCat("Unexpectedly, found concat-bitcast ",
+                               schedule[concat_bitcast_index]->name(), " at ",
+                               concat_bitcast_index,
+                               ", which is before the slice done ",
+                               instruction->name(), " at ", i, "."));
+      }
+    }
+
+    return OkStatus();
+  }
+
+  // Return an OK status iff:
+  // - concat_bitcast and all of its slices come after
+  //   slices_start_after_instruction_name in the schedule AND
+  // - at least one slice start comes after slices_start_after_instruction_name
+  //   in the schedule, with no non-copy-like instruction between AND
+  // - if expect_slices_started_at_different_times is true, at least one
+  //   non-copy-like instruction comes between each slice start AND
+  // - concat_bitcast and all of its slices come before
+  //   slices_done_before_instruction_name in the schedule AND
+  // - concat_bitcast and all of its slice dones come before
+  //   slices_done_before_instruction_name in the schedule, with no
+  //   non-copy-like instruction between AND
+  // - concat_bitcast comes after all slice dones AND
+  static Status CheckSchedule(
+      const HloModule& module, const HloInstruction* concat_bitcast,
+      std::string_view slices_start_after_instruction_name,
+      std::string_view slices_done_before_instruction_name,
+      bool expect_slices_started_at_different_times) {
+    // Get the schedule.
+    auto entry_schedule =
+        module.schedule().sequence(module.entry_computation()).instructions();
+
+    // Initialize schedule_to_class to classify instructions in the schedule.
+    std::vector<InstructionClass> schedule_to_class(
+        entry_schedule.size(), InstructionClass::kUnrelatedNonCopy);
+    for (int i = 0; i < entry_schedule.size(); ++i) {
+      const HloInstruction* instruction = entry_schedule[i];
+      if (IsAsyncCopyStart(instruction) || IsAsyncCopyDone(instruction) ||
+          IsAsyncSliceStart(instruction) || IsAsyncSliceDone(instruction) ||
+          IsConcatBitcast(instruction)) {
+        schedule_to_class[i] = InstructionClass::kUnrelatedCopyLike;
+      }
+    }
+
+    // Update schedule_to_class with the instructions we care about.
+    int slices_start_after_index;
+    TF_ASSIGN_OR_RETURN(slices_start_after_index,
+                        FindScheduleIndexOfInstruction(
+                            entry_schedule, slices_start_after_instruction_name,
+                            InstructionClass::kStartAfterNonCopy));
+    schedule_to_class[slices_start_after_index] =
+        InstructionClass::kStartAfterNonCopy;
+    int slices_done_before_index;
+    TF_ASSIGN_OR_RETURN(slices_done_before_index,
+                        FindScheduleIndexOfInstruction(
+                            entry_schedule, slices_done_before_instruction_name,
+                            InstructionClass::kDoneBeforeNonCopy));
+    schedule_to_class[slices_done_before_index] =
+        InstructionClass::kDoneBeforeNonCopy;
+    int concat_bitcast_index;
+    TF_ASSIGN_OR_RETURN(concat_bitcast_index,
+                        FindScheduleIndexOfInstruction(
+                            entry_schedule, concat_bitcast->name(),
+                            InstructionClass::kRelatedConcatBitcast));
+    schedule_to_class[concat_bitcast_index] =
+        InstructionClass::kRelatedConcatBitcast;
+    for (const HloInstruction* slice : concat_bitcast->operands()) {
+      int done_index;
+      TF_ASSIGN_OR_RETURN(done_index, FindScheduleIndexOfInstruction(
+                                          entry_schedule, slice->name(),
+                                          InstructionClass::kRelatedSliceDone));
+      schedule_to_class[done_index] = InstructionClass::kRelatedSliceDone;
+      int start_index;
+      TF_ASSIGN_OR_RETURN(start_index,
+                          FindScheduleIndexOfInstruction(
+                              entry_schedule, slice->operand(0)->name(),
+                              InstructionClass::kRelatedSliceStart));
+      schedule_to_class[start_index] = InstructionClass::kRelatedSliceStart;
+    }
+
+    // Perform scheduling checks.
+    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesAfterInstruction(
+        entry_schedule, schedule_to_class, slices_start_after_index));
+    TF_RETURN_IF_ERROR(OneSliceStartAfterInstructionWithNoCopyLikeBetween(
+        entry_schedule, schedule_to_class, slices_start_after_index));
+    if (expect_slices_started_at_different_times) {
+      TF_RETURN_IF_ERROR(AtLeastOneNonCopyLikeInstructionBetweenSliceStarts(
+          entry_schedule, schedule_to_class));
+    }
+    TF_RETURN_IF_ERROR(ConcatBitcastAndSlicesBeforeInstruction(
+        entry_schedule, schedule_to_class, slices_done_before_index));
+    TF_RETURN_IF_ERROR(
+        ConcatBitcastAndSliceDonesBeforeInstructionWithNoCopyLikeBetween(
+            entry_schedule, schedule_to_class, slices_done_before_index));
+    TF_RETURN_IF_ERROR(
+        ConcatBitcastAfterSliceDones(entry_schedule, schedule_to_class));
+
+    return OkStatus();
+  }
+
+  // Returns OkStatus iff:
+  // - When the slices of concat_bitcast are sorted in expected spatial order,
+  //   they are assigned chunks that spatially fall in the same order AND
+  // - The slices of concat_bitcast are assigned contiguous memory chunks AND
+  // - The concat_bitcast is assigned a chunk that is the concatenation of the
+  //   slice chunks AND
+  // - The size of the chunk assigned to the concat_bitcast has the same size
+  //   as the instruction's shape
+  static Status CheckSliceChunks(const PresetAssignments& assignments,
+                                 const HloInstruction* concat_bitcast) {
+    absl::flat_hash_map<const HloInstruction*, Chunk> slices_to_chunks;
+    std::optional<Chunk> concat_bitcast_chunk = std::nullopt;
+
+    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
+         assignments.chunks()) {
+      if (position_chunk_pair.first.instruction == concat_bitcast) {
+        if (concat_bitcast_chunk.has_value()) {
+          return FailedPrecondition(
+              "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+                                 " is assigned more than one chunk: ",
+                                 concat_bitcast_chunk->ToString(), " and ",
+                                 position_chunk_pair.second.ToString()));
+        }
+        concat_bitcast_chunk = position_chunk_pair.second;
+      }
+      for (const HloInstruction* slice : concat_bitcast->operands()) {
+        if (position_chunk_pair.first.instruction == slice) {
+          auto it = slices_to_chunks.find(slice);
+          if (it != slices_to_chunks.end()) {
+            return FailedPrecondition(
+                "%s", absl::StrCat("Slice ", slice->name(),
+                                   " is assigned more than one chunk: ",
+                                   it->second.ToString(), " and ",
+                                   position_chunk_pair.second.ToString()));
+          }
+          slices_to_chunks[slice] = position_chunk_pair.second;
+        }
+      }
+    }
+
+    std::vector<const HloInstruction*> sorted_slices =
+        SortSlicesInExpectedSpatialOrder(concat_bitcast);
+    VLOG(1) << "Chunk assignments for " << concat_bitcast->name() << ":\n"
+            << absl::StrJoin(
+                   sorted_slices, "\n",
+                   [&](std::string* out, const HloInstruction* slice) {
+                     auto it = slices_to_chunks.find(slice);
+                     std::string chunk = "no chunk assigned";
+                     if (it != slices_to_chunks.end()) {
+                       chunk = it->second.ToString();
+                     }
+                     absl::StrAppend(out, "  slice ", slice->name(), ": ",
+                                     chunk);
+                   })
+            << "\n  concat-bitcast " << concat_bitcast->name() << ": "
+            << (concat_bitcast_chunk.has_value()
+                    ? concat_bitcast_chunk->ToString()
+                    : "no chunk assigned");
+    if (sorted_slices.empty()) {
+      return OkStatus();
+    }
+
+    // Check that slices are assigned contiguous chunks that are spatially
+    // ordered according to sorted_slices.
+    int64_t previous_end = -1;
+    int64_t min_offset = std::numeric_limits<int64_t>::max();
+    int64_t max_limit = std::numeric_limits<int64_t>::min();
+    for (const HloInstruction* slice : sorted_slices) {
+      auto it = slices_to_chunks.find(slice);
+      if (it == slices_to_chunks.end()) {
+        return FailedPrecondition(
+            "%s",
+            absl::StrCat("Slice ", slice->name(), " is not assigned a chunk"));
+      }
+      const Chunk& chunk = it->second;
+      if (previous_end != -1 && chunk.offset != previous_end) {
+        return FailedPrecondition(
+            "%s", absl::StrCat(
+                      "Slice ", slice->name(), " starts at offset ",
+                      chunk.offset, ". Expected it to start at ", previous_end,
+                      " because that's where the previous slice ended."));
+      }
+      previous_end = chunk.chunk_end();
+      min_offset = std::min(min_offset, chunk.offset);
+      max_limit = std::max(max_limit, chunk.chunk_end());
+    }
+
+    // Check that the concat_bitcast is assigned a chunk that is the
+    // concatenation of the slice chunks.
+    if (!concat_bitcast_chunk.has_value()) {
+      return FailedPrecondition(
+          "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+                             " is not assigned a chunk."));
+    }
+    Chunk expected_concat_bitcast_chunk =
+        Chunk::FromOffsetEnd(min_offset, max_limit);
+    if (!(*concat_bitcast_chunk == expected_concat_bitcast_chunk)) {
+      return FailedPrecondition(
+          "%s",
+          absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+                       " is assigned chunk ", concat_bitcast_chunk->ToString(),
+                       " but its expected to be assigned chunk ",
+                       expected_concat_bitcast_chunk.ToString()));
+    }
+    if (concat_bitcast_chunk->size != ShapeSize(concat_bitcast->shape())) {
+      return FailedPrecondition(
+          "%s",
+          absl::StrCat(
+              "Concat-bitcast ", concat_bitcast->name(), " is assigned chunk ",
+              concat_bitcast_chunk->ToString(), " with size ",
+              concat_bitcast_chunk->size, ". Expected a size of ",
+              ShapeSize(concat_bitcast->shape()), ", to match its shape."));
+    }
+
+    return OkStatus();
+  }
+
+  SlicedPrefetchTest() {
+    // Force tests to fail if ProposeSlices is unexpectedly called.
+    EXPECT_CALL(slice_proposer_, ProposeSlices(_, _)).Times(0);
+
+    options_.max_size_in_bytes = 1024;
+    options_.sliced_prefetch_options.set_max_slices(2);
+    options_.sliced_prefetch_options.set_min_bytes(8);
+    options_.propose_slice_fn =
+        [&](const Shape& shape,
+            const memory_space_assignment::SlicedPrefetchOptions& options) {
+          return slice_proposer_.ProposeSlices(shape, options);
+        };
+    options_.update_layout_fn = [](Shape* shape) {};
+  }
+
+  bool allocate_across_sequential_calls() const override { return true; }
+
+  // Optional method to setup common ProposeSlices expectations for several
+  // tests.
+  void SetupProposeSlicesToExpect2SlicesOfF32x8x8() {
+    EXPECT_CALL(slice_proposer_,
+                ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
+                                            options_.sliced_prefetch_options)))
+        .WillRepeatedly(Return(SliceProposalCollection({
+            SliceProposal({f32_4_8_, std::vector<SliceParam>({{0, 4}, {0, 8}}),
+                           ShapeSize(f32_4_8_)}),
+            SliceProposal({f32_4_8_, std::vector<SliceParam>({{4, 8}, {0, 8}}),
+                           ShapeSize(f32_4_8_)}),
+        })));
+  }
+
+  const Shape f32_8_8_ = ShapeUtil::MakeShape(F32, {8, 8});
+  const Shape f32_4_8_ = ShapeUtil::MakeShape(F32, {4, 8});
+  MockSliceProposer slice_proposer_;
+  Options options_ = DefaultMemorySpaceOptions();
+};
+
+TEST_F(SlicedPrefetchTest, TwoSlices) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be copied via a sliced prefetch for use in r.
+  EXPECT_THAT(root, op::Add(_, IsAsyncSlicedCopy(
+                                   kAlternateMemorySpace, kDefaultMemorySpace,
+                                   {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                   op::Parameter(1))));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(
+      CheckSchedule(*module, root->operand(1),
+                    /*slices_start_after_instruction_name=*/"p1",
+                    /*slices_done_before_instruction_name=*/"r",
+                    /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+}
+
+TEST_F(SlicedPrefetchTest, ThreeSlices) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+  const Shape f32_3_8 = ShapeUtil::MakeShape(F32, {3, 8});
+  const Shape f32_2_8 = ShapeUtil::MakeShape(F32, {2, 8});
+
+  options_.sliced_prefetch_options.set_max_slices(3);
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal({f32_3_8, std::vector<SliceParam>({{0, 3}, {0, 8}}),
+                         ShapeSize(f32_3_8)}),
+          SliceProposal({f32_3_8, std::vector<SliceParam>({{3, 6}, {0, 8}}),
+                         ShapeSize(f32_3_8)}),
+          SliceProposal({f32_2_8, std::vector<SliceParam>({{6, 8}, {0, 8}}),
+                         ShapeSize(f32_2_8)}),
+      })));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be copied via a sliced prefetch for use in r.
+  EXPECT_THAT(
+      root,
+      op::Add(_, IsAsyncSlicedCopy(
+                     kAlternateMemorySpace, kDefaultMemorySpace,
+                     {{{0, 3}, {0, 8}}, {{3, 6}, {0, 8}}, {{6, 8}, {0, 8}}},
+                     op::Parameter(1))));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(
+      CheckSchedule(*module, root->operand(1),
+                    /*slices_start_after_instruction_name=*/"p1",
+                    /*slices_done_before_instruction_name=*/"r",
+                    /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+}
+
+TEST_F(SlicedPrefetchTest, SlicingDisabled) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+
+  options_.sliced_prefetch_options.set_max_slices(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  // Check that there are not any sliced prefetches in the schedule.
+  auto entry_schedule =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  for (const HloInstruction* instruction : entry_schedule) {
+    EXPECT_FALSE(IsAsyncSliceStart(instruction));
+    EXPECT_FALSE(IsAsyncSliceDone(instruction));
+    EXPECT_FALSE(IsConcatBitcast(instruction));
+  }
+}
+
+TEST_F(SlicedPrefetchTest, TooSmallToSlice) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+
+  options_.sliced_prefetch_options.set_min_bytes(1000000000);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  // No tensor is big enough to be sliced, so check that there are not any
+  // sliced prefetches.
+  auto entry_schedule =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  for (const HloInstruction* instruction : entry_schedule) {
+    EXPECT_FALSE(IsAsyncSliceStart(instruction));
+    EXPECT_FALSE(IsAsyncSliceDone(instruction));
+    EXPECT_FALSE(IsConcatBitcast(instruction));
+  }
+}
+
+TEST_F(SlicedPrefetchTest, FallbackToUnsliced) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(StatusOr<SliceProposalCollection>(
+          FailedPrecondition("%s", "Cannot slice."))));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  // No tensor is big enough to be sliced, so check that there are not any
+  // sliced prefetches.
+  auto entry_schedule =
+      module->schedule().sequence(module->entry_computation()).instructions();
+  for (const HloInstruction* instruction : entry_schedule) {
+    EXPECT_FALSE(IsAsyncSliceStart(instruction));
+    EXPECT_FALSE(IsAsyncSliceDone(instruction));
+    EXPECT_FALSE(IsConcatBitcast(instruction));
+  }
+}
+
+TEST_F(SlicedPrefetchTest, UsingCostAnalysisIntervalPicker) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  ROOT r = f32[8,8] add(c, p1)
+})zz";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpaceUsingCostAnalysis(module.get(), options_);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be copied via a sliced prefetch for use in r.
+  EXPECT_THAT(root, op::Add(_, IsAsyncSlicedCopy(
+                                   kAlternateMemorySpace, kDefaultMemorySpace,
+                                   {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                   op::Parameter(1))));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(CheckSchedule(
+      *module, root->operand(1),
+      // The CostAnalysisPrefetchIntervalPicker does not necessarily pick the
+      // earliest possible time to start the prefetch.
+      /*slices_start_after_instruction_name=*/"a",
+      /*slices_done_before_instruction_name=*/"r",
+      /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+}
+
+TEST_F(SlicedPrefetchTest, LoopAliasing) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+WhileBody {
+  body_param = (f32[8,8], f32[8,8], f32[], f32[]) parameter(0)
+  v0 = f32[8,8] get-tuple-element(body_param), index=0
+  v1 = f32[8,8] get-tuple-element(body_param), index=1
+  i = f32[] get-tuple-element(body_param), index=2
+  limit = f32[] get-tuple-element(body_param), index=3
+  one = f32[] constant(1)
+
+  new_i = f32[] add(i, one)
+  new_v1 = f32[8,8] add(v0, v1)
+
+  ROOT while_result = (f32[8,8], f32[8,8], f32[], f32[]) tuple(v0, new_v1, new_i, limit)
+}
+
+WhileCond {
+  cond_param = (f32[8,8], f32[8,8], f32[], f32[]) parameter(0)
+  i = f32[] get-tuple-element(cond_param), index=2
+  limit = f32[] get-tuple-element(cond_param), index=3
+
+  ROOT cond_result = pred[] compare(i, limit), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  iterations = f32[] parameter(2)
+  initial = f32[] constant(0)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  t = (f32[8,8], f32[8,8], f32[], f32[]) tuple(p0, p1, initial, iterations)
+  w = (f32[8,8], f32[8,8], f32[], f32[]) while(t), condition=WhileCond, body=WhileBody
+  d = f32[8,8] get-tuple-element(w), index=1
+
+  ROOT r = f32[8,8] add(c, d)
+})zz";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpaceUsingCostAnalysis(module.get(), options_);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be copied with a slice.
+  ASSERT_THAT(
+      root,  //
+      // r from module
+      op::Add(_,
+              // d from module
+              op::GetTupleElement(
+                  // w from module
+                  op::While(
+                      // t from module
+                      op::Tuple(_,
+                                IsAsyncSlicedCopy(
+                                    kAlternateMemorySpace, kDefaultMemorySpace,
+                                    {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                    op::Parameter(1)),
+                                _, _)),
+                  1)));
+
+  // In the resultant code, ensure that the prefetch of p1 is aliased throughout
+  // the while loop.
+  HloInstruction* w = root->mutable_operand(1)->mutable_operand(0);
+  HloInstruction* t = w->mutable_operand(0);
+  HloInstruction* concat_bitcast = t->mutable_operand(1);
+  HloComputation* while_body = w->while_body();
+  HloInstruction* body_param = while_body->parameter_instruction(0);
+  HloComputation* while_cond = w->while_condition();
+  HloInstruction* cond_param = while_cond->parameter_instruction(0);
+
+  // Things we expect to alias with the concat_bitcast.
+  absl::flat_hash_set<HloPosition> expected_aliases({
+      HloPosition{concat_bitcast, {}},
+      HloPosition{w, {1}},
+      HloPosition{t, {1}},
+      HloPosition{body_param, {1}},
+      HloPosition{cond_param, {1}},
+  });
+
+  // Check the aliasing.
+  auto alias_analysis = HloAliasAnalysis::Run(module.get()).value();
+  VLOG(2) << alias_analysis->ToString();
+  const HloBuffer& concat_bitcast_buffer =
+      alias_analysis->GetUniqueBufferAt(concat_bitcast);
+  EXPECT_THAT(concat_bitcast_buffer.ComputePositions(),
+              ::testing::IsSupersetOf(expected_aliases));
+
+  // Since expected_aliases are aliased, we expect only 1 to be assigned a
+  // chunk.
+  int num_chunks_for_expected_aliases = 0;
+  for (const auto& position_chunk_pair : assignments->chunks()) {
+    if (expected_aliases.contains(position_chunk_pair.first)) {
+      num_chunks_for_expected_aliases++;
+    }
+  }
+  EXPECT_EQ(num_chunks_for_expected_aliases, 1);
 }
 
 }  // namespace

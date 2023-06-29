@@ -1136,11 +1136,15 @@ class MemorySpaceAssignment {
 
   // Statistics of asynchronous copies.
   struct AsyncCopyStats {
-    int64_t max_outstanding_async_copies;
-    int64_t num_prefetches;
-    int64_t prefetch_bytes;
-    int64_t num_evictions;
-    int64_t eviction_bytes;
+    // Includes both async copies and async sliced copies.
+    int64_t max_outstanding_async_copies = 0;
+    // Includes both async copies and async sliced copies.
+    int64_t num_prefetches = 0;
+    int64_t num_sliced_prefetches = 0;
+    int64_t num_sliced_prefetch_slices = 0;
+    int64_t prefetch_bytes = 0;
+    int64_t num_evictions = 0;
+    int64_t eviction_bytes = 0;
   };
 
   virtual ~MemorySpaceAssignment() = default;
@@ -2001,9 +2005,6 @@ class AlternateMemoryBestFitHeap
     absl::Span<const int64_t> all_use_times;
   };
 
-  // TODO(b/275905276): create a SlicedAllocationRequest that contains the
-  // original AllocationRequest, plus slice times and sizes
-
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -2040,6 +2041,125 @@ class AlternateMemoryBestFitHeap
     const MemorySpaceAssignment::Allocation* loop_optimized_allocation;
   };
 
+  // A context object that is used to share state amongst the methods that
+  // implement Prefetch(). Prefetch tries to find both a sliced solution and an
+  // unsliced solution at the same time. We store both in this structure.
+  struct PrefetchContext {
+    // Prefetching is designed to operate on a SlicedBufferInterval that is
+    // backed by a standard BufferInterval, even if the number of slices == 1.
+    // WorkingIntervals is used to store a SlicedBufferInterval and its backing
+    // BufferInterval.
+    struct WorkingIntervals {
+      BufferInterval full;
+      // sliced is a unique_ptr because it won't necessarily be initialized
+      // when the WorkingBufferIntervals are created, and there is no way to
+      // create an empty SlicedBufferInterval.
+      std::unique_ptr<SlicedBufferInterval> sliced;
+    };
+
+    struct SlicedSolution {
+      // When we talk about a slice, we think of spatial slices, where each
+      // slice is allocated at different times. The following example shows
+      // 3 slices that are used to form a contiguous buffer from [p0, p3]
+      //
+      //   space
+      //    ^
+      // p3 |       +-----------+
+      //    |       |    s2     |
+      // p2 |   +---+-----------+
+      //    |   |      s1       |
+      // p1 |   +-------+-------+
+      //    |           |  s0   |
+      // p0 |           +-------+
+      //    +---|---|---|---|---|----> time
+      //        t0  t1  t2  t3  t4
+      std::vector<MemorySpaceAssignment::SliceDecision>
+          slice_decisions_sorted_by_start_time;
+
+      // In order to support colocated buffer calculations, we need to add a
+      // BufferInterval-Chunk pair to pending_chunks_, such that:
+      // - The duration of the BufferInterval is non-zero.
+      // - All slices have been allocated by the start of the BufferInterval.
+      // - The BufferInterval ends at the end time for all slices.
+      // - The Chunk covers the space allocated for all slices.
+      //
+      // In order to meet that requirement,
+      // we create BufferInterval-Chunk pairs from
+      // slice_decisions_sorted_by_start_time that meet those requirement but do
+      // not cause any memory to be allocated in more than one Chunk at a time.
+      // The result is stored in slices_for_pending_chunks.
+      //
+      // The illustration below demonstrates how we would construct such
+      // BufferInterval-Chunk pairs from the
+      // slice_decisions_sorted_by_start_time example above.
+      //
+      //   space
+      //    ^
+      // p3 |       +---+---+---+
+      //    |       |c2 |       |
+      // p2 |   +---+---+       |
+      //    |   |  c0   |   c2  |
+      // p1 |   +-------+       |
+      //    |           |       |
+      // p0 |           +-------+
+      //    +---|---|---|---|---|----> time
+      //        t0  t1  t2  t3  t4
+      std::vector<std::pair<BufferInterval, Chunk>> slices_for_pending_chunks;
+
+      // The prefetch_picker_debug_string will only be set with the appropriate
+      // VLOG level.
+      std::string prefetch_picker_debug_string;
+    };
+
+    struct UnslicedSolution {
+      Chunk chunk_candidate;    // The chunk chosen for the solution.
+      float prefetch_resource;  // The amount of required prefetch resource.
+      // The prefetch_picker_debug_string will only be set with the appropriate
+      // VLOG level.
+      std::string prefetch_picker_debug_string;
+    };
+
+    WorkingIntervals& GetMutableWorkingIntervals(bool for_sliced_solution) {
+      if (for_sliced_solution) {
+        return sliced_solution_intervals;
+      }
+      return unsliced_solution_intervals;
+    }
+
+    const WorkingIntervals& GetWorkingIntervals(
+        bool for_sliced_solution) const {
+      if (for_sliced_solution) {
+        return sliced_solution_intervals;
+      }
+      return unsliced_solution_intervals;
+    }
+
+    // Parameters to Prefetch().
+    const AllocationRequest* request;
+    const MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem;
+
+    // Intermediate calculations common to both the sliced and unsliced
+    // solutions.
+    int64_t prefetch_start_time = -1;
+    int64_t prefetch_end_time = -1;
+    const Shape* full_shape;
+    int64_t extra_async_copy_limit = 0;
+    // As a compilation time optimization, store the prefetch start time where
+    // we have first seen out of memory. There is no point of exploring prefetch
+    // start times earlier than this point.
+    std::optional<int64_t> out_of_mem_start = std::nullopt;
+
+    // Data structures used to compute and store the sliced solution.
+    std::optional<MemorySpaceAssignment::SliceProposalCollection>
+        slice_proposal_collection = std::nullopt;
+    WorkingIntervals sliced_solution_intervals;
+    std::optional<SlicedSolution> sliced_solution;
+
+    // Data structures used to compute and store the unsliced solution.
+    WorkingIntervals unsliced_solution_intervals;
+    std::optional<UnslicedSolution> unsliced_solution;
+  };
+
   // Result of an allocation, prefetch, eviction etc. request.  The result is
   // either kSuccess or a bitwise OR of one or more failures. The values are
   // unique powers of two. To check if a result contains a particular failure,
@@ -2067,7 +2187,10 @@ class AlternateMemoryBestFitHeap
     // An allocation failure happened that requires uncommitting all the pending
     // allocations. Usually this is due to a situation requiring an eviction but
     // the eviction couldn't be performed.
-    kFailRequiresUncommit = 64
+    kFailRequiresUncommit = 64,
+    // For prefetching, indicates that all slices have the same start time, in
+    // which case, we fallback to an unsliced solution.
+    kAllSlicesHaveTheSameStartTime = 128
   };
 
   // Return true if the result belongs to a failure.
@@ -2174,9 +2297,36 @@ class AlternateMemoryBestFitHeap
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
-  // TODO(b/275905276): change FindBestChunkCandidate() signature to take a
-  // SlicedAllocationRequest (which can indicate 0 slices), and return a
-  // vector of chunks
+  // Helper methods used to implement Prefetch().
+  //
+  // Generates a SliceProposal in context, if options dictate and one can be
+  // constructed.
+  void GenerateSliceProposal(PrefetchContext& context) const;
+  // Calls GenerateSliceProposal to potentially create a SliceProposal, and
+  // sets up WorkingIntervals for a sliced and unsliced solution. Updates
+  // context.
+  void SetupPrefetchWorkingIntervalsAndSliceProposal(
+      PrefetchContext& context) const;
+  // Initializes the PrefetchIntervalPicker and associated data structures in
+  // context.
+  Result InitializePrefetchIntervalPicker(PrefetchContext& context);
+  // As a compile time optimization, try a prefetch allocation that is as late
+  // as possible. If this is not able to find a solution, none of the
+  // earlier tries will succeed either.
+  Result EnsureSomeSpatialPrefetchFitExists(PrefetchContext& context) const;
+  // Check if for the specified type of solution, using the parameters in
+  // context. If we find a solution, it will be stored in context.
+  Result CheckPrefetchFit(bool for_sliced_solution, PrefetchContext& context);
+  // Given a specified number of slices, start times, and end times, pick times
+  // to start each slice.
+  std::vector<int64_t> PickSliceStartTimes(int64_t num_slices,
+                                           int64_t prefetch_start_time,
+                                           int64_t prefetch_end_time) const;
+  // Creates a debugging string describing the timing of the prefetch solution
+  // we are currently attempting (as dictated by for_sliced_solution and
+  // context).
+  std::string AlternateMemoryAllocationAttemptToString(
+      bool for_sliced_solution, const PrefetchContext& context) const;
 
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
@@ -2253,7 +2403,7 @@ class AlternateMemoryBestFitHeap
   // consistent with the new packing.
   void ImportRepackedAllocations();
 
-  // Adds an asynchronous copy to the allocations.
+  // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
       const MemorySpaceAssignment::Allocation& prev_allocation,
       MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
@@ -2262,7 +2412,16 @@ class AlternateMemoryBestFitHeap
       AliasedOffset* aliased_offset, float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt);
 
-  // TODO(b/275905276): create AddAsyncSlicedCopy
+  // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
+  // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
+  // data structures
+  void AddAsyncSlicesForPrefetch(
+      const MemorySpaceAssignment::Allocation& prev_allocation,
+      MemorySpaceAssignment::AllocationSequence* allocations,
+      AliasedOffset* aliased_offset,
+      const std::vector<MemorySpaceAssignment::SliceDecision>&
+          slice_decisions_sorted_by_start_time,
+      int64_t prefetch_end_time, int64_t allocation_end_time);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back
