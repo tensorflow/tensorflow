@@ -89,16 +89,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/dot_dimension_sorter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -132,6 +135,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/topk_specializer.h"
 #include "tensorflow/compiler/xla/service/gpu/topk_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -195,15 +199,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/threadpool.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #endif  // PLATFORM_GOOGLE
@@ -227,7 +222,6 @@ bool ConvIsLowerable(HloInstruction* conv) {
 // and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
 // else we do not need to enable the pass.
 bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
-#if GOOGLE_CUDA
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
     for (const HloInstruction* inst : comp->instructions()) {
       if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
@@ -235,7 +229,6 @@ bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
       }
     }
   }
-#endif
   // No convolution auto-tuning candidates found in the module.
   return false;
 }
@@ -1007,19 +1000,14 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
   const bool enable_collecive_schedule_linearizer_for_spmd =
-#if GOOGLE_CUDA
       hlo_module->config().use_spmd_partitioning() && stream_exec != nullptr &&
       GpuConvAlgorithmPicker::IsEnabled(hlo_module);
-#else
-      false;
-#endif
 
   if (enable_collecive_schedule_linearizer_for_spmd) {
     pipeline.AddPass<CollectivesScheduleLinearizer>(
         RequiresCollectiveScheduleLinearizer);
   }
 
-#if GOOGLE_CUDA
   AutotuneConfig autotune_config =
       stream_exec
           ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
@@ -1054,7 +1042,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
-#endif  // GOOGLE_CUDA
 
   GpuFloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -1100,7 +1087,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-#if GOOGLE_CUDA
   const DebugOptions& debug_options = module->config().debug_options();
 
   // We are doing this before the timer is started.
@@ -1114,7 +1100,6 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     });
     TF_RETURN_IF_ERROR(status);
   }
-#endif  // GOOGLE_CUDA
 
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER(
@@ -1137,7 +1122,6 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-#if GOOGLE_CUDA
   // We are doing this after the timer is finished.
   if (absl::string_view file_path =
           debug_options.xla_gpu_dump_autotune_results_to();
@@ -1147,7 +1131,6 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     TF_RETURN_IF_ERROR(
         AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
   }
-#endif  // GOOGLE_CUDA
 
   return std::move(module);
 }
@@ -1339,17 +1322,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
-#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
-#elif TENSORFLOW_USE_ROCM
-  return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                               /*shard_number=*/std::nullopt);
-#endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;
   for (llvm::Function& func : llvm_module->functions()) {

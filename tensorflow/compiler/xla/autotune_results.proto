@@ -42,5 +42,5 @@ message AutotuneResults {
   repeated Entry results = 4;
 }
 // LINT.ThenChange(
-//   "autotune_serialize.cc:version"
+//   "service/gpu/autotuner_util.cc:version"
 // )

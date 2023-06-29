@@ -179,15 +179,16 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gpu_copy_insertion_test",
-    srcs = ["gpu_copy_insertion_test.cc"],
-    deps = [
+    srcs = if_gpu_is_configured(["gpu_copy_insertion_test.cc"]),
+    tags = tf_cuda_tests_tags(),
+    deps = if_gpu_is_configured([
         ":gpu_compiler",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
+    ]),
 )
 
 cc_library(
@@ -2276,13 +2277,16 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = [
+    srcs = if_gpu_is_configured([
         "gpu_compiler.cc",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_gpu_is_configured([
         "gpu_compiler.h",
-    ],
-    deps = [
+    ]),
+    deps = if_gpu_is_configured([
+        ":autotuner_util",
+        ":gemm_algorithm_picker",
+        ":triton_autotuner",
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":compile_module_to_llvm_ir",
@@ -2330,6 +2334,17 @@ cc_library(
         ":topk_splitter",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -2445,21 +2460,6 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:variant",
-        "@llvm-project//llvm:AsmParser",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ] + if_cuda_is_configured([
-        ":gemm_algorithm_picker",
-        ":triton_autotuner",
-        ":autotuner_util",
     ]),
 )
 
