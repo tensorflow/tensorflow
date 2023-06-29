@@ -4622,6 +4622,7 @@ tf_kernel_library(
     prefix = "parse_tensor_op",
     deps = [
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
 
