@@ -168,8 +168,7 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
                 ->config()
                 .debug_options()
                 .xla_gpu_enable_triton_gemm() &&
-            CanTritonHandleGEMM(*dot, cuda_compute_capability) &&
-            ShouldTritonHandleGEMM(*dot, cuda_compute_capability))) {
+            IsTritonHandledGEMM(*dot, cuda_compute_capability))) {
         gemms.push_back(dot);
       }
     }

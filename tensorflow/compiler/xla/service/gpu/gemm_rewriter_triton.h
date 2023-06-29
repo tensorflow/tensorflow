@@ -52,11 +52,8 @@ Status MakeDotSplitKBatch(
     HloInstruction* dot_fusion,
     const tensorflow::AutotuneResult::TritonGemmKey& tiling);
 
-// Filters GEMMs which can be handled using Triton.
-bool CanTritonHandleGEMM(const HloInstruction&, GpuVersion gpu_version);
-
 // Filters GEMMs which are better to handle using Triton.
-bool ShouldTritonHandleGEMM(const HloInstruction&, GpuVersion gpu_version);
+bool IsTritonHandledGEMM(const HloInstruction&, GpuVersion gpu_version);
 
 // Analysis of iteration of HLO shapes within a fusion around dot().
 class DotFusionAnalysis {
