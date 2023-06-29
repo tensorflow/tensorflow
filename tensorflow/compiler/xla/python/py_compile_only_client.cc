@@ -62,7 +62,7 @@ class InvalidIfrtCompiler final
     : public llvm::RTTIExtends<InvalidIfrtCompiler, ifrt::Compiler> {
  public:
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
-      const ifrt::Program& program,
+      std::unique_ptr<ifrt::Program> program,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");
   }

@@ -32,9 +32,9 @@ namespace ifrt {
 char PjRtCompiler::ID = 0;
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
-    const Program& program, std::unique_ptr<CompileOptions> options) {
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  const auto* xla_program = llvm::dyn_cast<XlaProgram>(&program);
+  const auto* xla_program = llvm::dyn_cast<XlaProgram>(program.get());
   if (xla_program == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires an XlaProgram");
   }

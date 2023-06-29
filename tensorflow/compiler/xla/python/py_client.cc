@@ -391,10 +391,11 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
-    TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
-                        ifrt_client_->GetDefaultCompiler()->Compile(
-                            xla::ifrt::XlaProgram(module.get()),
-                            std::move(ifrt_compile_options)));
+    TF_ASSIGN_OR_RETURN(
+        ifrt_loaded_executable,
+        ifrt_client_->GetDefaultCompiler()->Compile(
+            std::make_unique<xla::ifrt::XlaProgram>(module.get()),
+            std::move(ifrt_compile_options)));
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
