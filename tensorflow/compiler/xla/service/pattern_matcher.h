@@ -2658,6 +2658,85 @@ inline auto ConstantEffectiveScalar(HloInstructionType** matched_inst,
   return Op(matched_inst).IsConstantEffectiveScalar(val);
 }
 
+namespace detail {
+
+// A helper for the type erasure.
+class InstructionPatternInterface {
+ public:
+  virtual ~InstructionPatternInterface() = default;
+
+  virtual bool Match(::xla::HloInstruction* instr,
+                     MatchOption option) const = 0;
+
+  virtual void DescribeTo(std::ostream* os, int64_t indent) const = 0;
+};
+
+// A helper for the type erasure.
+template <typename Pattern>
+class TypedInstructionPattern : public InstructionPatternInterface {
+ public:
+  explicit TypedInstructionPattern(Pattern pattern)
+      : pattern_(std::move(pattern)) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const override {
+    return pattern_.Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent) const override {
+    pattern_.DescribeTo(os, indent);
+  }
+
+ private:
+  Pattern pattern_;
+};
+
+// An Impl class for HloInstructionPattern that does type erasure.
+class HloInstructionPatternTypeErasedImpl {
+ public:
+  template <typename Pattern>
+  explicit HloInstructionPatternTypeErasedImpl(Pattern pattern)
+      // The return type annotation of the lambda is needed for correctness.
+      : get_pattern_(
+            [typed_pattern = TypedInstructionPattern<Pattern>(
+                 std::move(pattern))]() -> const InstructionPatternInterface& {
+              return typed_pattern;
+            }) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const {
+    return get_pattern_().Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    get_pattern_().DescribeTo(os, indent);
+  }
+
+ private:
+  // We use std::function for the type erasure, because it's copyable and if the
+  // pattern object is small enough, it can store it in the closure without
+  // dynamic memory allocation.
+  std::function<const InstructionPatternInterface&()> get_pattern_;
+};
+
+}  // namespace detail
+
+// Wraps the HloInstructionPattern in a type-erased container.
+//
+// This can be used around (sub)patterns to avoid generating extremely complex
+// types and reduce the C++ compilation time.
+//
+// This may slightly increase the runtime of the patterns, so we should use them
+// only when we need to speed up the C++ compilation.
+//
+// For example:
+// auto subpattern1 = m::TypeErase(m::Add(...))
+// auto subpattern2 = m::TypeErase(m::Subtract(...))
+// auto pattern = m::TypeErase(m::Multiply(subpattern1, subpattern2))
+template <typename HloInstructionType, typename OriginalImpl>
+inline auto TypeErase(
+    detail::HloInstructionPattern<HloInstructionType, OriginalImpl> pattern) {
+  auto impl = detail::HloInstructionPatternTypeErasedImpl(std::move(pattern));
+  return detail::HloInstructionPattern<HloInstructionType, decltype(impl)>(
+      std::move(impl), /*matched_inst=*/nullptr);
+}
+
 }  // namespace match
 
 }  // namespace xla

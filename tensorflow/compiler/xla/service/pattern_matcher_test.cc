@@ -1288,5 +1288,23 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
       root, m::CustomCall({"test_target"}, m::Parameter(1), m::Parameter(0))));
 }
 
+TEST_F(PatternMatcherTest, TypeEraseDoesNotChangeThePatternsSemantics) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(Match(root, match::TypeErase(match::AnyOf<HloInstruction>(
+                              match::TypeErase(match::ConstantScalar(0)),
+                              match::ConstantScalar(1)))));
+  EXPECT_TRUE(Match(root, match::TypeErase(match::AnyOf<HloInstruction>(
+                              match::TypeErase(match::ConstantScalar(1)),
+                              match::ConstantScalar(0)))));
+  EXPECT_FALSE(Match(root, match::TypeErase(match::AnyOf<HloInstruction>(
+                               match::TypeErase(match::ConstantScalar(0)),
+                               match::ConstantScalar(2)))));
+}
+
 }  // namespace
 }  // namespace xla
