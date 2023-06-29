@@ -10,11 +10,8 @@ trap "docker rm -f tf" EXIT
 if [[ "$TFCI_DOCKER_PULL_ENABLE" = 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE"
 fi
-docker run "${TFCI_DOCKER_GPU_ARGS[@]}" --name tf -w /tf/tensorflow -itd --rm \
-    -v "$TFCI_DOCKER_ARTIFACTS_HOST_DIR:$TFCI_RUNTIME_ARTIFACTS_DIR" \
-    -v "$TFCI_DOCKER_GIT_HOST_DIR:$TFCI_RUNTIME_GIT_DIR \
+docker run "${TFCI_DOCKER_GPU_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
+    -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
     "$TFCI_DOCKER_IMAGE" \
   bash
 tfrun() { docker exec tf "$@"; }
-export _TFCI_HOST_ARTIFACTS_DIR="$TFCI_DOCKER_ARTIFACTS_HOST_DIR"
-export _TFCI_HOST_GIT_DIR="$TFCI_DOCKER_GIT_HOST_DIR"

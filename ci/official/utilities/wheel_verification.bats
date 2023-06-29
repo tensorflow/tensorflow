@@ -16,14 +16,15 @@
 # or whatever path is set as $TF_WHEEL.
 
 setup_file() {
-    cd "$TFCI_RUNTIME_ARTIFACTS_DIR"
+    cd "$TFCI_GIT_DIR/build"
     if [[ -z "$TF_WHEEL" ]]; then
-        export TF_WHEEL=$(find "$TFCI_RUNTIME_ARTIFACTS_DIR" -iname "*.whl")
+        export TF_WHEEL=$(find "$TFCI_GIT_DIR/build" -iname "*.whl")
     fi
 }
 
 teardown_file() {
-    rm -rf /tmp/venv
+    rm -rf "$BATS_FILE_TMPDIR/venv"
+    python3 -m venv 
 }
 
 @test "Wheel is manylinux2014 (manylinux_2_17) compliant" {

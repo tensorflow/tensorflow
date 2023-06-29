@@ -6,14 +6,11 @@
 set -euxo pipefail -o history
 set -o allexport && source "$TFCI" && set +o allexport
 
-# If this is a CL presubmit, then run Copybara on the Piper code and place it
-# in the same directory as the GitHub source code would normally be. This lets
-# the rest of the script proceed as normal.
-_TFCI_HOST_ARTIFACTS_DIR="$TFCI_RUNTIME_ARTIFACTS_DIR"
+cd "$TFCI_GIT_DIR" && mkdir -p build
 tfrun() { "$@"; }
-[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/copybara.sh
-[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/docker.sh
-"$TFCI_RUNTIME_USERTOOLS_DIR/generate_index_html.sh" "$TFCI_RUNTIME_ARTIFACTS_DIR/index.html"
+[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source ./ci/official/utilities/copybara.sh
+[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source ./ci/official/utilities/docker.sh
+./ci/official/utilities/generate_index_html.sh build/index.html
 
 # Record GPU count and CUDA version status
 [[ "$TFCI_NVIDIA_SMI_ENABLE" = 1 ]] && tfrun nvidia-smi
@@ -24,11 +21,11 @@ tfrun() { "$@"; }
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_CACHE_ARGS[@]}" --config=libtensorflow_test
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_CACHE_ARGS[@]}" --config=libtensorflow_build
 
-tfrun "$TFCI_RUNTIME_USERTOOLS_DIR"/repack_libtensorflow.sh "$TFCI_RUNTIME_ARTIFACTS_DIR" "$TFCI_LIB_SUFFIX"
+tfrun ./ci/official/utilities/repack_libtensorflow.sh build "$TFCI_LIB_SUFFIX"
 
 if [[ "$TFCI_UPLOAD_LIB_ENABLE" = 1 ]]; then
-  gsutil cp "$_TFCI_HOST_ARTIFACTS_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
+  gsutil cp build/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
   if [[ "$TFCI_UPLOAD_LIB_LATEST_ENABLE" = 1 ]]; then
-    gsutil cp "$_TFCI_HOST_ARTIFACTS_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
+    gsutil cp build/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
   fi
 fi

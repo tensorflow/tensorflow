@@ -19,9 +19,10 @@
 # "manylinux_xyz" into the wheel filename.
 set -euxo pipefail
 
-for wheel in "$TFCI_RUNTIME_ARTIFACTS_DIR"/*.whl; do
+cd $TFCI_GIT_DIR
+for wheel in build/*.whl; do
   echo "Checking and renaming $wheel..."
-  time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir "$TFCI_RUNTIME_ARTIFACTS_DIR" 2>&1 | tee check.txt
+  time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir build 2>&1 | tee check.txt
 
   # We don't need the original wheel if it was renamed
   new_wheel=$(grep --extended-regexp --only-matching '/tf/pkg/\S+.whl' check.txt)
@@ -31,5 +32,5 @@ for wheel in "$TFCI_RUNTIME_ARTIFACTS_DIR"/*.whl; do
   fi
   rm check.txt
 
-  TF_WHEEL="$wheel" bats "$TFCI_RUNTIME_USERTOOLS_DIR/wheel_verification.bats" --timing
+  TF_WHEEL="$wheel" bats ./ci/official/utilities/wheel_verification.bats --timing
 done

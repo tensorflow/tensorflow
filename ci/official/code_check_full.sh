@@ -6,10 +6,10 @@
 set -euxo pipefail -o history
 set -o allexport && source "$TFCI" && set +o allexport
 
-_TFCI_HOST_ARTIFACTS_DIR="$TFCI_RUNTIME_ARTIFACTS_DIR"
+cd "$TFCI_GIT_DIR" && mkdir -p build
 tfrun() { "$@"; }
-[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/copybara.sh
-[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/docker.sh
-"$TFCI_RUNTIME_USERTOOLS_DIR/generate_index_html.sh" "$TFCI_RUNTIME_ARTIFACTS_DIR/index.html"
+[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source ./ci/official/utilities/copybara.sh
+[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source ./ci/official/utilities/docker.sh
+./ci/official/utilities/generate_index_html.sh build/index.html
 
-tfrun bats "$TFCI_RUNTIME_USERTOOLS_DIR"/code_check_full.bats --timing --output "$TFCI_RUNTIME_ARTIFACTS_DIR"
+tfrun bats ./ci/official/utilities/code_check_full.bats --timing --output build

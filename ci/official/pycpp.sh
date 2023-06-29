@@ -6,17 +6,14 @@
 set -euxo pipefail -o history
 set -o allexport && source "$TFCI" && set +o allexport
 
-# If this is a CL presubmit, then run Copybara on the Piper code and place it
-# in the same directory as the GitHub source code would normally be. This lets
-# the rest of the script proceed as normal.
-_TFCI_HOST_ARTIFACTS_DIR="$TFCI_RUNTIME_ARTIFACTS_DIR"
+cd "$TFCI_GIT_DIR" && mkdir -p build
 tfrun() { "$@"; }
-[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/copybara.sh
-[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source $TFCI_RUNTIME_USERTOOLS_DIR/docker.sh
-"$TFCI_RUNTIME_USERTOOLS_DIR/generate_index_html.sh" "$TFCI_RUNTIME_ARTIFACTS_DIR/index.html"
+[[ "$TFCI_COPYBARA_ENABLE" = 1 ]] && source ./ci/official/utilities/copybara.sh
+[[ "$TFCI_DOCKER_ENABLE" = 1 ]] && source ./ci/official/utilities/docker.sh
+./ci/official/utilities/generate_index_html.sh build/index.html
 
 # TODO(b/284172313) Revert this difference between presubmits and continuous. RBE serverside behavior is causing flakes,
 # so we're temporarily allowing flaky tests again for presubmits.
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_CACHE_ARGS[@]}" --config=rbe --config=pycpp --config=build_event_export
 
-tfrun bazel analyze-profile $TFCI_RUNTIME_ART/profile.json.gz
+tfrun bazel analyze-profile build/profile.json.gz
