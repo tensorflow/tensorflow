@@ -158,7 +158,7 @@ class SPMDExpanderRegistry {
   static ::tensorflow::InitOnStartupMarker const spmd_##name =         \
       InitOnStartupMarker{}                                            \
       << dtensor::SPMDExpanderRegistry::Global()->RegisterPropagateFn( \
-             mlir::op ::getOperationName().str(),                      \
+             mlir::op::getOperationName().str(),                       \
              std::make_unique<prop>(__VA_ARGS__))
 
 // Register the SPMD expander by ops string name.
