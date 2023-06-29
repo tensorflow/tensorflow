@@ -241,21 +241,6 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
 
-// Compiles the given LMHLO module to an executable.
-// ir_emitter_context should be partially populated: buffer_assignment
-// or buffer_allocations should not be populated, while other fields should be
-// populated (or left empty if that field is optional).
-//
-// NOTE: buffer_assignment will be gone from ir_emitter_context once LMHLO
-// transition is done.
-StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
-    GpuCompiler* compiler, mlir::ModuleOp module, std::string module_name,
-    const HloModuleConfig& module_config,
-    const Compiler::CompileOptions& options,
-    absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
-    std::unique_ptr<llvm::Module> llvm_module,
-    IrEmitterContext* ir_emitter_context);
-
 }  // namespace gpu
 }  // namespace xla
 

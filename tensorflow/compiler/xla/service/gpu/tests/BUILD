@@ -80,26 +80,6 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "mlir_gpu_test_base",
-    testonly = True,
-    srcs = ["mlir_gpu_test_base.cc"],
-    hdrs = ["mlir_gpu_test_base.h"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:ir_emitter",
-        "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-    ],
-)
-
 xla_cc_test(
     name = "pred_arithmetic_test",
     srcs = ["pred_arithmetic_test.cc"],
@@ -107,60 +87,6 @@ xla_cc_test(
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_fft_test",
-    srcs = ["mlir_fft_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_test(
-    name = "mlir_gemm_test",
-    srcs = ["mlir_gemm_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm80-only",
-    ]},
-    backends = [
-        "gpu",
-    ],
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_sorting_test",
-    srcs = ["mlir_sorting_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_gpu_compile_test",
-    srcs = ["mlir_gpu_compile_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
