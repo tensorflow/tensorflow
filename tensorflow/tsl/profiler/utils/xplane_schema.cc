@@ -247,6 +247,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"step_name", kStepName},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"deduplicated_name", kDeduplicatedName},
       {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
       {"program_id", kProgramId},

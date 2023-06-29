@@ -214,6 +214,9 @@ void SetOpMetadataFromHloEventMetadata(
           }
           break;
         }
+        case StatType::kDeduplicatedName:
+          op_metrics->set_deduplicated_name(std::string(stat.StrOrRefValue()));
+          break;
         default:
           break;
       }

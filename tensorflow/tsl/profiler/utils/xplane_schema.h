@@ -240,6 +240,7 @@ enum StatType {
   kStepName,
   kTfOp,
   kHloOp,
+  kDeduplicatedName,
   kHloCategory,
   kHloModule,
   kProgramId,
