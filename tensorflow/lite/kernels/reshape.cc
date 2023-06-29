@@ -226,6 +226,8 @@ void Free(TfLiteContext* context, void* buffer) {
 TfLiteRegistration* Register_RESHAPE() {
   static TfLiteRegistration r = {reshape::Init, reshape::Free, reshape::Prepare,
                                  reshape::Eval};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
   return &r;
 }
 

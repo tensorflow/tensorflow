@@ -104,6 +104,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_SQUEEZE() {
   static TfLiteRegistration r = {nullptr, nullptr, squeeze::Prepare,
                                  squeeze::Eval};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
   return &r;
 }
 

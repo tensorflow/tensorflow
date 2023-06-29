@@ -434,6 +434,8 @@ TfLiteRegistration* Register_MUL_REF() {
   static TfLiteRegistration r = {mul::Init, mul::Free,
                                  mul::Prepare<mul::kReference>,
                                  mul::Eval<mul::kReference>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
@@ -441,6 +443,8 @@ TfLiteRegistration* Register_MUL_GENERIC_OPT() {
   static TfLiteRegistration r = {mul::Init, mul::Free,
                                  mul::Prepare<mul::kGenericOptimized>,
                                  mul::Eval<mul::kGenericOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
@@ -448,6 +452,8 @@ TfLiteRegistration* Register_MUL_NEON_OPT() {
   static TfLiteRegistration r = {mul::Init, mul::Free,
                                  mul::Prepare<mul::kNeonOptimized>,
                                  mul::Eval<mul::kNeonOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 

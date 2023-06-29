@@ -100,6 +100,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_BITCAST() {
   static TfLiteRegistration r = {nullptr, nullptr, bitcast::Prepare,
                                  bitcast::Eval};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
   return &r;
 }
 

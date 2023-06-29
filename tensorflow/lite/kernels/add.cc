@@ -439,18 +439,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_ADD_REF() {
   static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
                                  add::Eval<add::kReference>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
 TfLiteRegistration* Register_ADD_GENERIC_OPT() {
   static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
                                  add::Eval<add::kGenericOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
 TfLiteRegistration* Register_ADD_NEON_OPT() {
   static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
                                  add::Eval<add::kNeonOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 

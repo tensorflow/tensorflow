@@ -473,18 +473,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_SUB_REF() {
   static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kReference>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_GENERIC_OPT() {
   static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kGenericOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_NEON_OPT() {
   static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
                                  sub::Eval<sub::kNeonOptimized>};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
   return &r;
 }
 

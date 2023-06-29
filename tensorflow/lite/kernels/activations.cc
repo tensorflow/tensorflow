@@ -1690,6 +1690,7 @@ TfLiteRegistration* Register_SOFTMAX_REF() {
       activations::SoftmaxInit, activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kReference>,
       activations::SoftmaxEval<activations::kReference>};
+  r.inplace_operator = kTfLiteInplaceOpInput0Shared;
   return &r;
 }
 
@@ -1698,6 +1699,7 @@ TfLiteRegistration* Register_SOFTMAX() {
       activations::SoftmaxInit, activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kGenericOptimized>,
       activations::SoftmaxEval<activations::kGenericOptimized>};
+  r.inplace_operator = kTfLiteInplaceOpInput0Shared;
   return &r;
 }
 

@@ -192,6 +192,7 @@ TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE() {
                                  /*free=*/nullptr,
                                  dynamic_update_slice::Prepare,
                                  dynamic_update_slice::Eval};
+  r.inplace_operator = kTfLiteInplaceOpInput0Shared;
   return &r;
 }
 

@@ -129,6 +129,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_EXPAND_DIMS() {
   static TfLiteRegistration r = {nullptr, nullptr, expand_dims::Prepare,
                                  expand_dims::Eval};
+  r.inplace_operator =
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified;
   return &r;
 }
 }  // namespace builtin
