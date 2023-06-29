@@ -1,5 +1,9 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib", "tf_oss_fuzz_corpus", "tf_oss_fuzz_dict")
+load(
+    "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
+    "tf_cc_fuzz_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,6 +15,19 @@ cc_library(
     name = "fuzz_session",
     hdrs = ["fuzz_session.h"],
     deps = [
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "general_ops_fuzzers",
+    srcs = ["general_ops_fuzzers.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":fuzz_session",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",

@@ -34,6 +34,20 @@ limitations under the License.
 #define STANDARD_TF_FUZZ_FUNCTION(FuzzerClass)
 #endif
 
+// Standard invoking function macro to dispatch to a fuzzer class.
+#ifndef PLATFORM_WINDOWS
+#define STANDARD_TF_FUZZ_FUZZTEST_FUNCTION(FuzzerClass, FuzzTestFunc) \
+  void FuzzTestFunc(std::vector<uint8_t> data) {                      \
+    static FuzzerClass* fuzzer = new FuzzerClass();                   \
+    fuzzer->Fuzz(data.data(), data.size());                    \
+  }
+#else
+// We don't compile this for Windows, MSVC doesn't like it as pywrap in Windows
+// links all the code into one big object file and there are conflicting
+// function names.
+#define STANDARD_TF_FUZZ_FUZZTEST_FUNCTION(FuzzerClass, FuzzTestFunc)
+#endif
+
 // Standard builder for hooking one placeholder to one op.
 #define SINGLE_INPUT_OP_BUILDER(dtype, opName)                          \
   void BuildGraph(const Scope& scope) override {                        \
