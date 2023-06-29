@@ -27,26 +27,38 @@ def _init():
   """Initialize the metrics mapping."""
   global _METRICS_MAPPING
 
-  # Time in seconds to bucket the distribution of execution time. Range from
-  # 0.001s (i.e., 1ms) to 1000s.
-  time_buckets = monitoring.ExponentialBuckets(0.001, 10, 6)
+  # Define the boundaries for bucketing times of distribution (Sampler) metrics.
+
+  # Closure execution: range from 0.1s to 10000s, i.e. [(0.1, 1), (1, 10), ...]
+  execution_time_buckets = monitoring.ExponentialBuckets(
+      scale=0.1, growth_factor=10, bucket_count=6)
+  # Tracing: same range as execution
+  tracing_time_buckets = execution_time_buckets
+  # Remote value fetch: range from 0.001s (i.e. 1ms) to 1000s
+  fetch_time_buckets = monitoring.ExponentialBuckets(
+      scale=0.001, growth_factor=10, bucket_count=7)
+  # Server def update: range from 1s to 10000s
+  server_update_time_buckets = monitoring.ExponentialBuckets(
+      scale=1, growth_factor=10, bucket_count=5)
 
   function_tracing_sampler = monitoring.Sampler(
-      '/tensorflow/api/ps_strategy/coordinator/function_tracing', time_buckets,
+      '/tensorflow/api/ps_strategy/coordinator/function_tracing',
+      tracing_time_buckets,
       'Sampler to track the time (in seconds) for tracing functions.')
 
   closure_execution_sampler = monitoring.Sampler(
       '/tensorflow/api/ps_strategy/coordinator/closure_execution',
-      time_buckets,
+      execution_time_buckets,
       'Sampler to track the time (in seconds) for executing closures.')
 
   remote_value_fetch_sampler = monitoring.Sampler(
       '/tensorflow/api/ps_strategy/coordinator/remote_value_fetch',
-      time_buckets,
+      fetch_time_buckets,
       'Sampler to track the time (in seconds) for fetching remote_value.')
 
   server_def_update_sampler = monitoring.Sampler(
-      '/tensorflow/api/ps_strategy/coordinator/server_def_update', time_buckets,
+      '/tensorflow/api/ps_strategy/coordinator/server_def_update',
+      server_update_time_buckets,
       'Sample to track the time (in seconds) for updating the server def upon '
       'worker recovery.')
 
