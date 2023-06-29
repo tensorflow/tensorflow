@@ -1078,16 +1078,16 @@ bool Layout::IsBatchParallel() const {
     return false;
   }
   if (sharding_specs_.empty()) {
-    return true;
+    return false;
   }
 
   for (int i = 1; i < sharding_specs_.size(); ++i) {
     const auto& dim = sharding_specs_[i];
-    if (num_shards_for_dim(dim) != 1) {
+    if (dim.sharding_spec() != Layout::kUnshardedDim) {
       return false;
     }
   }
-  return true;
+  return sharding_specs_[0].sharding_spec() != Layout::kUnshardedDim;
 }
 
 // TODO(samuelslee) Replace this with the IsBatchParallel() everywhere
