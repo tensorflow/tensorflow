@@ -115,12 +115,18 @@ class CostGraph {
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
     for (size_t k = 0; k < strategies->leaf_vector.size(); ++k) {
       const ShardingStrategy& strategy = strategies->leaf_vector[k];
-      for (size_t j = 0; j < strategy.resharding_costs[in_node_idx].size();
-           ++j) {
-        edge_cost(j, k) =
+      size_t start_idx = 0;
+      if (strategy.resharding_costs[in_node_idx].size() > node_lens_[src_idx]) {
+        start_idx =
+            strategy.resharding_costs[in_node_idx].size() - node_lens_[src_idx];
+      }
+      for (size_t j = start_idx;
+           j < strategy.resharding_costs[in_node_idx].size(); ++j) {
+        edge_cost(j - start_idx, k) =
             zero_cost ? 0 : strategy.resharding_costs[in_node_idx][j];
       }
     }
+
     return edge_cost;
   }
 

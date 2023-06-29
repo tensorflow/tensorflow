@@ -1406,72 +1406,82 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
     return;
   }
 
-  const HloSharding& src_sharding = operand->sharding();
-  const Shape& shape = operand->shape();
+  if (operand->shape().IsToken()) {
+    // This is the tokten operand for outfeed. We directly set the dst_sharding
+    // for the operand in this case, as it doesn't make sense to reshard a
+    // token.
+    CHECK_EQ(operand_num, 1);
+    auto operand = inst->mutable_operand(operand_num);
+    operand->set_sharding(dst_sharding);
+  } else {
+    const HloSharding& src_sharding = operand->sharding();
+    const Shape& shape = operand->shape();
 
-  int64_t src_n_dim = NumTileDimensions(src_sharding);
-  int64_t dst_n_dim = NumTileDimensions(dst_sharding);
+    int64_t src_n_dim = NumTileDimensions(src_sharding);
+    int64_t dst_n_dim = NumTileDimensions(dst_sharding);
 
-  HloInstruction* replace_with = nullptr;
+    HloInstruction* replace_with = nullptr;
 
-  // Query cache first
-  std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector = nullptr;
-  if (resharding_cache != nullptr) {
-    cache_vector = &((*resharding_cache)[operand]);
-    for (auto& entry : *cache_vector) {
-      if (entry.first == dst_sharding) {
-        replace_with = entry.second;
+    // Query cache first
+    std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector =
+        nullptr;
+    if (resharding_cache != nullptr) {
+      cache_vector = &((*resharding_cache)[operand]);
+      for (auto& entry : *cache_vector) {
+        if (entry.first == dst_sharding) {
+          replace_with = entry.second;
+        }
       }
     }
-  }
 
-  if (replace_with != nullptr) {
-    // Do nothing
-  } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                 shape, device_mesh);
+    if (replace_with != nullptr) {
+      // Do nothing
+    } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
+      Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
+                                                   shape, device_mesh);
 
-    std::optional<HloSharding> src_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-    std::optional<HloSharding> dst_inter_sharding =
-        hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-    if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-      src_inter_sharding = HloSharding::Replicate();
-      dst_inter_sharding = HloSharding::Replicate();
-      LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      std::optional<HloSharding> src_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
+      std::optional<HloSharding> dst_inter_sharding =
+          hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
+      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
+        src_inter_sharding = HloSharding::Replicate();
+        dst_inter_sharding = HloSharding::Replicate();
+        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      }
+
+      HloInstruction* src_inter = inst->parent()->AddInstruction(
+          HloInstruction::CreateReshape(inter_shape, operand));
+      src_inter->set_sharding(*src_inter_sharding);
+
+      HloInstruction* dst_inter = inst->parent()->AddInstruction(
+          HloInstruction::CreateReshape(inter_shape, src_inter));
+      dst_inter->set_sharding(*dst_inter_sharding);
+
+      replace_with = inst->parent()->AddInstruction(
+          HloInstruction::CreateReshape(shape, dst_inter));
+      replace_with->set_sharding(dst_sharding);
+      if (cache_vector != nullptr) {
+        cache_vector->push_back({dst_sharding, replace_with});
+      }
+    } else {
+      replace_with = inst->parent()->AddInstruction(
+          HloInstruction::CreateReshape(operand->shape(), operand));
+      replace_with->set_sharding(dst_sharding);
+      if (cache_vector != nullptr) {
+        cache_vector->push_back({dst_sharding, replace_with});
+      }
+    }
+    size_t size =
+        GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
+    if (size > 1) {
+      LOG(WARNING) << "Large reshape instruction inserted (operand of "
+                   << inst->name() << ") with size " << size
+                   << "GB: " << replace_with->ToString();
     }
 
-    HloInstruction* src_inter = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, operand));
-    src_inter->set_sharding(*src_inter_sharding);
-
-    HloInstruction* dst_inter = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, src_inter));
-    dst_inter->set_sharding(*dst_inter_sharding);
-
-    replace_with = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(shape, dst_inter));
-    replace_with->set_sharding(dst_sharding);
-    if (cache_vector != nullptr) {
-      cache_vector->push_back({dst_sharding, replace_with});
-    }
-  } else {
-    replace_with = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(operand->shape(), operand));
-    replace_with->set_sharding(dst_sharding);
-    if (cache_vector != nullptr) {
-      cache_vector->push_back({dst_sharding, replace_with});
-    }
+    TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
   }
-  size_t size =
-      GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
-  if (size > 1) {
-    LOG(WARNING) << "Large reshape instruction inserted (operand of "
-                 << inst->name() << ") with size " << size
-                 << "GB: " << replace_with->ToString();
-  }
-
-  TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
 }
 
 bool IsParameterConvert(const HloInstruction* inst) {
@@ -1859,7 +1869,7 @@ int64_t GetShardedInstructionSize(const Shape& shape, int64_t num_devices,
     }
     return size;
   }
-  if (sharding) {
+  if (sharding && sharding->NumTiles() > 0) {
     return GetBytes(shape) / sharding->NumTiles();
   }
   bool shardable = false;

@@ -76,9 +76,12 @@ std::vector<double> ReshardingCostVector(
   CHECK(!strategies->is_tuple) << "Only works with strategy vector.";
   std::vector<double> ret;
   ret.reserve(strategies->leaf_vector.size());
+  auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
+                                              ? HloSharding::Replicate()
+                                              : required_sharding;
   for (const auto& x : strategies->leaf_vector) {
     ret.push_back(cluster_env.ReshardingCost(operand_shape, x.output_sharding,
-                                             required_sharding));
+                                             required_sharding_for_resharding));
   }
   return ret;
 }
@@ -424,46 +427,6 @@ ReshardingCostsForTupleOperand(const HloInstruction* operand,
                             operand->shape(), tuple_element_shardings)}));
 }
 
-// Add "Replicate()" strategy
-void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
-                           const ClusterEnvironment& cluster_env,
-                           const StrategyMap& strategy_map,
-                           std::unique_ptr<StrategyVector>& strategies,
-                           double replicated_penalty) {
-  HloSharding output_spec = HloSharding::Replicate();
-
-  std::vector<std::vector<double>> resharding_costs;
-  std::vector<HloSharding> input_shardings;
-  if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
-    CHECK_EQ(ins->operand_count(), 1)
-        << "Do not support instructions with more than one tuple "
-           "operand. If this CHECK fails, we will need to fix "
-           "b/233412625.";
-    std::tie(resharding_costs, input_shardings) =
-        ReshardingCostsForTupleOperand(ins->operand(0),
-                                       strategy_map.at(ins->operand(0)).get());
-    LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
-  } else {
-    for (int64_t k = 0; k < ins->operand_count(); ++k) {
-      auto operand = ins->operand(k);
-      if (ins->opcode() == HloOpcode::kConditional) {
-        resharding_costs.push_back(std::vector<double>(
-            strategy_map.at(operand)->leaf_vector.size(), 0));
-        input_shardings.push_back(output_spec);
-      } else {
-        resharding_costs.push_back(ReshardingCostVector(
-            strategy_map.at(operand).get(), ins->operand(k)->shape(),
-            output_spec, cluster_env));
-        input_shardings.push_back(output_spec);
-      }
-    }
-  }
-  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-  strategies->leaf_vector.push_back(ShardingStrategy(
-      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
-       std::move(resharding_costs), input_shardings}));
-}
-
 std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     const HloInstruction* ins, const StrategyMap& strategy_map) {
   std::vector<std::vector<double>> resharding_costs;
@@ -471,7 +434,8 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     auto operand = ins->operand(i);
     const auto& operand_strategies = strategy_map.at(operand);
     if (operand->shape().IsTuple()) {
-      if (ins->opcode() == HloOpcode::kConditional) {
+      if (ins->opcode() == HloOpcode::kConditional ||
+          ins->opcode() == HloOpcode::kOutfeed) {
         resharding_costs.push_back(std::vector<double>(1, 0));
       } else {
         CHECK_EQ(ins->operand_count(), 0)
@@ -492,6 +456,98 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     }
   }
   return resharding_costs;
+}
+
+void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
+                             const ClusterEnvironment& cluster_env,
+                             const StrategyMap& strategy_map,
+                             std::unique_ptr<StrategyVector>& strategies,
+                             double replicated_penalty) {
+  HloSharding output_spec = HloSharding::Replicate();
+  std::vector<std::vector<double>> resharding_costs;
+  std::vector<HloSharding> input_shardings;
+  if (ins->has_sharding()) {
+    std::vector<Shape> operand_shapes(ins->operand_count());
+    for (int i = 0; i < ins->operand_count(); ++i) {
+      operand_shapes[i] = ins->operand(i)->shape();
+    }
+    auto all_operands_tuple_shape = ShapeUtil::MakeTupleShape(operand_shapes);
+    auto get_input_sharding = [&](int index) {
+      auto sharding = ins->sharding();
+      if (sharding.IsTuple()) {
+        return (index >= 0)
+                   ? sharding.GetSubSharding(all_operands_tuple_shape,
+                                             {0, static_cast<int64_t>(index)})
+                   : sharding.GetSubSharding(all_operands_tuple_shape, {1});
+      } else {
+        return sharding;
+      }
+    };
+
+    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
+    for (size_t i = 0; i < tuple_size; ++i) {
+      auto input_sharding = get_input_sharding(i);
+      input_shardings.push_back(input_sharding);
+      resharding_costs.push_back(ReshardingCostVector(
+          strategy_map.at(ins->operand(0))->childs[i].get(),
+          ins->operand(0)->shape().tuple_shapes(i), input_sharding,
+          cluster_env));
+    }
+    auto input_sharding = get_input_sharding(-1);
+    input_shardings.push_back(input_sharding);
+  } else {
+    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
+    for (size_t i = 0; i < tuple_size; ++i) {
+      resharding_costs.push_back(std::vector<double>(
+          strategy_map.at(ins->operand(0))->childs[i].get()->leaf_vector.size(),
+          0));
+    }
+  }
+  resharding_costs.push_back({});
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
+  strategies->leaf_vector.push_back(ShardingStrategy(
+      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
+       std::move(resharding_costs), input_shardings}));
+}
+
+// Add "Replicate()" strategy
+void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
+                           const ClusterEnvironment& cluster_env,
+                           const StrategyMap& strategy_map,
+                           std::unique_ptr<StrategyVector>& strategies,
+                           double replicated_penalty) {
+  HloSharding output_spec = HloSharding::Replicate();
+
+  std::vector<std::vector<double>> resharding_costs;
+  std::vector<HloSharding> input_shardings;
+
+  if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
+    CHECK_EQ(ins->operand_count(), 1)
+        << "Do not support instructions with more than one tuple "
+           "operand. If this CHECK fails, we will need to fix "
+           "b/233412625.";
+    std::tie(resharding_costs, input_shardings) =
+        ReshardingCostsForTupleOperand(ins->operand(0),
+                                       strategy_map.at(ins->operand(0)).get());
+  } else {
+    for (int64_t k = 0; k < ins->operand_count(); ++k) {
+      auto operand = ins->operand(k);
+      if (ins->opcode() == HloOpcode::kConditional) {
+        resharding_costs.push_back(std::vector<double>(
+            strategy_map.at(operand)->leaf_vector.size(), 0));
+        input_shardings.push_back(output_spec);
+      } else {
+        resharding_costs.push_back(ReshardingCostVector(
+            strategy_map.at(operand).get(), ins->operand(k)->shape(),
+            output_spec, cluster_env));
+        input_shardings.push_back(output_spec);
+      }
+    }
+  }
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
+  strategies->leaf_vector.push_back(ShardingStrategy(
+      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
+       std::move(resharding_costs), input_shardings}));
 }
 
 // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
@@ -1991,6 +2047,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 .value();
         break;
       }
+      case HloOpcode::kOutfeed: {
+        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                              leaf_strategies);
+        GenerateOutfeedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, replicated_penalty);
+        break;
+      }
       case HloOpcode::kAfterAll: {
         strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                               leaf_strategies);
@@ -2002,7 +2065,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         LOG(FATAL) << "Unhandled instruction: " + ins->ToString();
     }
     RemoveDuplicatedStrategy(strategies);
-    if (ins->has_sharding()) {
+    if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
       TrimOrGenerateStrategiesBasedOnExistingSharding(
@@ -2777,6 +2840,9 @@ void SetHloSharding(const HloInstructionSequence& sequence,
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   for (HloInstruction* inst : instructions) {
+    if (inst->opcode() == HloOpcode::kOutfeed) {
+      continue;
+    }
     auto iter = strategy_map.find(inst);
     if (iter == strategy_map.end()) {
       continue;
@@ -2912,6 +2978,10 @@ void SetHloShardingPostProcessing(
         FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
                                     device_mesh, resharding_cache);
       }
+    } else if (inst->opcode() == HloOpcode::kOutfeed) {
+      // Outfeed operand shardings are handled in downstream passes and so we
+      // ignore outfeed ops here.
+      continue;
     } else {
       // TODO(pratikf): We currently skip over tuple shaped instructions here as
       // GetShardingStrategy, which is invoked below does not currently support
@@ -3319,6 +3389,20 @@ void RecoverShardingsFromPartialMesh(
     if (preserve_shardings.find(ins->name()) != preserve_shardings.end()) {
       if (ins->shape().IsTuple()) {
         ShapeTree<HloSharding> output_tuple_sharding(ins->shape(), Undefined());
+        size_t i = 0;
+        for (auto& leaf : output_tuple_sharding.leaves()) {
+          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+        }
+        ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+      } else if (ins->opcode() == HloOpcode::kOutfeed &&
+                 ins->sharding().IsTuple()) {
+        std::vector<Shape> tuple_elements_shape(
+            ins->operand(0)->shape().tuple_shapes().begin(),
+            ins->operand(0)->shape().tuple_shapes().end());
+        tuple_elements_shape.push_back(ins->operand(1)->shape());
+        Shape sharding_shape = ShapeUtil::MakeTupleShape(tuple_elements_shape);
+        ShapeTree<HloSharding> output_tuple_sharding(sharding_shape,
+                                                     Undefined());
         size_t i = 0;
         for (auto& leaf : output_tuple_sharding.leaves()) {
           leaf.second = preserve_shardings.at(ins->name()).at(i++);
