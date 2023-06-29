@@ -122,8 +122,8 @@ inline void LoadImagePng(std::string* filename, ImageData* image_data) {
   tensorflow::png::DecodeContext context;
   // 0: channels is detected from the input
   CHECK(CommonInitDecode(image_str, 0, 8 /*uint8*/, &context));
-  char* image_buffer =
-      new char[context.channels * context.width * context.height];
+  unsigned char* image_buffer =
+      new unsigned char[context.channels * context.width * context.height];
   CHECK(CommonFinishDecode(absl::bit_cast<png_byte*>(image_buffer),
                            context.channels * context.width /*stride*/,
                            &context));
