@@ -329,30 +329,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocrand_plugin",
-    srcs = if_rocm_is_configured(["rocm_rng.cc"]),
-    hdrs = if_rocm_is_configured([]),
-    deps = if_rocm_is_configured([
-        ":hiprand_if_static",
-        ":rocm_gpu_executor",
-        ":rocm_platform_id",
-        "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_helpers_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_rng_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-        "//tensorflow/tsl/platform:env",
-    ]),
-    alwayslink = True,
-)
-
-cc_library(
     name = "hipsparse_if_static",
     deps = if_static([
         ":hipsparse_if_rocm_configured",
@@ -490,7 +466,6 @@ cc_library(
         ":miopen_plugin",
         ":hipfft_plugin",
         ":rocblas_plugin",
-        ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
         ":rocm_helpers",

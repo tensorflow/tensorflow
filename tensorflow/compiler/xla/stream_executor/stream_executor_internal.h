@@ -326,22 +326,10 @@ class StreamExecutorInterface {
   // initialization fails.
   virtual fft::FftSupport* CreateFft() { return nullptr; }
 
-  // Returns whether this StreamExecutor has Random Number Generation support
-  // for
-  // its underlying platform.
-  virtual bool SupportsRng() const { return false; }
-
   // Returns whether this StreamExecutor has neural net support for its
   // underlying
   // platform.
   virtual bool SupportsDnn() const { return false; }
-
-  // Creates a new RngSupport object, ownership is transferred to the caller.
-  // If SupportsRng() is false, this will always return null.
-  //
-  // If SupportsRng() is true, this may return null, for example, if the RNG
-  // initialization fails.
-  virtual rng::RngSupport* CreateRng() { return nullptr; }
 
   // Creates a new DnnSupport object, ownership is transferred to the caller.
   // If SupportsDnn() is false, this will always return null.

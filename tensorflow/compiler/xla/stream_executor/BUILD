@@ -49,7 +49,6 @@ cc_library(
         "platform.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",
@@ -251,15 +250,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rng",
-    srcs = ["rng.cc"],
-    hdrs = ["rng.h"],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform",
-    ],
-)
-
-cc_library(
     name = "numeric_options",
     hdrs = ["numeric_options.h"],
 )
@@ -299,7 +289,6 @@ cc_library(
         "launch_dim.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
@@ -328,7 +317,6 @@ cc_library(
         ":kernel_spec",
         ":launch_dim",
         ":plugin",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -442,7 +430,6 @@ tsl_gpu_library(
         ":launch_dim",
         ":platform",
         ":plugin_registry",
-        ":rng",
         ":stream_executor_headers",
         ":stream_executor_internal",
         ":temporary_device_memory",
@@ -474,7 +461,6 @@ cc_library(
         "fft.h",
         "kernel.cc",
         "plugin.h",
-        "rng.h",
         "stream.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
@@ -509,7 +495,6 @@ cc_library(
         ":platform",
         ":plugin",
         ":plugin_registry",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -597,7 +582,6 @@ cc_library(
         "launch_dim.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
@@ -626,7 +610,6 @@ cc_library(
         ":launch_dim",
         ":platform",
         ":plugin",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -753,7 +736,6 @@ cc_library(
         "platform.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",

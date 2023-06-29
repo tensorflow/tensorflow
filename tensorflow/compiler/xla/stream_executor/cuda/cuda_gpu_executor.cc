@@ -770,20 +770,6 @@ fft::FftSupport* GpuExecutor::CreateFft() {
   return status.value()(this);
 }
 
-rng::RngSupport* GpuExecutor::CreateRng() {
-  PluginRegistry* registry = PluginRegistry::Instance();
-  tsl::StatusOr<PluginRegistry::RngFactory> status =
-      registry->GetFactory<PluginRegistry::RngFactory>(cuda::kCudaPlatformId,
-                                                       plugin_config_.rng());
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve RNG factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  return status.value()(this);
-}
-
 // TODO(rspringer): Remove in b/18544742.
 bool GpuExecutor::SupportsDnn() const { return true; }
 
@@ -841,8 +827,6 @@ tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
 bool GpuExecutor::SupportsBlas() const { return true; }
 
 bool GpuExecutor::SupportsFft() const { return true; }
-
-bool GpuExecutor::SupportsRng() const { return true; }
 
 std::unique_ptr<internal::EventInterface>
 GpuExecutor::CreateEventImplementation() {
