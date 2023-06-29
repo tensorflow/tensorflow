@@ -941,6 +941,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "//tensorflow/tsl/profiler/utils:math_utils",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

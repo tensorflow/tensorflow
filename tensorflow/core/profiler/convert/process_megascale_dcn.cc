@@ -44,12 +44,8 @@ void ProcessMegascaleDcn(XSpace* space) {
   // Update host XPlane with DCN traffic
   dcn_events_processor.AddHostDcnTrafficToXPlane(host_plane);
   // Update device XPlanes with per collective TPU traffic.
-  for (int tpu_idx = 0; tpu_idx < num_tpu_cores; tpu_idx++) {
-    XPlane* device_xplane = device_xplanes[tpu_idx];
-    if (device_xplane != nullptr) {
-      dcn_events_processor.AddTpuCollectiveDcnTrafficToXPlane(device_xplane,
-                                                              tpu_idx);
-    }
+  for (XPlane* device_xplane : device_xplanes) {
+    dcn_events_processor.AddTpuCollectiveDcnTrafficToXPlane(device_xplane);
   }
 }
 }  // namespace profiler

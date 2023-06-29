@@ -114,12 +114,12 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_slice_id"), 112);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_per_slice_device_id"),
-      12345);
+      1);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_destination_slice_id"), 34);
   event_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                                  "dcn_destination_per_slice_device_id"),
-                             98765);
+                             2);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_chunk"), 4);
   event_builder.AddStatValue(
@@ -138,7 +138,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_slice_id"), 9);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_per_slice_device_id"),
-      10005);
+      3);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_destination_slice_id"), 0);
   event_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
@@ -167,7 +167,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   EXPECT_THAT(dcn_events_processor.GetMessage(1),
               FieldsAre("super-collective.1234", /* collective name */
                         /* slice_src, tpu_src, slice_dst, tpu_dst */
-                        112, 12345, 34, 98765,
+                        112, 1, 34, 2,
                         /* start_timestamp_ns. end_timestamp_ns, duration_us */
                         125000, 175000, 50,
                         /* size_bytes, chunk_id, loop_index_id */
@@ -177,7 +177,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   EXPECT_THAT(
       dcn_events_processor.GetMessage(2),
       FieldsAre("super-collective", /* collective name */
-                9, 10005, 0, 0,     /* slice_src, tpu_src, slice_dst, tpu_dst */
+                9, 3, 0, 0,         /* slice_src, tpu_src, slice_dst, tpu_dst */
                 75000, 150000,      /* start_timestamp_ns. end_timestamp_ns */
                 75,                 /* duration_us */
                 10, -1, -1,         /* size_bytes, chunk_id, loop_index_id */
