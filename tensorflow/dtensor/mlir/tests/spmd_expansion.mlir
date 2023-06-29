@@ -238,6 +238,24 @@ func.func @main(%arg0: tensor<32x32xi32> { tf._layout = "sharding_specs:x,y, mes
 }
 // -----
 
+// Check tf.Softmax op SPMD where input layout and output layout are different. DTensor needs a relayout.
+// CHECK-LABEL: module @test_spmd_softmax_need_relayout
+module @test_spmd_softmax_need_relayout {
+func.func @main(%arg0: tensor<32x32xf32> { tf._layout = "sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"}) {
+  // CHECK:        "tf_device.cluster"
+  // CHECK-NEXT:   "tf.Softmax"
+  // CHECK-NEXT:   "tf.DTensorAllGather"
+  %0 = "tf_device.cluster"() ({
+    %1 = "tf.DTensorLayout"(%arg0) {global_shape = #tf_type.shape<32x32>, layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>} : (tensor<32x32xf32>) -> (tensor<32x32xf32>)
+    %2 = "tf.Softmax"(%1) {_global_shape = [#tf_type.shape<32x32>]} : (tensor<32x32xf32>) -> (tensor<32x32xf32>)
+    %3 = "tf.DTensorLayout"(%2) {global_shape = #tf_type.shape<32x32>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>} : (tensor<32x32xf32>) -> (tensor<32x32xf32>)
+    tf_device.return %3 : tensor<32x32xf32>
+ }) {_mesh = "TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"} : () -> (tensor<32x32xf32>)
+ func.return
+}
+}
+// -----
+
 // Check tf.Softmax op SPMD where last dimension is not sharded.
 // CHECK-LABEL: module @test_spmd_softmax_last_dim_unsharded
 module @test_spmd_softmax_last_dim_unsharded {
