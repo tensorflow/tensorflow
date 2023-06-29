@@ -84,9 +84,9 @@ Status GpuTracer::DoStart() {
   options_.cbids_selected = {
     // KERNEL
     CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-#if CUDA_VERSION >= 11000
+#if CUDA_VERSION >= 11080  // CUDA 11.8
     CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
-#endif  // CUDA_VERSION >= 11000
+#endif  // CUDA_VERSION >= 11080
     // MEMCPY
     CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
     CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
