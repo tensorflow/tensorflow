@@ -511,6 +511,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         original_computation.parent()->config().debug_options();
     // Use cuBLAS gemm.
     options.set_xla_gpu_enable_triton_gemm(false);
+    // Avoid any autotuning: the result is only used to check numerics,
+    // use default algorithms to save compilation time and memory.
+    options.set_xla_gpu_autotune_level(0);
     // Avoid dumping compilation steps.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_autotune_results_to("");
