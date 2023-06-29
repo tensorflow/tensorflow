@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
-#include <optional>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -52,28 +51,20 @@ class HloFusionAnalysis {
         device_info_(device_info),
         compute_capability_(compute_capability) {}
 
-  // Simple getters.
-  const HloComputation* fused_computation() const { return fused_computation_; }
-  absl::Span<HloInstruction* const> fusion_roots() const {
-    return absl::MakeSpan(fusion_roots_);
-  }
-
   // Determine the fusion type for the emitter.
   StatusOr<EmitterFusionKind> GetEmitterFusionKind() const;
 
   // Determine the launch dimensions for the fusion.
-  StatusOr<LaunchDimensions> GetLaunchDimensions();
+  StatusOr<LaunchDimensions> GetLaunchDimensions() const;
 
   // Calculate reduction information (kind: kReduction).
-  StatusOr<const ReductionCodegenInfo*> GetReductionCodegenInfo();
+  StatusOr<ReductionCodegenInfo> GetReductionCodegenInfo() const;
 
   // Calculate transpose tiling information (kind: kTranspose).
-  StatusOr<const TilingScheme*> GetTransposeTilingScheme();
-
-  // Calculate loop fusion config (kind: kLoop).
-  const LaunchDimensionsConfig* GetLoopFusionConfig();
+  StatusOr<TilingScheme> GetTransposeTilingScheme() const;
 
  private:
+  LaunchDimensionsConfig GetLoopFusionConfig() const;
   const Shape& GetElementShape() const;
   int SmallestInputDtypeBits() const;
   int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize() const;
@@ -95,10 +86,6 @@ class HloFusionAnalysis {
   std::vector<HloInstruction*> fusion_roots_;
   const GpuDeviceInfo* device_info_;
   se::CudaComputeCapability compute_capability_;
-
-  std::optional<ReductionCodegenInfo> reduction_codegen_info_;
-  std::optional<TilingScheme> transpose_tiling_scheme_;
-  std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };
 
 }  // namespace gpu
