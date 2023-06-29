@@ -347,9 +347,24 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     // The intermediate one does not need to be initialized.
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase intermediate_buffer,
-                        rz_allocator.AllocateBytes(
-                            ShapeUtil::ByteSizeOf(root->shape()) * kMaxSplitK));
+    const bool disable_reduced_precision_reduction =
+        instr->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
+
+    PrimitiveType output_type = root->shape().element_type();
+    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
+                                         ? PrimitiveType::F64
+                                         : PrimitiveType::F32;
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase intermediate_buffer,
+        rz_allocator.AllocateBytes(ShapeUtil::ElementsIn(root->shape()) *
+                                   ShapeUtil::ByteSizeOfPrimitiveType(
+                                       disable_reduced_precision_reduction
+                                           ? accumulator_type
+                                           : output_type) *
+                                   kMaxSplitK));
 
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
                         AutotunerUtil::CreateBuffer(rz_allocator, root->shape(),

@@ -1223,6 +1223,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_absl//absl/strings",
     ],
 )
 
