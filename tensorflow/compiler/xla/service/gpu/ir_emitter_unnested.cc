@@ -1824,8 +1824,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
-    mlir::Operation* op,
-    const tensorflow::AutotuneResult::TritonGemmKey& config) {
+    mlir::Operation* op, const AutotuneResult::TritonGemmKey& config) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
   // because we only get the launch dimensions after code generation. So we
   // implement kernel reuse using lower level APIs, such as

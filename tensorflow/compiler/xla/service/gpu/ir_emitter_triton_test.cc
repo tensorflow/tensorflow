@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -157,7 +157,7 @@ ENTRY entry {
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
-  tensorflow::AutotuneResult::TritonGemmKey config;
+  AutotuneResult::TritonGemmKey config;
   config.set_block_m(16);
   config.set_block_n(32);
   config.set_block_k(512);
@@ -585,7 +585,7 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   // Fails if the tiling is too complex.
-  tensorflow::AutotuneResult::TritonGemmKey config;
+  AutotuneResult::TritonGemmKey config;
   config.set_block_m(512);
   config.set_block_n(512);
   config.set_block_k(32);

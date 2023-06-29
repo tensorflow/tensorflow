@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -189,25 +189,23 @@ class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
 TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
-  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(compute_capability);
-  EXPECT_FALSE(
-      std::any_of(configs.begin(), configs.end(),
-                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
-                    return key.num_stages() > 2;
-                  }));
+  EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
+                           [](const AutotuneResult::TritonGemmKey& key) {
+                             return key.num_stages() > 2;
+                           }));
 }
 
 TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(compute_capability);
-  EXPECT_TRUE(
-      std::any_of(configs.begin(), configs.end(),
-                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
-                    return key.num_stages() > 2;
-                  }));
+  EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
+                          [](const AutotuneResult::TritonGemmKey& key) {
+                            return key.num_stages() > 2;
+                          }));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {

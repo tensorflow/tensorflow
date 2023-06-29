@@ -621,7 +621,7 @@ template <typename IndexT>
 StatusOr<LaunchDimensions> MatMulImpl(
     mlir::OpBuilder builder, absl::string_view libdevice_path,
     const HloDotInstruction* dot_instr, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+    const AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   CHECK(!root->shape().IsTuple());
 
@@ -1154,10 +1154,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> MatMul(
-    mlir::OpBuilder builder, absl::string_view libdevice_path,
-    const HloComputation* computation, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
+                                  absl::string_view libdevice_path,
+                                  const HloComputation* computation,
+                                  mlir::triton::FuncOp fn,
+                                  const AutotuneResult::TritonGemmKey& config,
+                                  int shmem_budget) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -1176,10 +1178,12 @@ StatusOr<LaunchDimensions> MatMul(
   }
 }
 
-StatusOr<LaunchDimensions> SoftMax(
-    mlir::OpBuilder builder, absl::string_view libdevice_path,
-    const HloComputation* computation, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int) {
+StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
+                                   absl::string_view libdevice_path,
+                                   const HloComputation* computation,
+                                   mlir::triton::FuncOp fn,
+                                   const AutotuneResult::TritonGemmKey& config,
+                                   int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   mlir::ImplicitLocOpBuilder b(loc, builder);

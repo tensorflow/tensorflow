@@ -242,7 +242,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
 }
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
+StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -252,7 +252,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
   se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                               stream);
 
-  std::vector<tensorflow::AutotuneResult> results;
+  std::vector<xla::AutotuneResult> results;
   results.reserve(runners.size());
   // TODO(reedwm): Warn if determinism is enabled after autotune is run
   for (auto& runner : runners) {
@@ -295,7 +295,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
     } else {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
+      result.mutable_failure()->set_kind(xla::AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
           absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
                        ": ", cudnn_launch_status.ToString()));

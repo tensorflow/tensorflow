@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -84,15 +85,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-using tensorflow::AutotuneResult;
 
 // Constructs an autotuning key for a gemm performed in Triton.
 static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,

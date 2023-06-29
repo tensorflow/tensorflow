@@ -5,7 +5,7 @@
 // tremendous statistical, testing, and debugging value.
 syntax = "proto3";
 
-package tensorflow;
+package xla;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";

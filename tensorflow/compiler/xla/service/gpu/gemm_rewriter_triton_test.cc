@@ -440,7 +440,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);
@@ -476,7 +476,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);
@@ -517,7 +517,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(32);
   key.set_block_n(64);
   key.set_block_k(64);
@@ -554,7 +554,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);
@@ -594,7 +594,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);
@@ -630,7 +630,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);
@@ -666,7 +666,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(128);
@@ -702,7 +702,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(32);
   key.set_block_n(32);
   key.set_block_k(16);
@@ -759,7 +759,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  tensorflow::AutotuneResult::TritonGemmKey key;
+  AutotuneResult::TritonGemmKey key;
   key.set_block_m(16);
   key.set_block_n(16);
   key.set_block_k(16);

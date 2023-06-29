@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -609,7 +609,7 @@ void CopyIncrementingAboveThreshold(
 
 StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const DotFusionAnalysis& analysis,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling,
+    const AutotuneResult::TritonGemmKey& tiling,
     const int64_t contracting_dim_idx, const int operand_number) {
   const Shape& shape = dot.operand(operand_number)->shape();
   Shape new_shape(shape.element_type(), {}, {}, {});
@@ -676,8 +676,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
 // Apply split K configuration from the tiling to the fused dot() computation:
 // bitcast the operands, change the output shape and the dot dimensions.
 Status MakeDotComputationSplitKBatch(
-    HloComputation* computation,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling,
+    HloComputation* computation, const AutotuneResult::TritonGemmKey& tiling,
     bool disable_reduced_precision_reduction) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
@@ -797,9 +796,8 @@ bool IsTritonSupportedElementwise(HloOpcode opcode,
                                opcode);
 }
 
-Status MakeDotSplitKBatch(
-    HloInstruction* dot_fusion,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
+Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                          const AutotuneResult::TritonGemmKey& tiling) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
 
   if (dot_fusion->shape().IsTuple()) {

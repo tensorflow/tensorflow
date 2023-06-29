@@ -49,10 +49,10 @@ class DenylistTest : public testing::Test {
 };
 
 TEST_F(DenylistTest, DefaultTest) {
-  tensorflow::ComputeCapability cc;
+  ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
-  tensorflow::CudnnVersion cudnn_version;
+  CudnnVersion cudnn_version;
   cudnn_version.set_major(7);
   cudnn_version.set_minor(6);
   cudnn_version.set_patch(2);
@@ -67,10 +67,10 @@ TEST_F(DenylistTest, DefaultTest) {
 }
 
 TEST_F(DenylistTest, NegativeTest) {
-  tensorflow::ComputeCapability cc;
+  ComputeCapability cc;
   cc.set_major(7);
   cc.set_minor(0);
-  tensorflow::CudnnVersion cudnn_version;
+  CudnnVersion cudnn_version;
   cudnn_version.set_major(7);
   cudnn_version.set_minor(6);
   cudnn_version.set_minor(2);
