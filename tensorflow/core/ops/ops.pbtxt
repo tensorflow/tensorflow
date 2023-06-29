@@ -4061,6 +4061,35 @@ op {
     }
   }
   attr {
+    name: "low_priority_max_batch_size"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_batch_timeout_micros"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_allowed_batch_sizes"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "low_priority_max_enqueued_batches"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
