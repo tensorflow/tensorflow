@@ -42,7 +42,9 @@ from tensorflow.python.framework.framework_lib import *  # pylint: disable=redef
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import ops
 
 # Session
 from tensorflow.python.client.client_lib import *

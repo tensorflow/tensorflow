@@ -77,7 +77,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.eager.def_function import function
-from tensorflow.python.framework.ops import enable_eager_execution
 
 # Check whether TF2_BEHAVIOR is turned on.
 from tensorflow.python.eager import monitoring as _monitoring
@@ -101,9 +100,6 @@ from tensorflow.python.compiler.xla import xla
 
 # MLIR APIs.
 from tensorflow.python.compiler.mlir import mlir
-
-# Structs (aka extension types)
-from tensorflow.python.framework import extension_type as _extension_type
 
 # Update dispatch decorator docstrings to contain lists of registered APIs.
 # (This should come after any imports that register APIs.)
