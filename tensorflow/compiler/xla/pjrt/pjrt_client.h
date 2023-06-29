@@ -860,6 +860,10 @@ class PjRtBuffer {
  public:
   virtual ~PjRtBuffer() = default;
 
+  virtual PrimitiveType element_type() const {
+    return on_device_shape().element_type();
+  }
+
   virtual const Shape& on_device_shape() const = 0;
 
   // Same as on_device_shape when the shape is static. When the shape is

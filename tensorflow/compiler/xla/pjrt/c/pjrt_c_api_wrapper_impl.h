@@ -212,6 +212,7 @@ PJRT_Error* PJRT_SerializedExecutable_Data(
     PJRT_SerializedExecutable_Data_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
+PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
@@ -384,6 +385,7 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_SerializedExecutable_Data,
 
       /*PJRT_Buffer_Destroy=*/pjrt::PJRT_Buffer_Destroy,
+      /*PJRT_Buffer_ElementType=*/pjrt::PJRT_Buffer_ElementType,
       /*PJRT_Buffer_OnDeviceTrimmedShape=*/
       pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/

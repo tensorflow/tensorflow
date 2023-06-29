@@ -264,6 +264,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
  public:
   PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
 
+  PrimitiveType element_type() const override;
+
   const Shape& on_device_shape() const override;
 
   StatusOr<Shape> logical_on_device_shape() override;

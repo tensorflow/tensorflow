@@ -1262,6 +1262,16 @@ PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
   set_shape();
 }
 
+PrimitiveType PjRtCApiBuffer::element_type() const {
+  PJRT_Buffer_ElementType_Args args;
+  args.struct_size = PJRT_Buffer_ElementType_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Buffer_ElementType(&args),
+                            pjrt_c_api());
+  return pjrt::ConvertFromPjRtBufferType(args.type);
+}
+
 const Shape& PjRtCApiBuffer::on_device_shape() const {
   CHECK(shape_.has_value())
       << "Shape should be initialized in PjRtCApiBuffer constructor.";

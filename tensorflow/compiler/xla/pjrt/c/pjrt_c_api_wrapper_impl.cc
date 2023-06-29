@@ -1249,6 +1249,14 @@ PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ElementType_Args", PJRT_Buffer_ElementType_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->type = ConvertToPjRtBufferType(args->buffer->buffer->element_type());
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

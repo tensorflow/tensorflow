@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 4
+#define PJRT_API_MINOR 5
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1229,6 +1229,17 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Destroy_Args, buffer);
 // called and frees `buffer`. `buffer` can be nullptr.
 typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 
+struct PJRT_Buffer_ElementType_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Buffer_Type type;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_ElementType_Args, type);
+
+// Returns the type of the array elements of a buffer.
+typedef PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
+
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
 
@@ -1669,6 +1680,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_SerializedExecutable_Data);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
