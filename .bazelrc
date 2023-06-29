@@ -274,7 +274,9 @@ build:dbg -c dbg
 # https://github.com/tensorflow/tensorflow/issues/48919.
 # Users can still include debug info for a specific kernel, e.g. with:
 #     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
-build:dbg --per_file_copt=+.*,-tensorflow.*@-g0
+# Since this .bazelrc file is synced between the tensorflow/tensorflow repo and
+# the openxla/xla repo, also include debug info for files under xla/.
+build:dbg --per_file_copt=+.*,-tensorflow.*,-xla.*@-g0
 build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
