@@ -101,6 +101,8 @@ function reorganize_includes() {
   move_to_root_if_exists external/com_google_protobuf/src/google
   rm -rf external/com_google_protobuf/python
 
+  cp -R external/ml_dtypes/include ./
+
   popd
 }
 
