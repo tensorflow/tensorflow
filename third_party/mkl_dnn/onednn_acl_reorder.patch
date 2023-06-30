@@ -58,10 +58,10 @@ index 000000000..061751b55
 +} // namespace dnnl
 diff --git a/src/cpu/aarch64/acl_reorder.hpp b/src/cpu/aarch64/acl_reorder.hpp
 new file mode 100644
-index 000000000..930ccb40e
+index 000000000..91d23e06d
 --- /dev/null
 +++ b/src/cpu/aarch64/acl_reorder.hpp
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,260 @@
 +/*******************************************************************************
 +* Copyright 2023 Arm Ltd. and affiliates
 +*
@@ -196,6 +196,9 @@ index 000000000..930ccb40e
 +                // No format_tag for these, have to deduce from stride
 +                case 2:
 +                    {
++                        if(dst_md->dims[0] == 1 || dst_md->dims[1] == 1){
++                            return status::unimplemented;
++                        }
 +                        int dst_dim_1 = dst_md->dims[1];
 +                        int dst_dim_0_stride = dst_md->format_desc.blocking.strides[0];
 +                        int dst_dim_1_stride = dst_md->format_desc.blocking.strides[1];
