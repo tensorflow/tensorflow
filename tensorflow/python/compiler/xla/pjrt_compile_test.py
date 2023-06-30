@@ -109,16 +109,60 @@ class PjrtCompileTest(test.TestCase):
     # GPU kernel.
     #
     # The following use case is tested:
-    # host -> h2d transfer -> XLA op (GPU) -> TF op (GPU) -> dh2 transfer.
-    host_t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    # host -> h2d transfer (creating a tf::Tensor with PjRtTensorBuffer)
+    # -> XLA op (GPU) -> TF op (GPU) -> d2h transfer.
+    host_tensor = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     with ops.device("/device:GPU:0"):
-      xla_t = const_fn()
-      xla_result = matmul_fn(host_t)
-      result = math_ops.matmul(xla_result, xla_t)  # TF GPU kernel.
+      xla_tensor = const_fn()
+      xla_result = matmul_fn(host_tensor)
+      result = math_ops.matmul(xla_result, xla_tensor)  # TF GPU kernel.
 
-    ref_t = np.array([[1.0, 2.0], [3.0, 4.0]])
-    ref_result = np.matmul(np.matmul(ref_t, ref_t), ref_t)
+    # Using numpy to calculate the reference result ("ref_*").
+    ref_tensor = np.array([[1.0, 2.0], [3.0, 4.0]])
+    ref_result = np.matmul(np.matmul(ref_tensor, ref_tensor), ref_tensor)
     self.assertAllClose(result.numpy(), ref_result, atol=1e-05)
+
+    # The following use case is tested:
+    # host -> h2d transfer (creating a tf::Tensor with PjRtTensorBuffer)
+    # -> TF op (GPU, creating a tf::Tensor with device mem)
+    # -> XLA op (GPU, accepting a tf::Tensor with device mem) -> d2h transfer.
+    with ops.device("/device:GPU:0"):
+      tf_matmul_tensor = math_ops.matmul(host_tensor, host_tensor)
+      xla_result = matmul_fn(tf_matmul_tensor)
+
+    ref_matmul_tensor = np.matmul(ref_tensor, ref_tensor)
+    ref_result_2 = np.matmul(ref_matmul_tensor, ref_matmul_tensor)
+    self.assertAllClose(xla_result.numpy(), ref_result_2, atol=1e-05)
+
+  def test_xla_launch_with_var_on_gpu_device(self):
+    @def_function.function(jit_compile=True)
+    def foo(x, y):
+      return x + y + 1
+
+    @def_function.function(jit_compile=True)
+    def bar(x, y):
+      x.assign(y)
+      y.assign_add([1.0, 1.0])
+
+    with ops.device("/device:GPU:0"):
+      a = constant_op.constant([1.0, 2.0])
+      x = variables.Variable([0.0, 1.0])
+      result_tensor = foo(x, a)
+
+    self.assertAllClose(result_tensor.numpy(), [2.0, 4.0], atol=1e-05)
+
+    # The following use case is tested:
+    # Variable updates following an XLA computation that reads the updated
+    # variables.
+    with ops.device("/device:GPU:0"):
+      var_a = variables.Variable([0.0, 1.0])
+      var_b = variables.Variable([1.0, 2.0])
+      bar(var_a, var_b)
+      result = foo(var_a, var_b)
+
+    self.assertAllClose([1.0, 2.0], var_a.value(), atol=1e-05)
+    self.assertAllClose([2.0, 3.0], var_b.value(), atol=1e-05)
+    self.assertAllClose(result, [4.0, 6.0], atol=1e-05)
 
 
 if __name__ == "__main__":
