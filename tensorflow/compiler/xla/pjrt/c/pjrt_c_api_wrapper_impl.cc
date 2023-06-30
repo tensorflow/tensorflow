@@ -1266,6 +1266,24 @@ PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_UnpaddedDimensions_Args",
+      PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE, args->struct_size));
+
+  std::optional<std::vector<int64_t>>& unpadded_dims =
+      args->buffer->unpadded_dims;
+  if (!unpadded_dims.has_value()) {
+    PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
+                          args->buffer->buffer->logical_dimensions());
+    unpadded_dims.emplace(std::move(dims));
+  }
+  args->unpadded_dims = unpadded_dims->data();
+  args->num_dims = unpadded_dims->size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

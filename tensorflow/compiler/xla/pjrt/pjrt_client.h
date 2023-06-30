@@ -871,6 +871,19 @@ class PjRtBuffer {
 
   virtual const Shape& on_device_shape() const = 0;
 
+  // Same as dimensions() when the shape is static. When the shape is dynamic,
+  // it gathers the metadata from the device and returns a static shape
+  // representing the logical shape of the data. This approach is identical to
+  // how tensorflow and xrt setup the output buffer in the graph.
+  //
+  // Since this method actually acquires locks and communicate with the device,
+  // it does not have the const qualifier, similar to what ToLiteral does.
+  virtual StatusOr<std::vector<int64_t>> logical_dimensions() {
+    TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    absl::Span<const int64_t> dims = logical_shape.dimensions();
+    return std::vector<int64_t>(dims.begin(), dims.end());
+  }
+
   // Same as on_device_shape when the shape is static. When the shape is
   // dynamic, it gathers the metadata from the device and returns a static shape
   // representing the logical shape of the data. This approach is identical to
@@ -878,7 +891,14 @@ class PjRtBuffer {
   //
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
-  virtual StatusOr<Shape> logical_on_device_shape() = 0;
+  virtual StatusOr<Shape> logical_on_device_shape() {
+    const Shape& shape = on_device_shape();
+    CHECK(shape.is_static())
+        << "logical_on_device_shape needs to be overridden for platform '"
+        << client()->platform_name() << "'";
+    return shape;
+  }
+
   virtual PjRtMemorySpace* memory_space() const { return nullptr; }
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;

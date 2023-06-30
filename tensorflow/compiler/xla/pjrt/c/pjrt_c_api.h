@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 6
+#define PJRT_API_MINOR 7
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1253,6 +1253,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Dimensions_Args, num_dims);
 // Returns the array shape of `buffer`, i.e. the size of each dimension.
 typedef PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
 
+struct PJRT_Buffer_UnpaddedDimensions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dims`.
+  const int64_t* unpadded_dims;  // out
+  size_t num_dims;               // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
+
+// Returns the unpadded array shape of `buffer`. This usually is equivalent to
+// PJRT_Buffer_Dimensions, but for implementations that support
+// dynamically-sized dimensions via padding to a fixed size, any dynamic
+// dimensions may have a smaller unpadded size than the padded size reported by
+// PJRT_Buffer_Dimensions. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args);
+
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
 
@@ -1695,6 +1715,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);

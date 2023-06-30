@@ -270,6 +270,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   const Shape& on_device_shape() const override;
 
+  StatusOr<std::vector<int64_t>> logical_dimensions() override;
+
   StatusOr<Shape> logical_on_device_shape() override;
 
   PjRtDevice* device() const override;
