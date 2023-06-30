@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -24,9 +25,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -128,6 +134,9 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   EXPECT_EQ(non_categorized_count, 418);
 }
 
+// Just a counter test to see which ops have duplicate lowerings. This isn't a
+// correctness test versus a test to easily ensure the op registry is kept
+// in sync.
 TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
   int double_lowering_count = 0;
 
@@ -144,7 +153,77 @@ TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
     }
   }
 
+  // TODO(b/288876609): This should get to zero.
   EXPECT_EQ(double_lowering_count, 3);
+}
+
+// Counts which ops have MLIR only lowerings. This isn't a
+// correctness test versus a test to easily ensure the op registry is kept
+// in sync.
+TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
+  DialectRegistry dialect_registry;
+  mlir::RegisterCommonToolingDialects(dialect_registry);
+
+  MLIRContext context(dialect_registry);
+  context.loadAllAvailableDialects();
+
+  RewritePatternSet mlir_legalize_lower_patterns(&context);
+  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+
+  int mlir_only_patterns = 0;
+  for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
+    std::optional<OperationName> pat_op_name = pattern->getRootKind();
+    if (!pat_op_name) {
+      continue;
+    }
+
+    if (!HasTf2XlaFallback(pat_op_name->getRegisteredInfo()->getTypeID())) {
+      mlir_only_patterns++;
+    }
+  }
+
+  EXPECT_EQ(mlir_only_patterns, 66);
+}
+
+// Counts which ops have lowerings without XlaOpKernels. This isn't a
+// correctness test versus a test to easily ensure the op registry is kept
+// in sync.
+TEST_F(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
+  tensorflow::XlaOpRegistry::RegisterCompilationKernels();
+  std::vector<const tensorflow::KernelDef*> kernel_defs =
+      tensorflow::XlaOpRegistry::DeviceKernels(
+          tensorflow::DEVICE_CPU_XLA_JIT,
+          /*include_compilation_only_kernels=*/true);
+
+  std::set<std::string> xla_op_kernels;
+  for (auto kernel_def : kernel_defs) {
+    std::string tf_name = "tf." + kernel_def->op();
+    xla_op_kernels.insert(tf_name);
+  }
+
+  DialectRegistry dialect_registry;
+  mlir::RegisterCommonToolingDialects(dialect_registry);
+
+  MLIRContext context(dialect_registry);
+  context.loadAllAvailableDialects();
+
+  RewritePatternSet mlir_legalize_lower_patterns(&context);
+  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+
+  int mlir_without_xla_count = 0;
+  for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
+    std::optional<OperationName> pat_op_name = pattern->getRootKind();
+    if (!pat_op_name) {
+      continue;
+    }
+
+    if (xla_op_kernels.find(pat_op_name->getStringRef().str()) ==
+        xla_op_kernels.end()) {
+      mlir_without_xla_count++;
+    }
+  }
+
+  EXPECT_EQ(mlir_without_xla_count, 14);
 }
 
 }  // namespace mhlo
