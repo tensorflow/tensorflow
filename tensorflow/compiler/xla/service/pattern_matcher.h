@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <ios>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -2689,50 +2690,46 @@ class TypedInstructionPattern : public InstructionPatternInterface {
   Pattern pattern_;
 };
 
-// An Impl class for HloInstructionPattern that does type erasure.
-class HloInstructionPatternTypeErasedImpl {
+// An Impl class for HloInstructionPattern that stores the inner pattern in a
+// type-erased shared_ptr.
+class HloInstructionPatternSharedImpl {
  public:
   template <typename Pattern>
-  explicit HloInstructionPatternTypeErasedImpl(Pattern pattern)
+  explicit HloInstructionPatternSharedImpl(Pattern pattern)
       // The return type annotation of the lambda is needed for correctness.
-      : get_pattern_(
-            [typed_pattern = TypedInstructionPattern<Pattern>(
-                 std::move(pattern))]() -> const InstructionPatternInterface& {
-              return typed_pattern;
-            }) {}
+      : pattern_(std::make_shared<TypedInstructionPattern<Pattern>>(
+            std::move(pattern))) {}
 
   bool Match(::xla::HloInstruction* instr, MatchOption option) const {
-    return get_pattern_().Match(instr, option);
+    return pattern_->Match(instr, option);
   }
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    get_pattern_().DescribeTo(os, indent);
+    pattern_->DescribeTo(os, indent);
   }
 
  private:
-  // We use std::function for the type erasure, because it's copyable and if the
-  // pattern object is small enough, it can store it in the closure without
-  // dynamic memory allocation.
-  std::function<const InstructionPatternInterface&()> get_pattern_;
+  // We use std::shared_ptr to avoid copying the underlying pattern when reusing
+  // it, thus avoiding exponential memory use.
+  std::shared_ptr<InstructionPatternInterface> pattern_;
 };
 
 }  // namespace detail
 
-// Wraps the HloInstructionPattern in a type-erased container.
+// Wraps the HloInstructionPattern in a type-erased shared_ptr.
 //
-// This can be used around (sub)patterns to avoid generating extremely complex
-// types and reduce the C++ compilation time.
+// This can be used around repeated subpatterns to avoid exponential code growth
+// and compilation time, while keeping memory usage minimal at runtime. This is
+// similar to defining a subroutine in imperative programming languages.
 //
-// This may slightly increase the runtime of the patterns, so we should use them
-// only when we need to speed up the C++ compilation.
+// If used excessively, this may slightly increase the runtime of the patterns.
 //
-// For example:
-// auto subpattern1 = m::TypeErase(m::Add(...))
-// auto subpattern2 = m::TypeErase(m::Subtract(...))
-// auto pattern = m::TypeErase(m::Multiply(subpattern1, subpattern2))
+// Example usage:
+// auto shared = m::SharedSubpattern(sub_pattern);
+// return m::AnyOf<HloInstruction>(m::Convert(shared), shared);
 template <typename HloInstructionType, typename OriginalImpl>
-inline auto TypeErase(
+inline auto SharedSubpattern(
     detail::HloInstructionPattern<HloInstructionType, OriginalImpl> pattern) {
-  auto impl = detail::HloInstructionPatternTypeErasedImpl(std::move(pattern));
+  auto impl = detail::HloInstructionPatternSharedImpl(std::move(pattern));
   return detail::HloInstructionPattern<HloInstructionType, decltype(impl)>(
       std::move(impl), /*matched_inst=*/nullptr);
 }
