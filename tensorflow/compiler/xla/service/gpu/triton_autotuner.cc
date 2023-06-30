@@ -718,10 +718,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         device_description.rocm_compute_capability(),
         DummyCanShareBufferFunction,
         /*pointer_size=*/8, &compile_module_results);
-    if (!compilation_status.ok()) {
+    if (compilation_status.code() == absl::StatusCode::kResourceExhausted) {
       VLOG(2) << "Compilation of autotuning variant failed: "
               << compilation_status;
       return {std::nullopt};
+    } else if (!compilation_status.ok()) {
+      return compilation_status;
     }
 
     std::vector<std::string> kernel_names;

@@ -613,6 +613,33 @@ ENTRY entry {
           .status());
 }
 
+// This test should be updated when fixes for
+// https://github.com/openai/triton/issues/1864 are applied.
+TEST_F(TritonGemmTest, TritonCompilerCanFailOnConstants) {
+  EXPECT_THAT(GetOptimizedModule(R"(
+HloModule m, is_scheduled=true
+
+triton_gemm___computation {
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  c = f32[] constant(0)
+  b = f32[11,63] broadcast(c)
+  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[92,11]{1,0} parameter(0)
+  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_gemm___computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"16","block_n":"64",
+                                          "block_k":"16","split_k":"1",
+                                          "num_stages":"3","num_warps":"2"}}
+})"),
+              tsl::testing::StatusIs(tsl::error::INTERNAL,
+                                     "Failed to compile Triton kernel."));
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -1360,45 +1387,6 @@ ENTRY e {
   ROOT custom-call = f32[63,92]{1,0} custom-call(broadcast.2, parameter_0),
     custom_call_target="__cublas$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
-})";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
-                                      /*run_hlo_passes=*/false));
-}
-
-TEST_F(CompareTest, TritonDotFusionCanHaveOnlyLHSParameter) {
-  const std::string kHloTextTest = R"(
-HloModule m, is_scheduled=true
-
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  c = f32[] constant(123)
-  b = f32[11,63] broadcast(c)
-  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, b),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f32[92,11]{1,0} parameter(0)
-  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0), kind=kCustom,
-    calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"16","block_n":"64",
-                                          "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
-})";
-
-  const std::string kHloTextRef = R"(
-HloModule m, is_scheduled=true
-
-ENTRY triton_gemm___computation {
-  constant = f32[] constant(123)
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
-  ROOT custom-call = f32[92,63]{1,0} custom-call(parameter_0, broadcast),
-    custom_call_target="__cublas$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
