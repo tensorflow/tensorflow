@@ -89,19 +89,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
-#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/dot_dimension_sorter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -135,7 +132,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/topk_specializer.h"
 #include "tensorflow/compiler/xla/service/gpu/topk_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -206,33 +202,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
-
-// CollectivesScheduleLinearizer enforces a total ordering between collectives
-// to work around (1) divergence in initial HLOs across executables that are
-// communicating with each other using HLO collectives, and (2) divergence in
-// executables introduced due to auto tuning, specifically the use of extra
-// scratch space for convolutions.
-// We always apply this pass when not using SPMD (where initial HLO divergence
-// may be possible). This function decided whether to apply this pass when using
-// SPMD partitioning. When using SPMD, if convolutions are present in the code
-// and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
-// else we do not need to enable the pass.
-bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
-        return true;
-      }
-    }
-  }
-  // No convolution auto-tuning candidates found in the module.
-  return false;
-}
-
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -999,30 +971,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
-  const bool enable_collecive_schedule_linearizer_for_spmd =
-      hlo_module->config().use_spmd_partitioning() && stream_exec != nullptr &&
-      GpuConvAlgorithmPicker::IsEnabled(hlo_module);
-
-  if (enable_collecive_schedule_linearizer_for_spmd) {
+  if (EnableCollectiveScheduleLinearizerForSpmd(hlo_module, stream_exec)) {
     pipeline.AddPass<CollectivesScheduleLinearizer>(
-        RequiresCollectiveScheduleLinearizer);
+        [this](const HloModule* module) {
+          return RequiresCollectiveScheduleLinearizer(module);
+        });
   }
-
-  AutotuneConfig autotune_config =
-      stream_exec
-          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
-                           debug_options}
-          : AutotuneConfig{
-                DevicelessConfig{gpu_target_config.device_description_str},
-                debug_options};
-  if (autotune_config.IsDeviceless()) {
-    AutotunerUtil::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
-  }
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline.AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
-  pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
 
   // By default use an externally provided thread pool.
   tsl::thread::ThreadPool* thread_pool = options.thread_pool;
@@ -1041,7 +995,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     thread_pool = &*overriding_thread_pool;
   }
 
-  pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
+  TF_RETURN_IF_ERROR(AddAutotuningPasses(
+      &pipeline, hlo_module, stream_exec, debug_options, options,
+      gpu_target_config, autotune_results, thread_pool));
 
   GpuFloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -1088,18 +1044,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   const DebugOptions& debug_options = module->config().debug_options();
-
-  // We are doing this before the timer is started.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_load_autotune_results_from();
-      !file_path.empty()) {
-    static absl::once_flag once;
-    Status status = OkStatus();
-    absl::call_once(once, [&file_path, &status] {
-      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
-    });
-    TF_RETURN_IF_ERROR(status);
-  }
+  TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_options));
 
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER(
@@ -1122,15 +1067,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  // We are doing this after the timer is finished.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_dump_autotune_results_to();
-      !file_path.empty()) {
-    // Warning: This writes the autotune results at every compilation, possibly
-    // multiple times per process.
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
-  }
+  TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_options));
 
   return std::move(module);
 }
