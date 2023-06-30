@@ -1019,6 +1019,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:ArithDialect",
     ],
