@@ -16,6 +16,10 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
@@ -775,7 +779,15 @@ pywrap_tensorflow_macro(
     )) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-    ]) + if_xla_available([
+    ]) + if_oss(if_cuda_is_configured([
+        # TODO(tmorris): These dependencies are added to get the RPATHs for
+        # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
+        # able to remove this in the future, as these stubs should already
+        # be brought in via other dependencies.
+        "//tensorflow/tsl/cuda:cudnn_stub",
+        "//tensorflow/tsl/cuda:cufft_stub",
+        "//tensorflow/tsl/cuda:nccl_rpath_stub",
+    ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
 )

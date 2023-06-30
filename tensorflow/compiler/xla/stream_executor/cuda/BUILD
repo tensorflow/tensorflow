@@ -443,6 +443,12 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "tensorrt_rpath_stub",
+    actual = "//tensorflow/tsl/cuda:tensorrt_rpath_stub",
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "cuda_kernel",
     srcs = if_cuda_is_configured(["cuda_kernel.cc"]),
@@ -564,6 +570,9 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
+        ":cusolver_lib",
+        ":cusparse_lib",
+        ":tensorrt_rpath_stub",
     ],
     alwayslink = 1,
 )
