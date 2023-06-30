@@ -1,5 +1,6 @@
 """BUILD extension for TF composition project."""
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
@@ -135,8 +136,13 @@ def gen_op_bindings(name):
     tf_gen_op_wrapper_py(
         name = "gen_" + name + "_ops",
         out = "gen_" + name + "_ops.py",
-        deps = [
-            ":" + name + "_ops_cc",
+        py_lib_rule = py_strict_library,
+        deps = [":" + name + "_ops_cc"],
+        extra_py_deps = [
+            "//tensorflow/python:pywrap_tfe",
+            "//tensorflow/python/util:dispatch",
+            "//tensorflow/python/util:deprecation",
+            "//tensorflow/python/util:tf_export",
         ],
     )
 
@@ -144,7 +150,6 @@ def gen_op_bindings(name):
         name = name + "_ops",
         dso = [":" + name + "_ops.so"],
         kernels = [":" + name + "_ops_cc"],
-        deps = [
-            ":gen_" + name + "_ops",
-        ],
+        # copybara:uncomment(OSS version passes this to py_library) lib_rule = py_strict_library,
+        deps = [":gen_" + name + "_ops"],
     )
