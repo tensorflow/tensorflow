@@ -16,7 +16,6 @@ tfrun() { "$@"; }
 # about readability. We can't pipe into 'read -ra' to create an array because
 # piped commands run in subshells, which can't store variables outside of the
 # subshell environment.
-# See https://g3doc.corp.google.com/devtools/staticanalysis/pipeline/analyzers/shell/lint/g3doc/findings/SC2086.md?cl=head
 # Ignore grep failures since we're using it for basic filtering
 set +e
 filtered_build_targets=( $(echo "$BUILD_TARGETS" | tr ' ' '\n' | grep . | tee build_targets.txt) )
