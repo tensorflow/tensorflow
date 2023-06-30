@@ -4834,15 +4834,17 @@ HloInstruction* SpmdPartitioner::AllGatherShards(
     const SPMDCollectiveOpsCreator& collectives_creator) {
   return AllGatherShardsInternal(b, operand, sharding, next_channel_id,
                                  selected_dims, collectives_creator,
-                                 /*per_dim_ag=*/true);
+                                 /*per_dim_ag=*/true)
+      .first;
 }
 
-HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
+std::pair<HloInstruction*, HloInstruction*>
+SpmdPartitioner::AllGatherShardsInternal(
     SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
     int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
     const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag) {
   if (selected_dims.empty()) {
-    return operand;
+    return std::make_pair(operand, nullptr);
   }
   CHECK(!sharding.IsTileMaximal());
   if (per_dim_ag || selected_dims.size() == 1) {
@@ -4860,7 +4862,7 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
           b, result, result_shape, partition_subgroups, (*next_channel_id)++,
           /*all_gather_dimension=*/*it);
     }
-    return result;
+    return std::make_pair(result, result);
   }
   std::vector<int64_t> shape;
   shape.push_back(1);
@@ -4870,6 +4872,7 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
   // Add one leading dimension to gather all partitions.
   auto reshape = b->AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(operand->shape().element_type(), shape), operand));
+  HloInstruction* ag = nullptr;
   HloInstruction* result = reshape;
   auto partition_subgroups =
       GetPartitionGroupsForReplication(sharding, selected_dims);
@@ -4878,6 +4881,7 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
       b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
       partition_subgroups, (*next_channel_id)++,
       /*all_gather_dimension=*/0);
+  ag = result;
   // If n > 1 dimensions are partitioned, split the leading dimension to n.
   std::vector<int64_t> tiled_dims;
   for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
@@ -4925,7 +4929,7 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
         i, ag_shape.dimensions(i) * sharding.tile_assignment().dim(i));
   }
   result = b->AddInstruction(HloInstruction::CreateReshape(ag_shape, result));
-  return result;
+  return std::make_pair(result, ag);
 }
 
 HloInstruction* SpmdPartitioner::AllReduceAlongShardingDims(
