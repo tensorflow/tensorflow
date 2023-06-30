@@ -143,7 +143,8 @@ bool MayPreventVectorization(const HloComputation* fusion) {
 // Returns a pair<bool, int>. The bool mean should we try to enable
 // row vectorization.  The int is the number of inputs with the higher
 // rank.
-std::pair<bool, int> RowVectorizationEnabled(const HloInstruction* fusion) {
+std::pair<bool, int> RowVectorizationEnabled(const HloInstruction* fusion,
+                                             int64_t out_rank) {
   const auto is_row_major = [](const HloInstruction* instr) {
     // Only tested when the inputs are row-major. So only
     // enable that case. Maybe it would works if only the
@@ -163,7 +164,6 @@ std::pair<bool, int> RowVectorizationEnabled(const HloInstruction* fusion) {
   // We also detect at the same time if there is a row broadcasting
   // operation.
   bool some_row_broadcasting = false;
-  auto out_rank = fusion->shape().rank();
   int num_big_inputs = 0;
   for (const HloInstruction* instr : fusion->fused_instructions()) {
     if (instr->opcode() == HloOpcode::kParameter) {
@@ -389,7 +389,8 @@ LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
 
   bool row_vectorized;
   int num_big_inputs;
-  std::tie(row_vectorized, num_big_inputs) = RowVectorizationEnabled(fusion_);
+  std::tie(row_vectorized, num_big_inputs) =
+      RowVectorizationEnabled(fusion_, GetElementShape().rank());
   bool few_waves = [this, row_vectorized, num_big_inputs]() {
     for (const HloInstruction* instr : fused_computation_->instructions()) {
       if (instr->opcode() == HloOpcode::kParameter ||
