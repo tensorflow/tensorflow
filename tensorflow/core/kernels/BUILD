@@ -4711,6 +4711,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stochastic_cast_op_header",
+    hdrs = ["stochastic_cast_op.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_kernel_library(
     name = "stateless_shuffle",
     prefix = "stateless_shuffle",

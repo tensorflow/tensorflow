@@ -536,6 +536,11 @@ tf_gen_op_strict_wrapper_private_py(
 )
 
 tf_gen_op_strict_wrapper_private_py(
+    name = "stochastic_cast_op_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
+)
+
+tf_gen_op_strict_wrapper_private_py(
     name = "random_index_shuffle_ops_gen",
     visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
 )
@@ -2352,6 +2357,20 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "stochastic_cast_op",
+    srcs = ["stochastic_cast_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":random_ops_util",
+        ":stochastic_cast_op_gen",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
