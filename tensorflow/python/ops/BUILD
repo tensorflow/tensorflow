@@ -133,6 +133,9 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/customization:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/pad:__pkg__",
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
@@ -435,6 +438,8 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/mnist:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -448,6 +453,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/mnist:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -514,6 +520,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
