@@ -304,26 +304,50 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace div
 
 TfLiteRegistration* Register_DIV_REF() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kReference>};
-  r.inplace_operator =
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_DIV_GENERIC_OPT() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kGenericOptimized>};
-  r.inplace_operator =
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_DIV_NEON_OPT() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kNeonOptimized>};
-  r.inplace_operator =
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared;
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kNeonOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
