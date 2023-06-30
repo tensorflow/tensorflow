@@ -589,7 +589,7 @@ class QuantizationMode:
 
 
 class TFLiteConverterBase:
-  """Converter subclass to share functionality between V1 and V2 converters."""
+  """Converter superclass to share functionality between V1 and V2 converters."""
 
   # Stores the original model type temporarily to transmit the information
   # from the factory class methods to TFLiteConverterBase init function.
@@ -615,6 +615,7 @@ class TFLiteConverterBase:
     self._tflite_metrics = metrics.TFLiteConverterMetrics()
     self._collected_converter_params = {}
     self.unfold_batchmatmul = False
+    self.legalize_custom_tensor_list_ops = False
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
@@ -763,6 +764,7 @@ class TFLiteConverterBase:
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul": self.unfold_batchmatmul,
+        "legalize_custom_tensor_list_ops": self.legalize_custom_tensor_list_ops,
         "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
         "unfold_large_splat_constant": (
             self._experimental_unfold_large_splat_constant

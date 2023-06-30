@@ -559,6 +559,7 @@ def build_conversion_flags(
     allow_all_select_tf_ops=False,
     enable_tflite_resource_variables=True,
     unfold_batchmatmul=True,
+    legalize_custom_tensor_list_ops=False,
     lower_tensor_list_ops=True,
     default_to_single_batch_in_tensor_list_ops=False,
     accumulation_type=None,
@@ -640,6 +641,8 @@ def build_conversion_flags(
       Enables conversion of resource variables. (default False)
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
+    legalize_custom_tensor_list_ops: Whether to legalize `tf.TensorList*` ops to
+      tfl custom if they can all be supported.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
     default_to_single_batch_in_tensor_list_ops: Whether to force to use batch
@@ -746,6 +749,9 @@ def build_conversion_flags(
       enable_tflite_resource_variables
   )
   conversion_flags.unfold_batchmatmul = unfold_batchmatmul
+  conversion_flags.legalize_custom_tensor_list_ops = (
+      legalize_custom_tensor_list_ops
+  )
   conversion_flags.lower_tensor_list_ops = lower_tensor_list_ops
   conversion_flags.default_to_single_batch_in_tensor_list_ops = (
       default_to_single_batch_in_tensor_list_ops

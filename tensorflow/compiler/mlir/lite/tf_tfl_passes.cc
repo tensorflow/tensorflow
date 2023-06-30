@@ -243,6 +243,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
+  if (pass_config.legalize_custom_tensor_list_ops) {
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTensorListPass());
+  }
+
   if (pass_config.lower_tensor_list_ops &&
       toco_flags.tf_quantization_mode().empty()) {
     // TODO(haoliang): Add this pass by default.
