@@ -929,6 +929,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Conv"
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'dilations\', \'batch_dims\', \'groups\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'CHANNELS_LAST\', \'[]\', \'1\', \'1\', \'None\'], "
+  }
+  member_method {
     name: "Conv2D"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
