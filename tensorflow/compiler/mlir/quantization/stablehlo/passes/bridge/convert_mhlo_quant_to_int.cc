@@ -573,6 +573,20 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   }
 };
 
+class ConvertUniformQuantizedConvolutionOp
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvolutionOp op, mhlo::ConvolutionOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    return matchAndRewriteDotLikeOp<mhlo::ConvolutionOp,
+                                    mhlo::ConvolutionOpAdaptor>(op, adaptor,
+                                                                rewriter);
+  }
+};
+
 // Performs conversion of MHLO quant ops to primitive ops.
 void ConvertMHLOQuantToInt::runOnOperation() {
   Operation *op = getOperation();
@@ -581,8 +595,8 @@ void ConvertMHLOQuantToInt::runOnOperation() {
 
   // Populate MHLO quant ops conversion patterns.
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
-               ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp>(
-      context);
+               ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
+               ConvertUniformQuantizedConvolutionOp>(context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as

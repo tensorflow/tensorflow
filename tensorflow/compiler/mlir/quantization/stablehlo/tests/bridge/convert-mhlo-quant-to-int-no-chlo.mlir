@@ -103,3 +103,25 @@ func.func @uniform_quantize_dot_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor
   %3 = mhlo.uniform_dequantize %2 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %3 : tensor<?x?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_convolution
+func.func @uniform_quantized_convolution(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<?x?x?x?xf32>) {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:1>>
+  %2 = mhlo.convolution(%0, %1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 2], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [2, 2]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:1>>)
+    -> tensor<?x?x?x?x!quant.uniform<i32:f32, 1.000000e+00:5>>
+  return
+}
