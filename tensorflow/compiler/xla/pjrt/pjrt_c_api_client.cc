@@ -1272,6 +1272,16 @@ PrimitiveType PjRtCApiBuffer::element_type() const {
   return pjrt::ConvertFromPjRtBufferType(args.type);
 }
 
+absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
+  PJRT_Buffer_Dimensions_Args args;
+  args.struct_size = PJRT_Buffer_Dimensions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Buffer_Dimensions(&args),
+                            pjrt_c_api());
+  return absl::Span<const int64_t>(args.dims, args.num_dims);
+}
+
 const Shape& PjRtCApiBuffer::on_device_shape() const {
   CHECK(shape_.has_value())
       << "Shape should be initialized in PjRtCApiBuffer constructor.";

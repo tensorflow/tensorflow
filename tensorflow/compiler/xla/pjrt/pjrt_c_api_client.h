@@ -266,6 +266,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PrimitiveType element_type() const override;
 
+  absl::Span<const int64_t> dimensions() const override;
+
   const Shape& on_device_shape() const override;
 
   StatusOr<Shape> logical_on_device_shape() override;
