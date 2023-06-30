@@ -782,6 +782,7 @@ cc_library(
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
         "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
+        "//tensorflow/tsl/profiler/convert:xplane_to_profile_instructions",
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
