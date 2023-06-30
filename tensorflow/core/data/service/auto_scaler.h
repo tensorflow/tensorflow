@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -65,10 +66,14 @@ namespace data {
 class AutoScaler {
  public:
   AutoScaler() = default;
+  // Returns the estimated optimal number of workers according to the current
+  // observed workload. If there are no previously reported processing and
+  // target processing times, returns nullopt.
+  std::optional<int64_t> GetOptimalNumberOfWorkers() TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed processing time from the worker with
   // `worker_address`. Returns an error if `processing_time` is ZeroDuration or
   // negative.
-  tsl::Status ReportProcessingTime(const std::string &worker_address,
+  tsl::Status ReportProcessingTime(const std::string& worker_address,
                                    absl::Duration processing_time)
       TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed target processing time from the consumer
@@ -80,7 +85,7 @@ class AutoScaler {
   // Unregisters the worker with `worker_address`, removing its reported
   // processing time from consideration of the current workload estimation.
   // Returns an error if the specified worker does not exist.
-  tsl::Status RemoveWorker(const std::string &worker_address)
+  tsl::Status RemoveWorker(const std::string& worker_address)
       TF_LOCKS_EXCLUDED(mu_);
   // Unregisters the consumer identified by `consumer_id`, removing its reported
   // target processing time from consideration of the current workload
