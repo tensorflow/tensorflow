@@ -345,11 +345,16 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
+    deps = [
+        ":logging",
         ":macros",
+        ":net",
+        ":path",
         ":platform",
+        ":types",
         "@com_google_googletest//:gtest",
     ],
 )
