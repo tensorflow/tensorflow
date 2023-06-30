@@ -769,10 +769,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 };
 
 // Search space for exhaustive matmul autotuning.
-constexpr std::array<int, 5> BLOCK_SIZES = {16, 32, 64, 128, 256};
+constexpr std::array<int, 6> BLOCK_SIZES = {16, 32, 64, 128, 256, 512};
 constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
-constexpr std::array<int, 4> SPLIT_K = {1, 2, 4, 8};
+constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
 std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability) {
