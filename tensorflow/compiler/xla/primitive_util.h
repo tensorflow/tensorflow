@@ -735,64 +735,6 @@ R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
   }
 }
 
-// Same as PrimitiveTypeSwitch, but F8E4M3FNUZ and F8E5M2FNUZ is not handled
-// in switch statement.
-template <typename R, typename F>
-R PrimitiveTypeSwitchWithoutGraphcoreF8(F&& f, PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::PRED>());
-    case S4:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S4>());
-    case S8:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S8>());
-    case S16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S16>());
-    case S32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S32>());
-    case S64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::S64>());
-    case U4:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U4>());
-    case U8:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U8>());
-    case U16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U16>());
-    case U32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U32>());
-    case U64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::U64>());
-    case F8E4M3FN:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E4M3FN>());
-    case F8E4M3B11FNUZ:
-      return std::invoke(f,
-                         PrimitiveTypeConstant<PrimitiveType::F8E4M3B11FNUZ>());
-    case F8E5M2:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
-    case F16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F16>());
-    case BF16:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::BF16>());
-    case F32:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F32>());
-    case F64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F64>());
-    case C64:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::C64>());
-    case C128:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::C128>());
-    case TUPLE:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::TUPLE>());
-    case OPAQUE_TYPE:
-      return std::invoke(f,
-                         PrimitiveTypeConstant<PrimitiveType::OPAQUE_TYPE>());
-    case TOKEN:
-      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::TOKEN>());
-    default:
-      LOG(FATAL) << "unhandled type " << type;
-  }
-}
-
 template <PrimitiveType kType>
 using NativeTypeOf =
     typename primitive_util::PrimitiveTypeToNative<kType>::type;

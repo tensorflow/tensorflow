@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -1027,18 +1028,26 @@ XLA_TEST_F(ConvertTest, ConvertF8e5m2fnuzRoundtripExhaustive) {
 
   std::vector<tsl::float8_e5m2fnuz> all_f8;
   for (int i = 0; i < 256; i++) {
-    all_f8.push_back(
-        Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(static_cast<uint8_t>(i)));
+    all_f8.push_back(Eigen::numext::bit_cast<decltype(all_f8)::value_type>(
+        static_cast<uint8_t>(i)));
   }
+
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
 
   for (auto type : {F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ, F8E5M2, F8E5M2FNUZ,
                     F16, BF16, F32, F64}) {
     xla::XlaOp all_f8_as_f8 =
-        ConstantR1<tsl::float8_e5m2fnuz>(&builder, all_f8);
-    xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, type);
-    ConvertElementType(all_f8_as_f16, F8E5M2FNUZ);
+        ConstantR1<decltype(all_f8)::value_type>(&builder, all_f8);
+    xla::XlaOp all_f8_as_type = ConvertElementType(all_f8_as_f8, type);
+    ConvertElementType(all_f8_as_type, F8E5M2FNUZ);
     ComputeAndCompare(&builder, {}, ErrorSpec(0.));
   }
+
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive2) {
@@ -1229,14 +1238,22 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnuzRoundtripExhaustive) {
         Eigen::numext::bit_cast<tsl::float8_e4m3fnuz>(static_cast<uint8_t>(i)));
   }
 
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
+
   for (auto type : {F8E4M3FN, F8E4M3B11FNUZ, F8E4M3FNUZ, F8E5M2, F8E5M2FNUZ,
                     F16, BF16, F32, F64}) {
     xla::XlaOp all_f8_as_f8 =
         ConstantR1<tsl::float8_e4m3fnuz>(&builder, all_f8);
-    xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, type);
-    ConvertElementType(all_f8_as_f16, F8E4M3FNUZ);
+    xla::XlaOp all_f8_as_type = ConvertElementType(all_f8_as_f8, type);
+    ConvertElementType(all_f8_as_type, F8E4M3FNUZ);
     ComputeAndCompare(&builder, {}, ErrorSpec(0.));
   }
+
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive2) {

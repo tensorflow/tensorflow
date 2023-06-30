@@ -591,9 +591,13 @@ template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
   static_assert(NanPayloadBits<T>() > 0);
   using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
-  const T val = std::numeric_limits<T>::quiet_NaN();
+  // Clear the sign bit.
+  T val = Eigen::numext::abs(std::numeric_limits<T>::quiet_NaN());
+  // Conditionally set the sign bit.
+  if (sign) {
+    val = -val;
+  }
   auto rep = absl::bit_cast<RepT>(val);
-  rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
   rep |= uint64_t{sign} << (std::numeric_limits<RepT>::digits - 1);
   constexpr int kPayloadBits = NanPayloadBits<T>();
   if (kPayloadBits > 0) {
