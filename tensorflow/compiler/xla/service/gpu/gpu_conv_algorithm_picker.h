@@ -30,11 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#endif
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -110,7 +107,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   // Simple bundle of an algorithm and its output, for comparing results across
   // autotuned algorithms.
   struct ReferenceResult {
@@ -150,7 +146,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
-#endif
 
   StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
