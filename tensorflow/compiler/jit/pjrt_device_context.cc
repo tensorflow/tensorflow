@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
@@ -122,11 +123,7 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     done(OkStatus());
     return;
   }
-  AsyncValueTensor* result_tensor =
-      tensorflow::AsyncValueTensor::FromTensor(device_tensor);
-  // The result tensor should be newly allocated, which does not point to a
-  // valid buffer yet.
-  CHECK(!result_tensor->GetBuffer());  // Crash OK
+
   // TODO(b/252887149): figure out how to cache PJRT client.
   StatusOr<xla::PjRtClient*> pjrt_client =
       GetOrCreatePjRtClient(DeviceType(device->device_type()));
@@ -140,10 +137,26 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     done(buffer_or.status());
     return;
   }
-  result_tensor->SetBuffer(std::move(*buffer_or));
+
+  xla::PjRtBuffer* pjrt_buffer = (*buffer_or).get();
+  if (use_pjrt_tensor_buffer_) {
+    // Copy the newly created tensor with PjRtTensorBuffer to output device
+    // tensor.
+    //
+    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
+    *device_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
+        device_tensor->dtype(), device_tensor->shape(), std::move(*buffer_or));
+  } else {
+    AsyncValueTensor* result_tensor =
+        tensorflow::AsyncValueTensor::FromTensor(device_tensor);
+    // The result tensor should be newly allocated, which does not point to a
+    // valid buffer yet.
+    CHECK(!result_tensor->GetBuffer());  // Crash OK
+    result_tensor->SetBuffer(std::move(*buffer_or));
+  }
   // TODO(b/244666476): evaluate the performance impact of marking ready when
   // the data in device buffer is computed.
-  result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
+  pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
 }
 
 void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,

@@ -108,7 +108,7 @@ struct MarkForCompilationPassFlags {
 // Flags associated with the XLA bridge's xla_device module.
 struct XlaDeviceFlags {
   // Switch the CPU device into "on-demand" mode, where instead of
-  // autoclustering ops are compiled one by one just-in-time.
+  // auto-clustering ops are compiled one by one just-in-time.
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;

@@ -48,6 +48,7 @@ class PjRtDeviceContext : public DeviceContext {
 
  private:
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns_;
+  // Note: we currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
   bool use_pjrt_tensor_buffer_;
 };
 
