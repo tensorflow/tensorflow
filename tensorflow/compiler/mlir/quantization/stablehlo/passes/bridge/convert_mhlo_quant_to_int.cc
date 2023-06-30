@@ -435,6 +435,132 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
   }
 };
 
+// A shared matchAndRewrite implementation for dot-like quantized operators.
+//
+// Dot-like operators refer to operators that generate a tensor where each
+// element is obtained by multiplying an element from the lhs with an element
+// from the rhs, possibly followed by summation.
+// e.g. Dot, Multiply, Convolution
+//
+// All attrs of the original op are preserved after the conversion.
+template <typename OpType, typename OpAdaptorType>
+LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
+                                       ConversionPatternRewriter &rewriter) {
+  auto lhs_element_type = op.getLhs()
+                              .getType()
+                              .getElementType()
+                              .template dyn_cast<quant::UniformQuantizedType>();
+  auto rhs_element_type = op.getRhs()
+                              .getType()
+                              .getElementType()
+                              .template dyn_cast<quant::UniformQuantizedType>();
+  auto res_element_type = op.getResult()
+                              .getType()
+                              .getElementType()
+                              .template dyn_cast<quant::UniformQuantizedType>();
+
+  // Check if the operands and result are UniformQuantizedTypes.
+  if (!lhs_element_type || !rhs_element_type || !res_element_type) {
+    return rewriter.notifyMatchFailure(
+        op, "Legalization failed: supports only per-tensor quantization.");
+  }
+  auto res_float32_tensor_type_or = GetSameShapeTensorType(
+      op, op.getResult().getType().template cast<TensorType>(),
+      rewriter.getF32Type(), rewriter);
+  if (failed(res_float32_tensor_type_or)) {
+    return failure();
+  }
+
+  Value lhs = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+
+  // result =
+  // op((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res + zp_res
+  // =
+  // op(lhs - zp_l, rhs - zp_r) * scale_l * scale_r / scale_res + zp_res
+  // Get scales and zero points for both operands.
+  Value lhs_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getF32FloatAttr((lhs_element_type.getZeroPoint())));
+  Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getF32FloatAttr((rhs_element_type.getZeroPoint())));
+
+  // Offset xxx_int32_tensor according to zero points.
+  Value lhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
+      op->getLoc(), *res_float32_tensor_type_or, lhs);
+  lhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
+      op->getLoc(), *res_float32_tensor_type_or, lhs_float32_tensor,
+      lhs_zero_point, nullptr);
+  Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
+      op->getLoc(), *res_float32_tensor_type_or, rhs);
+  rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
+      op->getLoc(), *res_float32_tensor_type_or, rhs_float32_tensor,
+      rhs_zero_point, nullptr);
+
+  // Execute the conversion target op.
+  SmallVector<Value, 2> operands{lhs_float32_tensor, rhs_float32_tensor};
+  Value res_float32 = rewriter.create<OpType>(
+      op->getLoc(), *res_float32_tensor_type_or, operands, op->getAttrs());
+
+  // Get scale and zero point of result and offset res_int32 according to
+  // scales.
+  Value result_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getF32FloatAttr((res_element_type.getZeroPoint())));
+  const double effective_scale = lhs_element_type.getScale() *
+                                 rhs_element_type.getScale() /
+                                 res_element_type.getScale();
+  Value effective_scale_constant = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getF32FloatAttr(static_cast<float_t>(effective_scale)));
+  res_float32 = rewriter.create<chlo::BroadcastMulOp>(
+      op->getLoc(), *res_float32_tensor_type_or, res_float32,
+      effective_scale_constant, nullptr);
+  // MOT team figured out using floor(x+0.5) is much faster than using
+  // round(x) on some TPU chips, see cl/449626238.
+  Value half = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getF32FloatAttr(0.5f));
+  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
+      op->getLoc(), *res_float32_tensor_type_or, res_float32, half, nullptr);
+  res_float32 = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float32);
+
+  // Offset res_int32 according to result_zero_point.
+  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
+      op->getLoc(), *res_float32_tensor_type_or, res_float32, result_zero_point,
+      nullptr);
+
+  // Cast res_float_tensor_type to res_int_tensor_type.
+  auto res_int32_tensor_type_or = GetSameShapeTensorType(
+      op, op.getResult().getType().template cast<TensorType>(),
+      rewriter.getI32Type(), rewriter);
+  if (failed(res_int32_tensor_type_or)) {
+    return failure();
+  }
+  Value res_int32 = rewriter.create<mhlo::ConvertOp>(
+      op->getLoc(), *res_int32_tensor_type_or, res_float32);
+
+  // Clamp results by [quantization_min, quantization_max].
+  Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                        res_element_type.getStorageTypeMin())));
+  Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                        res_element_type.getStorageTypeMax())));
+  res_int32 = rewriter.create<mhlo::ClampOp>(
+      op->getLoc(), *res_int32_tensor_type_or, result_quantization_min,
+      res_int32, result_quantization_max);
+
+  // Convert results back to int8.
+  auto res_final_tensor_type_or = GetSameShapeTensorType(
+      op, res_int32_tensor_type_or->template cast<TensorType>(),
+      res_element_type.getStorageType(), rewriter);
+  rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
+                                               res_int32);
+
+  return success();
+}
+
 class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -442,120 +568,8 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   LogicalResult matchAndRewrite(
       mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    auto lhs_element_type = op.getLhs()
-                                .getType()
-                                .getElementType()
-                                .dyn_cast<quant::UniformQuantizedType>();
-    auto rhs_element_type = op.getRhs()
-                                .getType()
-                                .getElementType()
-                                .dyn_cast<quant::UniformQuantizedType>();
-    auto result_element_type = op.getResult()
-                                   .getType()
-                                   .getElementType()
-                                   .dyn_cast<quant::UniformQuantizedType>();
-
-    // Check if the operands and result are UniformQuantizedTypes.
-    if (!lhs_element_type || !rhs_element_type || !result_element_type) {
-      return rewriter.notifyMatchFailure(
-          op, "Legalization failed: supports only per-tensor quantization.");
-    }
-
-    auto res_float32_tensor_type_or =
-        GetSameShapeTensorType(op, op.getResult().getType().cast<TensorType>(),
-                               rewriter.getF32Type(), rewriter);
-    if (failed(res_float32_tensor_type_or)) {
-      return failure();
-    }
-
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
-
-    // result =
-    // dot((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res + zp_res
-    // =
-    // dot(lhs - zp_l, rhs - zp_r) * scale_l * scale_r / scale_res + zp_res
-    // Get scales and zero points for both operands.
-    Value lhs_zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getF32FloatAttr((lhs_element_type.getZeroPoint())));
-    Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getF32FloatAttr((rhs_element_type.getZeroPoint())));
-
-    // Offset xxx_int32_tensor according to zero points.
-    Value lhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_float32_tensor_type_or, lhs);
-    lhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-        op->getLoc(), *res_float32_tensor_type_or, lhs_float32_tensor,
-        lhs_zero_point, nullptr);
-    Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_float32_tensor_type_or, rhs);
-    rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-        op->getLoc(), *res_float32_tensor_type_or, rhs_float32_tensor,
-        rhs_zero_point, nullptr);
-
-    // Execute mhlo::DotOp.
-    Value res_float32 = rewriter.create<mhlo::DotOp>(
-        op->getLoc(), *res_float32_tensor_type_or, lhs_float32_tensor,
-        rhs_float32_tensor, nullptr);
-
-    // Get scale and zero point of result and offset res_int32 according to
-    // scales.
-    Value result_zero_point = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getF32FloatAttr((result_element_type.getZeroPoint())));
-    const double effective_scale = lhs_element_type.getScale() *
-                                   rhs_element_type.getScale() /
-                                   result_element_type.getScale();
-    Value effective_scale_constant = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(),
-        rewriter.getF32FloatAttr(static_cast<float_t>(effective_scale)));
-    res_float32 = rewriter.create<chlo::BroadcastMulOp>(
-        op->getLoc(), *res_float32_tensor_type_or, res_float32,
-        effective_scale_constant, nullptr);
-    // MOT team figured out using floor(x+0.5) is much faster than using
-    // round(x) on some TPU chips, see cl/449626238.
-    Value half = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getF32FloatAttr(0.5f));
-    res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_float32_tensor_type_or, res_float32, half, nullptr);
-    res_float32 = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float32);
-
-    // Offset res_int32 according to result_zero_point.
-    res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_float32_tensor_type_or, res_float32,
-        result_zero_point, nullptr);
-
-    // Cast res_float_tensor_type to res_int_tensor_type.
-    auto res_int32_tensor_type_or =
-        GetSameShapeTensorType(op, op.getResult().getType().cast<TensorType>(),
-                               rewriter.getI32Type(), rewriter);
-    if (failed(res_int32_tensor_type_or)) {
-      return failure();
-    }
-    Value res_int32 = rewriter.create<mhlo::ConvertOp>(
-        op->getLoc(), *res_int32_tensor_type_or, res_float32);
-
-    // Clamp results by [quantization_min, quantization_max].
-    Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          result_element_type.getStorageTypeMin())));
-    Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
-        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                          result_element_type.getStorageTypeMax())));
-    res_int32 = rewriter.create<mhlo::ClampOp>(
-        op->getLoc(), *res_int32_tensor_type_or, result_quantization_min,
-        res_int32, result_quantization_max);
-
-    // Convert results back to int8.
-    auto res_final_tensor_type_or =
-        GetSameShapeTensorType(op, res_int32_tensor_type_or->cast<TensorType>(),
-                               result_element_type.getStorageType(), rewriter);
-    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
-                                                 res_int32);
-
-    return success();
+    return matchAndRewriteDotLikeOp<mhlo::DotOp, mhlo::DotOpAdaptor>(
+        op, adaptor, rewriter);
   }
 };
 
