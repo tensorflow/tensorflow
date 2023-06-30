@@ -161,7 +161,7 @@ std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
   return std::nullopt;
 }
 
-StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
+static StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
@@ -210,6 +210,81 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
       rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
       &results));
   return std::move(results.llvm_module);
+}
+
+// Analyze the function signature to reconstruct a vector of BufferAllocation
+// objects, as well as other output information.
+//
+// This function also serves as a half-baked verifier for function arg
+// attributes, since a full verifier doesn't exist yet.
+static Status GetMlirAllocationInfo(
+    mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
+    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
+    Shape* output_shape, EntryFunctionAttributes* entry_func_attrs) {
+  CHECK(allocations->empty());
+  allocations->reserve(func.getNumArguments());
+
+  std::vector<int64_t> buffer_sizes;
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    mlir::BlockArgument arg = func.getArgument(i);
+
+    TF_RET_CHECK(arg.getType().isa<mlir::ShapedType>());
+    mlir::ShapedType type = arg.getType().cast<mlir::ShapedType>();
+    TF_ASSIGN_OR_RETURN(auto element_type_bytes,
+                        GetElementTypeBytes(type.getElementType()));
+    size_t size = type.getNumElements() * element_type_bytes;
+    buffer_sizes.push_back(size);
+  }
+
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs =
+        mlir::function_interface_impl::getArgAttrs(func, i);
+    for (const mlir::NamedAttribute& attr : attrs) {
+      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
+                   attr.getName() == "lmhlo.param_shape_index" ||
+                   attr.getName() == "lmhlo.constant_name" ||
+                   attr.getName() == "lmhlo.must_alias" ||
+                   attr.getName() == "lmhlo.output_index");
+    }
+  }
+
+  // Encode buffer parameter metadata in a proto for persisting, because BEF
+  // doesn't persist function attributes.
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    auto buffer = entry_func_attrs->add_buffers();
+    if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+      buffer->set_lmhlo_params_present(true);
+      buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
+    }
+    if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {
+      auto param_shape_index = buffer->mutable_lmhlo_param_shape_index();
+      for (const llvm::APInt& element :
+           shape_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+        param_shape_index->add_indices(element.getSExtValue());
+      }
+    }
+    if (auto constant_name_attr = func.getArgAttr(i, "lmhlo.constant_name")) {
+      buffer->set_lmhlo_constant_name(
+          constant_name_attr.cast<mlir::StringAttr>().str());
+    }
+    if (func.getArgAttr(i, "lmhlo.must_alias")) {
+      buffer->set_lmhlo_must_alias(true);
+    }
+    if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
+      auto output_index = buffer->mutable_lmhlo_output_index();
+      for (const llvm::APInt& element :
+           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
+        output_index->add_indices(element.getSExtValue());
+      }
+    }
+  }
+  entry_func_attrs->set_result_xla_shape(
+      func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
+          .getValue()
+          .str());
+
+  return GpuExecutable::SetUpMlirAllocation(func, buffer_sizes, allocations,
+                                            output_info, output_shape);
 }
 
 // The order of `thunk_sequence` corresponds to
@@ -373,81 +448,6 @@ Status CompileModuleToLlvmIrImpl(
                thunk_sequence.get());
   results->executable = std::move(thunk_sequence);
   return OkStatus();
-}
-
-// Analyze the function signature to reconstruct a vector of BufferAllocation
-// objects, as well as other output information.
-//
-// This function also serves as a half-baked verifier for function arg
-// attributes, since a full verifier doesn't exist yet.
-Status GetMlirAllocationInfo(
-    mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
-    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape, EntryFunctionAttributes* entry_func_attrs) {
-  CHECK(allocations->empty());
-  allocations->reserve(func.getNumArguments());
-
-  std::vector<int64_t> buffer_sizes;
-  for (int i = 0; i < func.getNumArguments(); i++) {
-    mlir::BlockArgument arg = func.getArgument(i);
-
-    TF_RET_CHECK(arg.getType().isa<mlir::ShapedType>());
-    mlir::ShapedType type = arg.getType().cast<mlir::ShapedType>();
-    TF_ASSIGN_OR_RETURN(auto element_type_bytes,
-                        GetElementTypeBytes(type.getElementType()));
-    size_t size = type.getNumElements() * element_type_bytes;
-    buffer_sizes.push_back(size);
-  }
-
-  for (int i = 0; i < func.getNumArguments(); i++) {
-    llvm::ArrayRef<mlir::NamedAttribute> attrs =
-        mlir::function_interface_impl::getArgAttrs(func, i);
-    for (const mlir::NamedAttribute& attr : attrs) {
-      TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
-                   attr.getName() == "lmhlo.param_shape_index" ||
-                   attr.getName() == "lmhlo.constant_name" ||
-                   attr.getName() == "lmhlo.must_alias" ||
-                   attr.getName() == "lmhlo.output_index");
-    }
-  }
-
-  // Encode buffer parameter metadata in a proto for persisting, because BEF
-  // doesn't persist function attributes.
-  for (int i = 0; i < func.getNumArguments(); i++) {
-    auto buffer = entry_func_attrs->add_buffers();
-    if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
-      buffer->set_lmhlo_params_present(true);
-      buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
-    }
-    if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {
-      auto param_shape_index = buffer->mutable_lmhlo_param_shape_index();
-      for (const llvm::APInt& element :
-           shape_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        param_shape_index->add_indices(element.getSExtValue());
-      }
-    }
-    if (auto constant_name_attr = func.getArgAttr(i, "lmhlo.constant_name")) {
-      buffer->set_lmhlo_constant_name(
-          constant_name_attr.cast<mlir::StringAttr>().str());
-    }
-    if (func.getArgAttr(i, "lmhlo.must_alias")) {
-      buffer->set_lmhlo_must_alias(true);
-    }
-    if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      auto output_index = buffer->mutable_lmhlo_output_index();
-      for (const llvm::APInt& element :
-           output_index_attr.cast<mlir::DenseIntElementsAttr>()) {
-        output_index->add_indices(element.getSExtValue());
-      }
-    }
-  }
-  entry_func_attrs->set_result_xla_shape(
-      func->getAttrOfType<mlir::StringAttr>("result_xla_shape")
-          .getValue()
-          .str());
-
-  return GpuExecutable::SetUpMlirAllocation(func, buffer_sizes, allocations,
-                                            output_info, output_shape);
 }
 
 // Removes all globals from the given module that are both uninitialized and
