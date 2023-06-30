@@ -453,10 +453,11 @@ std::vector<string> BufferInfosToCppExpression(
                      return param == ~0U ? "~0U" : absl::StrCat(param, "U");
                    };
                    return absl::StrCat(
-                       "::xla::cpu_function_runtime::BufferInfo(",
+                       "::xla::cpu_function_runtime::BufferInfo("
+                       "::xla::cpu_function_runtime::EncodedBufferInfo{",
                        encoded.packed_kind_and_size, "ULL, ",
                        param_to_str(encoded.entry_param_number), ", ",
-                       param_to_str(encoded.result_param_number), ")");
+                       param_to_str(encoded.result_param_number), "})");
                  });
   return buffer_infos_as_strings;
 }
