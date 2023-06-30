@@ -166,6 +166,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
                              hlo_cost_analysis, memory_space_options, *module)
                              .value();
+    memory_space_options.cost_analysis = cost_analysis.get();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_overlap_to_async_copy_ratio=*/0.8,
@@ -6570,6 +6571,77 @@ ENTRY entry {
   EXPECT_THAT(async_start,
               op::AsyncStart(op::AsyncCopy(
                   kDefaultMemorySpace, kAlternateMemorySpace, op::Negate())));
+}
+
+TEST_P(MemorySpaceAssignmentTest, InefficientAllocation) {
+  // The DUS in the fusion only accesses 1/3 of its input/output. The fusion
+  // input/output buffer is a program input/output buffer, so it creates an
+  // prefetch and an eviction. When we turn on detecting inefficient
+  // allocations, we should catch this case and allocate the fusion input/output
+  // in the default memory space.
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation {
+  param0 = f32[2,3] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[2,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[2,3] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+ENTRY entry {
+  p0 = f32[2,3] parameter(0)
+  p1 = pred[] parameter(1)
+  p2 = f32[2,3] parameter(2)
+  neg0 = f32[2,3] negate(p2)
+  neg1 = f32[2,3] negate(neg0)
+  neg2 = f32[2,3] negate(neg1)
+  neg3 = f32[2,3] negate(neg2)
+  neg4 = f32[2,3] negate(neg3)
+  neg5 = f32[2,3] negate(neg4)
+  neg6 = f32[2,3] negate(neg5)
+  neg7 = f32[2,3] negate(neg6)
+  fusion = f32[2,3] fusion(p0), kind=kLoop, calls=fused_computation
+  neg8 = f32[2,3] negate(neg7)
+  neg9 = f32[2,3] negate(neg8)
+  neg10 = f32[2,3] negate(neg9)
+  neg11 = f32[2,3] negate(neg10)
+  neg12 = f32[2,3] negate(neg11)
+  neg13 = f32[2,3] negate(neg12)
+  neg14 = f32[2,3] negate(neg13)
+  neg15 = f32[2,3] negate(neg14)
+  ROOT tuple = (f32[2,3], f32[2,3]) tuple(fusion, neg15)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = false;
+  // Disable inefficiency check. Expect that the fusion output and operand are
+  // in the alternate memory.
+  options.inefficient_use_to_copy_ratio = 0.0;
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  if (allocate_across_sequential_calls()) {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        op::Tuple(op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
+                                op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
+                                                         kDefaultMemorySpace,
+                                                         op::Parameter()))),
+                  op::Negate()));
+  }
+
+  // Re-run MSA with inefficient use-to-copy ratio of 0.5. The fusion only uses
+  // 8B of data (f32[2,1]) but copies 48B of data (prefetch and eviction of
+  // f32[2,3]), so this should be considered inefficient (8/48 < 0.5).
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
+  options.inefficient_use_to_copy_ratio = 0.5;
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Fusion(op::Parameter()), op::Negate()));
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,

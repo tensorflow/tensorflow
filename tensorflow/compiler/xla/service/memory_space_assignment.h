@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
@@ -1104,7 +1105,12 @@ class MemorySpaceAssignment {
     const HloComputation* computation() const {
       return defining_instruction()->parent();
     }
-    AllocationSequence* allocation_sequence() { return &allocation_sequence_; }
+    AllocationSequence* mutable_allocation_sequence() {
+      return &allocation_sequence_;
+    }
+    const AllocationSequence* allocation_sequence() const {
+      return &allocation_sequence_;
+    }
 
     // Sets/gets whether this AllocationValue requires allocating it
     // contiguously throughout its live range (without any copies).
@@ -1469,6 +1475,18 @@ struct Options {
 
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
+
+  // The ratio of use bytes to copy bytes for a given allocation site below
+  // which we consider the site to be inefficient. A value of 0 would treat all
+  // sites as efficient and a value of 1 would require the amount of bytes used
+  // at the site to be at least as much as the async copy bytes. There are two
+  // factors that determine the copy and use bytes:
+  //   - Some uses don't actually access the entire tensor, e.g. in
+  //     dynamic-update-slice.
+  //   - copy_bytes may be larger than the size of the tensor as well. An
+  //     example is a tensor may be prefetched, used, and then evicted. In that
+  //     case copy_bytes would be twice the size of the tensor.
+  float inefficient_use_to_copy_ratio = 0.0;
 
   // The window size used to calculate the pipeline overhead when HLO accesses
   // the default memory, in MiB.
@@ -1909,6 +1927,7 @@ class AlternateMemoryBestFitHeap
  public:
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
+  using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationSequence* allocations,
@@ -2369,9 +2388,37 @@ class AlternateMemoryBestFitHeap
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
                              AliasedOffset* offset = nullptr);
+  void AddRequiredAssignment(const HloPosition& position,
+                             MemorySpace memory_space,
+                             AliasedOffset* offset = nullptr);
+  void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
+                             AliasedOffset* offset = nullptr);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
+
+  // Returns a list of "linked" allocations in the alternate memory. Linked
+  // allocations all share a common allocation site (a use or position) with
+  // each other. This can be used to determine if a group of linked allocations
+  // are considered efficient or not.
+  std::vector<std::vector<const MemorySpaceAssignment::Allocation*>>
+  GetLinkedAllocationsInAlternateMemory(
+      absl::Span<const AllocationValue> allocation_values) const;
+
+  // Returns allocation sites (use or position) that are allocated in the
+  // alternate memory, but is considered inefficient.  These arise in the
+  // context of in-place operation like dynamic-update-slice.  We will typically
+  // have an allocation that has the DUS as a use, and another allocation that
+  // has the DUS as a defining position. These two allocation will be part of
+  // the same linked allocation group.
+  //
+  // One reason why an allocation site could be inefficient is because the
+  // amount of data that is asynchronously copied (prefetch and eviction) is
+  // much larger than the amount of data that is used by the HLOs. If we find
+  // inefficient allocation sites, we can require these sites default memory
+  // allocations and allocate them again.
+  std::vector<HloPositionOrUse> GetInefficientAllocationSites(
+      absl::Span<const AllocationValue> allocation_values) const;
 
   // Returns true if the colocated intervals in the argument are in a parameter
   // or root instruction of the entry computation and are reserved by the user

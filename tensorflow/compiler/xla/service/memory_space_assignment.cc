@@ -30,6 +30,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -3529,6 +3530,25 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
           --retry_number;
         }
       } else {
+        // Check if any of the allocation sites are inefficient. If so, get rid
+        // of the pending allocation, require all of the inefficient sites in
+        // the default memory, and perform allocation again.
+        std::vector<HloPositionOrUse> inefficient_sites =
+            GetInefficientAllocationSites(allocation_values);
+        if (!inefficient_sites.empty()) {
+          UncommitPendingChunks(absl::MakeSpan(allocation_values));
+          for (const HloPositionOrUse& site : inefficient_sites) {
+            std::visit(
+                [this](const auto& site) {
+                  VLOG(3) << "Inefficient site: " << site.ToString();
+                  AddRequiredAssignment(site, MemorySpace::kDefault);
+                },
+                site);
+          }
+          --retry_number;
+          continue;
+        }
+
         FinalizeAllocations(absl::MakeSpan(allocation_values));
         break;
       }
@@ -3552,6 +3572,230 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   result.heap_size = result_.heap_size;
   result.heap_results.emplace_back(std::move(result_));
   return result;
+}
+
+namespace {
+
+// Convert a tuple HloUse to its equivalent HloPosition.
+HloPosition TupleUseToPosition(const HloUse& use) {
+  CHECK_EQ(use.instruction->opcode(), HloOpcode::kTuple);
+  ShapeIndex index = use.operand_index;
+  index.push_front(use.operand_number);
+  return {use.instruction, index};
+}
+
+// Returns the memory space of the defining position of an Allocation object.
+MemorySpaceAssignment::MemorySpace GetDefiningPositionMemorySpace(
+    const MemorySpaceAssignment::Allocation& allocation) {
+  if (!allocation.is_copy_like_allocation()) {
+    return allocation.memory_space();
+  }
+  if (allocation.memory_space() ==
+      MemorySpaceAssignment::MemorySpace::kDefault) {
+    return MemorySpaceAssignment::MemorySpace::kAlternate;
+  }
+  return MemorySpaceAssignment::MemorySpace::kDefault;
+}
+
+}  // namespace
+
+std::vector<std::vector<const MemorySpaceAssignment::Allocation*>>
+AlternateMemoryBestFitHeap::GetLinkedAllocationsInAlternateMemory(
+    absl::Span<const AlternateMemoryBestFitHeap::AllocationValue>
+        allocation_values) const {
+  std::vector<std::vector<const MemorySpaceAssignment::Allocation*>>
+      linked_allocations;
+  // A map from position to index into linked_allocations.
+  absl::flat_hash_map<HloPosition, int> link_id_map;
+  // Iterate over the allocation values. Find Allocation objects across the
+  // allocation values that are part of the same linked allocation group. We
+  // define a linked allocation group as Allocation objects that have aliased
+  // positions or uses. An example would be an Allocation object that has a
+  // dynamic-update-slice use and another Allocation object that has the same
+  // dynamic-update-slice as its defining position.
+  for (const AllocationValue& allocation_value : allocation_values) {
+    absl::flat_hash_map<HloUse, std::vector<HloPosition>> aliases;
+    for (const AllocationValue::Use& allocation_value_use :
+         allocation_value.uses()) {
+      if (!allocation_value_use.aliases.empty()) {
+        aliases[allocation_value_use.hlo_use] = allocation_value_use.aliases;
+      }
+    }
+    for (const auto& allocation : *allocation_value.allocation_sequence()) {
+      MemorySpace position_memory_space =
+          GetDefiningPositionMemorySpace(*allocation);
+      if (allocation->memory_space() == MemorySpace::kDefault &&
+          position_memory_space == MemorySpace::kDefault) {
+        // This is just a regular allocation in the default memory, skip.
+        continue;
+      }
+      int link_id = -1;
+      // For every position and use in the alternate memory space, check if
+      // there is already a linked allocation group, and if so, use that link
+      // index.
+      if (position_memory_space == MemorySpace::kAlternate) {
+        auto link_id_map_it = link_id_map.find(allocation->defining_position());
+        if (link_id_map_it != link_id_map.end()) {
+          link_id = link_id_map_it->second;
+        }
+      }
+      if (allocation->memory_space() == MemorySpace::kAlternate) {
+        for (const HloUse& use : allocation->uses()) {
+          if (use.instruction->opcode() == HloOpcode::kTuple) {
+            auto link_id_map_it = link_id_map.find(TupleUseToPosition(use));
+            if (link_id_map_it != link_id_map.end()) {
+              if (link_id != -1 && link_id != link_id_map_it->second) {
+                // We found multiple link indices for the given allocation. We
+                // merge the two linked allocation groups in that case.
+                int old_link_id = link_id_map_it->second;
+                if (old_link_id < link_id) {
+                  std::swap(link_id, old_link_id);
+                }
+                absl::c_copy(linked_allocations[old_link_id],
+                             std::back_inserter(linked_allocations[link_id]));
+                linked_allocations[old_link_id].clear();
+                for (auto it = link_id_map.begin(); it != link_id_map.end();
+                     ++it) {
+                  if (it->second == old_link_id) {
+                    it->second = link_id;
+                  }
+                }
+              }
+              link_id = link_id_map_it->second;
+            }
+          }
+        }
+      }
+      if (link_id == -1) {
+        // Create a new linked allocation group if we couldn't find one.
+        link_id = linked_allocations.size();
+        linked_allocations.push_back({allocation.get()});
+      } else {
+        linked_allocations[link_id].push_back(allocation.get());
+      }
+      // Propagate the link index to all of the aliases of uses in the alternate
+      // memory.
+      if (allocation->memory_space() == MemorySpace::kAlternate) {
+        for (const HloUse& use : allocation->uses()) {
+          auto alias_it = aliases.find(use);
+          if (alias_it != aliases.end()) {
+            for (const HloPosition& aliased_position : alias_it->second) {
+              link_id_map[aliased_position] = link_id;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  linked_allocations.erase(
+      std::remove_if(
+          linked_allocations.begin(), linked_allocations.end(),
+          [](const auto& allocations) { return allocations.empty(); }),
+      linked_allocations.end());
+
+  if (VLOG_IS_ON(3)) {
+    for (int i = 0; i < linked_allocations.size(); ++i) {
+      VLOG(3) << "Link id = " << i;
+      for (const MemorySpaceAssignment::Allocation* allocation :
+           linked_allocations[i]) {
+        VLOG(3) << "  " << allocation->ToString();
+      }
+    }
+  }
+  return linked_allocations;
+}
+
+std::vector<AlternateMemoryBestFitHeap::HloPositionOrUse>
+AlternateMemoryBestFitHeap::GetInefficientAllocationSites(
+    absl::Span<const AlternateMemoryBestFitHeap::AllocationValue>
+        allocation_values) const {
+  if (!options_.cost_analysis ||
+      options_.inefficient_use_to_copy_ratio == 0.0) {
+    return {};
+  }
+
+  int64_t size = allocation_values.at(0).size();
+
+  if (VLOG_IS_ON(3)) {
+    for (const AllocationValue& allocation_value : allocation_values) {
+      for (const auto& allocation : *allocation_value.allocation_sequence()) {
+        VLOG(3) << " Allocation: " << allocation->ToString();
+        if (!allocation->is_copy_like_allocation()) {
+          const HloPosition& defining_position =
+              allocation->defining_position();
+          int64_t accessed =
+              options_.cost_analysis->cost_analysis().output_bytes_accessed(
+                  *defining_position.instruction, defining_position.index);
+          VLOG(3) << "  pos: " << defining_position.ToString()
+                  << ", accessed: " << accessed << " / " << size;
+        }
+        for (const HloUse& use : allocation->uses()) {
+          int64_t accessed =
+              options_.cost_analysis->cost_analysis().operand_bytes_accessed(
+                  *use.instruction, use.operand_number, use.operand_index);
+          VLOG(3) << "  use: " << use.ToString() << ", accessed: " << accessed
+                  << " / " << size;
+        }
+      }
+    }
+  }
+
+  std::vector<std::vector<const MemorySpaceAssignment::Allocation*>>
+      linked_allocations =
+          GetLinkedAllocationsInAlternateMemory(allocation_values);
+  std::vector<AlternateMemoryBestFitHeap::HloPositionOrUse> inefficient_sites;
+  for (const std::vector<const MemorySpaceAssignment::Allocation*>&
+           allocation_group : linked_allocations) {
+    // For all of allocation in the linked allocation group, calculate the total
+    // use bytes in alternate memory and async copy bytes. If the ratio between
+    // the two is below inefficient_use_to_copy_ratio, add all of the
+    // participating allocation sites into inefficient_sites.
+    VLOG(3) << "AllocationGroup:";
+    int64_t copy_bytes = 0;
+    int64_t use_bytes = 0;
+    for (const MemorySpaceAssignment::Allocation* allocation :
+         allocation_group) {
+      VLOG(3) << " Allocation: " << allocation->ToString();
+      MemorySpace position_memory_space =
+          GetDefiningPositionMemorySpace(*allocation);
+      if (allocation->is_copy_like_allocation()) {
+        copy_bytes += size;
+      }
+      if (position_memory_space == MemorySpace::kAlternate) {
+        use_bytes +=
+            options_.cost_analysis->cost_analysis().output_bytes_accessed(
+                *allocation->defining_position().instruction,
+                allocation->defining_position().index);
+      }
+      if (allocation->memory_space() == MemorySpace::kAlternate) {
+        for (const HloUse& use : allocation->uses()) {
+          use_bytes +=
+              options_.cost_analysis->cost_analysis().operand_bytes_accessed(
+                  *use.instruction, use.operand_number, use.operand_index);
+        }
+      }
+    }
+    VLOG(3) << " use bytes: " << use_bytes << ", copy bytes: " << copy_bytes;
+    if (options_.inefficient_use_to_copy_ratio * copy_bytes > use_bytes) {
+      for (const MemorySpaceAssignment::Allocation* allocation :
+           allocation_group) {
+        MemorySpace position_memory_space =
+            GetDefiningPositionMemorySpace(*allocation);
+        if (position_memory_space == MemorySpace::kAlternate) {
+          if (!allocation->is_copy_like_allocation()) {
+            inefficient_sites.push_back(allocation->defining_position());
+          }
+        }
+        if (allocation->memory_space() == MemorySpace::kAlternate) {
+          for (const HloUse& use : allocation->uses()) {
+            inefficient_sites.push_back(use);
+          }
+        }
+      }
+    }
+  }
+  return inefficient_sites;
 }
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignmentsForColocatedIntervals(
@@ -3944,7 +4188,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
                     << body_allocation_value_it->ToShortString();
             int64_t body_parameter_time = instruction_schedule.at(
                 body_allocation_value_it->defining_instruction());
-            body_allocation_value_it->allocation_sequence()->push_back(
+            body_allocation_value_it->mutable_allocation_sequence()->push_back(
                 std::make_unique<MemorySpaceAssignment::ParentAllocation>(
                     **prev_allocation_in_default_mem_it, hlo_use.instruction,
                     body_allocation_value_it->defining_position(),
@@ -3962,9 +4206,10 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
             VLOG(3) << "After while allocation value: "
                     << after_while_allocation_value_it->ToShortString();
             int64_t while_time = instruction_schedule.at(hlo_use.instruction);
-            after_while_allocation_value_it->allocation_sequence()->push_back(
-                std::make_unique<MemorySpaceAssignment::MirroredAllocation>(
-                    **prev_allocation_in_default_mem_it, while_time));
+            after_while_allocation_value_it->mutable_allocation_sequence()
+                ->push_back(
+                    std::make_unique<MemorySpaceAssignment::MirroredAllocation>(
+                        **prev_allocation_in_default_mem_it, while_time));
             VLOG(3) << "Created: "
                     << after_while_allocation_value_it->allocation_sequence()
                            ->back()
@@ -4635,6 +4880,24 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
                         offset);
 }
 
+void AlternateMemoryBestFitHeap::AddRequiredAssignment(
+    const HloPosition& position, MemorySpace memory_space,
+    AliasedOffset* offset) {
+  AddRequiredAssignment(position.instruction, position.index, memory_space,
+                        offset);
+}
+
+void AlternateMemoryBestFitHeap::AddRequiredAssignment(const HloUse& use,
+                                                       MemorySpace memory_space,
+                                                       AliasedOffset* offset) {
+  const HloValue* value = &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+      use.instruction->operand(use.operand_number), use.operand_index);
+  int64_t instruction_time =
+      hlo_live_range_.instruction_schedule().at(use.instruction);
+  AddRequiredAssignment(value, use.instruction, memory_space, instruction_time,
+                        offset);
+}
+
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
   // Go through the parameters, outputs, and constants and pin them to the
   // corresponding memory by adding a required assignment.
@@ -4829,7 +5092,7 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
   // Clear the allocation sequence of the allocation values so that in case we
   // retry allocation after uncommitting.
   for (AllocationValue& allocation_value : allocation_values) {
-    allocation_value.allocation_sequence()->clear();
+    allocation_value.mutable_allocation_sequence()->clear();
   }
   for (const auto& interval_and_chunk : pending_chunks_) {
     const BufferInterval& interval = interval_and_chunk.first;
@@ -4890,7 +5153,7 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
                       std::vector<MemorySpaceAssignment::Allocation*>>
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
-    for (auto& allocation : *allocation_value.allocation_sequence()) {
+    for (auto& allocation : *allocation_value.mutable_allocation_sequence()) {
       allocations_->push_back(std::move(allocation));
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();
@@ -4965,7 +5228,8 @@ AlternateMemoryBestFitHeap::FindEarliestTimeToSatisfyPeakMemory(
 
 AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
     const AllocationRequest& request) {
-  auto allocation_sequence = request.allocation_value->allocation_sequence();
+  auto allocation_sequence =
+      request.allocation_value->mutable_allocation_sequence();
   // start_time == end_time is a special case where the value is consumed
   // multiple times by the same instruction. We can just find the previous
   // allocation and use that allocation.
@@ -4989,12 +5253,21 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
           << ", def pos = " << defining_position.ToString();
   CHECK_LE(request.start_time, request.end_time);
   if (VLOG_IS_ON(3) && options_.cost_analysis) {
+    const HloPosition& defining_position =
+        request.allocation_value->defining_position();
+    const HloUse& use = request.use->hlo_use;
     VLOG(3) << "Definition benefit = "
             << options_.cost_analysis->GetAlternateMemoryBenefit(
                    request.allocation_value->defining_position())
             << " use benefit = "
             << options_.cost_analysis->GetAlternateMemoryBenefit(
                    request.use->hlo_use);
+    VLOG(3) << "Definition bytes accessed = "
+            << options_.cost_analysis->cost_analysis().output_bytes_accessed(
+                   *defining_position.instruction, defining_position.index)
+            << ", use bytes accessed = "
+            << options_.cost_analysis->cost_analysis().operand_bytes_accessed(
+                   *use.instruction, use.operand_number, use.operand_index);
   }
 
   // There could be a requirement to pin this buffer to default memory either
@@ -5444,7 +5717,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
          prev_allocation->defining_position() == defining_position)) {
       prev_allocation->Extend(request.end_time);
     } else {
-      request.allocation_value->allocation_sequence()->push_back(
+      request.allocation_value->mutable_allocation_sequence()->push_back(
           std::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, MemorySpace::kAlternate, chunk_candidate,
               request.start_time, request.end_time,
@@ -5540,7 +5813,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
     AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
                  /*chunk=*/std::nullopt, eviction_start_time,
                  prev_allocation->end_time(), eviction_end_time,
-                 request.allocation_value->allocation_sequence(),
+                 request.allocation_value->mutable_allocation_sequence(),
                  /*aliased_offset=*/nullptr, eviction_resource);
   } else {
     if (eviction_violates_outstanding_copies) {
@@ -5713,7 +5986,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
     }
     AddAsyncSlicesForPrefetch(
         *context.prev_allocation_in_default_mem,
-        context.request->allocation_value->allocation_sequence(),
+        context.request->allocation_value->mutable_allocation_sequence(),
         context.request->preferred_offset,
         context.sliced_solution->slice_decisions_sorted_by_start_time,
         context.prefetch_end_time, context.request->end_time);
@@ -5733,14 +6006,14 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
             << context.unsliced_solution->prefetch_picker_debug_string;
     AddToPendingChunks(context.unsliced_solution_intervals.full,
                        context.unsliced_solution->chunk_candidate);
-    AddAsyncCopy(*context.prev_allocation_in_default_mem,
-                 MemorySpace::kAlternate,
-                 context.unsliced_solution->chunk_candidate,
-                 context.unsliced_solution_intervals.full.start,
-                 context.request->end_time, context.prefetch_end_time,
-                 context.request->allocation_value->allocation_sequence(),
-                 context.request->preferred_offset,
-                 context.unsliced_solution->prefetch_resource);
+    AddAsyncCopy(
+        *context.prev_allocation_in_default_mem, MemorySpace::kAlternate,
+        context.unsliced_solution->chunk_candidate,
+        context.unsliced_solution_intervals.full.start,
+        context.request->end_time, context.prefetch_end_time,
+        context.request->allocation_value->mutable_allocation_sequence(),
+        context.request->preferred_offset,
+        context.unsliced_solution->prefetch_resource);
 
     request.allocation_value->allocation_sequence()->back()->AddUse(
         request.use->hlo_use);
