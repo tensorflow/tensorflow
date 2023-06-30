@@ -220,6 +220,18 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
       )
       self.evaluate(csr)
 
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Index rank .* and shape rank .* do not match",
+    ):
+      self.evaluate(
+          sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+              indices=[[0, 0, 0], [0, 0, 1]],
+              values=[10.0, 20.0],
+              dense_shape=[33, 73],
+          )
+      )
+
   # TODO(b/139491352): Add handle_data propagation to array_ops.identity.
   @test_util.run_deprecated_v1
   def testCSRSparseMatrixResourceVariable(self):
