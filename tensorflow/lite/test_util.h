@@ -15,12 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TEST_UTIL_H_
 #define TENSORFLOW_LITE_TEST_UTIL_H_
 
+#include <cstddef>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 
-#include "gtest/gtest.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/test_util.h"
@@ -30,9 +34,7 @@ namespace testing {
 
 class Test : public ::testing::Test {
  public:
-  void SetUp() override {
-    ASSERT_EQ(TfLiteInitializeShimsForTest(), 0);
-  }
+  void SetUp() override { ASSERT_EQ(TfLiteInitializeShimsForTest(), 0); }
 };
 
 }  // namespace testing
@@ -135,9 +137,9 @@ class TfArrayMatcher {
  public:
   using RhsDataContainer = std::vector<RhsType>;
 
-  TfArrayMatcher(const TupleMatcher& tuple_matcher,
-                 absl::Span<const RhsType> rhs)
-      : tuple_matcher_(tuple_matcher), rhs_(rhs.begin(), rhs.end()) {}
+  TfArrayMatcher(const TupleMatcher& tuple_matcher, const RhsType* rhs,
+                 const size_t size)
+      : tuple_matcher_(tuple_matcher), rhs_(rhs, rhs + size) {}
 
   // This has to be implicit. GTest expects the matcher factory functions to
   // return an object of type `testing::Matcher<Lhs>`. This matcher is
@@ -199,58 +201,58 @@ namespace test_util_internal {
 // Deduces the type and the matcher to build a TfArrayMatcher.
 template <class TupleMatcher, class T>
 TfArrayMatcher<TupleMatcher, T> TfLiteArrayIsFactory(
-    const TupleMatcher& m, absl::Span<const T> reference_data) {
-  return TfArrayMatcher<TupleMatcher, T>(m, reference_data);
+    const TupleMatcher& m, std::tuple<const T*, size_t> reference_data) {
+  return TfArrayMatcher<TupleMatcher, T>(m, std::get<0>(reference_data),
+                                         std::get<1>(reference_data));
 }
 
-// Creates an `abls::Span` pointing to the container data.
-//
-// The container needs to implement the interface that is accepted by
-// `absl::Span`'s constructor.
+// Creates an `std::tuple` pointing to the container data and size.
 //
 // We need this intermediate function to create spans for the TFLite array forms
 // that we may encounter. Because the arrays are C structs, we can add a
 // convertion operator. This also helps deducing the data type of the array.
-template <class Container, class T = std::decay_t<
-                               decltype(*(std::declval<Container>().begin()))>>
-absl::Span<const T> AsSpan(const Container& v) {
-  return absl::Span<const T>(v);
+template <class Container,
+          class T = std::decay_t<decltype(*(std::declval<Container>().data()))>>
+std::tuple<const T*, size_t> AsTuple(const Container& v) {
+  return std::tuple<const T*, size_t>(v.data(), v.size());
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const int> AsSpan(const TfLiteIntArray* v) {
-  return absl::Span<const int>(v->data, v->size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const int*, size_t> AsTuple(const TfLiteIntArray* v) {
+  return std::tuple<const int*, size_t>(v->data, v->size);
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const float> AsSpan(const TfLiteFloatArray* v) {
-  return absl::Span<const float>(v->data, v->size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const float*, size_t> AsTuple(const TfLiteFloatArray* v) {
+  return std::tuple<const float*, size_t>(v->data, v->size);
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const int> AsSpan(const TfLiteIntArray& v) {
-  return absl::Span<const int>(v.data, v.size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const int*, size_t> AsTuple(const TfLiteIntArray& v) {
+  return std::tuple<const int*, size_t>(v.data, v.size);
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const float> AsSpan(const TfLiteFloatArray& v) {
-  return absl::Span<const float>(v.data, v.size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const float*, size_t> AsTuple(const TfLiteFloatArray& v) {
+  return std::tuple<const float*, size_t>(v.data, v.size);
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const int> AsSpan(const TfLiteArrayUniquePtr<int>& v) {
-  return absl::Span<const int>(v->data, v->size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const int*, size_t> AsTuple(
+    const TfLiteArrayUniquePtr<int>& v) {
+  return std::tuple<const int*, size_t>(v->data, v->size);
 }
 
-// Creates an `abls::Span` pointing to the array data.
-inline absl::Span<const float> AsSpan(const TfLiteArrayUniquePtr<float>& v) {
-  return absl::Span<const float>(v->data, v->size);
+// Creates an `std::tuple` pointing to the array data and size.
+inline std::tuple<const float*, size_t> AsTuple(
+    const TfLiteArrayUniquePtr<float>& v) {
+  return std::tuple<const float*, size_t>(v->data, v->size);
 }
 
-// Creates an `abls::Span` pointing to the list data.
+// Creates an `std::tuple` pointing to the array data and size.
 template <class T>
-absl::Span<const T> AsSpan(std::initializer_list<T> v) {
-  return v;
+std::tuple<const T*, size_t> AsTuple(std::initializer_list<T> v) {
+  return std::tuple<const T*, size_t>(v.begin(), v.size());
 }
 
 }  // namespace test_util_internal
@@ -260,7 +262,7 @@ absl::Span<const T> AsSpan(std::initializer_list<T> v) {
 template <class Container>
 auto TfLiteArrayIs(const Container& expected) {
   return test_util_internal::TfLiteArrayIsFactory(
-      ::testing::Eq(), test_util_internal::AsSpan(expected));
+      ::testing::Eq(), test_util_internal::AsTuple(expected));
 }
 
 // Matches a TFLite array value, pointer or smart pointer against the expected
@@ -268,7 +270,7 @@ auto TfLiteArrayIs(const Container& expected) {
 template <class TupleMatcher, class Container>
 auto TfLiteArrayIs(const TupleMatcher& m, const Container& expected) {
   return test_util_internal::TfLiteArrayIsFactory(
-      m, test_util_internal::AsSpan(expected));
+      m, test_util_internal::AsTuple(expected));
 }
 
 // Matches a TFLite array value, pointer or smart pointer against the expected
@@ -278,7 +280,7 @@ auto TfLiteArrayIs(const TupleMatcher& m, const Container& expected) {
 template <class T>
 auto TfLiteArrayIs(std::initializer_list<T> expected) {
   return test_util_internal::TfLiteArrayIsFactory(
-      ::testing::Eq(), test_util_internal::AsSpan(expected));
+      ::testing::Eq(), test_util_internal::AsTuple(expected));
 }
 
 // Matches a TFLite array value, pointer or smart pointer against the expected
@@ -288,7 +290,7 @@ auto TfLiteArrayIs(std::initializer_list<T> expected) {
 template <class TupleMatcher, class T>
 auto TfLiteArrayIs(const TupleMatcher& m, std::initializer_list<T> expected) {
   return test_util_internal::TfLiteArrayIsFactory(
-      m, test_util_internal::AsSpan(expected));
+      m, test_util_internal::AsTuple(expected));
 }
 
 }  // namespace tflite
@@ -308,32 +310,27 @@ namespace test_util_internal {
 
 // Writes the contents of the span to the absl sink.
 template <class Sink, class T>
-void WriteToSink(Sink& sink, absl::Span<const T> span) {
+void WriteToSink(Sink& sink, const T* const span, const size_t size) {
   sink.Append("[");
-  if (!span.empty()) {
+  if (size) {
     absl::Format(&sink, "%v", span[0]);
   }
-  for (size_t i = 1; i < span.size(); ++i) {
+  for (size_t i = 1; i < size; ++i) {
     absl::Format(&sink, ", %v", span[i]);
   }
   sink.Append("]");
 }
 
-// Checks whether the given value is null if it is a pointer. Falls back on the
-// other overload otherwise.
-template <class Sink, class T>
-bool CheckPointer(Sink& sink, T ptr, std::true_type) {
-  if (ptr == nullptr) {
-    sink.Append("nullptr");
-    return false;
-  }
-  return true;
+// Returns the given pointer.
+template <class T>
+const T* AsPointer(const T* ptr) {
+  return ptr;
 }
 
-// Non pointer types always return true.
-template <class Sink, class T>
-bool CheckPointer(Sink& sink, const T& ptr, std::false_type) {
-  return true;
+// Get a pointer to the given object.
+template <class T>
+const T* AsPointer(const T& obj) {
+  return &obj;
 }
 
 // Implements the absl stringification of TFLite arrays.
@@ -341,8 +338,11 @@ bool CheckPointer(Sink& sink, const T& ptr, std::false_type) {
 // If the given type is an array, this will also check that it is not null.
 template <class Sink, class TfLiteArrayType>
 void AbslStringifyImpl(Sink& sink, const TfLiteArrayType& array) {
-  if (CheckPointer(sink, array, std::is_pointer<TfLiteArrayType>())) {
-    WriteToSink(sink, AsSpan(array));
+  auto* array_ptr = AsPointer(array);
+  if (array_ptr) {
+    WriteToSink(sink, array_ptr->data, array_ptr->size);
+  } else {
+    sink.Append("nullptr");
   }
 }
 

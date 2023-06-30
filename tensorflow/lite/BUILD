@@ -1171,6 +1171,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":array",
+        ":test_util",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library_with_tflite(
     name = "create_op_resolver_header",
     hdrs = ["create_op_resolver.h"],
@@ -1350,6 +1364,9 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:test_util",
     ],
     deps = [
+        ":array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
