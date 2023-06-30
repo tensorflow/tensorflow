@@ -26,26 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "reference_axes",
      srcs = [
          "stablehlo/reference/Axes.cpp",
-@@ -363,8 +381,10 @@
-     ],
-     strip_include_prefix = ".",
-     deps = [
-+        ":reference_errors",
-         ":reference_tensor",
-         ":reference_token",
-+        "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:IR",
-     ],
- )
-@@ -446,6 +466,7 @@
-     ],
-     strip_include_prefix = ".",
-     deps = [
-+        ":reference_errors",
-         ":stablehlo_ops",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:IR",
-@@ -698,6 +719,7 @@
+@@ -701,6 +719,7 @@
      deps = [
          ":base",
          ":chlo_ops",
