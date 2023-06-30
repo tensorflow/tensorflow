@@ -2128,6 +2128,41 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
                             Layout.replicated(self.mesh, len(new_shape)),
                             dtensor_result)
 
+  def testBooleanMask(self):
+    if self.mesh.use_xla_spmd():
+      self.skipTest('Boolean mask not supported yet with DTensor Xla Spmd.')
+    self.skipForDeviceType(['TPU'], 'int64 XlaAllReduce not supported.')
+
+    for input_layout, expected_output_layout in [
+        (
+            self.first_dimension_sharded_layout,
+            self.first_dimension_sharded_layout_1d,
+        ),
+        (
+            Layout([_MESH_DIM_X, _MESH_DIM_Y], self.mesh),
+            self.first_dimension_sharded_layout_1d,
+        ),
+        (self.last_dimension_sharded_layout, self.replicated_layout_1d),
+        (self.replicated_layout_2d, self.replicated_layout_1d),
+    ]:
+      tensor = constant_op.constant(np.arange(8).reshape(2, 4))
+      mask = constant_op.constant(
+          np.array([True, True, False, False, True, False, True, True]).reshape(
+              2, 4
+          )
+      )
+      expected = array_ops.boolean_mask(tensor, mask)
+
+      tensor = api.relayout(tensor, input_layout)
+      mask = api.relayout(mask, input_layout)
+
+      @polymorphic_function.function
+      def boolean_mask_func(t, m):
+        return array_ops.boolean_mask(t, m)
+
+      result = boolean_mask_func(tensor, mask)
+      self.assertDTensorEqual(expected, expected_output_layout, result)
+
   def testRawWhere(self):
     if self.mesh.use_xla_spmd():
       self.skipTest('Where op not supported yet with DTensor Xla Spmd.')
@@ -2135,13 +2170,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     condition = constant_op.constant(
         np.array([True, True, False, False, True, False, True, True])
     )
-
-    # FIXME(b/285905569): The DTensor Where op can only generate local indices,
-    # which is incorrect.
-    # For now, adjust the expected result to be local indices, till this is
-    # fixed.
     expected = gen_array_ops.where(condition)
-    expected = array_ops.concat([expected[0:2], expected[2:] - 4], 0)
 
     condition = api.relayout(condition, self.first_dimension_sharded_layout_1d)
 
