@@ -34,12 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
@@ -48,6 +46,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "third_party/gpus/cudnn/cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -258,6 +262,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -301,6 +306,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
+#endif
 
 }  // anonymous namespace
 
@@ -366,12 +372,14 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream,
                       allocator->GetStream(stream_exec->device_ordinal()));
+  StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
   if (stream_exec->platform_kind() == se::PlatformKind::kROCm) {
-    return PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
+    result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
   } else if (stream_exec->platform_kind() == se::PlatformKind::kCuda) {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
     // Right now Redzone allocator is available in Cuda target only.
     auto hlo_module_config = instr->GetModule()->config();
     const int64_t redzone_size = ShouldCheckConv(hlo_module_config)
@@ -387,12 +395,15 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
         AutotuneRuntimeArguments runtime_arguments,
         AutotuneRuntimeArguments::FromInstruction(instr, allocator, stream_exec,
                                                   &input_output_allocator));
-    return PickBestAlgorithmNoCacheCuda(instr, allocator, stream, key,
-                                        runtime_arguments);
-  } else {
-    return InternalError("Unknown Platform");
+    result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, stream, key,
+                                             runtime_arguments);
+#endif
   }
+
+  return result_or;
 }
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
@@ -504,7 +515,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   if (!alg.is_cudnn_frontend() &&
       config.kind == CudnnConvKind::kForwardActivation &&
       activation_mode == se::dnn::ActivationMode::kNone &&
-      alg.algo_id() != 1 /*CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM*/) {
+      alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
     return make_failure(AutotuneResult::DISQUALIFIED,
                         "Disqualified for implicit RELU.");
   }
@@ -827,6 +838,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                                      runtime_arguments.hlo_module_config));
   return selected_algorithm;
 }
+#endif
 
 StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
@@ -835,6 +847,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
     const DebugOptions* debug_options,
     const std::vector<se::DeviceMemoryBase> buffers,
     const se::DeviceMemoryBase result_buffer) {
+#if GOOGLE_CUDA
   Shape output_shape = conv_config.output_shape;
   HloModuleConfig hlo_module_config;
   hlo_module_config.set_debug_options(*debug_options);
@@ -853,6 +866,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
   return PickBestAlgorithmNoCacheCuda(
       /*instr=*/nullptr, allocator, stream,
       /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
+#else
+  return InternalError("CUDA is not enabled");
+#endif
 }
 
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(

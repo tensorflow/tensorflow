@@ -1523,7 +1523,7 @@ xla_cc_test(
         "nomsan",
         "requires-gpu-sm70",
     ],
-    deps = if_gpu_is_configured([
+    deps = [
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_rewriter",
         "//tensorflow/compiler/xla/service:gpu_plugin",
@@ -1535,7 +1535,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-    ]),
+    ],
 )
 
 cc_library(
