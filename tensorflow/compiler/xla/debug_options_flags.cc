@@ -81,7 +81,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
   // integration.
-  opts.set_xla_gpu_cuda_graph_level(1);
+  opts.set_xla_gpu_cuda_graph_level(0);
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
