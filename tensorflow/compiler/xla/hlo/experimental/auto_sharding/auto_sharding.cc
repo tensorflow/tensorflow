@@ -1137,19 +1137,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               operand_strategies = strategy_map.at(operand).get();
               operand_shape = operand->shape();
             }
-            std::vector<double> in_resharding_costs =
+            resharding_costs.push_back(
                 ReshardingCostVector(operand_strategies, operand_shape,
-                                     existing_sharding, cluster_env);
-            // If there is only one option for resharding, and the cost
-            // computed for that option is kInfinityCost, set the cost to
-            // zero. This is okay because there is only one option anyway, and
-            // having the costs set to kInfinityCost is problematic for the
-            // solver.
-            if (in_resharding_costs.size() == 1 &&
-                in_resharding_costs[0] == kInfinityCost) {
-              in_resharding_costs[0] = 0;
-            }
-            resharding_costs.push_back(in_resharding_costs);
+                                     existing_sharding, cluster_env));
           }
         }
         double memory_cost =
@@ -1161,6 +1151,21 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         strategies->leaf_vector.push_back(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
+      }
+      CHECK_EQ(strategies->leaf_vector.size(), 1);
+      {
+        // If there is only one option for resharding, and the cost
+        // computed for that option is kInfinityCost, set the cost to
+        // zero. This is okay because there is only one option anyway, and
+        // having the costs set to kInfinityCost is problematic for the
+        // solver.
+        for (auto& operand_resharding_costs :
+             strategies->leaf_vector[0].resharding_costs) {
+          if (operand_resharding_costs.size() == 1 &&
+              operand_resharding_costs[0] >= kInfinityCost) {
+            operand_resharding_costs[0] = 0;
+          }
+        }
       }
     } else if (!strategies->following) {
       // If existing sharding is a partial sharding from previous iteration,
