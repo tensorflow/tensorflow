@@ -2229,18 +2229,6 @@ void PrintLargestInstructions(
   }
 }
 
-struct AutoShardingSolverResult {
- public:
-  AutoShardingSolverResult(
-      StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
-          status,
-      bool skip_auto_sharding)
-      : status(status), skip_auto_sharding(skip_auto_sharding) {}
-  StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
-      status;
-  bool skip_auto_sharding;
-};
-
 // NOLINTEND
 
 // We formulate the auto sharding process as the following ILP problem:
@@ -2287,24 +2275,6 @@ struct AutoShardingSolverResult {
 //        s[i][p] + s[j][q] <= 1 if v[p, q] == 1.0
 // Serialize parameters of the ILP problem as numpy arrays and call the python
 // solver.
-
-struct AutoShardingSolverRequest {
-  int64_t num_nodes;
-  int64_t memory_budget;
-  std::vector<int> s_len;
-  std::vector<int> s_follow;
-  std::vector<std::pair<int, int>> e;
-  std::vector<std::vector<int>> live;
-  std::vector<std::vector<double>> c;
-  std::vector<std::vector<double>> d;
-  std::vector<std::vector<double>> m;
-  std::vector<std::vector<double>> r;
-  std::vector<std::pair<int, int>> a;
-  std::vector<std::vector<double>> v;
-  std::vector<std::string> instruction_names;
-  std::optional<int64_t> solver_timeout_in_seconds;
-  bool crash_at_infinity_costs_check;
-};
 
 AutoShardingSolverResult CallORToolsSolver(
     const AutoShardingSolverRequest& request) {
@@ -2653,6 +2623,34 @@ AutoShardingSolverResult CallORToolsSolver(
       false);
 }
 
+bool AutoShardingEvaluation::operator==(
+    const AutoShardingEvaluation& other) const {
+  return total_communication_cost == other.total_communication_cost &&
+         total_computation_cost == other.total_computation_cost &&
+         total_resharding_cost == other.total_resharding_cost &&
+         total_cost == other.total_cost;
+}
+
+AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
+                                const AutoShardingSolverResult& result) {
+  const std::vector<int64_t>& s_val = std::get<0>(*result.status);
+  const std::vector<int64_t>& e_val = std::get<1>(*result.status);
+  AutoShardingEvaluation evaluation;
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    const int64_t j = s_val[i];
+    evaluation.total_communication_cost += request.d[i][j];
+    evaluation.total_computation_cost += request.c[i][j];
+  }
+  for (size_t i = 0; i < request.e.size(); ++i) {
+    const int64_t j = e_val[i];
+    evaluation.total_resharding_cost += request.r[i][j];
+  }
+  evaluation.total_cost += evaluation.total_communication_cost;
+  evaluation.total_cost += evaluation.total_computation_cost;
+  evaluation.total_cost += evaluation.total_resharding_cost;
+  return evaluation;
+}
+
 AutoShardingSolverResult CallSolver(
     const HloInstructionSequence& sequence, const LivenessSet& liveness_set,
     const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
@@ -2772,7 +2770,14 @@ AutoShardingSolverResult CallSolver(
                                  value->index());
     }
   }
-  return CallORToolsSolver(request);
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+  LOG(INFO) << "Total Communication Cost: "
+            << evaluation.total_communication_cost;
+  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost;
+  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost;
+  LOG(INFO) << "Total Cost: " << evaluation.total_cost;
+  return result;
 }
 
 void CheckHloSharding(const HloInstructionSequence& sequence,
