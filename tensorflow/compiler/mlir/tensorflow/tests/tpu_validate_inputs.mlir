@@ -176,3 +176,29 @@ func.func @invalid_MAXIMAL_sharding_device(%arg0: tensor<i32>) -> tensor<i32> {
   return %0 : tensor<i32>
 }
 // -----
+
+//  Serialized string:
+//   "\08\02\2a\08\08\01\1a\01\01\22\01\00\2a\08\08\01\1a\01\01\22\01\01"
+//  Proto debug string:
+//    type: 	 TUPLE
+//    tuple_shardings {
+//      type: MAXIMAL
+//      tile_assignment_dimensions: 1
+//      tile_assignment_devices: 0
+//    }
+//    tuple_shardings {
+//      type: MAXIMAL
+//      tile_assignment_dimensions: 1
+//      tile_assignment_devices: 1
+//    }
+
+func.func @invalid_TUPLE_sharding_arity(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = tf_executor.graph {
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_cores_per_replica = 2 : i64, num_replicas = 1 : i64, topology = "topology"} : () -> ()
+    // expected-error @+1 {{'tf.Identity' op TF2XLA TPU bridge input check: invalid no. of tuple shardings 2 for arity = 1}}
+    %0, %c = tf_executor.island wraps "tf.Identity"(%arg0) {_tpu_replicate = "cluster", _XlaSharding = "\08\02\2a\08\08\01\1a\01\01\22\01\00\2a\08\08\01\1a\01\01\22\01\01"} : (tensor<i32>) -> tensor<i32>
+    tf_executor.fetch %0 : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+// -----

@@ -533,7 +533,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {
     return py::reinterpret_steal<py::tuple>(
-        JAX_PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
+        PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
   };
 
   // Call the cache_miss() function, extracting the output data and ignoring
@@ -1004,7 +1004,7 @@ void BuildPmapSubmodule(py::module& m) {
     type->tp_name = "PmapFunction";
     type->tp_basicsize = sizeof(JaxPmapFunctionObject);
     type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE |
-                     Py_TPFLAGS_HAVE_GC | JAX_TPFLAGS_HAVE_VECTORCALL;
+                     Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_HAVE_VECTORCALL;
     type->tp_new = JaxPmapFunction_tp_new;
     type->tp_dealloc = JaxPmapFunction_tp_dealloc;
     type->tp_dictoffset = offsetof(JaxPmapFunctionObject, dict);

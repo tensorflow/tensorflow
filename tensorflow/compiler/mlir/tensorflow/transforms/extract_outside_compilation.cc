@@ -257,29 +257,17 @@ TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
   return host_side_while;
 }
 
-// TODO(b/157054714): Use a better abstraction instead of
-// _TPUCompileMlirOp and _XlaRecvAtHostOp and _XlaSendFromHostOp.
 // Creates a compilation key as placeholder. A placeholder compilation cache key
 // is created because it is a required input to _XlaRecvAtHost and
-// _XlaSendFromHost but the _TPUCompileMlir has not yet been created for device
+// _XlaSendFromHost but the _XlaCompileMlir has not yet been created for device
 // cluster that contains the outside compiled ops. This placeholder should be
-// replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
-TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
+// replaced by the TPU cluster _XlaCompileMlir in a subsequent pass.
+TF::_XlaCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
       RankedTensorType::get({3}, builder.getType<TF::StringType>());
-  return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+  return builder.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
-}
-
-TF::ConstOp CreateCpuGpuComilationKeyPlaceholder(Location loc,
-                                                 OpBuilder& builder) {
-  auto shape_type =
-      RankedTensorType::get({3}, builder.getType<TF::StringType>());
-
-  return builder.create<TF::ConstOp>(
-      loc, DenseStringElementsAttr::get(shape_type,
-                                        llvm::ArrayRef<StringRef>{"", "", ""}));
 }
 
 // Creates a `tf_device.launch` to wrap cluster ops.
@@ -1444,21 +1432,17 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     Operation* compilation_key_op = nullptr;
     Value compilation_key = nullptr;
     Operation* device_ordinal_op = nullptr;
+    compilation_key_op =
+        CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
+    compilation_key =
+        llvm::dyn_cast<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
+            compilation_key_op)
+            .getProgram();
     if (has_tpu_device) {
-      compilation_key_op =
-          CreateCompilationKeyPlaceholder(device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
-              compilation_key_op)
-              .getProgram();
       device_ordinal_op = builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
           device_cluster.getLoc(),
           RankedTensorType::get({}, builder.getI64Type()));
     } else {
-      compilation_key_op = CreateCpuGpuComilationKeyPlaceholder(
-          device_cluster.getLoc(), builder);
-      compilation_key =
-          llvm::dyn_cast<Value>(compilation_key_op->getResults()[0]);
       device_ordinal_op = builder.create<TF::ConstOp>(
           device_cluster.getLoc(),
           DenseIntElementsAttr::get(

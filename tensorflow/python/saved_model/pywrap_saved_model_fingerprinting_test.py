@@ -26,11 +26,12 @@ class FingerprintingTest(test.TestCase):
 
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
         pywrap_fingerprinting.CreateFingerprintDef(export_dir))
+
     # We cannot check the value of the saved_model_checksum due to
-    # non-determinism in serialization.
+    # non-determinism in saving.
     self.assertGreater(fingerprint.saved_model_checksum, 0)
     self.assertEqual(fingerprint.graph_def_program_hash, 10127142238652115842)
-    self.assertEqual(fingerprint.signature_def_hash, 5693392539583495303)
+    self.assertEqual(fingerprint.signature_def_hash, 15570736222402453744)
     self.assertEqual(fingerprint.saved_object_graph_hash, 3678101440349108924)
     # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
     # check its value here.
@@ -41,6 +42,7 @@ class FingerprintingTest(test.TestCase):
         "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
         pywrap_fingerprinting.ReadSavedModelFingerprint(export_dir))
+
     self.assertGreater(fingerprint.saved_model_checksum, 0)
     self.assertEqual(fingerprint.graph_def_program_hash, 706963557435316516)
     self.assertEqual(fingerprint.signature_def_hash, 5693392539583495303)

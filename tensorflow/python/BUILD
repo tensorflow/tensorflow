@@ -337,12 +337,41 @@ py_library(
         ":no_contrib",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        "//tensorflow/python/ops:audio_ops_gen",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:bitwise_ops",
+        "//tensorflow/python/ops:boosted_trees_ops_gen",
+        "//tensorflow/python/ops:composite_tensor_ops",
+        "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:cudnn_rnn_ops_gen",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:initializers_ns",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:random_crop_ops",
+        "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_ops_gen",
+        "//tensorflow/python/ops:sendrecv_ops_gen",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:standard_ops",
+        "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops:tpu_ops_gen",
+        "//tensorflow/python/ops:uniform_quant_ops_gen",
+        "//tensorflow/python/ops:while_v2",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg/sparse:sparse_py",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_arrays",
         "//tensorflow/python/ops/numpy_ops:np_config",
@@ -350,6 +379,10 @@ py_library(
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
         "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/ops/numpy_ops:np_utils",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_ops",
+        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -487,66 +520,6 @@ py_strict_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "while_v2",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:while_v2",
-        "//tensorflow/python/ops:while_v2_indexed_slices_rewriter",
-    ],
-)
-
-py_strict_library(
-    name = "gradients",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:custom_gradient",
-        "//tensorflow/python/ops:gradients",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "image_ops",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:image_ops",
-        "//tensorflow/python/ops:image_ops_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "nn",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:nn",
-        "//tensorflow/python/ops:nn_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "rnn_cell",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:rnn_cell",
-        "//tensorflow/python/ops:rnn_cell_impl",
-        "//tensorflow/python/ops:rnn_cell_wrapper_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "metrics",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:metrics",
-        "//tensorflow/python/ops:metrics_impl",
-    ],
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
@@ -1286,19 +1259,6 @@ py_strict_library(
     name = "platform_test",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/platform:test"],
-)
-
-alias(
-    name = "framework_for_generated_wrappers",
-    actual = "//tensorflow/python/framework:for_generated_wrappers",
-    visibility = ["//visibility:public"],
-)
-
-py_strict_library(
-    name = "dtensor",
-    deps = [
-        "//tensorflow/dtensor/python:dtensor",
-    ],
 )
 
 py_strict_library(

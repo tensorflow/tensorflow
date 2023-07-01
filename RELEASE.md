@@ -30,6 +30,12 @@
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+* `tf.lite`
+    * when converter flag "_experimenal_use_buffer_offset" is enabled,
+    additional metadata is automatically excluded from the generated model.
+    The behaviour is the same as "exclude_conversion_metadata" is set
+    * If the model is larger than 2GB, then we also require
+    "exclude_conversion_metadata" flag to be set
 
 # Major Features and Improvements
 
@@ -47,6 +53,10 @@
     *   Binary GPU kernels: AddV2, Sub, Div, DivNoNan, Mul, MulNoNan, FloorDiv,
         Equal, NotEqual, Greater, GreaterEqual, LessEqual, Less.
 
+* `tf.lite`
+    * Add experimental supports conversion of models that may be larger than 2GB
+     before buffer deduplication
+
 # Bug Fixes and Other Changes
 
 * `tf.py_function` and `tf.numpy_function` can now be used as function
@@ -60,6 +70,7 @@
 
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.
+
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>

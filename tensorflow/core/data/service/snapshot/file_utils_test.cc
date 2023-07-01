@@ -38,7 +38,6 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;

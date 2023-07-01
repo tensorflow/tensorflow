@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -67,26 +68,41 @@ TEST_F(HloSlicerTest, SingleComputationSlice) {
   auto entry_comp = FindComputation(hlo_module.get(), "axpy_computation");
   EXPECT_NE(entry_comp, nullptr);
 
+  // Select everything
+  auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+    return true;
+  };
+
   {
     std::vector<const HloInstruction*> relevant_instructions({p2, x});
-    auto sliced_result = SliceModule(hlo_module.get(), relevant_instructions);
-    EXPECT_EQ(sliced_result.size(), 1);
-    EXPECT_EQ(sliced_result[entry_comp].size(), 4);
-    EXPECT_TRUE(sliced_result[entry_comp].contains(p2));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(x));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(y));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add1));
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_instructions.size(), 1);
+    EXPECT_EQ(sliced_instructions[entry_comp].size(), 4);
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(p2));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(x));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(y));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add1));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 0);
   }
 
   {
     std::vector<const HloInstruction*> relevant_instructions({add0, p3});
-    auto sliced_result = SliceModule(hlo_module.get(), relevant_instructions);
-    EXPECT_EQ(sliced_result.size(), 1);
-    EXPECT_EQ(sliced_result[entry_comp].size(), 4);
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add0));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(x));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(p3));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add1));
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_instructions.size(), 1);
+    EXPECT_EQ(sliced_instructions[entry_comp].size(), 4);
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add0));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(x));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(p3));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add1));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 0);
   }
 }
 
@@ -160,37 +176,144 @@ TEST_F(HloSlicerTest, MultipleComputationSlice) {
       FindComputation(hlo_module.get(), "calculate_alpha");
   EXPECT_NE(calculate_alpha_comp, nullptr);
 
+  // Select everything
+  auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+    return true;
+  };
+
   {
     std::vector<const HloInstruction*> relevant_instructions({add1, while1});
-    auto sliced_result = SliceModule(hlo_module.get(), relevant_instructions);
-    EXPECT_EQ(sliced_result.size(), 1);
-    EXPECT_EQ(sliced_result[entry_comp].size(), 4);
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add2));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add1));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(while1));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(loop_count));
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_instructions.size(), 1);
+    EXPECT_EQ(sliced_instructions[entry_comp].size(), 4);
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add2));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add1));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(while1));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(loop_count));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 0);
   }
 
   {
     std::vector<const HloInstruction*> relevant_instructions({constant5});
-    auto sliced_result = SliceModule(hlo_module.get(), relevant_instructions);
-    EXPECT_EQ(sliced_result.size(), 2);
-    EXPECT_TRUE(sliced_result.contains(entry_comp));
-    EXPECT_TRUE(sliced_result.contains(calculate_alpha_comp));
-    EXPECT_FALSE(sliced_result[entry_comp].contains(add1));
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_instructions.size(), 2);
+    EXPECT_TRUE(sliced_instructions.contains(entry_comp));
+    EXPECT_TRUE(sliced_instructions.contains(calculate_alpha_comp));
+    EXPECT_FALSE(sliced_instructions[entry_comp].contains(add1));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 0);
   }
 
   {
     std::vector<const HloInstruction*> relevant_instructions({gte2});
-    auto sliced_result = SliceModule(hlo_module.get(), relevant_instructions);
-    EXPECT_EQ(sliced_result.size(), 2);
-    EXPECT_TRUE(sliced_result.contains(entry_comp));
-    EXPECT_TRUE(sliced_result.contains(while_body_comp));
-    EXPECT_FALSE(sliced_result.contains(while_cond_comp));
-    EXPECT_FALSE(sliced_result[entry_comp].contains(tuple1));
-    EXPECT_FALSE(sliced_result[entry_comp].contains(add1));
-    EXPECT_TRUE(sliced_result[entry_comp].contains(add2));
-    EXPECT_FALSE(sliced_result[while_body_comp].contains(gte1));
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_instructions.size(), 2);
+    EXPECT_TRUE(sliced_instructions.contains(entry_comp));
+    EXPECT_TRUE(sliced_instructions.contains(while_body_comp));
+    EXPECT_FALSE(sliced_instructions.contains(while_cond_comp));
+    EXPECT_FALSE(sliced_instructions[entry_comp].contains(tuple1));
+    EXPECT_FALSE(sliced_instructions[entry_comp].contains(add1));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add2));
+    EXPECT_FALSE(sliced_instructions[while_body_comp].contains(gte1));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 0);
+  }
+}
+
+TEST_F(HloSlicerTest, SingleComputationForwardFrontier) {
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    ENTRY axpy_computation {
+      p.0 = f32[10] parameter(0)
+      p.1 = f32[10] parameter(1)
+      add.0 = f32[10] add(p.0, p.1)
+      alpha = f32[] constant(1)
+      broadcast = f32[10] broadcast(alpha), dimensions={}
+      p.2 = f32[10] parameter(2)
+      y = f32[10] multiply(broadcast, p.2)
+      x = f32[10] subtract(y, add.0)
+      p.3 = f32[10] parameter(3)
+      p.4 = f32[10] parameter(4)
+      p.5 = f32[10] parameter(5)
+      sub.1 = f32[10] subtract(p.4, p.5)
+      add.2 = f32[10] add(p.3, sub.1)
+      ROOT add.1 = f32[10] add(x, add.2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto broadcast = FindInstruction(hlo_module.get(), "broadcast");
+  EXPECT_THAT(broadcast, op::Broadcast());
+  auto x = FindInstruction(hlo_module.get(), "x");
+  EXPECT_THAT(x, op::Subtract());
+  auto y = FindInstruction(hlo_module.get(), "y");
+  EXPECT_THAT(y, op::Multiply());
+  auto add0 = FindInstruction(hlo_module.get(), "add.0");
+  EXPECT_THAT(add0, op::Add());
+  auto p5 = FindInstruction(hlo_module.get(), "p.5");
+  EXPECT_THAT(p5, op::Parameter());
+  auto sub1 = FindInstruction(hlo_module.get(), "sub.1");
+  EXPECT_THAT(sub1, op::Subtract());
+
+  auto entry_comp = FindComputation(hlo_module.get(), "axpy_computation");
+  EXPECT_NE(entry_comp, nullptr);
+
+  {
+    // Slice at Subtract
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kSubtract;
+    };
+    std::vector<const HloInstruction*> relevant_instructions({broadcast, add0});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_result.NumSlicedInstructions(), 4);
+    EXPECT_EQ(sliced_instructions.size(), 1);
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add0));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(broadcast));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(y));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(x));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 1);
+    auto frontier_instructions = sliced_result.frontier_instructions();
+    EXPECT_TRUE(frontier_instructions[entry_comp].contains(x));
+  }
+
+  {
+    // Slice at Subtract
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kSubtract;
+    };
+    std::vector<const HloInstruction*> relevant_instructions({add0, y, p5});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), relevant_instructions, hlo_selector);
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_result.NumSlicedInstructions(), 5);
+    EXPECT_EQ(sliced_instructions.size(), 1);
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(add0));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(y));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(x));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(p5));
+    EXPECT_TRUE(sliced_instructions[entry_comp].contains(sub1));
+
+    EXPECT_EQ(sliced_result.NumFrontierInstructions(), 2);
+    auto frontier_instructions = sliced_result.frontier_instructions();
+    EXPECT_TRUE(frontier_instructions[entry_comp].contains(x));
+    EXPECT_TRUE(frontier_instructions[entry_comp].contains(sub1));
   }
 }
 

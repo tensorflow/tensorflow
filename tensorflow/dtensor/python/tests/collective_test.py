@@ -504,6 +504,64 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     else:
       del os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
 
+  # Create two independent AllReduce ops with indirect dependency, that should
+  # not get combined.
+  def testAllReduceCombinerWithIndirectDependency(self):
+    # The purpose of this test is to validate the depdency check in AllReduce
+    # AllReduce combiner (dtensor_allreduce_combine_optimization). Specifically,
+    # the side effects from indirect dependency.
+    self.skipForPathways('TODO(b/260775095)')
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an eight-device mesh just for this test.
+    global_ids = test_util.create_device_ids_array((8,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
+                                test_util.create_device_list((8,), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    first_dim_sharded_layout_1d = Layout.batch_sharded(
+        mesh, _MESH_DIM_X, rank=1)
+
+    init_value = constant_op.constant(np.ones(32), dtype=dtypes.float32)
+    init_value = api.relayout(init_value, first_dim_sharded_layout_1d)
+
+    # 2nd reduction indrectly depend on the 1st reduction
+    @polymorphic_function.function
+    def func(v):
+      a = math_ops.reduce_sum(v)
+      v.assign_add(v+a)
+      b = math_ops.reduce_sum(v)
+      return b
+
+    v = d_variable.DVariable(init_value)
+    dtensor_result = func(v)
+
+    # Replicate the scenario above without using dtensor
+    expected_result = constant_op.constant(np.ones(32), dtype=dtypes.float32)
+    expected_result += expected_result + math_ops.reduce_sum(expected_result)
+    expected_result = math_ops.reduce_sum(expected_result)
+
+    # TODO(b/288347987): AllReduce combiner would currently generate the wrong
+    # output from merging the two ops, where b would not read the updated v from
+    # addition with a and generate the wrong output.
+    #
+    # Mismatched elements: 1 / 1 (100%)
+    # Max absolute difference: 1056.
+    # Max relative difference: 33.
+    #  x: array(1088.)    # expected output
+    #  y: array(32.)      # dtensor output
+    #
+    # This test is set to pass by asserting equal on dtensor_result itself. Once
+    # the bug is fixed, please update the check to expected_result.
+    self.assertDTensorEqual(dtensor_result,  # FIXME: update to expected_result
+                            Layout.replicated(mesh=mesh, rank=0),
+                            dtensor_result)
 
 if __name__ == '__main__':
   test.main()

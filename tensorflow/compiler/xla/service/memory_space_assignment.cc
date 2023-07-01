@@ -27,11 +27,13 @@ limitations under the License.
 #include <ostream>
 #include <set>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -62,6 +64,23 @@ const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 // this amount multiplied by preferred overlap to async copy ratio.
 const float kEvictionRetryMultiplier = 2.0;
 
+template <typename T>
+std::string VectorToString(const std::vector<T>& v,
+                           bool include_indices = false, int start = 0,
+                           int end = std::numeric_limits<int>::max()) {
+  std::vector<std::string> elements;
+
+  for (int i = start; i < end && i < v.size(); ++i) {
+    std::string prefix;
+    if (include_indices) {
+      prefix = absl::StrCat(i, ": ");
+    }
+    elements.push_back(absl::StrCat(prefix, v[i]));
+  }
+
+  return absl::StrCat("[ ", absl::StrJoin(elements, ", "), " ]");
+}
+
 bool LooksLikeAnActivation(const HloInstruction* inst) {
   for (HloInstruction* user : inst->users()) {
     switch (user->opcode()) {
@@ -91,6 +110,16 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
           return true;
         }
         break;
+      case HloOpcode::kCopy:
+        if (user->IsFused() && (user == user->parent()->root_instruction())) {
+          user = user->parent()->FusionInstruction();
+          if (LooksLikeAnActivation(user)) {
+            return true;
+          } else {
+            break;
+          }
+        }
+        return true;
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicSlice:
         if (std::find(user->operands().begin() + 1, user->operands().end(),
@@ -4002,12 +4031,16 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t start_time,
 
 bool AsynchronousCopyResource::ConsumeResource(
     int64_t start_time, int64_t end_time, float resource,
-    bool update_current_resource,
+    absl::flat_hash_map<int64_t, float>* delay_change_map,
     const std::list<AsynchronousCopy>::iterator* current_copy,
     float resource_to_free) {
-  VLOG(3) << "Consume resource: " << start_time << ", " << end_time << ", "
-          << resource << ", delay: " << delay_[start_time + 1]
-          << ", free: " << resource_to_free;
+  // resource is modified below. We save its initial value for logging below.
+  const float amount_requested = resource;
+
+  VLOG(3) << "Consume resource: start time = " << start_time
+          << ", end time = " << end_time << ", resource = " << resource
+          << ", delay = " << delay_[start_time + 1]
+          << ", free = " << resource_to_free;
 
   // Nothing to do if we're not adding or removing any resources.
   if (resource == 0.0 && resource_to_free == 0.0) {
@@ -4051,11 +4084,14 @@ bool AsynchronousCopyResource::ConsumeResource(
       delay_for_next_copy = resource;
       resource_to_free -= resource_freed;
     }
-    if (update_current_resource && !delay_for_next_copy.has_value()) {
+    if (!delay_for_next_copy.has_value()) {
       // Update the delay_ vector and resource_freed variable with the amount
       // that was freed when removing the copy.
       float old_resource =
           std::max(0.0f, initial_resources_[time] - delay_[time]);
+      if (delay_change_map && !delay_change_map->contains(time)) {
+        (*delay_change_map)[time] = delay_[time];
+      }
       delay_[time] = std::max(0.0f, resource - resource_to_free);
       float new_resource =
           std::max(0.0f, initial_resources_[time] - delay_[time]);
@@ -4067,7 +4103,11 @@ bool AsynchronousCopyResource::ConsumeResource(
 
   // If resource isn't satisfied by the end, we didn't have enough resources.
   if (resource > 0) {
-    VLOG(3) << "Doesn't have enough resource; leftover resource = " << resource;
+    VLOG(5) << "Available resources: "
+            << VectorToString(GetCurrentResources(), /*include_indices=*/true,
+                              start_time + 1, end_time);
+    VLOG(3) << "Doesn't have enough resource; requested resource = "
+            << amount_requested << "; leftover resources = " << resource;
     return false;
   }
 
@@ -4077,15 +4117,14 @@ bool AsynchronousCopyResource::ConsumeResource(
   if (delay_for_next_copy.has_value()) {
     return ConsumeResource(next_copy->start_time, next_copy->end_time,
                            *delay_for_next_copy + next_copy->resource,
-                           update_current_resource, &next_copy,
-                           resource_to_free);
+                           delay_change_map, &next_copy, resource_to_free);
   }
   return true;
 }
 
 void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
-  CHECK(ConsumeResource(copy.start_time, copy.end_time, copy.resource,
-                        /*update_current_resource=*/true));
+  CHECK(ConsumeResource(copy.start_time, copy.end_time, copy.resource));
+
   // Find the iterator for the copy that would be right after this copy and put
   // this copy right before it in async_copies_.
   auto async_copy_time_it = async_copy_time_map_.upper_bound(copy.start_time);
@@ -4148,7 +4187,7 @@ void AsynchronousCopyResource::RemoveCopy(
   CHECK(std::next(copy_it) == async_copies_.end() ||
         std::next(copy_it)->start_time > copy_it->start_time);
   CHECK(ConsumeResource(copy_it->start_time, copy_it->end_time, /*resource=*/0,
-                        /*update_current_resource=*/true,
+                        /*delay_change_map=*/nullptr,
                         /*current_copy=*/nullptr,
                         /*resource_to_free=*/copy_it->resource));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
@@ -4171,8 +4210,100 @@ void AsynchronousCopyResource::RemoveCopy(
 bool AsynchronousCopyResource::HasEnoughResource(int64_t start_time,
                                                  int64_t end_time,
                                                  float resource) {
-  return ConsumeResource(start_time, end_time, resource,
-                         /*update_current_resource=*/false);
+  absl::flat_hash_map<int64_t, float> delay_changes;
+  bool result = ConsumeResource(start_time, end_time, resource, &delay_changes);
+  for (const auto& change_pair : delay_changes) {
+    delay_[change_pair.first] = change_pair.second;
+  }
+  return result;
+}
+
+bool AsynchronousCopyResource::HasEnoughResourceMultiCheck(
+    const std::vector<ResourceSpec>& specs) {
+  absl::flat_hash_map<int64_t, float> delay_changes;
+  bool result = absl::c_all_of(specs, [&](const ResourceSpec& spec) {
+    return ConsumeResource(spec.start_time, spec.end_time, spec.resource,
+                           &delay_changes);
+  });
+  for (const auto& change_pair : delay_changes) {
+    delay_[change_pair.first] = change_pair.second;
+  }
+  return result;
+}
+
+namespace {
+
+// A convenience struct for use in the implementation of
+// AsynchronousCopyResource::Dump().
+struct CopyResourceDumpData {
+  float initial_resource;
+  float delay;
+  float available;
+  std::vector<int> overlapping_copies;
+};
+
+}  // namespace
+
+std::string AsynchronousCopyResource::Dump(
+    int64_t start_time, int64_t end_time,
+    MemorySpaceAssignment::MemorySpace memory_space_filter) const {
+  std::vector<float> available = GetCurrentResources();
+  std::vector<CopyResourceDumpData> time_dump_data;
+  for (int i = start_time; i < end_time; ++i) {
+    time_dump_data.push_back({
+        initial_resources_[i],
+        delay_[i],
+        available[i],
+        /*overlapping_copies=*/{},
+    });
+  }
+
+  std::vector<std::string> lines;
+  lines.push_back(absl::StrCat("AsynchronousCopyResource::Dump(start_time: ",
+                               start_time, ", end_time: ", end_time, ")"));
+  for (const AsynchronousCopy& copy : async_copies_) {
+    if (copy.destination != memory_space_filter) {
+      continue;
+    }
+    int64_t overlap_start = std::max(start_time, copy.start_time);
+    int64_t overlap_end = std::min(end_time, copy.end_time);
+    if (overlap_start < overlap_end) {
+      lines.push_back(absl::StrCat(
+          "copy(id: ", copy.id, ", start: ", copy.start_time,
+          ", end: ", copy.end_time, ", resource: ", copy.resource, ")"));
+    }
+    for (int i = overlap_start; i < overlap_end; ++i) {
+      time_dump_data[i - start_time].overlapping_copies.push_back(copy.id);
+    }
+  }
+
+  std::vector<size_t> col_sizes;
+  std::vector<std::vector<std::string>> rows;
+  rows.push_back({"time", "initial", "delay", "avail", "overlapping copies"});
+  for (std::string_view col : rows.front()) {
+    col_sizes.push_back(col.size());
+  }
+  for (int i = 0; i < time_dump_data.size(); ++i) {
+    rows.push_back({absl::StrCat(i + start_time),
+                    absl::StrCat(time_dump_data[i].initial_resource),
+                    absl::StrCat(time_dump_data[i].delay),
+                    absl::StrCat(time_dump_data[i].available),
+                    absl::StrJoin(time_dump_data[i].overlapping_copies, ",")});
+    for (int j = 0; j < rows.back().size(); ++j) {
+      col_sizes[j] = std::max(col_sizes[j], rows.back()[j].size());
+    }
+  }
+  for (const std::vector<std::string>& row : rows) {
+    std::string line;
+    std::string sep;
+    for (int i = 0; i < col_sizes.size(); ++i) {
+      absl::StrAppend(&line, sep, row[i]);
+      sep = std::string(col_sizes[i] + 2 - row[i].size(), ' ');
+    }
+    lines.push_back(line);
+  }
+
+  return absl::StrJoin(lines, "\n");
 }
 
 AlternateMemoryBestFitHeap::AliasedOffset*
@@ -5111,7 +5242,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
 bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
     int64_t start_time, int64_t end_time, bool is_prefetch,
-    int64_t extra_async_copy_limit) const {
+    int64_t extra_async_copy_limit, int64_t num_additional_copies) const {
   if (options_.max_outstanding_prefetches < 0 && is_prefetch) {
     return false;
   }
@@ -5123,14 +5254,16 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
   if (is_prefetch) {
     int64_t num_prefetches =
         prefetch_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
-            .size();
-    return num_prefetches >=
+            .size() +
+        num_additional_copies;
+    return num_prefetches >
            options_.max_outstanding_prefetches + extra_async_copy_limit;
   } else {
     int64_t num_evictions =
         eviction_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
-            .size();
-    return num_evictions >=
+            .size() +
+        num_additional_copies;
+    return num_evictions >
            options_.max_outstanding_evictions + extra_async_copy_limit;
   }
 }
@@ -5552,6 +5685,21 @@ std::optional<AlternateMemoryBestFitHeap::Chunk>
 AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     const AllocationRequest& request, const AliasedOffset* preferred_offset,
     BufferInterval* alternate_mem_interval) const {
+  SlicedBufferInterval sliced_buffer_interval =
+      SlicedBufferInterval::CreateMutableInterval(*alternate_mem_interval);
+  std::vector<Chunk> chunks = FindBestChunkCandidates(request, preferred_offset,
+                                                      &sliced_buffer_interval);
+  CHECK_LE(chunks.size(), 1);
+  if (chunks.empty()) {
+    return std::nullopt;
+  }
+  return chunks[0];
+}
+
+std::vector<AlternateMemoryBestFitHeap::Chunk>
+AlternateMemoryBestFitHeap::FindBestChunkCandidates(
+    const AllocationRequest& request, const AliasedOffset* preferred_offset,
+    SlicedBufferInterval* alternate_mem_interval) const {
   int64_t end_time = request.end_time;
   if (!preferred_offset) {
     // First find the earliest use that is the same or later than the end time.
@@ -5573,40 +5721,58 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     CHECK(use_time_it != use_times.end());
     int64_t latest_contiguous_use_time = *use_time_it;
 
-    // Find a chunk that's as long living as possible.
-    std::optional<Chunk> last_chunk_candidate;
+    // Find chunks that are as long living as possible.
+    std::vector<Chunk> last_chunk_candidates;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
     (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
-          alternate_mem_interval->end = use;
-          Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);
-          if (chunk_candidate.chunk_end() <= available_heap_size()) {
+          alternate_mem_interval->UpdateEndTime(use);
+          std::vector<Chunk> chunk_candidates =
+              FindChunkCandidates(*alternate_mem_interval);
+          int64_t candidates_end =
+              absl::c_max_element(chunk_candidates, [](const Chunk& c1,
+                                                       const Chunk& c2) {
+                return c1.chunk_end() < c2.chunk_end();
+              })->chunk_end();
+          if (candidates_end <= available_heap_size()) {
             if (use > latest_matching_use) {
-              last_chunk_candidate = chunk_candidate;
+              last_chunk_candidates = std::move(chunk_candidates);
               latest_matching_use = use;
             }
             return true;
           }
           return false;
         });
-    if (last_chunk_candidate.has_value()) {
-      VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
+    if (!last_chunk_candidates.empty()) {
+      VLOG(3) << "FindBestChunkCandidates earliest use = " << earliest_use
               << ", latest contiguous use = " << latest_contiguous_use_time
               << ", use with available mem = " << latest_matching_use
-              << ", offset = " << last_chunk_candidate->offset;
+              << ", offsets = { "
+              << absl::StrJoin(last_chunk_candidates, ", ",
+                               [](std::string* out, const Chunk& c) {
+                                 absl::StrAppend(out, c.offset);
+                               })
+              << " }";
     }
-    alternate_mem_interval->end = end_time;
-    return last_chunk_candidate;
+    alternate_mem_interval->UpdateEndTime(end_time);
+    return last_chunk_candidates;
   }
   // If a preferred offset is given, try to find an allocation at that offset
   // only.
-  alternate_mem_interval->end = end_time;
-  Chunk chunk_candidate =
-      FindChunkCandidate(*alternate_mem_interval, preferred_offset->offset);
-  if (chunk_candidate.offset == preferred_offset->offset) {
-    return chunk_candidate;
+  alternate_mem_interval->UpdateEndTime(end_time);
+  std::vector<Chunk> chunk_candidates =
+      FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+  int64_t candidates_start =
+      absl::c_min_element(chunk_candidates, [](const Chunk& c1,
+                                               const Chunk& c2) {
+        return c1.offset < c2.offset;
+      })->offset;
+
+  if (candidates_start == preferred_offset->offset) {
+    return chunk_candidates;
   }
-  return std::nullopt;
+
+  return {};
 }
 
 StatusOr<MemorySpaceAssignment::AsyncCopyStats>

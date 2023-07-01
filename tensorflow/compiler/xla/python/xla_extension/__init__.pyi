@@ -17,7 +17,9 @@ import enum
 import inspect
 import types
 import typing
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing import (
+    Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
+    TypeVar, Union, overload)
 
 import numpy as np
 
@@ -292,6 +294,8 @@ class OpSharding:
   last_tile_dims: Sequence[Type]
   tile_assignment_dimensions: Sequence[int]
   tile_assignment_devices: Sequence[int]
+  iota_reshape_dims: Sequence[int]
+  iota_transpose_perm: Sequence[int]
   tuple_shardings: Sequence[OpSharding]
   def ParseFromString(self, s: bytes) -> None: ...
   def SerializeToString(self) -> bytes: ...
@@ -539,6 +543,7 @@ class LoadedExecutable:
   def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def keep_alive(self) -> None: ...
   def compile_options(self) -> CompileOptions: ...
+  def cost_analysis(self) -> Dict[str, Any]: ...
   traceback: Traceback
   fingerprint: Optional[bytes]
 

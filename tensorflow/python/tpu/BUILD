@@ -15,6 +15,7 @@ visibility = [
     "//learning/deepmind:__subpackages__",
     "//learning/serving:__subpackages__",
     "//research/graph:__subpackages__",
+    "//smartass/brain/configure:__subpackages__",
     "//third_party/py/jax_tpu_embedding:__subpackages__",
     "//third_party/py/lingvo:__subpackages__",
     "//third_party/py/medical_research_foundations:__subpackages__",

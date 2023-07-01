@@ -267,7 +267,8 @@ Offset<StableDelegateLoaderSettings> ConvertStableDelegateLoaderSettings(
     const proto::StableDelegateLoaderSettings& settings,
     FlatBufferBuilder& builder) {
   return CreateStableDelegateLoaderSettings(
-      builder, builder.CreateString(settings.delegate_path()));
+      builder, builder.CreateString(settings.delegate_path()),
+      builder.CreateString(settings.delegate_name()));
 }
 
 Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,

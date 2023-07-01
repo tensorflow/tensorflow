@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_CONSTANTS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_CONSTANTS_H_
 
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace xla {
 namespace ifrt {
 
 // Name of UnitAttr on FuncOp to indicate it's an IFRT IR function, telling it
 // apart from atom program FuncOps (callee of `ifrt.Call`).
-inline constexpr absl::string_view kIfrtFunctionAttrName = "ifrt.function";
+inline constexpr llvm::StringLiteral kIfrtFunctionAttrName = "ifrt.function";
 
 // Name of UnitAttr on arguments of FuncOp to indicate a donated input.
 // Must be used in a FuncOp with `ifrt.function` attr.
-inline constexpr absl::string_view kIfrtDonatedArgAttrName = "ifrt.donated";
+inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";
 
 }  // namespace ifrt
 }  // namespace xla

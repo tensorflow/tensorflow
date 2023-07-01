@@ -107,7 +107,6 @@ cuda_py_strict_test(
         "optonly",  # b/77589990
     ],
     deps = [
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
@@ -123,6 +122,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )

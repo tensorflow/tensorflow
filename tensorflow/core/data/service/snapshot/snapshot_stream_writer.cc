@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.h"
@@ -160,12 +161,43 @@ Status SnapshotStreamWriter::CommitChunk() {
     TF_RETURN_IF_ERROR(Save());
   }
   TF_RETURN_IF_ERROR(
-      params_.env->RenameFile(GetChunkFilePath(), GetCommittedChunkFilePath()));
+      ReplaceChunk(GetChunkFilePath(), GetCommittedChunkFilePath()));
   ++chunk_index_;
   metrics::RecordTFDataServiceSnapshotBytesCommitted(chunk_size_bytes_);
   chunk_size_bytes_ = 0;
   chunk_num_elements_ = 0;
   return OkStatus();
+}
+
+Status SnapshotStreamWriter::ReplaceChunk(
+    const std::string& uncommitted_chunk_filename,
+    const std::string& committed_chunk_filename) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::string> prior_chunks,
+      GetChildren(params_.CommittedChunksDirectory(), params_.env));
+  return ReplaceChunk(prior_chunks, uncommitted_chunk_filename,
+                      committed_chunk_filename);
+}
+
+Status SnapshotStreamWriter::ReplaceChunk(
+    const std::vector<std::string>& prior_chunks,
+    const std::string& uncommitted_chunk_filename,
+    const std::string& committed_chunk_filename) {
+  TF_ASSIGN_OR_RETURN(int64_t chunk_index,
+                      GetFileIndex(uncommitted_chunk_filename, "chunk"));
+  for (const std::string& prior_chunk : prior_chunks) {
+    if (absl::StartsWith(
+            prior_chunk,
+            absl::StrCat("chunk_", params_.stream_index, "_", chunk_index))) {
+      std::string prior_chunk_filename =
+          tsl::io::JoinPath(params_.CommittedChunksDirectory(), prior_chunk);
+      if (prior_chunk_filename != committed_chunk_filename) {
+        TF_RETURN_IF_ERROR(params_.env->DeleteFile(prior_chunk_filename));
+      }
+    }
+  }
+  return params_.env->RenameFile(uncommitted_chunk_filename,
+                                 committed_chunk_filename);
 }
 
 std::string SnapshotStreamWriter::GetChunkFilePath() const {
@@ -391,6 +423,10 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::string> uncommitted_chunks,
       GetChildren(params_.UncommittedChunksDirectory(), params_.env));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::string> committed_chunks,
+      GetChildren(params_.CommittedChunksDirectory(), params_.env));
+
   for (const std::string& uncommitted_chunk : uncommitted_chunks) {
     std::string uncommitted_chunk_filename = tsl::io::JoinPath(
         params_.UncommittedChunksDirectory(), uncommitted_chunk);
@@ -404,8 +440,9 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
           tsl::io::JoinPath(params_.CommittedChunksDirectory(),
                             absl::StrCat("chunk_", params_.stream_index, "_",
                                          chunk_index, "_", chunk_num_elements));
-      TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_chunk_filename,
-                                                 committed_chunk_filename));
+      TF_RETURN_IF_ERROR(ReplaceChunk(committed_chunks,
+                                      uncommitted_chunk_filename,
+                                      committed_chunk_filename));
     } else {
       TF_RETURN_IF_ERROR(params_.env->DeleteFile(uncommitted_chunk_filename));
     }

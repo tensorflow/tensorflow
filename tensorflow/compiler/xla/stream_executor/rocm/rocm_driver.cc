@@ -509,20 +509,16 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ bool GpuDriver::GetModuleFunction(GpuContext* context,
-                                               hipModule_t module,
-                                               const char* kernel_name,
-                                               hipFunction_t* function) {
+/* static */ tsl::Status GpuDriver::GetModuleFunction(GpuContext* context,
+                                                      hipModule_t module,
+                                                      const char* kernel_name,
+                                                      hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  hipError_t res = wrap::hipModuleGetFunction(function, module, kernel_name);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to get kernel \"" << kernel_name
-               << "\" from module: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleGetFunction(function, module, kernel_name),
+      "Failed to get kernel");
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetModuleSymbol(GpuContext* context,
@@ -1189,33 +1185,24 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
 }
 
-/* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
-                                           hipDevice_t device) {
+/* static */ tsl::Status GpuDriver::GetGridLimits(int* x, int* y, int* z,
+                                                  hipDevice_t device) {
   int value;
-  hipError_t res = wrap::hipDeviceGetAttribute(
-      &value, hipDeviceAttributeMaxGridDimX, device);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query max grid dim x: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimX, device),
+                       "failed to query max grid dim x");
   *x = value;
 
-  res = wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY,
-                                    device);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query max grid dim y: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimY, device),
+                       "failed to query max grid dim y");
   *y = value;
 
-  res = wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ,
-                                    device);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query max grid dim z: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimZ, device),
+                       "failed to query max grid dim z");
   *z = value;
-  return true;
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetDriverVersion(int* driver_version) {

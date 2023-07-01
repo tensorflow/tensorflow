@@ -27,6 +27,7 @@ echo ""
 export PYTHON_BIN_PATH=`which python3`
 
 export TF_NEED_ROCM=0
+export TF_NEED_CLANG=0
 
 yes "" | $PYTHON_BIN_PATH configure.py
 

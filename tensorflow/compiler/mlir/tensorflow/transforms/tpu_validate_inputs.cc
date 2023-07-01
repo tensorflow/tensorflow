@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -47,7 +48,7 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 constexpr char kXLAShardingAttr[] = "_XlaSharding";
-constexpr char kXLAShardingAttr2[] = "sharding";
+constexpr char kShardingAttr[] = "sharding";
 
 typedef std::unordered_map<std::string, TF::TPUReplicateMetadataOp> MetadataMap;
 
@@ -452,9 +453,41 @@ void GetFlattenedShardings(llvm::SmallVector<xla::OpSharding>& shardings_result,
   }
 }
 
+bool IsValidShardingTupleForArity(Operation* op) {
+  if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kShardingAttr)) {
+    return true;
+  }
+  std::string shard_string;
+  if (op->hasAttr(kXLAShardingAttr)) {
+    shard_string =
+        op->getAttrOfType<StringAttr>(kXLAShardingAttr).strref().str();
+  } else {
+    shard_string = op->getAttrOfType<StringAttr>(kShardingAttr).strref().str();
+  }
+  xla::OpSharding sharding;
+  if (!shard_string.empty() && sharding.ParseFromString(shard_string)) {
+    // Only checking op with TUPLE sharding
+    if (sharding.type() != xla::OpSharding::TUPLE) {
+      return true;
+    }
+    // Each output is expected to have a corresponding sharding given by
+    // tuple shardings. So, the no. of outputs (arity) should be same as
+    // number of tuple shardings.
+    if (sharding.tuple_shardings().size() != op->getNumResults()) {
+      op->emitOpError(
+          "TF2XLA TPU bridge input check: invalid no. of tuple shardings ")
+          << sharding.tuple_shardings().size()
+          << " for arity = " << op->getNumResults() << "\n The sharding is "
+          << sharding.DebugString() << "\n";
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
   if (!op->hasAttr(TF::kTpuReplicateAttr)) return true;
-  if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kXLAShardingAttr2)) {
+  if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kShardingAttr)) {
     return true;
   }
 
@@ -472,11 +505,11 @@ bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
   }
   num_cores_per_replica = metadata_map[cluster].getNumCoresPerReplica();
   std::optional<StringRef> shard_string;
-  if (op->hasAttr(kXLAShardingAttr))
+  if (op->hasAttr(kXLAShardingAttr)) {
     shard_string = op->getAttrOfType<StringAttr>(kXLAShardingAttr).strref();
-  else
-    shard_string = op->getAttrOfType<StringAttr>(kXLAShardingAttr2).strref();
-
+  } else {
+    shard_string = op->getAttrOfType<StringAttr>(kShardingAttr).strref();
+  }
   llvm::SmallVector<xla::OpSharding> shardings;
   GetFlattenedShardings(shardings, shard_string.value().str());
 
@@ -527,6 +560,7 @@ void TPUValidateInputsPass::runOnOperation() {
     }
     if (IsTpuRegularOp(op)) {
       success &= IsValidMAXIMALSharding(op, metadata_map);
+      success &= IsValidShardingTupleForArity(op);
     }
   });
   if (!success) {

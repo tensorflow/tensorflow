@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@ limitations under the License.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
 #endif
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -1568,6 +1570,13 @@ class AsynchronousCopyOrdering {
 // resource is subtracted to keep track of the current state.
 class AsynchronousCopyResource {
  public:
+  // A specification of needed asynchronous copy resources.
+  struct ResourceSpec {
+    int64_t start_time;
+    int64_t end_time;
+    float resource;
+  };
+
   AsynchronousCopyResource() = default;
 
   // The constructor needs the initial resources.
@@ -1587,6 +1596,10 @@ class AsynchronousCopyResource {
   // be satisfied.
   bool HasEnoughResource(int64_t start_time, int64_t end_time, float resource);
 
+  // Returns true if a set of copy specifications can be satisfied in the
+  // order specified.
+  bool HasEnoughResourceMultiCheck(const std::vector<ResourceSpec>& specs);
+
   // This is only used for debugging and testing purposes, it returns the
   // currently available resource at each logical time.
   std::vector<float> GetCurrentResources() const {
@@ -1598,13 +1611,23 @@ class AsynchronousCopyResource {
     return current_resources;
   }
 
+  // A useful debugging tool for printing several pieces of information about
+  // AsynchronousCopyResource.
+  std::string Dump(
+      int64_t start_time, int64_t end_time,
+      MemorySpaceAssignment::MemorySpace memory_space_filter) const;
+
  private:
   // Internal helper method to implement adding/removing/checking resources.
-  // Only updates the current resources if update_current_resource is true. The
-  // current_copy points to an iterator in async_copies_ and this
+  // ConsumeResource() may modify delay_. If delay_change_map is not null,
+  // for any change to delay_[i], {i, delay_[i]} will be added to
+  // delay_change_map, allowing callers to undo any modifications. The
+  // current_copy points to an iterator in async_copies_ and this indicates the
+  // copy that we are processing, which is only used when recursing, to
+  // propagate the delay to the next copy.
   bool ConsumeResource(
       int64_t start_time, int64_t end_time, float resource,
-      bool update_current_resource,
+      absl::flat_hash_map<int64_t, float>* delay_change_map = nullptr,
       const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
 
@@ -2161,6 +2184,11 @@ class AlternateMemoryBestFitHeap
   std::optional<Chunk> FindBestChunkCandidate(
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       BufferInterval* alternate_mem_interval) const;
+  // The same as FindBestChunkCandidate() but allocates the request in slices.
+  // The ith returned chunk should be allocated at slice time i.
+  std::vector<Chunk> FindBestChunkCandidates(
+      const AllocationRequest& request, const AliasedOffset* preferred_offset,
+      SlicedBufferInterval* alternate_mem_interval) const;
 
   // Returns the required assignment at a particular time, if available.
   std::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
@@ -2206,13 +2234,14 @@ class AlternateMemoryBestFitHeap
   // to avoid unnecessarily adding the chunk to the chunk map.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
-  // Returns true if the addition of an asynchronous copy in the given time
-  // interval would violate the maximum number of asynchronous copies. An extra
-  // async copy limit can be provided to increase the limit of asynchronous
-  // copies for this instance.
+  // Returns true if the addition of num_additional_copies asynchronous copies
+  // in the given time interval would violate the maximum number of asynchronous
+  // copies. An extra  async copy limit can be provided to increase the limit of
+  // asynchronous copies for this instance.
   bool ViolatesMaximumOutstandingAsyncCopies(
       int64_t start_time, int64_t end_time, bool is_prefetch,
-      int64_t extra_async_copy_limit = 0) const;
+      int64_t extra_async_copy_limit = 0,
+      int64_t num_additional_copies = 1) const;
 
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.

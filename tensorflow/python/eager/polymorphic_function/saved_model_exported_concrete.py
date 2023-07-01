@@ -36,11 +36,11 @@ class ExportedConcreteFunction(trackable.Trackable):
     self.tensor_map = tensor_map
 
   def __call__(self, *args, **kwargs):
-    args, kwargs = function_type_utils.canonicalize_function_inputs(
+    bound_arguments = function_type_utils.canonicalize_function_inputs(
         args, kwargs, self.function._function_type
     )
     filtered_flat_args = self.function._function_type.unpack_inputs(
-        args, kwargs
+        bound_arguments
     )
     export_captures = _map_captures_to_created_tensors(
         self.function.graph.captures, self.tensor_map, self.function)

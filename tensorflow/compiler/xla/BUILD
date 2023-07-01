@@ -6,10 +6,6 @@ load(
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
-load(
-    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1128,23 +1124,6 @@ xla_py_proto_library(
     deps = [
         ":autotune_results_proto",
     ],
-)
-
-cc_library(
-    name = "autotune_serialize",
-    srcs = if_cuda_is_configured(["autotune_serialize.cc"]),
-    hdrs = if_cuda_is_configured(["autotune_serialize.h"]),
-    # TODO(aminim): There appears to be an in-progress refactoring in TF/XLA to
-    # mark rules as compatible_with GCE.  The rules that this depends on are
-    # not yet marked as compatible, so this one can't be either (yet).
-    compatible_with = [],
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":autotune_results_proto_cc",
-        ":statusor",
-        "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
-    ]),
 )
 
 cc_library(

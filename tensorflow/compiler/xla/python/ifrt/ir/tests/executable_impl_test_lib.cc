@@ -54,7 +54,7 @@ module {
   func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
       -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
       attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) {devices=array<i32: 0, 1>}
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
         : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
         -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
     return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
@@ -142,7 +142,7 @@ TEST_F(IfrtIrExecutableImplTest, ZeroInput) {
 module {
   func.func @main() -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
       attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @one() {devices=array<i32: 0, 1>}
+    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1]
         : () -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
     return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
   }
@@ -178,7 +178,7 @@ TEST_F(IfrtIrExecutableImplTest, ZeroOutput) {
 module {
   func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
       attributes {ifrt.function} {
-    %ctrl_0 = ifrt.Call @add_one(%arg0) {devices=array<i32: 0, 1>}
+    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
         : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>) -> ()
     return
   }
@@ -223,8 +223,8 @@ module {
           {ifrt.donated})
       -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
       attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @add_one(%arg0)
-        {devices=array<i32: 0, 1>, io_aliases=[array<i32: 0, 0>]}
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>]}
         : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
         -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
     return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
@@ -315,7 +315,7 @@ module {
     return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
   }
 
-  ifrt.LoadedExecutable @add_one {devices=array<i32: 0, 1>}
+  ifrt.LoadedExecutable @add_one on devices [0,1]
       : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
       -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 }

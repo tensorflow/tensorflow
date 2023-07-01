@@ -405,6 +405,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
 
 GraphExecutor::GraphExecutor(
     Options options, const FallbackState& fallback_state,
+    std::unique_ptr<tfrt::ResourceContext> resource_context,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
@@ -412,15 +413,15 @@ GraphExecutor::GraphExecutor(
       fallback_state_(fallback_state),
       graph_execution_state_(std::move(graph_execution_state)),
       req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
-      kernel_registry_(std::move(kernel_registry)) {
+      kernel_registry_(std::move(kernel_registry)),
+      resource_context_(std::move(resource_context)) {
+  DCHECK(resource_context_);
   SetSessionCreatedMetric();
-  // Creates a ResourceContext and populate it with per model resource from
-  // Runtime.
-  options_.runtime->CreateRuntimeResources(options_, &resource_context_);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, const FallbackState& fallback_state,
+    std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
   if (options.runtime == nullptr) {
@@ -441,9 +442,9 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
                                       std::move(graph_def), fallback_state));
-  return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
-                                         std::move(graph_execution_state),
-                                         std::move(kernel_registry));
+  return std::make_unique<GraphExecutor>(
+      std::move(options), fallback_state, std::move(resource_context),
+      std::move(graph_execution_state), std::move(kernel_registry));
 }
 
 namespace {
@@ -551,7 +552,8 @@ tensorflow::Status GraphExecutor::Run(
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name(),
       loaded_client_graph.symbol_uids(), func, loaded_executable, flat_inputs,
-      &flat_outputs, &resource_context_, &executable_context->resource_context,
+      &flat_outputs, resource_context_.get(),
+      &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
       &req_deadline_tracker_, cost_recorder.get()));
@@ -603,6 +605,11 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto compile_start_time = absl::Now();
   mlir::OwningOpRef<mlir::ModuleOp> module_with_op_keys;
   std::shared_ptr<ExecutableContext> executable_context = nullptr;
+
+  ModelRuntimeContext model_context(&options_,
+                                    options_.compile_options.saved_model_dir,
+                                    resource_context_.get());
+
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
@@ -620,14 +627,16 @@ GraphExecutor::ImportAndCompileClientGraph(
         auto bytecode_buffer,
         tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
             options_.compile_options, fallback_state_, module.get(),
-            &module_with_op_keys));
+            model_context, &module_with_op_keys));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bytecode_buffer), std::move(bytecode_executable));
   } else {
-    ASSIGN_OR_RETURN_IN_COMPILE(auto bef, CompileMlirModuleToBef(module.get()));
+    tfrt::BefBuffer bef;
+    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+        options_.compile_options, module.get(), &bef, model_context));
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(runtime(), bef));
     executable_context = std::make_shared<ExecutableContext>(
@@ -643,7 +652,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context));
+      std::move(executable_context), options_.enable_online_cost_analysis);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
@@ -703,14 +712,6 @@ GraphExecutor::ImportClientGraphToMlirModule(
       optimized_graph.graph->flib_def(), graph_import_config, context);
 }
 
-StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
-    mlir::ModuleOp module) const {
-  tfrt::BefBuffer bef;
-  TF_RETURN_IF_ERROR(
-      tensorflow::ConvertTfMlirToBef(options_.compile_options, module, &bef));
-  return bef;
-}
-
 tensorflow::Status GraphExecutor::InitBef(
     LoadedClientGraph* loaded_client_graph,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
@@ -718,7 +719,7 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(
-          options_, /*run_options=*/{}, work_queue, &resource_context_,
+          options_, /*run_options=*/{}, work_queue, resource_context_.get(),
           /*client_graph_resource_context=*/nullptr,
           &loaded_client_graph->runner_table(),
           &loaded_client_graph->resource_array(), fallback_state_));
@@ -745,7 +746,7 @@ tensorflow::Status GraphExecutor::InitBytecode(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
+                        options_.runtime->work_queue(), resource_context_.get(),
                         /*client_graph_resource_context=*/nullptr,
                         &loaded_graph->runner_table(),
                         &loaded_graph->resource_array(), fallback_state_));
@@ -865,7 +866,7 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
       &fallback_state_.get().process_function_library_runtime());
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
-      &kernel_fallback_state, &resource_context_);
+      &kernel_fallback_state, resource_context_.get());
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function = executable_context->bytecode_executable->GetFunction(

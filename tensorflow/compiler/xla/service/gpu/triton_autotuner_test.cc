@@ -151,9 +151,11 @@ class TritonAutotunerTest : public HloTestBase {
                                              .cuda_compute_capability());
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
+    DebugOptions opts;
     pipeline.AddPass<TritonAutotuner>(
-        DeviceConfig{backend().default_stream_executor(),
-                     backend().memory_allocator()},
+        AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
+                                    backend().memory_allocator()},
+                       opts},
         &thread_pool);
 
     RunAndFilecheckHloRewrite(
@@ -299,7 +301,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TritonAutotuner::ClearAutotuneResults();
+  AutotunerUtil::ClearAutotuneResults();
 
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
     MatchOptimizedHlo(kHloText, R"(

@@ -359,7 +359,6 @@ def make_canonicalized_monomorphic_type(
     kwargs: Any,
     capture_types: Any,
     polymorphic_type,
-    default_values,
 ) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
   """Generates function type given the function arguments."""
   kwargs = {
@@ -367,9 +366,9 @@ def make_canonicalized_monomorphic_type(
       for name, value in kwargs.items()
   }
 
-  _, function_type, type_context = (
+  function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
-          args, kwargs, default_values, capture_types, polymorphic_type
+          args, kwargs, {}, capture_types, polymorphic_type
       )
   )
 
@@ -415,10 +414,10 @@ def canonicalize_function_inputs(
   default_values = {} if not default_values else default_values
   if is_pure:
     args, kwargs = _convert_variables_to_tensors(args, kwargs)
-  args, kwargs = bind_function_inputs(
+  bound_arguments = bind_function_inputs(
       args, kwargs, function_type, default_values
   )
-  return args, kwargs
+  return bound_arguments
 
 
 def bind_function_inputs(args, kwargs, function_type, default_values):
@@ -444,7 +443,7 @@ def bind_function_inputs(args, kwargs, function_type, default_values):
         f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
         f" {function_type}."
     ) from e
-  return bound_arguments.args, bound_arguments.kwargs
+  return bound_arguments
 
 
 def _validate_signature(signature):

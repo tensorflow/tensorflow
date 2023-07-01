@@ -88,6 +88,7 @@ cc_library(
     deps = [
         ":tf_xla_passes_inc_gen",
         ":xla_legalize_tf",
+        ":xla_legalize_tf_passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -222,6 +223,7 @@ tf_cc_test(
         ":test_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/core:test",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -229,13 +231,13 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
-        "convert_mhlo_quant_to_int.cc",
         "infeed_ops_xla_adjust_layout.cc",
         "legalize_tf_collective.cc",
         "legalize_tf_communication.cc",
@@ -257,7 +259,6 @@ cc_library(
         ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:math_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -493,11 +494,7 @@ cc_library(
     name = "legalization_op_config",
     srcs = ["legalization_op_config.cc"],
     hdrs = ["legalization_op_config.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
-        "@llvm-project//mlir:IR",
-    ],
+    deps = ["@llvm-project//mlir:IR"],
 )
 
 tf_cc_test(

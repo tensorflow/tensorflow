@@ -79,12 +79,13 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Enable once CUDA Graphs are fully supported.
+  // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
+  // integration.
   opts.set_xla_gpu_cuda_graph_level(0);
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
-  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(true);
+  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -134,6 +135,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
+  opts.set_xla_gpu_enable_triton_softmax_fusion(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -144,6 +146,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_experimental_block_size(false);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
+  opts.set_xla_gpu_enable_priority_fusion(false);
+
+  opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
+  opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
   return opts;
 }
 
@@ -218,6 +224,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                                const std::string& value)) {
     return [debug_options, member_setter](const std::string& value) {
       (debug_options->*member_setter)(value);
+      return true;
+    };
+  };
+
+  auto float_setter_for = [](void (DebugOptions::*member_setter)(float)) {
+    return [member_setter](float value) {
+      (flag_values->*member_setter)(value);
       return true;
     };
   };
@@ -1031,6 +1044,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_triton_softmax_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_softmax_fusion),
+      debug_options->xla_gpu_enable_triton_softmax_fusion(),
+      "Use Triton-based Softmax fusion."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_int8x32_convolution_reordering",
       bool_setter_for(
           &DebugOptions::
@@ -1054,6 +1072,42 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),
       debug_options->xla_gpu_exhaustive_tiling_search(),
       "Enable (slow) search for the Triton GEMM fusion tilings."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_priority_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_priority_fusion),
+      debug_options->xla_gpu_enable_priority_fusion(),
+      "Enable priority queue for fusion order."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotune_results_to",
+      string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),
+      debug_options->xla_gpu_dump_autotune_results_to(),
+      "File to write autotune results to. It will be a binary file unless the "
+      "name ends with .txt or .textproto. Warning: The results are written at "
+      "every compilation, possibly multiple times per process. This only works "
+      "on CUDA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_load_autotune_results_from",
+      string_setter_for(&DebugOptions::set_xla_gpu_load_autotune_results_from),
+      debug_options->xla_gpu_load_autotune_results_from(),
+      "File to load autotune results from. It will be considered a binary file "
+      "unless the name ends with .txt or .textproto. It will be loaded at most "
+      "once per process. This only works on CUDA."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_auto_spmd_partitioning_memory_budget_gb),
+      debug_options->xla_gpu_auto_spmd_partitioning_memory_budget_gb(),
+      "Memory budget in GB per device for AutoSharding."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_auto_spmd_partitioning_memory_budget_ratio",
+      float_setter_for(
+          &DebugOptions::
+              set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio),
+      debug_options->xla_gpu_auto_spmd_partitioning_memory_budget_ratio(),
+      "Enabled when xla_gpu_auto_spmd_partitioning_memory_budget_gb is 0. "
+      "The memory budget is set to "
+      "xla_gpu_auto_spmd_partitioning_memory_budget_ratio times the estimated "
+      "memory usage lower bound."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

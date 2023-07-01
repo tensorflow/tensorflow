@@ -40,6 +40,11 @@ update_bazel_flags() {
   echo "Bazel test flags (cleaned):\n" "${TF_TEST_FLAGS}"
 }
 
+DEFAULT_PROJECT_NAME="tensorflow"
+DEFAULT_AUDITWHEEL_TARGET_PLAT="manylinux2014"
+PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
+AUDITWHEEL_TARGET_PLAT=${TF_AUDITWHEEL_TARGET_PLAT:-$DEFAULT_AUDITWHEEL_TARGET_PLAT}
+
 sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tmpfs
 sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tensorflow
 sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
@@ -54,6 +59,12 @@ python_version=$(python3 -c 'import sys; print("python"+str(sys.version_info.maj
 
 # Setup virtual environment
 setup_venv_ubuntu ${python_version}
+
+# Need to update the version of auditwheel used for aarch64
+python3 -m pip install auditwheel~=5.3.0
+
+# Need to use the python from the venv
+export PYTHON_BIN_PATH=$(which python3)
 
 # Env vars used to avoid interactive elements of the build.
 export HOST_C_COMPILER=(which gcc)
@@ -109,18 +120,9 @@ sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
 export SETUPTOOLS_USE_DISTUTILS=stdlib
 
-# Obtain the path to python binary as written by ./configure if it was run.
-if [[ -e tools/python_bin_path.sh ]]; then
-  source tools/python_bin_path.sh
-fi
-# Assume PYTHON_BIN_PATH is exported by the script above or the caller.
-if [[ -z "$PYTHON_BIN_PATH" ]]; then
-  die "PYTHON_BIN_PATH was not provided. Did you run configure?"
-fi
-
 # Local variables
 WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/whl"
-mkdir -p "${WHL_DIR}"
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d ${WHL_DIR}
 WHL_DIR=$(realpath "${WHL_DIR}") # Get absolute path
 
 # Determine the major.minor versions of python being used (e.g., 3.7).
@@ -130,10 +132,10 @@ PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>
 update_bazel_flags
 
 bazel build \
-  --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
-  ${TF_BUILD_FLAGS} \
-  //tensorflow/tools/pip_package:build_pip_package \
-  || die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
+    --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    ${TF_BUILD_FLAGS} \
+    //tensorflow/tools/pip_package:build_pip_package \
+    || die "Error: Bazel build failed for target: //tensorflow/tools/pip_package:build_pip_package"
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${WHL_DIR} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
@@ -164,15 +166,13 @@ else
   die "WARNING: Cannot find repaired wheel."
 fi
 
-
 bazel test ${TF_TEST_FLAGS} \
-    --repo_env=PYTHON_BIN_PATH="${PYTHON_BIN_PATH}" \
+    --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
     --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \
     --build_tests_only \
     -- ${TF_TEST_TARGETS}
-
 
 # remove duplicate wheel and copy wheel to mounted volume for local access
 rm -rf ${WHL_DIR}/*linux_aarch64.whl && cp -r ${WHL_DIR} .

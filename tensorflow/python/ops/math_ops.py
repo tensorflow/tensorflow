@@ -1076,6 +1076,9 @@ def saturate_cast(value, dtype, name=None):
 
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
+
+    # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
+    #                     behavior.
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
       # The output min/max may not actually be representable in the
       # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
@@ -1085,17 +1088,14 @@ def saturate_cast(value, dtype, name=None):
       # to a value less than the true saturation limit, but this is the best we
       # can do in order to avoid UB without introducing a separate SaturateCast
       # op.
-      min_limit = in_dtype.as_numpy_dtype(out_real_dtype.min)
+      np_dtype = in_dtype.as_numpy_dtype
+      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
       if min_limit < out_real_dtype.min:
-        min_limit = np.nextafter(
-            out_real_dtype.min, 0, dtype=in_dtype.as_numpy_dtype
-        )
+        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-      max_limit = in_dtype.as_numpy_dtype(out_real_dtype.max)
+      max_limit = np_dtype(np.minimum(in_dtype.max, out_real_dtype.max))
       if max_limit > out_real_dtype.max:
-        max_limit = np.nextafter(
-            out_real_dtype.max, 0, dtype=in_dtype.as_numpy_dtype
-        )
+        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
       value = gen_math_ops._clip_by_value(
           value,

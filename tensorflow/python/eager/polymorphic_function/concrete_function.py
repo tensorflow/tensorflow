@@ -1197,11 +1197,11 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       TypeError: if `args` and `kwargs` do not match the structured signature
         of this `ConcreteFunction`.
     """
-    args, kwargs = (
+    bound_args = (
         function_type_utils.canonicalize_function_inputs(
             args, kwargs, self.function_type)
     )
-    filtered_flat_args = self.function_type.unpack_inputs(args, kwargs)
+    filtered_flat_args = self.function_type.unpack_inputs(bound_args)
     return self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs)

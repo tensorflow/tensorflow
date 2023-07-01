@@ -34,6 +34,7 @@ fi
 export PYTHON_BIN_PATH=`which python3`
 
 export TF_NEED_ROCM=1
+export TF_NEED_CLANG=0
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
 yes "" | $PYTHON_BIN_PATH configure.py

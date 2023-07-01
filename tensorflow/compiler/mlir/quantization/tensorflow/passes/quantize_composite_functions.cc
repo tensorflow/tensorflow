@@ -12,10 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -47,9 +46,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
@@ -65,6 +64,8 @@ namespace {
 using QuantMethod =
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
 
+constexpr absl::string_view kQuantizeCompositeFunctionsStepName =
+    "_quantize_composite_functions";
 constexpr StringRef kQuantizeFuncName = "quantize_i8";
 constexpr StringRef kDequantizeFuncName = "dequantize_i8";
 constexpr StringRef kAttrMapAttribute = "attr_map";
@@ -85,9 +86,11 @@ class QuantizeCompositeFunctionsPass
       const QuantMethod quantization_method, const OpSet target_opset,
       const bool enable_per_channel_quantization,
       const int min_num_elements_for_weights,
-      const bool enable_legacy_weight_only)
+      const bool enable_legacy_weight_only,
+      std::optional<const std::string> mlir_dump_file_name)
       : enable_legacy_weight_only_(enable_legacy_weight_only),
-        min_num_elements_for_weights_(min_num_elements_for_weights) {
+        min_num_elements_for_weights_(min_num_elements_for_weights),
+        mlir_dump_file_name_(std::move(mlir_dump_file_name)) {
     quantization_method_ = quantization_method;
     target_opset_ = target_opset;
     enable_per_channel_quantization_ = enable_per_channel_quantization;
@@ -99,6 +102,7 @@ class QuantizeCompositeFunctionsPass
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
     min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
     enable_legacy_weight_only_ = other.enable_legacy_weight_only_;
+    mlir_dump_file_name_ = other.mlir_dump_file_name_;
   }
 
   StringRef getArgument() const final {
@@ -122,6 +126,7 @@ class QuantizeCompositeFunctionsPass
 
   bool enable_legacy_weight_only_;
   int min_num_elements_for_weights_;
+  std::optional<std::string> mlir_dump_file_name_;
 
   // These flags are only used for testing purpose.
   Option<QuantMethod> quantization_method_{
@@ -1232,7 +1237,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
         CreateQuantizePass(quant_specs, target_opset_));
     pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   }
-  if (failed(pm.run(module))) {
+
+  absl::Status pm_run_status = tensorflow::quantization::RunPassesOnModuleOp(
+      mlir_dump_file_name_, pm, module);
+  if (!pm_run_status.ok()) {
     signalPassFailure();
   }
 
@@ -1275,10 +1283,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     const QuantMethod quantization_method, const OpSet target_opset,
     const bool enable_per_channel_quantization,
     const int min_num_elements_for_weights,
-    const bool enable_legacy_weight_only) {
+    const bool enable_legacy_weight_only,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
+  std::optional<std::string> mlir_dump_file_name;
+  if (mlir_dump_file_prefix) {
+    mlir_dump_file_name = absl::StrCat(mlir_dump_file_prefix.value(),
+                                       kQuantizeCompositeFunctionsStepName);
+  }
   return std::make_unique<QuantizeCompositeFunctionsPass>(
       quantization_method, target_opset, enable_per_channel_quantization,
-      min_num_elements_for_weights, enable_legacy_weight_only);
+      min_num_elements_for_weights, enable_legacy_weight_only,
+      mlir_dump_file_name);
 }
 
 }  // namespace quant

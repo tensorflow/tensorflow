@@ -165,6 +165,7 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/mlrt/attribute",
         "//tensorflow/core/tfrt/mlrt/bytecode",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "@llvm-project//mlir:IR",

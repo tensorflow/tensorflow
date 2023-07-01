@@ -203,6 +203,7 @@ cuda_py_strict_test(
     shard_count = 8,
     tags = ["optonly"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -404,6 +405,7 @@ cuda_py_strict_test(
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",

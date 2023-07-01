@@ -1291,8 +1291,8 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const;
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

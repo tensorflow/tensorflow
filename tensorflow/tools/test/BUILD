@@ -1,6 +1,7 @@
 # Description:
 # Tools for testing
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_cc_logged_benchmark",
@@ -18,7 +19,7 @@ exports_files([
     "run_and_gather_logs.py",
 ])
 
-py_library(
+py_strict_library(
     name = "system_info_lib",
     srcs = [
         "gpu_info_lib.py",
@@ -26,26 +27,25 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
-        "@six_archive//:six",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "system_info",
     srcs = ["system_info.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":system_info_lib",
+        "@absl_py//absl:app",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "run_and_gather_logs_lib",
     srcs = [
         "run_and_gather_logs_lib.py",
@@ -55,12 +55,10 @@ py_library(
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",
-        "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
     python_version = "PY3",
@@ -72,7 +70,7 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "run_and_gather_logs_main_lib",
     srcs = ["run_and_gather_logs.py"],
     srcs_version = "PY3",
@@ -83,7 +81,8 @@ py_library(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
-        "@six_archive//:six",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

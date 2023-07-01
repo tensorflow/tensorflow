@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -2242,6 +2243,12 @@ OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
     return {};
   }
 
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
+    return {};
+  }
+
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
@@ -2327,6 +2334,12 @@ OpFoldResult BroadcastInDimOp::fold(FoldAdaptor adaptor) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     }
+    return {};
+  }
+
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
     return {};
   }
 

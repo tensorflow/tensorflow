@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// \warning Users of TensorFlow Lite should not include this file directly,
-/// but should instead include "third_party/tensorflow/lite/c/c_api.h".
-/// Only the TensorFlow Lite implementation itself should include this
-/// file directly.
+// \warning Note: Users of TensorFlow Lite should not include this file
+// directly, but should instead include
+// "third_party/tensorflow/lite/c/c_api.h". Only the TensorFlow Lite
+// implementation itself should include this
+// file directly.
+
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_H_
 
@@ -29,9 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/registration_external.h"  // IWYU pragma: export
 
-// --------------------------------------------------------------------------
-/// \file
-/// C API for TensorFlow Lite.
+/// C API for TensorFlow Lite:
 ///
 /// The API leans towards simplicity and uniformity instead of convenience, as
 /// most usage will be by language-specific wrappers. It provides largely the
@@ -75,12 +75,15 @@ limitations under the License.
 /// TfLiteInterpreterDelete(interpreter);
 /// TfLiteInterpreterOptionsDelete(options);
 /// TfLiteModelDelete(model);
-///
 /// </code></pre>
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+/** \addtogroup c_api tensorflow/lite/c/c_api.h
+ *  @{
+ */
 
 // This header should be valid in both C (e.g. C99) and C++,
 // so 'void' in parameters is not redundant.
@@ -464,6 +467,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteTensorCopyToBuffer(
     size_t output_data_size);
 
 // NOLINTEND(modernize-redundant-void-arg)
+
+/** @} */
 
 #ifdef __cplusplus
 }  // extern "C"

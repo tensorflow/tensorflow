@@ -10,6 +10,11 @@ package(
 glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
+    # TODO: b/288344501 - Enable OSS tests again when stable-quant-opt works well.
+    default_tags = [
+        "no_oss",
+        "no_pip",
+    ],
     driver = "//tensorflow/compiler/mlir/quantization/stablehlo:run_lit.sh",
     size_override = {
     },

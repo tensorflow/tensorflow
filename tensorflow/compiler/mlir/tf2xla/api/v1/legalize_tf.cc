@@ -195,9 +195,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   // phase has not identified unsupported features.
   // Enabling op fallback also enables whole graph fallback if op by op
   // fallback failed.
-  bool enable_op_fallback =
-      std::get<0>(computation).rollout_state !=
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  bool enable_op_fallback = true;
 
   Status mlir_bridge_status = tsl::OkStatus();
   {

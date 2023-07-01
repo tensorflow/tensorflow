@@ -34,7 +34,7 @@ class ConcurrentRegionStatus {
  public:
   explicit ConcurrentRegionStatus(
       const ServiceExecutableRunOptions* run_options,
-      int max_num_borrowed_streams = 10);
+      int num_borrowed_streams = 10);
 
   ~ConcurrentRegionStatus();
 
@@ -44,12 +44,12 @@ class ConcurrentRegionStatus {
   // Get a stream on which the concurrent-executable kernel runs. It returns a
   // different stream each time to avoid building dependencies in the CUDA
   // graph.
-  absl::StatusOr<se::Stream*> GetNextStream();
+  se::Stream* GetNextStream();
 
   bool IsInConcurrentRegion();
 
  private:
-  const int max_num_borrowed_streams_;
+  int num_borrowed_streams_;
   std::vector<StreamPool::Ptr> borrowed_streams_;
 
   int32_t stream_index_;

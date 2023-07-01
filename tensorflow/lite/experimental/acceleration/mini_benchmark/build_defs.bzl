@@ -18,6 +18,8 @@ load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
 )
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "add_suffix")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps")
 
 def embedded_binary(name, binary, array_variable_name, testonly = False):
     """Create a cc_library that embeds a binary as constant data.
@@ -170,5 +172,44 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
                 "//tensorflow/lite/acceleration/configuration:gpu_plugin",
             ],
             "//conditions:default": [],
-        }),
+        }) + libjpeg_handle_deps(),
+    )
+
+def cc_library_with_forced_in_process_benchmark_variant(
+        name,
+        deps = [],
+        in_process_deps = [],
+        **kwargs):
+    """Defines a cc_library that optionally forces benchmark runs in process.
+
+    This generates two cc_library target. The first one runs the benchmark in a
+    separate process on Android, while it runs the benchmark in process on all
+    other platforms. The second one, which has "_in_process" appended to the
+    name, forces benchmark runs in process.
+
+    Args:
+      name: determines the name used for the generated cc_library targets.
+      deps: dependencies that will be unconditionally included in the deps of
+        the generated cc_library targets.
+      in_process_deps: dependencies on rules that are themselves defined using
+        'cc_library_with_forced_in_process_benchmark_variant'. Must be
+        iterable, so cannot be computed by calling 'select'.
+      **kwargs:
+        Additional cc_library parameters.
+    """
+    native.cc_library(
+        name = name,
+        deps = deps + in_process_deps + [
+            clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_default"),
+        ],
+        **kwargs
+    )
+
+    in_process_deps_renamed = [add_suffix(in_process_dep, "_in_process") for in_process_dep in in_process_deps]
+    native.cc_library(
+        name = name + "_in_process",
+        deps = deps + in_process_deps_renamed + [
+            clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:tflite_acceleration_in_process_enable"),
+        ],
+        **kwargs
     )
