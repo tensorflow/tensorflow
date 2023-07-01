@@ -2625,7 +2625,8 @@ AutoShardingSolverResult CallORToolsSolver(
 
 bool AutoShardingEvaluation::operator==(
     const AutoShardingEvaluation& other) const {
-  return total_communication_cost == other.total_communication_cost &&
+  return violation_codes == other.violation_codes &&
+         total_communication_cost == other.total_communication_cost &&
          total_computation_cost == other.total_computation_cost &&
          total_resharding_cost == other.total_resharding_cost &&
          total_cost == other.total_cost;
@@ -2636,6 +2637,31 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   const std::vector<int64_t>& s_val = std::get<0>(*result.status);
   const std::vector<int64_t>& e_val = std::get<1>(*result.status);
   AutoShardingEvaluation evaluation;
+  // Compute violations.
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    if (request.s_follow[i] >= 0 && s_val[i] != s_val[request.s_follow[i]]) {
+      evaluation.violation_codes.insert(kFollowerViolationCode);
+    }
+  }
+  for (size_t i = 0; i < request.a.size(); ++i) {
+    const std::pair<int, int>& alias = request.a[i];
+    size_t p = s_val[alias.first], q = s_val[alias.second];
+    if (request.v[i][p * request.s_len[alias.second] + q] > 0.5) {
+      evaluation.violation_codes.insert(kAliasViolationCode);
+    }
+  }
+  if (request.memory_budget > 0) {
+    for (size_t t = 0; t < request.live.size(); ++t) {
+      double total_memory_cost = 0.0;
+      for (auto i : request.live[t]) {
+        total_memory_cost += request.m[i][s_val[i]];
+      }
+      if (total_memory_cost > request.memory_budget) {
+        evaluation.violation_codes.insert(kMemoryViolationCode);
+      }
+    }
+  }
+  // Compute metrics.
   for (size_t i = 0; i < request.num_nodes; ++i) {
     const int64_t j = s_val[i];
     evaluation.total_communication_cost += request.d[i][j];

@@ -518,8 +518,17 @@ struct AutoShardingSolverResult {
   bool skip_auto_sharding;
 };
 
-// Captures the metrics for the sharding result.
+enum AutoShardingViolationCode {
+  kAliasViolationCode,     // Some node's strategy does not match its alias
+  kFollowerViolationCode,  // Some node's strategy does not match its follower
+  kMemoryViolationCode,    // The solution eclipses the memory budget
+};
+
+// Captures the metrics and constraint violations for the sharding result.
 struct AutoShardingEvaluation {
+  // A set of constraint violations; should be empty for any viable solution.
+  absl::flat_hash_set<AutoShardingViolationCode> violation_codes;
+
   // A breakdown of each individual cost component.
   double total_communication_cost = 0.0;
   double total_computation_cost = 0.0;
@@ -532,7 +541,7 @@ struct AutoShardingEvaluation {
 };
 
 // Evaluates the given solver result w.r.t. the input request, computing various
-// solution quality metrics.
+// solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverResult& result);
 

@@ -1016,6 +1016,69 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
+TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 1 /* violates */, 1};
+  const std::vector<int64_t> e_val = {14, 6};
+  const double objective_value = 12138.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kFollowerViolationCode};
+  expected_evaluation.total_computation_cost = 158.0;  // 13+21+32+41+51
+  expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+410+510
+  expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 2, 0 /* violates */};
+  const std::vector<int64_t> e_val = {14, 6};
+  const double objective_value = 12138.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kAliasViolationCode};
+  expected_evaluation.total_computation_cost = 158.0;  // 13+21+32+42+50
+  expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+420+500
+  expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<int64_t> chosen_strategy = {2 /* violates */, 1, 2, 2, 1};
+  const std::vector<int64_t> e_val = {10, 6};
+  const double objective_value = 11138.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kMemoryViolationCode};
+  expected_evaluation.total_computation_cost = 158.0;  // 12+21+32+42+51
+  expected_evaluation.total_communication_cost = 1580.0;  // 120+210+320+420+510
+  expected_evaluation.total_resharding_cost = 9400.0;  // 3200+6200
+  expected_evaluation.total_cost = 11138.0;  // 158+1580+9400
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
 // clang-format on
 
 }  // namespace
