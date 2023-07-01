@@ -103,7 +103,7 @@ inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
   //
   // TODO(b/245730811): Consider signalling to clients if the delegate is not
   // initialized cleanly.
-  return delegate->Prepare == nullptr &&
+  return delegate != nullptr && delegate->Prepare == nullptr &&
          delegate->opaque_delegate_builder != nullptr;
 }
 
