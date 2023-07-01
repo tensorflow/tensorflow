@@ -192,8 +192,6 @@ class IrEmitterUnnested : public IrEmitter {
   // via the ThunkEmitter.
   Status EmitConstant(mlir::Operation* op);
 
-  Status EmitCopy(mlir::Operation* op);
-
   Status EmitConditional(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
