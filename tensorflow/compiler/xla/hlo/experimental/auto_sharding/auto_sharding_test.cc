@@ -15,9 +15,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <numeric>
-#include <string>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -26,14 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "ortools/linear_solver/linear_solver.h"
 
 namespace op = xla::testing::opcode_matchers;
-
-using MPConstraint = operations_research::MPConstraint;
-using MPSolver = operations_research::MPSolver;
-using MPSolverParameters = operations_research::MPSolverParameters;
-using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
@@ -58,31 +50,6 @@ ENTRY %elementwise {
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
-}
-
-TEST(MIPSolverTest, TwoVariableToyExample) {
-  // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(
-      MPSolver::CreateSolver("SCIP_MIXED_INTEGER_PROGRAMMING"));
-  solver->MutableObjective()->SetMaximization();
-  ASSERT_TRUE(solver);
-  // Test with the following integer programming problem:
-  //   max  x + 2y
-  //   s.t. 6x + 2y <= 19
-  //        0 <= x <= 3
-  //        0 <= y <= 2
-  MPVariable* x = solver->MakeIntVar(0.0, 3.0, "x");
-  MPVariable* y = solver->MakeIntVar(0.0, 2.0, "y");
-  MPConstraint* constraint =
-      solver->MakeRowConstraint(-MPSolver::infinity(), 19.0);
-  constraint->SetCoefficient(x, 6.0);
-  constraint->SetCoefficient(y, 2.0);
-  solver->MutableObjective()->SetCoefficient(x, 1.0);
-  solver->MutableObjective()->SetCoefficient(y, 2.0);
-  MPSolver::ResultStatus solve_status = solver->Solve();
-  EXPECT_EQ(solve_status, MPSolver::OPTIMAL);
-  EXPECT_DOUBLE_EQ(x->solution_value(), 2.0);
-  EXPECT_DOUBLE_EQ(y->solution_value(), 2.0);
 }
 
 class AutoShardingTest : public HloTestBase {
@@ -951,135 +918,6 @@ ENTRY %entry {
   LOG(INFO) << module->ToString();
   EXPECT_GT(pass.GetSolverOptimalObjectiveValue(), 0);
 }
-
-// clang-format off
-
-AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
-  AutoShardingSolverRequest request;
-  // The problem below is partially inspired by 'DotLHSTwoNonContractingDims'
-  request.num_nodes = 5;
-  request.memory_budget = 1500000;
-  request.s_len = {4, 3, 4, 4, 3};
-  request.s_follow = {-1, -1, -1, 2, -1};
-  request.e = {{0, 2}, {1, 2}};
-  request.live = {{1, 0},
-                  {1, 0},
-                  {1, 2, 0},
-                  {1, 2, 3, 0},
-                  {1, 3, 0}};
-  request.c = {{10, 11, 12, 13},
-               {20, 21, 22},
-               {30, 31, 32, 33},
-               {40, 41, 42, 43},
-               {50, 51, 52, 53}};
-  request.d = {{100, 110, 120, 130},
-               {200, 210, 220},
-               {300, 310, 320, 330},
-               {400, 410, 420, 430},
-               {500, 510, 520}};
-  request.m = {{100000, 110000, 990000, 130000},
-               {200000, 210000, 220000},
-               {300000, 310000, 320000, 330000},
-               {400000, 410000, 420000, 430000},
-               {500000, 510000, 520000}};
-  request.r = {{1000, 1100, 1200, 1300,
-                2000, 2100, 2200, 2300,
-                3000, 3100, 3200, 3300,
-                4000, 4100, 4200, 4300},
-               {5000, 5100, 5200, 5300,
-                6000, 6100, 6200, 6300,
-                7000, 7100, 7200, 7300}};
-  request.a = {{1, 4}};
-  request.v = {{0, 1, 1,
-                1, 0, 1,
-                1, 1, 0}};
-  return request;
-}
-
-TEST(AutoShardingEvaluatorTest, NoViolations) {
-  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {14, 6};
-  const double objective_value = 12149.0;
-  const AutoShardingSolverResult result = {
-      std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
-
-  const AutoShardingEvaluation evaluation = Evaluate(request, result);
-
-  AutoShardingEvaluation expected_evaluation;
-  expected_evaluation.total_computation_cost = 159.0;  // 13+21+32+42+51
-  expected_evaluation.total_communication_cost = 1590.0;  // 130+210+320+420+510
-  expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
-  expected_evaluation.total_cost = 12149.0;  // 159+1590+10400
-  EXPECT_EQ(evaluation, expected_evaluation);
-}
-
-TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
-  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 1 /* violates */, 1};
-  const std::vector<int64_t> e_val = {14, 6};
-  const double objective_value = 12138.0;
-  const AutoShardingSolverResult result = {
-      std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
-
-  const AutoShardingEvaluation evaluation = Evaluate(request, result);
-
-  AutoShardingEvaluation expected_evaluation;
-  expected_evaluation.violation_codes = {kFollowerViolationCode};
-  expected_evaluation.total_computation_cost = 158.0;  // 13+21+32+41+51
-  expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+410+510
-  expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
-  expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
-  EXPECT_EQ(evaluation, expected_evaluation);
-}
-
-TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
-  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 2, 0 /* violates */};
-  const std::vector<int64_t> e_val = {14, 6};
-  const double objective_value = 12138.0;
-  const AutoShardingSolverResult result = {
-      std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
-
-  const AutoShardingEvaluation evaluation = Evaluate(request, result);
-
-  AutoShardingEvaluation expected_evaluation;
-  expected_evaluation.violation_codes = {kAliasViolationCode};
-  expected_evaluation.total_computation_cost = 158.0;  // 13+21+32+42+50
-  expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+420+500
-  expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
-  expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
-  EXPECT_EQ(evaluation, expected_evaluation);
-}
-
-TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
-  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {2 /* violates */, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {10, 6};
-  const double objective_value = 11138.0;
-  const AutoShardingSolverResult result = {
-      std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
-
-  const AutoShardingEvaluation evaluation = Evaluate(request, result);
-
-  AutoShardingEvaluation expected_evaluation;
-  expected_evaluation.violation_codes = {kMemoryViolationCode};
-  expected_evaluation.total_computation_cost = 158.0;  // 12+21+32+42+51
-  expected_evaluation.total_communication_cost = 1580.0;  // 120+210+320+420+510
-  expected_evaluation.total_resharding_cost = 9400.0;  // 3200+6200
-  expected_evaluation.total_cost = 11138.0;  // 158+1580+9400
-  EXPECT_EQ(evaluation, expected_evaluation);
-}
-
-// clang-format on
 
 }  // namespace
 }  // namespace spmd
