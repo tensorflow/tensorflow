@@ -400,14 +400,18 @@ struct SparseUnpackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getResults().size() + 1 == op.getInputs().size());
     // Both jax.BCSR and jax.BCOO has three memref fields.
-    SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
+    SmallVector<Type, 6> unpack_ret_tp(op.getResults().getTypes());
+    // Extra lengths for each buffer returned.
+    unpack_ret_tp.append(op.getResults().size(), rewriter.getIndexType());
     Value tensor = op.getInputs()[0];
     Value out_vals = op.getInputs()[1];
     ValueRange out_lvls = op.getInputs().drop_front(2);
     // Constructs the UnpackOp.
     auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
         op.getLoc(), unpack_ret_tp, tensor, out_vals, out_lvls);
-    rewriter.replaceOp(op, unpack_op.getResults());
+    ValueRange bufs = unpack_op.getResults().drop_back(op.getResults().size());
+    // TODO(peiming): return length as well.
+    rewriter.replaceOp(op, bufs);
     return success();
   }
 };
