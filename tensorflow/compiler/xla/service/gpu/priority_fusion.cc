@@ -128,6 +128,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
+    // The original consumer was replaced with the fusion, but it's pointer can
+    // still be referenced somewhere, for example, in to_update_priority_.
+    // Priority recomputation is called before DCE. Remove all references to
+    // the original consumer here.
+    if (fusion != original_consumer) {
+      RemoveInstruction(original_consumer);
+    }
+
     // Detach 'original_producer' from its operands if it has no users.
     // This avoids having it appear as a "phantom" user in subsequent priority
     // calculations on 'fusion.operands' below, before it is finally removed
