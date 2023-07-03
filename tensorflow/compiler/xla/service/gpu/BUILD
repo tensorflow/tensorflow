@@ -1301,6 +1301,7 @@ cc_library(
     srcs = if_gpu_is_configured(["autotuner_util.cc"]),
     hdrs = if_gpu_is_configured(["autotuner_util.h"]),
     deps = if_gpu_is_configured([
+        ":gpu_asm_opts_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         ":stream_executor_util",

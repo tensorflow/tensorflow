@@ -111,6 +111,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
+  opts.set_xla_gpu_redzone_padding_bytes(8 * 1024 * 1024);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
@@ -942,6 +943,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_redzone_scratch_max_megabytes),
       debug_options->xla_gpu_redzone_scratch_max_megabytes(),
       "Max size (in megabytes) for the GPU redzone scratch allocator."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_redzone_padding_bytes",
+      int64_setter_for(&DebugOptions::set_xla_gpu_redzone_padding_bytes),
+      debug_options->xla_gpu_redzone_padding_bytes(),
+      "Amount of padding the redzone allocator will put on one side of each "
+      "buffer it allocates. (So the buffer's total size will be increased by "
+      "2x this value.)"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_simplify_all_fp_conversions",
       bool_setter_for(&DebugOptions::set_xla_gpu_simplify_all_fp_conversions),

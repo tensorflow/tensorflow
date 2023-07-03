@@ -286,16 +286,15 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(se::Stream* const stream,
                         allocator->GetStream(stream_exec->device_ordinal()));
 
-    const DebugOptions debug_opts = fusion.parent()->config().debug_options();
+    const DebugOptions& debug_opts = fusion.parent()->config().debug_options();
 
-    std::vector<AutotuneResult> results;
     // This allocator is used for input and reference buffers that are
     // common for all configurations.
     se::RedzoneAllocator rz_allocator_common(
         stream, allocator, PtxOptsFromDebugOptions(debug_opts),
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
         /*redzone_size=*/config_.should_check_correctness()
-            ? se::RedzoneAllocator::kDefaultRedzoneSize
+            ? debug_opts.xla_gpu_redzone_padding_bytes()
             : 0);
 
     se::DeviceMemoryBase reference_buffer;
@@ -353,6 +352,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                                              reference_buffer, cache_key));
     }
 
+    std::vector<AutotuneResult> results;
     for (const AutotuneResult::TritonGemmKey& conf : configurations) {
       VLOG(1) << "Trying triton tiling: " << conf.ShortDebugString();
 
@@ -362,7 +362,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
           stream, allocator, PtxOptsFromDebugOptions(debug_opts),
           /*memory_limit=*/std::numeric_limits<int64_t>::max(),
           /*redzone_size=*/config_.should_check_correctness()
-              ? se::RedzoneAllocator::kDefaultRedzoneSize
+              ? debug_opts.xla_gpu_redzone_padding_bytes()
               : 0);
 
       AutotuneResult res;

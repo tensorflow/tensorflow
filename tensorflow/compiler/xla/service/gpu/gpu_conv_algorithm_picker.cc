@@ -382,14 +382,13 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
     // Right now Redzone allocator is available in Cuda target only.
     auto hlo_module_config = instr->GetModule()->config();
-    const int64_t redzone_size = ShouldCheckConv(hlo_module_config)
-                                     ? se::RedzoneAllocator::kDefaultRedzoneSize
-                                     : 0;
     se::RedzoneAllocator input_output_allocator(
         stream, allocator,
         PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-        /*redzone_size=*/redzone_size);
+        ShouldCheckConv(hlo_module_config)
+            ? hlo_module_config.debug_options().xla_gpu_redzone_padding_bytes()
+            : 0);
 
     TF_ASSIGN_OR_RETURN(
         AutotuneRuntimeArguments runtime_arguments,
@@ -528,7 +527,11 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       stream, allocator,
       PtxOptsFromDebugOptions(
           runtime_arguments.hlo_module_config.debug_options()),
-      /*memory_limit=*/rz_space_limit);
+      /*memory_limit=*/rz_space_limit,
+      ShouldCheckConv(runtime_arguments.hlo_module_config)
+          ? runtime_arguments.hlo_module_config.debug_options()
+                .xla_gpu_redzone_padding_bytes()
+          : 0);
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
 
@@ -856,7 +859,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromDebugOptions(*debug_options),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      se::RedzoneAllocator::kDefaultRedzoneSize);
+      ShouldCheckConv(hlo_module_config)
+          ? debug_options->xla_gpu_redzone_padding_bytes()
+          : 0);
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
       {output_shape,  hlo_module_config,       buffers,
