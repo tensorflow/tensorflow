@@ -319,12 +319,8 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // memset.
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
-<<<<<<< HEAD
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  XPlaneVisitor plane = tsl::CreateTfXPlaneVisitor(device_plane);
 #if GOOGLE_CUDA
-=======
-  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
->>>>>>> upstream/master
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapClockRateKHz).has_value());
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapCoreCount).has_value());
   EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemoryBandwidth).has_value());
