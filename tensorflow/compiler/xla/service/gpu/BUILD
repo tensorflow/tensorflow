@@ -631,6 +631,7 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
+        ":autotuner_util",
         ":backend_configs_cc",
         ":gemm_rewriter_triton",
         ":triton_autotuner",

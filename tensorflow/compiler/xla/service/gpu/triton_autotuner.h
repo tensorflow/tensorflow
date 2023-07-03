@@ -57,16 +57,6 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
     se::CudaComputeCapability compute_capability,
     bool exhaustive_tiling_search = false);
 
-// Extracts an HLO instruction into a new HLO module replacing its operands
-// with parameter instructions.
-std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-    const HloInstruction& hlo);
-
-// Extracts an HLO computation into a new HLO module, using its clone as the
-// root computation.
-std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
-    const HloComputation& computation);
-
 }  // namespace gpu
 }  // namespace xla
 

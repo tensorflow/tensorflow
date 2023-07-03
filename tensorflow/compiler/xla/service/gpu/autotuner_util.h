@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -24,8 +25,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/autotuning.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -218,6 +221,16 @@ struct AutotunerUtil {
   static Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
+
+  // Extracts an HLO instruction into a new HLO module replacing its operands
+  // with parameter instructions.
+  static std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+      const HloInstruction& hlo);
+
+  // Extracts an HLO computation into a new HLO module, using its clone as the
+  // root computation.
+  static std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
+      const HloComputation& computation);
 };
 
 }  // namespace gpu

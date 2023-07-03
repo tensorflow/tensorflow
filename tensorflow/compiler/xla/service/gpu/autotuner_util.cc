@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
@@ -219,6 +221,42 @@ bool IsTextProtoPath(absl::string_view file_path) {
   LOG(INFO) << "Autotune results loaded from file: " << file_path_str;
 
   return OkStatus();
+}
+
+/*static*/ std::unique_ptr<HloModule>
+AutotunerUtil::ExtractInstructionIntoNewModule(const HloInstruction& hlo) {
+  auto new_hlo_module = std::make_unique<HloModule>(
+      "extracted", HloModuleConfig{},
+      std::make_unique<CompilationEnvironments>(hlo.GetModule()->comp_envs()));
+  int parameter_number = 0;
+  HloComputation::Builder builder("entry_computation");
+  HloCloneContext clone_context(new_hlo_module.get());
+  std::vector<HloInstruction*> new_operands;
+  for (const HloInstruction* operand : hlo.operands()) {
+    std::unique_ptr<HloInstruction> new_parameter =
+        HloInstruction::CreateParameter(parameter_number, operand->shape(),
+                                        operand->name());
+    ++parameter_number;
+    new_operands.push_back(builder.AddInstruction(std::move(new_parameter)));
+  }
+  std::unique_ptr<HloInstruction> new_instruction =
+      hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
+  builder.AddInstruction(std::move(new_instruction));
+  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
+  return new_hlo_module;
+}
+
+/*static*/ std::unique_ptr<HloModule>
+AutotunerUtil::ExtractComputationIntoNewModule(
+    const HloComputation& computation) {
+  auto new_hlo_module =
+      std::make_unique<HloModule>("extracted", HloModuleConfig{},
+                                  std::make_unique<CompilationEnvironments>(
+                                      computation.parent()->comp_envs()));
+  HloCloneContext clone_context(new_hlo_module.get());
+  new_hlo_module->AddEntryComputationWithLayouts(
+      computation.CloneInContext(clone_context));
+  return new_hlo_module;
 }
 
 }  // namespace gpu

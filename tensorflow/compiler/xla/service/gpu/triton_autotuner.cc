@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
-#include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
@@ -509,7 +508,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // Create an unoptimized HLO module which does the same as
     // `original_computation`, but with CuBLAS.
     std::unique_ptr<HloModule> module =
-        ExtractComputationIntoNewModule(original_computation);
+        AutotunerUtil::ExtractComputationIntoNewModule(original_computation);
     VLOG(3) << "Extracted module: " << module->ToString();
     BitcastRemover bitcast_remover;
     TF_RETURN_IF_ERROR(bitcast_remover.Run(module.get()).status());
@@ -647,8 +646,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     const GpuDeviceInfo gpu_device_info =
         GetGpuDeviceInfo(config_.GetExecutor());
 
-    std::unique_ptr<HloModule> new_hlo_module = ExtractInstructionIntoNewModule(
-        *original_computation.FusionInstruction());
+    std::unique_ptr<HloModule> new_hlo_module =
+        AutotunerUtil::ExtractInstructionIntoNewModule(
+            *original_computation.FusionInstruction());
 
     // Copy the config from the original computations's module, but use the new
     // entry computation layout. If we extract an instruction into a new
@@ -862,41 +862,6 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(compute_capability)
              : GetFixedMatmulAutotuneConfigs(compute_capability);
-}
-
-std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-    const HloInstruction& hlo) {
-  auto new_hlo_module = std::make_unique<HloModule>(
-      "extracted", HloModuleConfig{},
-      std::make_unique<CompilationEnvironments>(hlo.GetModule()->comp_envs()));
-  int parameter_number = 0;
-  HloComputation::Builder builder("entry_computation");
-  HloCloneContext clone_context(new_hlo_module.get());
-  std::vector<HloInstruction*> new_operands;
-  for (const HloInstruction* operand : hlo.operands()) {
-    std::unique_ptr<HloInstruction> new_parameter =
-        HloInstruction::CreateParameter(parameter_number, operand->shape(),
-                                        operand->name());
-    ++parameter_number;
-    new_operands.push_back(builder.AddInstruction(std::move(new_parameter)));
-  }
-  std::unique_ptr<HloInstruction> new_instruction =
-      hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
-  builder.AddInstruction(std::move(new_instruction));
-  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
-  return new_hlo_module;
-}
-
-std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
-    const HloComputation& computation) {
-  auto new_hlo_module =
-      std::make_unique<HloModule>("extracted", HloModuleConfig{},
-                                  std::make_unique<CompilationEnvironments>(
-                                      computation.parent()->comp_envs()));
-  HloCloneContext clone_context(new_hlo_module.get());
-  new_hlo_module->AddEntryComputationWithLayouts(
-      computation.CloneInContext(clone_context));
-  return new_hlo_module;
 }
 
 StatusOr<bool> TritonAutotuner::Run(
