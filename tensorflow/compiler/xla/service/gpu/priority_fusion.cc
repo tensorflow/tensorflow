@@ -128,6 +128,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
+    // Detach 'original_producer' from its operands if it has no users.
+    // This avoids having it appear as a "phantom" user in subsequent priority
+    // calculations on 'fusion.operands' below, before it is finally removed
+    // in 'RemoveInstruction'.
+    if (original_producer->user_count() == 0) {
+      original_producer->DetachFromOperandsAndUsers();
+    }
+
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
