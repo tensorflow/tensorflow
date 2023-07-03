@@ -1,36 +1,34 @@
-#define SYSC
 
-#include "tensorflow/lite/delegates/utils/mm2im_sim_delegate/mm2im_sim_delegate.h"
+#include "tensorflow/lite/delegates/utils/mm2im_fpga_delegate/mm2im_fpga_delegate.h"
 
 #include <iomanip>
 #include <iostream>
 #include <utility>
 
-#include "tensorflow/lite/delegates/utils/mm2im_sim_delegate/accelerator/driver/mm2im_driver.h"
-#include "tensorflow/lite/delegates/utils/mm2im_sim_delegate/accelerator/driver/mm2im_util.h"
-#include "tensorflow/lite/delegates/utils/mm2im_sim_delegate/util.h"
-#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/systemc_integrate.h"
+#include "tensorflow/lite/delegates/utils/mm2im_fpga_delegate/accelerator/driver/mm2im_driver.h"
+#include "tensorflow/lite/delegates/utils/mm2im_fpga_delegate/accelerator/driver/mm2im_util.h"
+#include "tensorflow/lite/delegates/utils/mm2im_fpga_delegate/util.h"
+
 #include "tensorflow/lite/delegates/utils/secda_tflite/sysc_profiler/profiler.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/acc_helpers.h"
 #include "tensorflow/lite/delegates/utils/secda_tflite/threading_utils/utils.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 // Some variables needs to be defined across multiple instances of the delegate
-unsigned int dma_addrs[4] = {0, 0, 0, 0};
-unsigned int dma_addrs_in[4] = {0, 0, 0, 0};
-unsigned int dma_addrs_out[4] = {0, 0, 0, 0};
-struct multi_dma *mdma;
-ACCNAME *acc;
 struct del_params dparams;
-struct Profile *profile;
+unsigned int dma_addrs[1] = {dma_addr0};
+unsigned int dma_addrs_in[1] = {dma_in0};
+unsigned int dma_addrs_out[1] = {dma_out0};
+struct multi_dma mdma(1, dma_addrs, dma_addrs_in, dma_addrs_out, DMA_BL);
+struct mm2im_times p_t;
 
 namespace tflite {
-namespace mm2imsim_test {
+namespace mm2imfpga_test {
 
-// MM2IMSim delegate kernel
-class MM2IMSimDelegateKernel : public SimpleDelegateKernelInterface {
+// MM2IMFPGA delegate kernel
+class MM2IMFPGADelegateKernel : public SimpleDelegateKernelInterface {
 public:
-  explicit MM2IMSimDelegateKernel(const MM2IMSimDelegateOptions &options)
+  explicit MM2IMFPGADelegateKernel(const MM2IMFPGADelegateOptions &options)
       : options_(options) {}
 
   // Runs once per delegate partition
@@ -38,21 +36,15 @@ public:
                     const TfLiteDelegateParams *params) override {
     // // Init SystemC Modules & Profilier
     if (!dparams.init) {
-      static struct sysC_sigs scs1(1);
-      static ACCNAME _acc("MM2IM");
-      static struct multi_dma _mdma(4, dma_addrs, dma_addrs_in, dma_addrs_out,
-                                    563840);
-      static struct Profile _profile;
-      sysC_init();
-      sysC_binder(&_acc, &_mdma, &scs1);
-      mdma = &_mdma;
-      acc = &_acc;
-      profile = &_profile;
+
+      dparams.acc = getAccBaseAddress<int>(acc_address, 65536);
+      // static struct stream_dma _sdma(dma_addr0, dma_in0, DMA_BL, dma_out0,
+      //                                DMA_BL);
+      // sdma = &_sdma;
       dparams.init = true;
 
       std::cout << "===========================" << std::endl;
-      std::cout << "Initialised the SystemC Modules" << std::endl;
-      std::cout << "Vector MAC Accelerator";
+      std::cout << "MM2IM Accelerator with driver v1" << std::endl;
       std::cout << std::endl;
       std::cout << "===========================" << std::endl;
     }
@@ -250,10 +242,8 @@ public:
       int out1, out2, out3, rows, cols, depth;
       int pt, pb, pl, pr;
 
-      cerr << "====================================" << endl;
       calParams(stride_x, stride_y, filters, kernel_size, in1, in2, in3,
                 padding, rows, cols, depth, out1, out2, out3, pt, pb, pl, pr);
-      cerr << "====================================" << endl;
 
       // Input Params
       int ra = 26;
@@ -307,6 +297,7 @@ public:
   // "tensorflow/lite/kernels/conv.cc" for the default implementation for Conv2D
   // Nodes
   TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) override {
+    prf_start(0);
     int node_count = inputs_.size();
     for (int i = 0; i < node_count; i++) {
       auto *params = tparams[i];
@@ -466,18 +457,22 @@ public:
       const int scratch_rows = scratch_shape.Dims(0) * scratch_shape.Dims(3);
 
       // Accelerator config
+      prf_start(1);
       struct mm2im_params par = mm2im_params[i];
       int rounded_depth = roundUp(par.ic, 16);
-      int8_t *acc_input = new int8_t[rounded_depth * par.cols]();
-      int *acc_dst = new int[par.ic * par.ih * par.f * par.ks * par.ks]();
+      // int8_t *acc_input = new int8_t[rounded_depth * par.cols]();
+      int8_t acc_input[rounded_depth * par.cols] = {};
+
+      // int *acc_dst = new int[par.ic * par.ih * par.f * par.ks * par.ks]();
 
       preload_inputs(input_data, par.depth, par.cols, acc_input);
+
       int32_t *acc_loaded_wgts =
           reinterpret_cast<int32_t *>(&acc_weights[i][0]);
       int32_t *acc_loaded_inps = reinterpret_cast<int32_t *>(acc_input);
 
       struct acc_container drv;
-      drv.mdma = mdma;
+      drv.mdma = &mdma;
       // drv.profile = profile;
 
       drv.lhs_offset = 0;
@@ -528,58 +523,68 @@ public:
       drv.verb = true;
 
       // DirectMM2IM(hwoi_ordered_filter_data, input_data, output_data);
-      cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
-                             input_data, dst_params, col2im_data, gemm_params,
-                             cpu_backend_context);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_wgt.csv",
-                    hwoi_ordered_filter_data, lhs_params.rows, lhs_params.cols);
+      // cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data,
+      // rhs_params,
+      //                        input_data, dst_params, col2im_data,
+      //                        gemm_params, cpu_backend_context);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_inp.csv",
-                    input_data, rhs_params.rows, rhs_params.cols);
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_wgt.csv",
+      //               hwoi_ordered_filter_data, lhs_params.rows,
+      //               lhs_params.cols);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_gemm_cpu.csv",
-                    col2im_data, dst_params.cols, dst_params.rows);
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_inp.csv",
+      //               input_data, rhs_params.rows, rhs_params.cols);
 
-      optimized_ops::Col2im(
-          col2im_data, output_depth, output_height, output_width, filter_height,
-          filter_width, padding_top, padding_left, padding_bottom,
-          padding_right, stride_height, stride_width, scratch_data_p);
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_gemm_cpu.csv",
+      //               col2im_data, dst_params.cols, dst_params.rows);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_col2im_cpu.csv",
-                    scratch_data_p, scratch_cols, scratch_rows);
+      // optimized_ops::Col2im(
+      //     col2im_data, output_depth, output_height, output_width,
+      //     filter_height, filter_width, padding_top, padding_left,
+      //     padding_bottom, padding_right, stride_height, stride_width,
+      //     scratch_data_p);
 
-      if (has_bias)
-        optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size,
-                               output_height, output_width, output_depth);
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_col2im_cpu.csv",
+      //               scratch_data_p, scratch_cols, scratch_rows);
 
-      const int32_t output_min = std::numeric_limits<int8_t>::min();
-      const int32_t output_max = std::numeric_limits<int8_t>::max();
-      optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
-                              output_shape.FlatSize(), cparams.output_offset,
-                              output_min, output_max, scratch_data,
-                              output_data);
+      // if (has_bias)
+      //   optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size,
+      //                          output_height, output_width, output_depth);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_out_cpu.csv",
-                    output_data, scratch_cols, scratch_rows);
+      // const int32_t output_min = std::numeric_limits<int8_t>::min();
+      // const int32_t output_max = std::numeric_limits<int8_t>::max();
+      // optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
+      //                         output_shape.FlatSize(), cparams.output_offset,
+      //                         output_min, output_max, scratch_data,
+      //                         output_data);
 
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_out_cpu.csv",
+      //               output_data, scratch_cols, scratch_rows);
+      prf_end(1, p_t.del_inp);
+      drv.p_t = p_t;
       mm2im_driver::Entry(drv);
+      p_t = drv.p_t;
 
       // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
       //                   "_del_accgemm.csv",
       //               col2im_data, dst_params.cols, dst_params.rows);
 
-      saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
-                        "_del_out_acc.csv",
-                    output_data, scratch_cols, scratch_rows);
+      // saveMatrixCSV("aData/mm2im/" + std::to_string(associated_nodes[i]) +
+      //                   "_del_out_acc.csv",
+      //               output_data, scratch_cols, scratch_rows);
 
       dparams.layer++;
+      dparams.delegated_nodes--;
     }
+
+    prf_end(0, p_t.tconv_total);
+    if (dparams.delegated_nodes == 0) p_t.print();
     return kTfLiteOk;
   }
 
@@ -601,14 +606,14 @@ public:
   std::vector<TfLiteTransposeConvParams *> tparams;
 
 private:
-  const MM2IMSimDelegateOptions options_;
+  const MM2IMFPGADelegateOptions options_;
 };
 
-// MM2IMSimDelegate implements the interface of SimpleDelegateInterface.
+// MM2IMFPGADelegate implements the interface of SimpleDelegateInterface.
 // This holds the Delegate capabilities.
-class MM2IMSimDelegate : public SimpleDelegateInterface {
+class MM2IMFPGADelegate : public SimpleDelegateInterface {
 public:
-  explicit MM2IMSimDelegate(const MM2IMSimDelegateOptions &options)
+  explicit MM2IMFPGADelegate(const MM2IMFPGADelegateOptions &options)
       : options_(options) {}
 
   bool IsNodeSupportedByDelegate(const TfLiteRegistration *registration,
@@ -635,7 +640,7 @@ public:
       auto &tensor2 = context->tensors[node->inputs->data[3]];
       if (tensor2.type != kTfLiteInt32) return false;
     }
-    
+
     auto &tensor0 = context->tensors[node->inputs->data[1]];
     int filter_dim = tensor0.dims->data[0];
     if (filter_dim < PE_COUNT) return false;
@@ -648,13 +653,13 @@ public:
   TfLiteStatus Initialize(TfLiteContext *context) override { return kTfLiteOk; }
 
   const char *Name() const override {
-    static constexpr char kName[] = "MM2IMSimDelegate";
+    static constexpr char kName[] = "MM2IMFPGADelegate";
     return kName;
   }
 
   std::unique_ptr<SimpleDelegateKernelInterface>
   CreateDelegateKernelInterface() override {
-    return std::make_unique<MM2IMSimDelegateKernel>(options_);
+    return std::make_unique<MM2IMFPGADelegateKernel>(options_);
   }
 
   SimpleDelegateInterface::Options DelegateOptions() const override {
@@ -663,33 +668,33 @@ public:
   }
 
 private:
-  const MM2IMSimDelegateOptions options_;
+  const MM2IMFPGADelegateOptions options_;
 };
 
-} // namespace mm2imsim_test
+} // namespace mm2imfpga_test
 } // namespace tflite
 
-MM2IMSimDelegateOptions TfLiteMM2IMSimDelegateOptionsDefault() {
-  MM2IMSimDelegateOptions options = {0};
-  // Just assign an invalid builtin code so that this mm2imsim test delegate
+MM2IMFPGADelegateOptions TfLiteMM2IMFPGADelegateOptionsDefault() {
+  MM2IMFPGADelegateOptions options = {0};
+  // Just assign an invalid builtin code so that this mm2imfpga test delegate
   // will not support any node by default.
   options.allowed_builtin_code = -1;
   return options;
 }
 
 // Creates a new delegate instance that need to be destroyed with
-// `TfLiteMM2IMSimDelegateDelete` when delegate is no longer used by TFLite.
+// `TfLiteMM2IMFPGADelegateDelete` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the above default values are used:
 TfLiteDelegate *
-TfLiteMM2IMSimDelegateCreate(const MM2IMSimDelegateOptions *options) {
-  std::unique_ptr<tflite::mm2imsim_test::MM2IMSimDelegate> mm2imsim(
-      new tflite::mm2imsim_test::MM2IMSimDelegate(
-          options ? *options : TfLiteMM2IMSimDelegateOptionsDefault()));
+TfLiteMM2IMFPGADelegateCreate(const MM2IMFPGADelegateOptions *options) {
+  std::unique_ptr<tflite::mm2imfpga_test::MM2IMFPGADelegate> mm2imfpga(
+      new tflite::mm2imfpga_test::MM2IMFPGADelegate(
+          options ? *options : TfLiteMM2IMFPGADelegateOptionsDefault()));
   return tflite::TfLiteDelegateFactory::CreateSimpleDelegate(
-      std::move(mm2imsim), kTfLiteDelegateFlagsAllowDynamicTensors);
+      std::move(mm2imfpga), kTfLiteDelegateFlagsAllowDynamicTensors);
 }
 
-// Destroys a delegate created with `TfLiteMM2IMSimDelegateCreate` call.
-void TfLiteMM2IMSimDelegateDelete(TfLiteDelegate *delegate) {
+// Destroys a delegate created with `TfLiteMM2IMFPGADelegateCreate` call.
+void TfLiteMM2IMFPGADelegateDelete(TfLiteDelegate *delegate) {
   tflite::TfLiteDelegateFactory::DeleteSimpleDelegate(delegate);
 }

@@ -37,6 +37,7 @@ SC_MODULE(AXIS_ENGINE) {
         DATA d = dout1.read();
         while (i >= output_len) wait();
         last = d.tlast;
+        int k = d.data;
         DMA_output_buffer[output_offset + i++] = d.data;
         wait();
       } while (!last);

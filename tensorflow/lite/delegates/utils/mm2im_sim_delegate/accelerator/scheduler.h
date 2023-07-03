@@ -1,143 +1,194 @@
+#include "acc.sc.h"
 
-void ACCNAME::load_weights(int r_pointer, int d) {
-  for (int i = 0; i < d; i++) {
-    ACC_DTYPE<32> w1 = rhsdata1[r_pointer];
-    ACC_DTYPE<32> w2 = rhsdata2[r_pointer];
-    ACC_DTYPE<32> w3 = rhsdata3[r_pointer];
-    ACC_DTYPE<32> w4 = rhsdata4[r_pointer];
-    rhs1a_1[i] = w1;
-    rhs1b_1[i] = w2;
-    rhs1c_1[i] = w3;
-    rhs1d_1[i] = w4;
-    // rhs2a_1[i]=w1;
-    // rhs2b_1[i]=w2;
-    // rhs2c_1[i]=w3;
-    // rhs2d_1[i]=w4;
-    // rhs3a_1[i]=w1;
-    // rhs3b_1[i]=w2;
-    // rhs3c_1[i]=w3;
-    // rhs3d_1[i]=w4;
-    // rhs4a_1[i]=w1;
-    // rhs4b_1[i]=w2;
-    // rhs4c_1[i]=w3;
-    // rhs4d_1[i]=w4;
-    r_pointer++;
-#ifndef __SYNTHESIS__
-    weightbuf_p->value =
-        (i + 1) > weightbuf_p->value ? (i + 1) : weightbuf_p->value;
-    schS.write(20);
-    DWAIT(3);
-#endif
+// Remove PE specific code as much as possible below
+// Generalise for any number of PEs
+void ACCNAME::load_wgt_PEs() {
+  int ocols[PE_COUNT];
+#pragma HLS array_partition variable = ocols complete
+
+  scheduleS.write(31);
+  wait();
+
+  for (int c = 0; c < cols_per_filter; c++) {
+    for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+      int pe_dex = c + pe_cols[i];
+      ocols[i] = pe_dex * depth;
+      vars[i].col_dexs_fifo.write(wgt_sum_buf[pe_dex]);
+    }
+    for (int d = 0; d < depth; d++) {
+      for (int u = 0; u < UF; u++) {
+        for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+          vars[i].wgt_fifo.write(wgt_buf[ocols[i] + d][u]);
+        }
+      }
+    }
   }
+
+  scheduleS.write(32);
+  wait();
+
+  while (!wgt_loaded()) wait();
+
+  scheduleS.write(33);
+  wait();
 }
 
-void ACCNAME::schedule_gemm_unit(int unit_counter, int l_pointer, int l,
-                                 int r) {
-  int x1 = lhs_sum1[l];
-  int x2 = lhs_sum2[l];
-  int x3 = lhs_sum3[l];
-  int x4 = lhs_sum4[l];
+// Generalise for any number of PEs
+void ACCNAME::load_inp_PEs() {
+  // load & process one row inputs to PE at a time
 
-  DWAIT(14);
-  if (unit_counter == 0) {
-    schS.write(41);
-    while (!gemm_unit_1_ready.read()) wait();
-    gemm_unit_1_ready.write(0);
-    gemm_unit_1_l_pointer = l_pointer;
-    WRQ1.write(x1);
-    WRQ1.write(x2);
-    WRQ1.write(x3);
-    WRQ1.write(x4);
+  scheduleS.write(61);
+  for (int r = 0; r < number_of_rows; r++) {
+    // send the cols_indices to perform vector product with the input row
+    int col_indice_start = col_indice_starts[r];
+    int col_indice_len = col_indice_lens[r];
+    int orow = r * depth;
+
+    scheduleS.write(62);
+    start_compute(col_indice_len);
+    wait();
+
+    scheduleS.write(63);
+    // load the input row
+    for (int d = 0; d < depth; d++) {
+      for (int u = 0; u < UF; u++) {
+        for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+          vars[i].inp_fifo.write(inp_buf[orow + d][u]);
+        }
+      }
+    }
+
+    scheduleS.write(64);
+    // load the cols_indices
+    for (int j = 0; j < col_indice_len; j++) {
+      for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+        vars[i].col_dexs_fifo.write(col_indices[col_indice_start + j]);
+      }
+    }
+
+    scheduleS.write(65);
+    wait();
+
+    for (int j = 0; j < col_indice_len; j++) {
+      for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+        vars[i].dex_fifo.write(out_indices[col_indice_start + j]);
+      }
+    }
+
+    while (compute_done()) {
+      scheduleS.write(66);
+      DWAIT();
+    }
+    wait();
+
+    scheduleS.write(67);
+    stop_compute();
+
+    while (compute_resetted()) {
+      scheduleS.write(68);
+      DWAIT();
+    }
+
+    for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+      vars[i].reset_compute.write(false);
+    }
+
+    scheduleS.write(69);
     wait();
   }
-
-  // if(unit_counter==1){
-  // 	schS.write(42);
-  // 	while(!gemm_unit_2_ready.read())wait();
-  // 	gemm_unit_2_ready.write(0);
-  // 	gemm_unit_2_l_pointer=l_pointer;
-  // 	WRQ2.write(x1);
-  // 	WRQ2.write(x2);
-  // 	WRQ2.write(x3);
-  // 	WRQ2.write(x4);
-  // 	wait();
-  // }
-
-  // if(unit_counter==2){
-  // 	schS.write(43);
-  // 	while(!gemm_unit_3_ready.read())wait();
-  // 	gemm_unit_3_ready.write(0);
-  // 	gemm_unit_3_l_pointer=l_pointer;
-  // 	WRQ3.write(x1);
-  // 	WRQ3.write(x2);
-  // 	WRQ3.write(x3);
-  // 	WRQ3.write(x4);
-  // 	wait();
-  // }
-
-  // if(unit_counter==3){
-  // 	schS.write(44);
-  // 	while(!gemm_unit_4_ready.read())wait();
-  // 	gemm_unit_4_ready.write(0);
-  // 	gemm_unit_4_l_pointer=l_pointer;
-  // 	WRQ4.write(x1);
-  // 	WRQ4.write(x2);
-  // 	WRQ4.write(x3);
-  // 	WRQ4.write(x4);
-  // 	wait();
-  // }
 }
 
-void ACCNAME::overwrite_weights_check() {
-  while (!gemm_unit_1_ready.read() || gemm_unit_1_iwuse.read() != 0) wait();
-  while (!gemm_unit_2_ready.read() || gemm_unit_2_iwuse.read() != 0) wait();
-  while (!gemm_unit_3_ready.read() || gemm_unit_3_iwuse.read() != 0) wait();
-  while (!gemm_unit_4_ready.read() || gemm_unit_4_iwuse.read() != 0) wait();
+void ACCNAME::store(int start, int length) {
+#pragma HLS inline OFF
+  scheduleS.write(71);
+  for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+    // vars[i].send.write(true);
+    vars[i].start_addr_p.write(start);
+    vars[i].send_len_p.write(length);
+    vars[i].bias_data.write(bias_buf[i]);
+    vars[i].crf_data.write(crf_buf[i]);
+    vars[i].crx_data.write(crx_buf[i]);
+    vars[i].ra_data.write(ra);
+  }
+  scheduleS.write(711);
+
+  for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+    vars[i].send.write(true);
+  }
+
+  tempS.write(length);
+  scheduleS.write(72);
+  DWAIT();
+  while (store_done()) {
+    scheduleS.write(73);
+    DWAIT();
+  }
+  scheduleS.write(74);
+  for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+    vars[i].send.write(false);
+  }
+  scheduleS.write(75);
 }
 
 void ACCNAME::Scheduler() {
-  int unit_counter = 0;
-  gemm_unit_1_ready.write(1);
-  gemm_unit_2_ready.write(1);
-  gemm_unit_3_ready.write(1);
-  gemm_unit_4_ready.write(1);
-  gemm_unit_1_l_pointer.write(0);
-  gemm_unit_2_l_pointer.write(0);
-  gemm_unit_3_l_pointer.write(0);
-  gemm_unit_4_l_pointer.write(0);
-  schS.write(0);
+  init_PE_signals();
+  bool ready = true;
+  scheduleS.write(0);
+  schedule.write(false);
+  tempS.write(0);
   wait();
   while (1) {
-    schS.write(10);
+
+    scheduleS.write(1);
     while (!schedule.read()) wait();
 
-    dex_i = 0;
-    schS.write(1);
-    int dm = depth / 4;
-    int rmax = rhs_block_max;
-    int lmax = lhs_block_max;
-    for (int r = 0; r < rhs_block_max; r += 4) {
-      int r4 = r / 4;
-      int r_pointer = r4 * dm;
-      schS.write(2);
-      overwrite_weights_check();
-      load_weights(r_pointer, dm);
-      DWAIT(15);
-      schS.write(4);
-      for (int l = 0; l < lhs_block_max; l += 4) {
-        schS.write(5);
-        int l4 = l / 4;
-        int l_pointer = l4 * dm;
-        schedule_gemm_unit(0, l_pointer, l4, r4);
-        // unit_counter=((unit_counter+1)%4);
-        schS.write(6);
+    scheduleS.write(2);
+    wait();
+    if (schedule) activate_PEs();
+    wait();
+    wait();
+    scheduleS.write(3);
+    load_wgt_PEs();
+
+    while (ready) {
+      scheduleS.write(4);
+      wait();
+      opcode op = opcode(din1.read().data.to_uint());
+      ready = op.schedule;
+      if (op.load_inp || op.load_col_map) {
+        if (op.load_inp) load_inp.write(true);
+        if (op.load_col_map) load_col_map.write(true);
+        load_data.write(true);
+        scheduleS.write(5);
         wait();
-        DWAIT(10);
+        while (load_data.read()) wait();
+        load_inp.write(false);
+        load_col_map.write(false);
+      }
+      if (op.load_col_map) {
+        scheduleS.write(6);
+        load_inp_PEs();
+      }
+      if (op.store) {
+        scheduleS.write(7);
+        int send_start = din1.read().data;
+        int send_len = din1.read().data;
+        store(send_start, send_len);
       }
     }
-    schS.write(7);
-    schedule.write(0);
-    schS.write(8);
+    scheduleS.write(9);
+    deactivate_PEs();
+    ready = true;
+    schedule.write(false);
     wait();
   }
 }

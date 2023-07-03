@@ -15,7 +15,8 @@ cc_library(
     name = "driver",
     srcs = [
         "acc_container.h",
-        "gemm_driver.h",
+        "mm2im_driver.h",
+        "mm2im_util.h",
         "systemc_binding.h"
         ],
     copts = common_copts,

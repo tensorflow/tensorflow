@@ -75,7 +75,7 @@ void ACCNAME::PPU(int* x, sc_int<32>* g1, sc_int<32>* r1) {
 #pragma HLS unroll
       int accum = g1[j * 4 + i] + x[j];
       r1[j * 4 + i] = accum;
-      // cerr << (int)r1[j * 4 + i] << " : " << (j * 4 + i) << endl;
+      cerr << (int)g1[j * 4 + i] << "+" << x[j] << "=" << accum << endl;
     }
   }
 

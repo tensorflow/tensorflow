@@ -1,83 +1,232 @@
-int ACCNAME::SHR(int value, int shift) { return value >> shift; }
 
-sc_int<32> ACCNAME::mul_s8(sc_int<8> a, sc_int<8> b) {
-  sc_int<32> c;
-#pragma HLS RESOURCE variable = c core = Mul
-  c = a * b;
-  return c;
-}
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   DATA last = {5000, 1};
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     DATA data0 = vars[0].out_fifo.read();
+//     wait();
+//     outS.write(2);
+//     DATA data1 = vars[1].out_fifo.read();
+//     wait();
+//     outS.write(3);
+//     DATA data2 = vars[2].out_fifo.read();
+//     wait();
+//     outS.write(4);
+//     if (!data0.tlast) dout1.write(data0);
+//     if (!data1.tlast) dout1.write(data1);
+//     dout1.write(data2);
+
+//     outS.write(5);
+//     wait();
+//   }
+// }
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   DATA last = {5000, 1};
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     DATA data0 = vars[0].out_fifo.read();
+//     DATA data1 = vars[1].out_fifo.read();
+//     DATA data2 = vars[2].out_fifo.read();
+//     wait();
+//     outS.write(2);
+//     if (!data0.tlast) dout1.write(data0);
+//     if (!data1.tlast) dout1.write(data1);
+//     dout1.write(data2);
+
+//     outS.write(5);
+//     wait();
+//   }
+// }
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   DATA last = {5000, 1};
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     DATA data0 = vars.vars_0.out_fifo.read();
+//     DATA data1 = vars.vars_1.out_fifo.read();
+//     DATA data2 = vars.vars_2.out_fifo.read();
+//     wait();
+//     outS.write(2);
+//     if (!data2.tlast) dout1.write(data0);
+//     if (!data2.tlast) dout1.write(data1);
+//     dout1.write(data2);
+
+//     outS.write(5);
+//     wait();
+//   }
+// }
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   DATA last = {5000, 1};
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     wait();
+//     DATA data0 = vars.vars_0.out_fifo.read();
+//     DATA data1 = vars.vars_1.out_fifo.read();
+//     DATA data2 = vars.vars_2.out_fifo.read();
+//     DATA data3 = vars.vars_3.out_fifo.read();
+//     DATA data4 = vars.vars_4.out_fifo.read();
+//     DATA data5 = vars.vars_5.out_fifo.read();
+//     DATA data6 = vars.vars_6.out_fifo.read();
+//     DATA data7 = vars.vars_7.out_fifo.read();
+
+//     wait();
+//     outS.write(2);
+//     if (!data0.tlast) dout1.write(data0);
+//     if (!data1.tlast) dout1.write(data1);
+//     if (!data2.tlast) dout1.write(data2);
+//     if (!data3.tlast) dout1.write(data3);
+//     if (!data4.tlast) dout1.write(data4);
+//     if (!data5.tlast) dout1.write(data5);
+//     if (!data6.tlast) dout1.write(data6);
+//     dout1.write(data7);
+
+//     outS.write(5);
+//     wait();
+//   }
+// }
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   DATA last = {5000, 1};
+//   DATA data[PE_COUNT];
+//   for (int i = 0; i < PE_COUNT; i++)
+//     data[i].tlast = 0;
+
+//   out_done.write(false);
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     while (!out_fifo_filled())
+//       DWAIT();
+
+//     for (int i = 0; i < PE_COUNT; i++) {
+// #pragma HLS unroll
+//       data[i].data = vars.get(i);
+//     }
+
+//     wait();
+//     outS.write(2);
+
+//     for (int i = 0; i < PE_COUNT; i++) {
+// #pragma HLS unroll
+//       dout1.write(data[i]);
+//     }
+
+//     if (store_done() && !out_fifo_filled()) {
+//       dout1.write(last);
+//       out_done.write(true);
+//       while (out_done_start)
+//         DWAIT();
+//       out_done.write(false);
+//     }
+
+//     outS.write(5);
+//     wait();
+//   }
+// }
+
+// void ACCNAME::Output_Handler() {
+// #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable
+// = \
+//     outS
+
+//   outS.write(0);
+//   int data[PE_COUNT];
+//   bool tlast[PE_COUNT];
+//   for (int i = 0; i < PE_COUNT; i++)
+//     tlast[i] = 0;
+
+//   wait();
+//   while (1) {
+//     outS.write(1);
+//     wait();
+//     for (int i = 0; i < PE_COUNT; i++) {
+// #pragma HLS unroll
+//       DATA d = vars.get(i);
+//       data[i] = d.data;
+//       tlast[i] = d.tlast;
+//     }
+
+//     wait();
+//     outS.write(2);
+
+//     for (int i = 0; i < PE_COUNT - 1; i++) {
+// #pragma HLS unroll
+//       DATA d = {data[i], tlast[i]};
+//       if (!tlast[i]) dout1.write(d);
+//     }
+//     DATA d = {data[PE_COUNT - 1], tlast[PE_COUNT - 1]};
+//     dout1.write(d);
+//     outS.write(5);
+//     DWAIT();
+//   }
+// }
 
 void ACCNAME::Output_Handler() {
-  bool ready = false;
-  bool resetted = true;
+#pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable = \
+    outS
+
+  outS.write(0);
+  int data[PE_COUNT];
+  bool tlast = false;
   DATA last = {5000, 1};
-  DATA d1 = {0, 0};
-  DATA d2 = {0, 0};
-  DATA d3 = {0, 0};
-  DATA d4 = {0, 0};
-  send_output.write(0);
   wait();
   while (1) {
-    while (out_check.read() && !ready && resetted) {
-      bool w1 = w1S.read() == 10;
-      bool w2 = w2S.read() == 10;
-      bool w3 = w3S.read() == 10;
-      bool w4 = w4S.read() == 10;
-
-      bool wr1 = !write1.read();
-      bool wr2 = !write2.read();
-      bool wr3 = !write3.read();
-      bool wr4 = !write4.read();
-
-      bool block_done = !schedule.read();
-
-      // ready = block_done && w1 && w2 && w3 && w4 && wr1 && wr2 && wr3 && wr4;
-      ready = block_done && w1 && wr1;
-
-      if (send_output.read()) {
-        int i = 0;
-        for (; i < out_int8_lenr; i += 4) {
-          d1.data = dst[i + 0];
-          d2.data = dst[i + 1];
-          d3.data = dst[i + 2];
-          d4.data = dst[i + 3];
-          dout1.write(d1);
-          dout2.write(d2);
-          dout3.write(d3);
-          dout4.write(d4);
-          dst[i + 0] = 0;
-          dst[i + 1] = 0;
-          dst[i + 2] = 0;
-          dst[i + 3] = 0;
-        }
-
-        for (; i < out_int8_len; i++) {
-          d1.data = dst[i];
-          dst[i + 0] = 0;
-          dout1.write(d1);
-        }
-        send_output.write(0);
-        ready = true;
-        wait();
-      }
-
-      if (ready) {
-        dout1.write(last);
-        dout2.write(last);
-        dout3.write(last);
-        dout4.write(last);
-        out_check.write(0);
-        resetted = false;
-      }
-      wait();
-      DWAIT(4);
-    }
-
-    if (!out_check.read()) {
-      resetted = true;
-      ready = false;
-    }
+    outS.write(1);
+    tlast = false;
     wait();
+    for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+      DATA d = vars.get(i);
+      data[i] = d.data;
+      tlast = tlast || d.tlast;
+    }
+
+    wait();
+    outS.write(2);
+
+    for (int i = 0; i < PE_COUNT; i++) {
+#pragma HLS unroll
+      DATA d;
+      d.data = data[i];
+      d.tlast = 0;
+      dout1.write(d);
+    }
+    if (tlast) {
+      dout1.write(last);
+    }
+    outS.write(5);
     DWAIT();
   }
 }

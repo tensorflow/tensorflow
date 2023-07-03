@@ -1,98 +1,106 @@
 void ACCNAME::Data_In() {
-  int llength = 0;
-  int rlength = 0;
+  #pragma HLS resource core = AXI4LiteS metadata = "-bus_bundle slv0" variable = \
+    data_inS
 
+  data_inS.write(0);
   wait();
   while (1) {
-    while (!read_inputs.read()) wait();
-    llength = llen.read();
-    rlength = rlen.read();
-    int la = 0;
-    int lb = 0;
-    int ra = 0;
-    int rb = 0;
+    data_inS.write(1);
+    while (!load_data.read())
+      wait();
 
-    DWAIT(3);
-    if (ltake.read()) {
-      for (int i = 0; i < llength / 4; i++) {
-        ACC_DTYPE<32> data1 = din1.read().data.to_int();
-        ACC_DTYPE<32> data2 = din2.read().data.to_int();
-        ACC_DTYPE<32> data3 = din3.read().data.to_int();
-        ACC_DTYPE<32> data4 = din4.read().data.to_int();
-        lb++;
-        lhsdata1a[la] = data1;
-        // lhsdata1b[la] = data1;
-        // lhsdata1c[la] = data1;
-        // lhsdata1d[la] = data1;
-        lhsdata2a[la] = data2;
-        // lhsdata2b[la] = data2;
-        // lhsdata2c[la] = data2;
-        // lhsdata2d[la] = data2;
-        lhsdata3a[la] = data3;
-        // lhsdata3b[la] = data3;
-        // lhsdata3c[la] = data3;
-        // lhsdata3d[la] = data3;
-        lhsdata4a[la] = data4;
-        // lhsdata4b[la] = data4;
-        // lhsdata4c[la] = data4;
-        // lhsdata4d[la] = data4;
-        la = lb;
-#ifndef __SYNTHESIS__
-        inputbuf_p->value = la;
-        DWAIT();
-#endif
+    if (load_wgt) {
+      data_inS.write(2);
+      // wgt_packet wp =
+      //     wgt_packet(din1.read().data.to_uint(), din1.read().data.to_uint());
+      wgt_packet wp = wgt_packet(&din1);
+      nfilters = din1.read().data;
+      int temp = nfilters;
+      int dex = 0;
+      for (int i = 0; i < wp.wgt_rows; i++) {
+        for (int j = 0; j < wp.wgt_depth; j++) {
+          for (int u = 0; u < UF; u += 4) {
+            sc_uint<32> data = din1.read().data;
+            acc_dt tmp1 = data.range(7, 0).to_int();
+            acc_dt tmp2 = data.range(15, 8).to_int();
+            acc_dt tmp3 = data.range(23, 16).to_int();
+            acc_dt tmp4 = data.range(31, 24).to_int();
+            wgt_buf[dex][u + 0] = tmp1;
+            wgt_buf[dex][u + 1] = tmp2;
+            wgt_buf[dex][u + 2] = tmp3;
+            wgt_buf[dex][u + 3] = tmp4;
+            DWAIT();
+          }
+          dex++;
+        }
+        sc_uint<32> data = din1.read().data;
+        wgt_sum_buf[i] = data;
       }
-      for (int i = 0; i < rlength; i++) {
-        ACC_DTYPE<32> wsums1 = din1.read().data.to_int();
-        ACC_DTYPE<32> wsums2 = din2.read().data.to_int();
-        ACC_DTYPE<32> wsums3 = din3.read().data.to_int();
-        ACC_DTYPE<32> wsums4 = din4.read().data.to_int();
-        rb++;
-        lhs_sum1[ra] = wsums1;
-        lhs_sum2[ra] = wsums2;
-        lhs_sum3[ra] = wsums3;
-        lhs_sum4[ra] = wsums4;
-        ra = rb;
-        DWAIT();
-      }
-
-      ra = 0;
-      rb = 0;
-      for (int i = 0; i < out_len; i++) {
-        ACC_DTYPE<32> dex1 = din1.read().data.to_int();
-        ACC_DTYPE<32> dex2 = din2.read().data.to_int();
-        ACC_DTYPE<32> dex3 = din3.read().data.to_int();
-        ACC_DTYPE<32> dex4 = din4.read().data.to_int();
-        rb++;
-        dex_map1[ra] = dex1;
-        dex_map2[ra] = dex2;
-        dex_map3[ra] = dex3;
-        dex_map4[ra] = dex4;
-        ra = rb;
-        DWAIT();
+      for (int i = 0; i < nfilters; i++) {
+        sc_uint<32> data = din1.read().data;
+        sc_uint<32> data1 = din1.read().data;
+        sc_uint<32> data2 = din1.read().data;
+        bias_buf[i] = data;
+        crf_buf[i] = data1;
+        crx_buf[i] = data2;
       }
     }
 
-    DWAIT();
-    if (rtake.read()) {
-      for (int i = 0; i < rlength / 4; i++) {
-        ACC_DTYPE<32> data1 = din1.read().data.to_int();
-        ACC_DTYPE<32> data2 = din2.read().data.to_int();
-        ACC_DTYPE<32> data3 = din3.read().data.to_int();
-        ACC_DTYPE<32> data4 = din4.read().data.to_int();
-        rb++;
-        rhsdata1[ra] = data1;
-        rhsdata2[ra] = data2;
-        rhsdata3[ra] = data3;
-        rhsdata4[ra] = data4;
-        ra = rb;
-#ifndef __SYNTHESIS__
-        gweightbuf_p->value = ra;
-        DWAIT();
-#endif
+    if (load_inp) {
+      data_inS.write(3);
+      inp_packet ip =
+          inp_packet(&din1);
+      int dex = 0;
+      for (int i = 0; i < ip.inp_rows; i++) {
+        for (int j = 0; j < ip.inp_depth; j++) {
+          for (int u = 0; u < UF; u += 4) {
+            sc_uint<32> data = din1.read().data;
+            acc_dt tmp1 = data.range(7, 0).to_int();
+            acc_dt tmp2 = data.range(15, 8).to_int();
+            acc_dt tmp3 = data.range(23, 16).to_int();
+            acc_dt tmp4 = data.range(31, 24).to_int();
+            inp_buf[dex][u + 0] = tmp1;
+            inp_buf[dex][u + 1] = tmp2;
+            inp_buf[dex][u + 2] = tmp3;
+            inp_buf[dex][u + 3] = tmp4;
+            DWAIT();
+          }
+          dex++;
+        }
       }
     }
-    d_in1.write(0);
-    while (read_inputs.read()) wait();
+
+    if (load_map) {
+      data_inS.write(4);
+      int out_dex = 0;
+      for (int i = 0; i < row_size; i++) {
+        int output_size = din1.read().data;
+        out_starts[i] = out_dex;
+        out_size[i] = output_size;
+        for (int j = 0; j < output_size; j++) {
+          outmap_buf[out_dex++] = din1.read().data;
+          DWAIT();
+        }
+      }
+    }
+
+    if (load_col_map) {
+      data_inS.write(5);
+      int out_dex = 0;
+      number_of_rows = din1.read().data;
+      for (int i = 0; i < number_of_rows; i++) {
+        int col_dex_size = din1.read().data;
+        col_indice_starts[i] = out_dex;
+        col_indice_lens[i] = col_dex_size;
+        for (int j = 0; j < col_dex_size; j++) {
+          col_indices[out_dex] = din1.read().data;
+          out_indices[out_dex++] = din1.read().data;
+          DWAIT();
+        }
+      }
+    }
+
+    load_data.write(false);
+    wait();
   }
 }

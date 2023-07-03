@@ -2,42 +2,15 @@
 #define SYSTEMC_BINDING
 
 #include "tensorflow/lite/delegates/utils/secda_tflite/axi_support/axi_api_v2.h"
+#include "tensorflow/lite/delegates/utils/secda_tflite/sysc_integrator/systemc_integrate.h"
 
 // This file is specfic to VM SystemC definition
-// This contains all the correct port/signal bindings to instantiate the VM accelerator
+// This contains all the correct port/signal bindings to instantiate the VM
+// accelerator
 struct sysC_sigs {
   int id;
   sc_clock clk_fast;
   sc_signal<bool> sig_reset;
-  sc_signal<int> sig_inS;
-  sc_signal<int> sig_outS;
-  sc_signal<int> sig_w1S;
-  sc_signal<int> sig_w2S;
-  sc_signal<int> sig_w3S;
-  sc_signal<int> sig_w4S;
-  sc_signal<int> sig_schS;
-  sc_signal<int> sig_p1S;
-  sc_signal<int> sig_read_cycle_count;
-  sc_signal<int> sig_process_cycle_count;
-
-  sc_signal<int> sig_gemm_1_idle;
-  sc_signal<int> sig_gemm_2_idle;
-  sc_signal<int> sig_gemm_3_idle;
-  sc_signal<int> sig_gemm_4_idle;
-  sc_signal<int> sig_gemm_1_write;
-  sc_signal<int> sig_gemm_2_write;
-  sc_signal<int> sig_gemm_3_write;
-  sc_signal<int> sig_gemm_4_write;
-  sc_signal<int> sig_gemm_1;
-  sc_signal<int> sig_gemm_2;
-  sc_signal<int> sig_gemm_3;
-  sc_signal<int> sig_gemm_4;
-  sc_signal<int> sig_wstall_1;
-  sc_signal<int> sig_wstall_2;
-  sc_signal<int> sig_wstall_3;
-  sc_signal<int> sig_wstall_4;
-  sc_signal<int> sig_rmax;
-  sc_signal<int> sig_lmax;
 
   sc_fifo<DATA> dout1;
   sc_fifo<DATA> dout2;
@@ -49,51 +22,44 @@ struct sysC_sigs {
   sc_fifo<DATA> din3;
   sc_fifo<DATA> din4;
 
+  sc_signal<bool> on;
+  sc_signal<int> inS;
+  sc_signal<int> data_inS;
+  sc_signal<int> scheduleS;
+  sc_signal<int> outS;
+  sc_signal<int> tempS;
+
+  sc_signal<int> computeS0;
+  sc_signal<int> sendS0;
+  sc_signal<int> computeS1;
+  sc_signal<int> sendS1;
+  sc_signal<int> computeS2;
+  sc_signal<int> sendS2;
+  sc_signal<int> computeS3;
+  sc_signal<int> sendS3;
+  sc_signal<int> computeS4;
+  sc_signal<int> sendS4;
+  sc_signal<int> computeS5;
+  sc_signal<int> sendS5;
+  sc_signal<int> computeS6;
+  sc_signal<int> sendS6;
+  sc_signal<int> computeS7;
+  sc_signal<int> sendS7;
+  
+
   sysC_sigs(int id_)
-      : dout1("dout1_fifo", 563840),
-        dout2("dout2_fifo", 563840),
-        dout3("dout3_fifo", 563840),
-        dout4("dout4_fifo", 563840),
-        din1("din1_fifo", 554800),
-        din2("din2_fifo", 554800),
-        din3("din3_fifo", 554800),
-        din4("din4_fifo", 554800) {
+      : dout1("dout1_fifo", 563840), dout2("dout2_fifo", 563840),
+        dout3("dout3_fifo", 563840), dout4("dout4_fifo", 563840),
+        din1("din1_fifo", 554800), din2("din2_fifo", 554800),
+        din3("din3_fifo", 554800), din4("din4_fifo", 554800) {
     id = id_;
     sc_clock clk_fast("ClkFast", 1, SC_NS);
   }
 };
 
-void sysC_binder(ACCNAME* acc, multi_dma* mdma, sysC_sigs* scs) {
+void sysC_binder(ACCNAME *acc, multi_dma *mdma, sysC_sigs *scs) {
   acc->clock(scs->clk_fast);
   acc->reset(scs->sig_reset);
-  acc->inS(scs->sig_inS);
-  acc->outS(scs->sig_outS);
-  acc->w1SS(scs->sig_w1S);
-  acc->w2SS(scs->sig_w2S);
-  acc->w3SS(scs->sig_w3S);
-  acc->w4SS(scs->sig_w4S);
-  acc->schS(scs->sig_schS);
-  acc->p1S(scs->sig_p1S);
-  acc->read_cycle_count(scs->sig_read_cycle_count);
-  acc->process_cycle_count(scs->sig_process_cycle_count);
-  acc->gemm_1_idle(scs->sig_gemm_1_idle);
-  acc->gemm_2_idle(scs->sig_gemm_2_idle);
-  acc->gemm_3_idle(scs->sig_gemm_3_idle);
-  acc->gemm_4_idle(scs->sig_gemm_4_idle);
-  acc->gemm_1_write(scs->sig_gemm_1_write);
-  acc->gemm_2_write(scs->sig_gemm_2_write);
-  acc->gemm_3_write(scs->sig_gemm_3_write);
-  acc->gemm_4_write(scs->sig_gemm_4_write);
-  acc->gemm_1(scs->sig_gemm_1);
-  acc->gemm_2(scs->sig_gemm_2);
-  acc->gemm_3(scs->sig_gemm_3);
-  acc->gemm_4(scs->sig_gemm_4);
-  acc->wstall_1(scs->sig_wstall_1);
-  acc->wstall_2(scs->sig_wstall_2);
-  acc->wstall_3(scs->sig_wstall_3);
-  acc->wstall_4(scs->sig_wstall_4);
-  acc->rmax(scs->sig_rmax);
-  acc->lmax(scs->sig_lmax);
 
   for (int i = 0; i < mdma->dma_count; i++) {
     mdma->dmas[i].dmad->clock(scs->clk_fast);
@@ -108,7 +74,6 @@ void sysC_binder(ACCNAME* acc, multi_dma* mdma, sysC_sigs* scs) {
   mdma->dmas[2].dmad->din1(scs->din3);
   mdma->dmas[3].dmad->din1(scs->din4);
 
-
   acc->dout1(scs->dout1);
   acc->dout2(scs->dout2);
   acc->dout3(scs->dout3);
@@ -117,6 +82,30 @@ void sysC_binder(ACCNAME* acc, multi_dma* mdma, sysC_sigs* scs) {
   acc->din2(scs->din2);
   acc->din3(scs->din3);
   acc->din4(scs->din4);
+  acc->on(scs->on);
+
+  acc->inS(scs->inS);
+  acc->data_inS(scs->data_inS);
+  acc->scheduleS(scs->scheduleS);
+  acc->outS(scs->outS);
+  acc->tempS(scs->tempS);
+
+  acc->vars.vars_0.computeS(scs->computeS0);
+  acc->vars.vars_0.sendS(scs->sendS0);
+  acc->vars.vars_1.computeS(scs->computeS1);
+  acc->vars.vars_1.sendS(scs->sendS1);
+  acc->vars.vars_2.computeS(scs->computeS2);
+  acc->vars.vars_2.sendS(scs->sendS2);
+  acc->vars.vars_3.computeS(scs->computeS3);
+  acc->vars.vars_3.sendS(scs->sendS3);
+  acc->vars.vars_4.computeS(scs->computeS4);
+  acc->vars.vars_4.sendS(scs->sendS4);
+  acc->vars.vars_5.computeS(scs->computeS5);
+  acc->vars.vars_5.sendS(scs->sendS5);
+  acc->vars.vars_6.computeS(scs->computeS6);
+  acc->vars.vars_6.sendS(scs->sendS6);
+  acc->vars.vars_7.computeS(scs->computeS7);
+  acc->vars.vars_7.sendS(scs->sendS7);
 }
 
-#endif  // SYSTEMC_BINDING
+#endif // SYSTEMC_BINDING

@@ -1,0 +1,8 @@
+#include "acc.sc.h"
+#include "acc_config.h"
+#include "data_in.h"
+#include "in.h"
+#include "out.h"
+#include "pe_control.h"
+#include "pe_module.h"
+#include "scheduler.h"

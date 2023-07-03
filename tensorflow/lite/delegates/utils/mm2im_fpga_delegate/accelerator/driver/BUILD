@@ -12,24 +12,16 @@ package(
 common_copts = ["-Wall"] + tflite_copts()
 
 cc_library(
-    name = "accelerator",
+    name = "driver",
     srcs = [
-        "acc.sc.cc",
+        "acc_container.h",
+        "mm2im_driver.h",
+        "mm2im_util.h",
+        "acc_config.h"
         ],
-    hdrs = [
-        "acc_config.h",
-        "acc.sc.h",
-        "data_in.h",
-        "in.h",
-        "out.h",
-        "pe_control.h",
-        "pe_module.h",
-        "scheduler.h",
-    ],
     copts = common_copts,
     deps = [
-        "@systemc//:systemc",
-        "//tensorflow/lite/delegates/utils/secda_tflite:secda_tflite_sim",
+        "//tensorflow/lite/delegates/utils/secda_tflite:secda_tflite",
     ],
 )
 
