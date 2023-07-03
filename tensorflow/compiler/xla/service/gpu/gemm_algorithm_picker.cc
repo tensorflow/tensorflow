@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -52,8 +52,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-using tensorflow::AutotuneResult;
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 static se::RedzoneAllocator CreateRedzoneAllocator(
@@ -163,7 +161,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   }
 
   if (!autotune_config.should_crash_on_check_failure()) {
-    tensorflow::AutotuningLog log;
+    AutotuningLog log;
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
     }

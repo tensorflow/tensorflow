@@ -435,6 +435,10 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
     int64_t index_vector_dim, absl::Span<const int64_t> index_map,
     const CallGraph& call_graph);
 
+// Returns the sharding of an output of an instruction. Some instructions have
+// special handling like Outfeed and this function takes care of those.
+std::optional<HloSharding> GetOutputSharding(const HloInstruction* instruction);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 

@@ -17,36 +17,35 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/profiler/convert/dcn_analysis.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
+using tsl::profiler::CreateTfXPlaneVisitor;
 using tsl::profiler::FindMutableTensorCorePlanes;
 
 void ProcessMegascaleDcn(XSpace* space) {
   std::vector<XPlane*> device_xplanes = FindMutableTensorCorePlanes(space);
   int num_tpu_cores = device_xplanes.size();
   // DCN TraceMe's are in the Host XPlane
-  XPlane* host_plane = FindMutablePlaneWithName(space, kHostThreadsPlaneName);
+  XPlane* host_plane =
+      FindMutablePlaneWithName(space, tsl::profiler::kHostThreadsPlaneName);
   const XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(host_plane);
   // TODO(yashjs): Update parameter value for `is_megacore`.
   DcnEventsProcessor dcn_events_processor(num_tpu_cores, false);
   dcn_events_processor.SetupMessageInfo(plane_visitor);
-  if (dcn_events_processor.HasDcnMessages(kMegaScaleDcnReceive)) {
+  if (dcn_events_processor.HasDcnMessages(
+          tsl::profiler::kMegaScaleDcnReceive)) {
     dcn_events_processor.ProcessReceiveMessages(plane_visitor);
   }
   // Update host XPlane with DCN traffic
   dcn_events_processor.AddHostDcnTrafficToXPlane(host_plane);
   // Update device XPlanes with per collective TPU traffic.
-  for (int tpu_idx = 0; tpu_idx < num_tpu_cores; tpu_idx++) {
-    XPlane* device_xplane = device_xplanes[tpu_idx];
-    if (device_xplane != nullptr) {
-      dcn_events_processor.AddTpuCollectiveDcnTrafficToXPlane(device_xplane,
-                                                              tpu_idx);
-    }
+  for (XPlane* device_xplane : device_xplanes) {
+    dcn_events_processor.AddTpuCollectiveDcnTrafficToXPlane(device_xplane);
   }
 }
 }  // namespace profiler

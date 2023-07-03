@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -40,15 +41,19 @@ class MultiOutputFusionTest : public HloTestBase {
   }
 
  public:
-  GpuMultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                            ShapeSizeBytesFunction()};
+  GpuMultiOutputFusion mof_{
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+      ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
-        GpuMultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                             ShapeSizeBytesFunction()},
+        GpuMultiOutputFusion{
+            TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+            se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+            ShapeSizeBytesFunction()},
         expected);
   }
 };

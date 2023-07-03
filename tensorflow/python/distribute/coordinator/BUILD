@@ -130,7 +130,8 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -157,7 +158,8 @@ py_strict_library(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -170,6 +172,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nomsan",
     ],
     deps = [
         ":fault_tolerance_test_base",

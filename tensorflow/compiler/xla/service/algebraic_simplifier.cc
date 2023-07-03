@@ -395,6 +395,21 @@ bool ValidateTilingOfBitcast(
   return true;
 }
 
+double GetDotFlops(const HloInstruction* dot) {
+  // A dot of arrays of size ab and bc requires ac(2b-1) flops
+  // In general, we compute the flops per element in the output shape
+  double contraction_prod = 1;
+  auto lhs_contracting_dims =
+      dot->dot_dimension_numbers().lhs_contracting_dimensions();
+  for (auto dim : lhs_contracting_dims) {
+    contraction_prod *= dot->operand(0)->shape().dimensions(dim);
+  }
+  // Flops include multiplications and adds
+  double flops_per_output_elem = 2 * contraction_prod - 1;
+  // We then multiply this number by the number of elements in the output shape
+  return flops_per_output_elem * ShapeUtil::ElementsIn(dot->shape());
+}
+
 }  // namespace
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
@@ -1219,7 +1234,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int i = 0; i < result_shape.rank(); ++i) {
     if (result_shape.dimensions(i) == 1) {
       bitcast_pos++;
-      // Since there is a possiblity of over-incrementing bitcast_pos
+      // Since there is a possibility of over-incrementing bitcast_pos
       // we need such a check here also before accessing the vector.
       // Overincrementing is possible when the result's dimension is
       // smaller than the original dimension.
@@ -2760,6 +2775,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   if (options_.is_layout_sensitive()) {
     return OkStatus();
   }
+
   // Replace a zero element dot with a broadcast of the constant 0.
   if (ShapeUtil::IsZeroElementArray(dot->shape()) ||
       ShapeUtil::IsZeroElementArray(lhs->shape()) ||
@@ -2927,6 +2943,51 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
                       RemoveTransposesFromDotOperands(dot));
   if (removed_transposes) {
     return OkStatus();
+  }
+
+  // Reorder nested dots with associativity using flops as a heuristic
+  if (options_.use_associative_reordering()) {
+    // TODO(b/289120301): Update with symmetric contraction form
+    HloInstruction *a, *b, *c;
+    HloInstruction *dot_a_b, *dot_ab_c, *dot_b_c, *dot_a_bc;
+    int64_t left_first_flops, right_first_flops;
+    if (Match(dot, m::Dot(m::Dot(m::Op(&a), m::Op(&b)), m::Op(&c)))) {
+      dot_a_b = lhs;
+      dot_ab_c = dot;
+      TF_ASSIGN_OR_RETURN(
+          dot_b_c,
+          MakeDotHlo(b, c, dot->dot_dimension_numbers(),
+                     dot->precision_config(), dot->shape().element_type()));
+      TF_ASSIGN_OR_RETURN(
+          dot_a_bc,
+          MakeDotHlo(a, dot_b_c, dot_a_b->dot_dimension_numbers(),
+                     dot->precision_config(), dot->shape().element_type()));
+      left_first_flops = GetDotFlops(dot_a_b) + GetDotFlops(dot_ab_c);
+      right_first_flops = GetDotFlops(dot_b_c) + GetDotFlops(dot_a_bc);
+      if (left_first_flops >
+          options_.associative_reordering_threshold() * right_first_flops) {
+        return ReplaceInstruction(dot, dot_a_bc);
+      }
+    } else if (Match(dot, m::Dot(m::Op(&a), m::Dot(m::Op(&b), m::Op(&c))))) {
+      dot_b_c = rhs;
+      dot_a_bc = dot;
+      TF_ASSIGN_OR_RETURN(
+          dot_a_b,
+          MakeDotHlo(a, b, dot->dot_dimension_numbers(),
+                     dot->precision_config(), dot->shape().element_type()));
+      TF_ASSIGN_OR_RETURN(
+          dot_ab_c,
+          MakeDotHlo(dot_a_b, c, dot_b_c->dot_dimension_numbers(),
+                     dot->precision_config(), dot->shape().element_type()));
+      left_first_flops = GetDotFlops(dot_a_b) + GetDotFlops(dot_ab_c);
+      right_first_flops = GetDotFlops(dot_b_c) + GetDotFlops(dot_a_bc);
+      if (right_first_flops >
+          options_.associative_reordering_threshold() * left_first_flops) {
+        return ReplaceInstruction(dot, dot_ab_c);
+      }
+    } else {
+      return OkStatus();
+    }
   }
 
   return OkStatus();
@@ -4377,8 +4438,8 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       std::optional<int64_t> max_val =
           OverflowSafeAdd(*divisor_val, iota_upper_bound);
-      if (max_val.has_value() &&
-          FitsInIntegralType(*max_val, iota->shape().element_type())) {
+      if (max_val.has_value() && primitive_util::FitsInIntegralType(
+                                     *max_val, iota->shape().element_type())) {
         return ReplaceWithNewInstruction(
             remainder,
             HloInstruction::CreateBinary(remainder->shape(),

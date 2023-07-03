@@ -157,19 +157,20 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return value;
   }
 
+  // All operations on bf16 are done through f32.
+  if (src_element_ty.isBF16()) {
+    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
+  }
+  if (dst_element_ty.isBF16()) {
+    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+  }
+
   // Float <=> float
   auto src_fp_element_ty = src_element_ty.dyn_cast<mlir::FloatType>();
   auto dst_fp_element_ty = dst_element_ty.dyn_cast<mlir::FloatType>();
   if (src_fp_element_ty && dst_fp_element_ty) {
-    // f16 <=> bf16 is a bit special, since we can neither extend, nor truncate
-    // one into the other. Instead, we first extend src to f32, and then
-    // truncate to dst.
-    if ((src_element_ty.isF16() && dst_element_ty.isBF16()) ||
-        (src_element_ty.isBF16() && dst_element_ty.isF16())) {
-      return b.create<ma::TruncFOp>(dst_ty,
-                                    b.create<ma::ExtFOp>(fp32_ty, value));
-    } else if (src_fp_element_ty.getFPMantissaWidth() >
-               dst_fp_element_ty.getFPMantissaWidth()) {
+    if (src_fp_element_ty.getFPMantissaWidth() >
+        dst_fp_element_ty.getFPMantissaWidth()) {
       return b.create<ma::TruncFOp>(dst_ty, value);
     } else {
       return b.create<ma::ExtFOp>(dst_ty, value);
@@ -573,8 +574,8 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
       [](mlir::Attribute attr) { return attr.cast<mlir::DictionaryAttr>(); }));
   auto generic_func = rewriter.create<ml::LLVMFuncOp>(
       func.getLoc(), func.getSymName(), generic_func_ty, func.getLinkage(),
-      func.getDsoLocal(), func.getCConv(), GetExtraAttrs(func), arg_attrs,
-      func.getFunctionEntryCount());
+      func.getDsoLocal(), func.getCConv(), /*comdat=*/nullptr,
+      GetExtraAttrs(func), arg_attrs, func.getFunctionEntryCount());
 
   // Convert generic address spaces back to original ones within the function
   // body.
@@ -620,7 +621,7 @@ template <typename IndexT>
 StatusOr<LaunchDimensions> MatMulImpl(
     mlir::OpBuilder builder, absl::string_view libdevice_path,
     const HloDotInstruction* dot_instr, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+    const AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   CHECK(!root->shape().IsTuple());
 
@@ -1035,18 +1036,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
                   values_rhs, rhs_offsets, rhs_mask);
 
     if (need_masking) {
-      // TODO(b/287711892): fix F16 select.
-      if (ElementType(dot_input_lhs).isF16()) {
-        dot_input_lhs = b.create<ma::MulFOp>(dot_input_lhs,
-                                             Cast(b, lhs_mask, b.getF16Type()));
-        dot_input_rhs = b.create<ma::MulFOp>(dot_input_rhs,
-                                             Cast(b, rhs_mask, b.getF16Type()));
-      } else {
-        dot_input_lhs = b.create<ma::SelectOp>(lhs_mask, dot_input_lhs,
-                                               ZerosLike(b, dot_input_lhs));
-        dot_input_rhs = b.create<ma::SelectOp>(rhs_mask, dot_input_rhs,
-                                               ZerosLike(b, dot_input_rhs));
-      }
+      dot_input_lhs = b.create<ma::SelectOp>(lhs_mask, dot_input_lhs,
+                                             ZerosLike(b, dot_input_lhs));
+      dot_input_rhs = b.create<ma::SelectOp>(rhs_mask, dot_input_rhs,
+                                             ZerosLike(b, dot_input_rhs));
     }
 
     auto accumulator_next = b.create<mt::DotOp>(
@@ -1161,10 +1154,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> MatMul(
-    mlir::OpBuilder builder, absl::string_view libdevice_path,
-    const HloComputation* computation, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder builder,
+                                  absl::string_view libdevice_path,
+                                  const HloComputation* computation,
+                                  mlir::triton::FuncOp fn,
+                                  const AutotuneResult::TritonGemmKey& config,
+                                  int shmem_budget) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -1183,10 +1178,12 @@ StatusOr<LaunchDimensions> MatMul(
   }
 }
 
-StatusOr<LaunchDimensions> SoftMax(
-    mlir::OpBuilder builder, absl::string_view libdevice_path,
-    const HloComputation* computation, mlir::triton::FuncOp fn,
-    const tensorflow::AutotuneResult::TritonGemmKey& config, int) {
+StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
+                                   absl::string_view libdevice_path,
+                                   const HloComputation* computation,
+                                   mlir::triton::FuncOp fn,
+                                   const AutotuneResult::TritonGemmKey& config,
+                                   int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   mlir::ImplicitLocOpBuilder b(loc, builder);
@@ -1476,12 +1473,13 @@ StatusOr<LaunchDimensions> TritonWrapper(
       if (err) {
         log_stream.reset();
       }
-      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
-      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
       pm.getContext()->disableMultithreading();
-      pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
-                          /*printAfterOnlyOnChange=*/true,
-                          /*printAfterOnlyOnFailure=*/false, *log_stream,
+      auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+      pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                          /*shouldPrintAfterPass=*/print_always,
+                          /*printModuleScope=*/true,
+                          /*printAfterOnlyOnChange=*/false,
+                          /*printAfterOnlyOnFailure=*/true, *log_stream,
                           /*opPrintingFlags=*/{});
     } else {
       LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "
@@ -1497,10 +1495,14 @@ StatusOr<LaunchDimensions> TritonWrapper(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  CHECK(mlir::succeeded(pm.run(triton_module)));
+  bool succeeded = mlir::succeeded(pm.run(triton_module));
 
   if (log_stream.has_value()) {
     log_stream->flush();
+  }
+
+  if (!succeeded) {
+    return InternalError("Failed to compile Triton kernel.");
   }
 
   const int shared_mem_bytes =

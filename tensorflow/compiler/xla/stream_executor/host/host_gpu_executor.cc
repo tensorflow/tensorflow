@@ -322,27 +322,6 @@ fft::FftSupport* HostExecutor::CreateFft() {
   return status.value()(this);
 }
 
-bool HostExecutor::SupportsRng() const {
-  return PluginRegistry::Instance()
-      ->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
-                                               plugin_config_.rng())
-      .ok();
-}
-
-rng::RngSupport* HostExecutor::CreateRng() {
-  PluginRegistry* registry = PluginRegistry::Instance();
-  tsl::StatusOr<PluginRegistry::RngFactory> status =
-      registry->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
-                                                       plugin_config_.rng());
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve RNG factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  return status.value()(this);
-}
-
 std::unique_ptr<internal::StreamInterface>
 HostExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(

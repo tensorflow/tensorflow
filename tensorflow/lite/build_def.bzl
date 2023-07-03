@@ -684,7 +684,7 @@ def tflite_custom_c_library(
         ]
         experimental_deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
-            "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_experimental_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [

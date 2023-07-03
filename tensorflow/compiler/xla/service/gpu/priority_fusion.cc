@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -127,6 +128,22 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
+    // The original consumer was replaced with the fusion, but it's pointer can
+    // still be referenced somewhere, for example, in to_update_priority_.
+    // Priority recomputation is called before DCE. Remove all references to
+    // the original consumer here.
+    if (fusion != original_consumer) {
+      RemoveInstruction(original_consumer);
+    }
+
+    // Detach 'original_producer' from its operands if it has no users.
+    // This avoids having it appear as a "phantom" user in subsequent priority
+    // calculations on 'fusion.operands' below, before it is finally removed
+    // in 'RemoveInstruction'.
+    if (original_producer->user_count() == 0) {
+      original_producer->DetachFromOperandsAndUsers();
+    }
+
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
@@ -154,9 +171,15 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
     to_update_priority_.insert(fusion);
 
+    // When current_consumers_ is empty, we will need to dequeue a new producer
+    // next time, so we update the priorities now.
     if (current_consumers_.empty()) {
-      // When current_consumers_ is empty, we will need to dequeue a new
-      // producer next time, so we update the priorities now.
+      // Revisit costs of all updated ops. It's important to update cost
+      // analysis before recalculating priorities.
+      for (auto instruction : to_update_priority_) {
+        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+      }
+
       for (auto instruction : to_update_priority_) {
         auto reverse_it = reverse_map_.find(instruction);
         const auto new_priority = CalculateProducerPriority(instruction);
@@ -203,9 +226,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
 
     GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-        producer, &cost_analysis_, gpu_device_info_, fusible_users,
-        // producer, &cost_analysis_, gpu_device_info_, producer->users(),
-        /*multi_output=*/false);
+        producer, &cost_analysis_, gpu_device_info_, std::nullopt,
+        fusible_users, /*multi_output=*/false);
 
     return absl::ToInt64Nanoseconds(t.time_unfused - t.time_fused);
   }
@@ -345,25 +367,6 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
     return !too_large;
   }
 
-  if (consumer->opcode() != HloOpcode::kFusion) {
-    return {};
-  }
-
-  // Also check that our emitter can handle the fusion node. We currently can
-  // have exponential time/memory requirements for emitting certain fusion
-  // kernels, in which case we don't want to fuse.
-  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-  if (fusion_node_evaluations_.find(consumer) ==
-      fusion_node_evaluations_.end()) {
-    // We have no cached results for this fusion node yet. This can happen when
-    // we run the InstructionFusion pass more than once. We can only cache the
-    // results within one run.
-    fusion_node_evaluations_.emplace(consumer,
-                                     FusionNodeIndexingEvaluation(consumer));
-  }
-  if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(producer)) {
-    return "the fusion would result in an overly large code duplication";
-  }
   return {};
 }
 
@@ -374,18 +377,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
 
 HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
-  auto evaluation = fusion_node_evaluations_.find(fusion_instruction);
-  if (evaluation == fusion_node_evaluations_.end()) {
-    evaluation = fusion_node_evaluations_
-                     .emplace(fusion_instruction,
-                              FusionNodeIndexingEvaluation(fusion_instruction))
-                     .first;
-  }
-  auto indexing_users = evaluation->second.RemoveFusionOperand(producer);
-  HloInstruction* new_producer =
-      InstructionFusion::FuseInstruction(fusion_instruction, producer);
-  evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
-  return new_producer;
+  return InstructionFusion::FuseInstruction(fusion_instruction, producer);
 }
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(

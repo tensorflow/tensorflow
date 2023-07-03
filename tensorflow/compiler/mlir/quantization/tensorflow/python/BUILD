@@ -121,7 +121,6 @@ tf_py_test(
     srcs = [
         "pywrap_quantize_model_test.py",
     ],
-    tags = ["no_pip"],
     deps = [
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
@@ -190,7 +189,6 @@ tf_py_test(
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
     shard_count = 50,  # Parallelize the test to avoid timeouts.
-    tags = ["no_pip"],
     deps = [
         ":quantize_model",
         ":quantize_model_test_base",
@@ -248,7 +246,6 @@ tf_py_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
@@ -274,7 +271,6 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",

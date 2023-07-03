@@ -43,7 +43,6 @@ limitations under the License.
 
 namespace xla {
 
-using tensorflow::AutotuneResult;
 using xla::runtime::AggregateAttrDef;
 using xla::runtime::AggregateAttrEncoding;
 using xla::runtime::CustomCall;

@@ -252,6 +252,7 @@ cc_library(
         "passes.h",
     ],
     deps = [
+        ":legalization_op_config",
         ":legalize_tf",
         ":legalize_utils",
         ":tf_xla_passes_inc_gen",
@@ -494,7 +495,15 @@ cc_library(
     name = "legalization_op_config",
     srcs = ["legalization_op_config.cc"],
     hdrs = ["legalization_op_config.h"],
-    deps = ["@llvm-project//mlir:IR"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 tf_cc_test(
@@ -502,10 +511,21 @@ tf_cc_test(
     srcs = ["legalization_op_config_test.cc"],
     deps = [
         ":legalization_op_config",
+        ":legalize_tf",
         ":test_utils",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )

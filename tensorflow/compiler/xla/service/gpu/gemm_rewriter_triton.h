@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -48,9 +48,8 @@ bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 // Apply split K configuration from the tiling to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the
 // necessary reduction after it.
-Status MakeDotSplitKBatch(
-    HloInstruction* dot_fusion,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling);
+Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                          const AutotuneResult::TritonGemmKey& tiling);
 
 // Filters GEMMs which are better to handle using Triton.
 bool IsTritonHandledGEMM(const HloInstruction&, GpuVersion gpu_version);

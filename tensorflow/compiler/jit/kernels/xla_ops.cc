@@ -595,7 +595,6 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     auto run_pjrt_cluster = [ctx, pjrt_client, pjrt_executable,
                              compilation_result, done, inputs,
                              resources = resources_]() {
-      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
       // Separate scope so that VariableInfo locks are released before done() is
       // called.
       {
@@ -609,8 +608,8 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                              done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
-            RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
-                              *compilation_result, pjrt_executable, ctx),
+            RunPjRtExecutable(inputs, variable_infos, *compilation_result,
+                              pjrt_client, pjrt_executable, ctx),
             done);
       }
       VLOG(2) << "Done executing with PJRT.";
@@ -942,10 +941,10 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx, updated_variables.status());
       OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*updated_variables)));
       OP_REQUIRES_OK(
-          ctx, RunPjRtExecutable(*closure.client(), closure.num_constant_args(),
-                                 inputs, variable_snapshots, *updated_variables,
+          ctx, RunPjRtExecutable(closure.num_constant_args(), inputs,
+                                 variable_snapshots, *updated_variables,
                                  *closure.compilation_result(),
-                                 closure.executable(), ctx));
+                                 closure.client(), closure.executable(), ctx));
     }
 
     OP_REQUIRES_OK(ctx, OkStatus());

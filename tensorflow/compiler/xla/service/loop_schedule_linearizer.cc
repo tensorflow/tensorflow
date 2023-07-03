@@ -167,8 +167,10 @@ StatusOr<bool> LoopScheduleLinearizer::Run(
       bool has_async_collectives =
           absl::c_any_of(body->instructions(), [](const HloInstruction* instr) {
             HloOpcode op = instr->opcode();
-            return hlo_query::IsAsyncCollectiveStartOp(op) ||
-                   hlo_query::IsAsyncCollectiveDoneOp(op);
+            return hlo_query::IsAsyncCollectiveStartOp(
+                       op, /*include_send_recv=*/true) ||
+                   hlo_query::IsAsyncCollectiveDoneOp(
+                       op, /*include_send_recv=*/true);
           });
 
       if (has_async_collectives) {

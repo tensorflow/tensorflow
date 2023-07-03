@@ -2651,17 +2651,27 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
     return failure();
   }
 
-  for (int i = 0; i < begin_elems.getNumElements(); i++)
-    begin_vals.push_back(begin_elems.getValues<APInt>()[i].getSExtValue());
+  auto input = tfl_slice_op.getInput();
+  RankedTensorType input_type = cast<RankedTensorType>(input.getType());
+  ArrayRef<int64_t> shape = input_type.getShape();
+  size_t rank = shape.size();
+  assert(begin_elems.getNumElements() == rank);
+  assert(size_elems.getNumElements() == rank);
 
-  for (int i = 0; i < size_elems.getNumElements(); i++)
-    size_vals.push_back(size_elems.getValues<APInt>()[i].getSExtValue());
+  const int64_t to_end = -1;
+  for (int i = 0; i < rank; i++) {
+    int64_t begin = begin_elems.getValues<APInt>()[i].getSExtValue();
+    int64_t size = size_elems.getValues<APInt>()[i].getSExtValue();
+    size = (size == to_end) ? shape[i] - begin : size;
+    begin_vals.push_back(begin);
+    size_vals.push_back(size);
+  }
 
   DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
   DenseI64ArrayAttr size = rewriter.getDenseI64ArrayAttr(size_vals);
 
-  CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type,
-                                         tfl_slice_op.getInput(), begin, size);
+  CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type, input,
+                                         begin, size);
   return success();
 }
 

@@ -44,6 +44,11 @@ def Ifrt_ReshardOp : Ifrt_Op<"Reshard", [NestedInIfrtFunc]> {
   let results = (outs
     Ifrt_ArrayType:$output);
 
+  let assemblyFormat = [{
+    `(` $input `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($input, $output)
+  }];
+
   let hasVerifier = 1;
 }
 

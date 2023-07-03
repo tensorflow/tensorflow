@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -42,7 +43,7 @@ namespace ifrt {
 // common that an operation preserves the logical partitioning and only updates
 // devices (e.g., "copy to devices" and portable execution). This fine-grained
 // sharding design may help reduce overhead around these operations.
-class Sharding : public llvm::RTTIExtends<Sharding, llvm::RTTIRoot> {
+class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
  public:
   // All devices in this sharding. Devices may appear more than once.
   const DeviceList& devices() const { return devices_; }
@@ -74,7 +75,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, llvm::RTTIRoot> {
 
 std::ostream& operator<<(std::ostream& os, const Shape& shape);
 
-// Single-device sharding. It does not support per-device disassembly.
+// Single-device sharding.
 //
 // TODO(hyeontaek): `SingleDeviceSharding` tends to be created or consumed in a
 // large quantity. It may be useful for performance optimization to special-case
@@ -83,7 +84,7 @@ class SingleDeviceSharding final
     : public llvm::RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
-  static std::shared_ptr<const Sharding> Create(Device* device);
+  static std::unique_ptr<Sharding> Create(Device* device);
 
   // Sharding implementation.
 
@@ -117,11 +118,11 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
       const OpaqueSharding&, const Shape&)>;
 
   // Creates an opaque sharding. `Disassemble()` will fail.
-  static std::shared_ptr<const Sharding> Create(DeviceList devices);
+  static std::unique_ptr<Sharding> Create(DeviceList devices);
 
   // Creates an opaque sharding with a custom shape disassemble function.
-  static std::shared_ptr<const Sharding> Create(
-      DeviceList devices, DisassembleFunc disassemble_func);
+  static std::unique_ptr<Sharding> Create(DeviceList devices,
+                                          DisassembleFunc disassemble_func);
 
   // Creates a `DisassembleFunc` from a list of shapes. The `DisassembleFunc`
   // would ignore sharding and shape arguments.
@@ -157,7 +158,7 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
 class ShardingParamSharding
     : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
  public:
-  static StatusOr<std::shared_ptr<const Sharding>> Create(
+  static StatusOr<std::unique_ptr<Sharding>> Create(
       ShardingParam sharding_param, DeviceList devices);
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>

@@ -79,6 +79,23 @@ class AlgebraicSimplifierOptions {
 
   bool is_layout_sensitive() const { return is_layout_sensitive_; }
 
+  void set_use_associative_reordering(bool use_associative_reordering) {
+    use_associative_reordering_ = use_associative_reordering;
+  }
+
+  bool use_associative_reordering() const {
+    return use_associative_reordering_;
+  }
+
+  void set_associative_reordering_threshold(
+      double associative_reordering_threshold) {
+    associative_reordering_threshold_ = associative_reordering_threshold;
+  }
+
+  double associative_reordering_threshold() const {
+    return associative_reordering_threshold_;
+  }
+
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
@@ -199,8 +216,8 @@ class AlgebraicSimplifierOptions {
 
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
-  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
-  // true.
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan
+  // unconditionally true.
   bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
   void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
 
@@ -211,7 +228,7 @@ class AlgebraicSimplifierOptions {
   // cudnn_batchnorm_forward_training_metadata can be used to store the name of
   // a custom call. If the custom call is
   // __cudnn$batchNormalizationForwardTraining, the output with index 2 is
-  // guaranteed to be postive. This property has been used to recursively
+  // guaranteed to be positive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
     std::string cudnn_batchnorm_forward_training_metadata{""};
@@ -234,6 +251,8 @@ class AlgebraicSimplifierOptions {
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
+  bool use_associative_reordering_{false};
+  double associative_reordering_threshold_{2.0};
   Metadata metadata_;
 };
 

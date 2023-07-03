@@ -22,11 +22,32 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
 
 namespace xla {
 namespace ifrt {
+
+struct XlaProgram : llvm::RTTIExtends<XlaProgram, Program> {
+  XlaProgram() = default;
+  explicit XlaProgram(mlir::ModuleOp module) : mlir_module(module) {}
+  XlaProgram(std::unique_ptr<mlir::MLIRContext> context,
+             mlir::OwningOpRef<mlir::ModuleOp> module)
+      : mlir_module(*module),
+        mlir_context(std::move(context)),
+        owning_mlir_module(std::move(module)) {}
+
+  mlir::ModuleOp mlir_module;
+
+  static char ID;  // NOLINT
+
+ private:
+  std::unique_ptr<mlir::MLIRContext> mlir_context;
+  mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
+};
 
 // Wraps compilation options for an XLA computation.
 //
@@ -59,10 +80,11 @@ struct XlaCompileOptions
 //
 // TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
 // because deserialization (without loading) should not take them.
-struct XlaDeserializeOptions
-    : llvm::RTTIExtends<XlaDeserializeOptions, DeserializeOptions> {
-  XlaDeserializeOptions() = default;
-  explicit XlaDeserializeOptions(
+struct XlaDeserializeExecutableOptions
+    : llvm::RTTIExtends<XlaDeserializeExecutableOptions,
+                        DeserializeExecutableOptions> {
+  XlaDeserializeExecutableOptions() = default;
+  explicit XlaDeserializeExecutableOptions(
       std::optional<xla::CompileOptions> compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
           {})
@@ -74,9 +96,9 @@ struct XlaDeserializeOptions
   std::optional<xla::CompileOptions> compile_options;
   std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
 
-  // DeserializeOptions implementation.
+  // DeserializeExecutableOptions implementation.
 
-  ~XlaDeserializeOptions() override = default;
+  ~XlaDeserializeExecutableOptions() override = default;
 
   static char ID;  // NOLINT
 };
@@ -85,9 +107,11 @@ struct XlaDeserializeOptions
 StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
-// Gets `xla::ifrt::XlaDeserializeOptions` from `xla::ifrt::DeserializeOptions`.
-StatusOr<std::unique_ptr<XlaDeserializeOptions>> GetXlaDeserializeOptions(
-    std::unique_ptr<DeserializeOptions> options);
+// Gets `xla::ifrt::XlaDeserializeExecutableOptions` from
+// `xla::ifrt::DeserializeExecutableOptions`.
+StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+GetXlaDeserializeExecutableOptions(
+    std::unique_ptr<DeserializeExecutableOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

@@ -1274,6 +1274,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@ml_dtypes//:float8",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1300,6 +1301,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
+        "@ml_dtypes//:float8",
     ],
 )
 
@@ -1459,6 +1461,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
+        "@ml_dtypes//:float8",
         "@snappy",
         "@zlib",
     ] + select({
@@ -1473,7 +1476,7 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/compiler/xla:autotuning_proto_cc_impl",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
         "//tensorflow/compiler/xla:xla_proto_cc_impl",

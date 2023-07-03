@@ -798,7 +798,7 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "engine"              : 15,
             "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
             "cudnn_version_start" : 8900,
-            "cudnn_version_end"   : -1,
+            "cudnn_version_end"   : 8902,
             "comment"             : "b/281585171"
           },
           { "rule_id"             : "ConvFwd_Add_Add_eng15_k5=1_k6=0_k7=1_k10=1",
@@ -806,7 +806,7 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "engine"              : 15,
             "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
             "cudnn_version_start" : 8900,
-            "cudnn_version_end"   : -1,
+            "cudnn_version_end"   : 8902,
             "comment"             : "b/281887114"
           }
       ]})";

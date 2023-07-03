@@ -534,7 +534,6 @@ xla_cc_test(
     srcs = ["data_parallel_collective_optimizer_test.cc"],
     deps = [
         ":data_parallel_collective_optimizer",
-        ":hlo_dce",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -4463,14 +4462,32 @@ xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
+        ":heap_simulator",
+        ":hlo_cost_analysis",
+        ":hlo_value",
         ":instruction_hoister",
         ":memory_space_assignment",
+        ":memory_space_assignment_proto_cc",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -5015,10 +5032,30 @@ cc_library(
 )
 
 cc_library(
+    name = "float8_fnuz_ir_emitter",
+    srcs = [
+        "float8_fnuz_ir_emitter.cc",
+    ],
+    hdrs = [
+        "float8_fnuz_ir_emitter.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
+cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        ":float8_fnuz_ir_emitter",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -6402,7 +6439,6 @@ py_test(
     # TODO(b/200806426): Test fails in OSS.
     tags = [
         "no_oss",
-        "nopip",
     ],
     deps = [
         ":generate_test_hlo_checks",

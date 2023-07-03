@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -47,7 +48,7 @@ pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "calibrator",
     srcs = [
         "calibrator.py",
@@ -64,7 +65,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
     data = [

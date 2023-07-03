@@ -133,7 +133,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config, mlir::Operation* op) {
+    LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -236,14 +236,14 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config, mlir::Operation* op) {
-  auto debug_options = GetDebugOptionsFromFlags();
-  if (debug_options.xla_gpu_enable_experimental_block_size()) {
+    LaunchDimensionsConfig dim_config, mlir::Operation* op,
+    bool use_experimental_block_size) {
+  if (use_experimental_block_size && op != nullptr) {
     VLOG(2) << "Experimental block size is enabled";
     return CalculateLaunchDimensionsImplExperimental(shape, gpu_device_info,
                                                      dim_config, op);
   }
-  return CalculateLaunchDimensionsImpl(shape, gpu_device_info, dim_config, op);
+  return CalculateLaunchDimensionsImpl(shape, gpu_device_info, dim_config);
 }
 
 }  // namespace gpu

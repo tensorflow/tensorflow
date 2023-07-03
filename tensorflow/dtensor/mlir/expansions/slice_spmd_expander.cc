@@ -80,13 +80,6 @@ StatusOr<Layout> VerifySliceLayout(
   TF_ASSIGN_OR_RETURN(*proposed_proto.mutable_mesh_config(),
                       layout.mesh().ToProto());
   for (int64_t i = 0; i < rank; ++i) {
-    // Slice performed on replicated dimension translates to local expansion.
-    if (num_shards[i] == 1) {
-      proposed_proto.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
-      continue;
-    }
-
     const bool begins_starts_at_zero =
         (sizes[i] == shape[i]) || (!dynamic_begins && begins[i] == 0);
     const bool ends_at_full_size =

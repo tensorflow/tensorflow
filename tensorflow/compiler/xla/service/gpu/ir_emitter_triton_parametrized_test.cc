@@ -500,31 +500,48 @@ INSTANTIATE_TEST_SUITE_P(
     CompareTestParamsToString);
 
 class SelectTest : public NoTF32Test,
-                   public ::testing::WithParamInterface<PrimitiveType> {};
+                   public ::testing::WithParamInterface<
+                       std::tuple<PrimitiveType, PrimitiveType>> {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
 
 TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
-  PrimitiveType data_type = GetParam();
+  PrimitiveType data_type1;
+  PrimitiveType data_type2;
+  std::tie(data_type1, data_type2) = GetParam();
+
+  if ((data_type1 == BF16 || data_type2 == BF16) &&
+      !GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
 
   const std::string hHloTestTemplate = R"(
 HloModule m, is_scheduled=true
 
 triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
+  parameter_0 = $1[92,11]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   parameter_2 = $0[11,63]{1,0} parameter(2)
   parameter_3 = pred[11,63]{1,0} parameter(3)
   f1.1 = $0[11,63]{1,0} select(parameter_3, parameter_1, parameter_2)
-  c.1 = f32[11,63]{1,0} convert(f1.1)
-  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
+  c.1 = $1[11,63]{1,0} convert(f1.1)
+  ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
-  p0 = f32[92,11]{1,0} parameter(0)
+  p0 = $1[92,11]{1,0} parameter(0)
   p1 = $0[11,63]{1,0} parameter(1)
   p2 = $0[11,63]{1,0} parameter(2)
   p3 = pred[11,63]{1,0} parameter(3)
-  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
+  ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation,
     backend_config={"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"16","block_n":"64",
@@ -532,7 +549,8 @@ ENTRY e {
                                           "num_stages":"3","num_warps":"2"}}
 })";
   const std::string hlo_test = absl::Substitute(
-      hHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+      hHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
+      primitive_util::LowercasePrimitiveTypeName(data_type2));
 
   const std::string hHloRefTemplate = R"(
 HloModule m, is_scheduled=true
@@ -542,17 +560,17 @@ fused_computation {
   p1 = $0[11,63]{1,0} parameter(1)
   p2 = pred[11,63]{1,0} parameter(2)
   f.1 = $0[11,63]{1,0} select(p2, p0, p1)
-  ROOT convert.1 = f32[11,63]{1,0} convert(f.1)
+  ROOT convert.1 = $1[11,63]{1,0} convert(f.1)
 }
 
 ENTRY e {
   p3 = pred[11,63]{1,0} parameter(3)
   p2 = $0[11,63]{1,0} parameter(2)
   p1 = $0[11,63]{1,0} parameter(1)
-  p0 = f32[92,11]{1,0} parameter(0)
-  fusion = f32[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
+  p0 = $1[92,11]{1,0} parameter(0)
+  fusion = $1[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
-  ROOT custom-call = f32[92,63]{1,0} custom-call(p0, fusion),
+  ROOT custom-call = $1[92,63]{1,0} custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
     backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
@@ -561,11 +579,15 @@ ENTRY e {
       {"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 })";
   const std::string hlo_ref = absl::Substitute(
-      hHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+      hHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
+      primitive_util::LowercasePrimitiveTypeName(data_type2));
 
   float tolerance;
-  switch (data_type) {
+  switch (data_type1) {
     case F32:
+      tolerance = 1e-6;
+      break;
+    case BF16:
       tolerance = 1e-6;
       break;
     case F16:
@@ -589,8 +611,22 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
-INSTANTIATE_TEST_SUITE_P(SelectTestSuite, SelectTest,
-                         ::testing::Values(PRED, S8, S16, S32, F16, F32));
+std::string SelectTestParamsToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, PrimitiveType>>&
+        data) {
+  PrimitiveType data_type1;
+  PrimitiveType data_type2;
+  std::tie(data_type1, data_type2) = data.param;
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type1),
+                      "_",
+                      primitive_util::LowercasePrimitiveTypeName(data_type2));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SelectTestSuite, SelectTest,
+    ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, BF16, F32),
+                       ::testing::Values(F16, BF16, F32)),
+    SelectTestParamsToString);
 
 class ConstantTest : public NoTF32Test,
                      public ::testing::WithParamInterface<PrimitiveType> {};

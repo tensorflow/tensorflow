@@ -187,6 +187,18 @@ def run_user_main(wrapped_test_module):
 if __name__ == '__main__':
   # Partially parse flags, since module to import is specified by flag.
   unparsed = FLAGS(sys.argv, known_only=True)
+  # Test filters from bazel's --test_filter flag are passed via the
+  # TESTBRIDGE_TEST_ONLY environment variable. This wrapper script is typically
+  # run from within another test case handler that doesn't actually hold the
+  # user test cases. So, in oder to make --test_filter work correctly, the
+  # outer test case needs to hide TESTBRIDGE_TEST_ONLY and we need to re-expose
+  # it here. To do this, the outer test case stores the value in
+  # SAVED_TESTBRIDGE_TEST_ONLY which we can use to set TESTBRIDGE_TEST_ONLY in
+  # this local context.
+  saved_test_filter = os.getenv('SAVED_TESTBRIDGE_TEST_ONLY')
+  existing_test_filter = os.getenv('TESTBRIDGE_TEST_ONLY')
+  if saved_test_filter and not existing_test_filter:
+    os.environ['TESTBRIDGE_TEST_ONLY'] = saved_test_filter
   user_module = import_user_module()
   maybe_define_flags()
   # Parse remaining flags.

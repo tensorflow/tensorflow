@@ -101,6 +101,8 @@ function reorganize_includes() {
   move_to_root_if_exists external/com_google_protobuf/src/google
   rm -rf external/com_google_protobuf/python
 
+  cp -R external/ml_dtypes/include ./
+
   popd
 }
 
@@ -209,26 +211,26 @@ function prepare_src() {
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}"
     # Copy MKL libs over so they can be loaded at runtime
-    # TODO(b/271299337): shared libraries that depend on libbfloat16.so.so have
+    # TODO(b/271299337): shared libraries that depend on libml_dtypes.so.so have
     # their NEEDED and RUNPATH set corresponding to a dependency on
-    # RUNFILES/_solib_local/libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so,
-    # which is a symlink to tensorflow/tsl/python/lib/core/libbfloat16.so in
+    # RUNFILES/_solib_local/libtensorflow_Stsl_Spython_Slib_Score_Slibml_dtypes.so.so,
+    # which is a symlink to tensorflow/tsl/python/lib/core/libml_dtypes.so in
     # the Bazel build tree. We do not export the file in _solib_local (nor
     # symlinks in general, I think Python wheels have poor support for them?)
     so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.dylib" "@loader_path/libbfloat16.so.dylib" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.dylib" "@loader_path/../tsl/python/lib/core/libbfloat16.so.dylib" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.dylib" "@loader_path/libml_dtypes.so.dylib" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
+      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.dylib" "@loader_path/../tsl/python/lib/core/libml_dtypes.so.dylib" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
-      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
+      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true

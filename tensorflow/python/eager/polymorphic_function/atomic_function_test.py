@@ -38,6 +38,17 @@ class AtomicFunctionTest(test.TestCase):
 
     atomic = atomic_function.from_function_def(definition, func_type)
 
+    self.assertRegex(
+        str(atomic),
+        r"<AtomicFunction> .*(x: TensorSpec.*, y: TensorSpec.*) ->"
+        r" TensorSpec.*",
+    )
+    self.assertRegex(
+        repr(atomic).replace("\n", " "),
+        r"AtomicFunction.*name.*bound_context.*function_type.*"
+        r"children.*call_options.*cached_graph.*",
+    )
+
     self.assertEqual(
         atomic(constant_op.constant(3), constant_op.constant(4))[0].numpy(),
         7,

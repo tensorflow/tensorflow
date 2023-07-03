@@ -83,6 +83,22 @@ std::vector<TestType> ExpandDimsOpTest<TestType>::range_{TestType::kConst,
 using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(ExpandDimsOpTest, DataTypes);
 
+TYPED_TEST(ExpandDimsOpTest, PositiveAxisInplace) {
+  std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
+
+  ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, TestType::kConst);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor =
+      axis_0.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = axis_0.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(axis_0.Invoke(), kTfLiteOk);
+  EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
+  EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
   for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
     std::initializer_list<TypeParam> values = {-1, 1, -2, 2};

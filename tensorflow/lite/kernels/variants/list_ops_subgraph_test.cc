@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/variants/list_ops_subgraph_test_util.h"
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/util.h"
 
+using ::testing::ElementsAreArray;
 using ::tflite::variants::TensorArray;
 
 namespace tflite {
@@ -36,7 +38,7 @@ using UtilsTest = ListOpsSubgraphTest;
 // This test just validates the test fixture. It doesn't test any business
 // logic.
 TEST_F(UtilsTest, SimpleAddConst) {
-  builder_.AddConstSubgraph(&interpreter_.primary_subgraph());
+  builder_.BuildAddConstSubgraph(&interpreter_.primary_subgraph());
 
   TfLiteTensor* cst1 = interpreter_.tensor(0);
   ASSERT_THAT(cst1, DimsAre({2}));
@@ -73,8 +75,8 @@ class ListReserveSubgraphTest
 TEST_P(ListReserveSubgraphTest, InterpreterOutputsTensorArray) {
   const ListReserveSubgraphTestParams& params = GetParam();
 
-  builder_.AddReserveSubgraph(&interpreter_.primary_subgraph(),
-                              params.tensor_type);
+  builder_.BuildReserveSubgraph(&interpreter_.primary_subgraph(),
+                                params.tensor_type);
 
   ASSERT_EQ(interpreter_.ResizeInputTensor(0, params.element_shape_shape),
             kTfLiteOk);
@@ -141,7 +143,7 @@ TEST_P(ListStackDynamicSubgraphTest,
        InterpreterOutputsStackTensor_DynamicOutput) {
   const ListStackSubgraphDynamicTestParams& params = GetParam();
 
-  builder_.AddReserveStackSubgraph(&interpreter_.primary_subgraph());
+  builder_.BuildReserveStackSubgraph(&interpreter_.primary_subgraph());
 
   ASSERT_EQ(interpreter_.ResizeInputTensor(0, params.element_shape_shape),
             kTfLiteOk);
@@ -188,6 +190,102 @@ INSTANTIATE_TEST_SUITE_P(
         ListStackSubgraphDynamicTestParams{{1}, {2}, 0, {}, {-1}, {0, 2}},
         ListStackSubgraphDynamicTestParams{{1}, {1}, 2, {}, {-1}, {2}},
     }));
+
+// Fixture that constructs a model that uses a "While" op to
+// populate each element in a `TensorArray` with a constant tensor.
+// See documentation of `BuildLessThanSubgraph`,
+// `BuildSetItemAndIncrementSubgraph` and `BuildWhileSubgraph` for more
+// detail.
+class WhileIncrementListOpsTest : public InterpreterTest {
+ public:
+  WhileIncrementListOpsTest() {
+    AddSubgraphs(2);
+    builder_.BuildLessThanSubgraph(interpreter_->subgraph(1));
+    builder_.BuildSetItemAndIncrementSubgraph(interpreter_->subgraph(2));
+    builder_.BuildWhileSubgraph(&interpreter_->primary_subgraph());
+    TFLITE_CHECK(interpreter_->AllocateTensors() == kTfLiteOk);
+  }
+
+ protected:
+  // Allocates a `TensorArray` behind the `kTfLiteVariant` tensor at given
+  // index.
+  void PopulateListTensor(int index, absl::Span<const int> element_shape_data,
+                          int num_elements, TfLiteType element_type) {
+    TfLiteTensor* tensor = interpreter_->tensor(index);
+
+    TF_LITE_ASSERT_EQ(tensor->type, kTfLiteVariant);
+    tensor->allocation_type = kTfLiteVariantObject;
+    tensor->buffer_handle = kTfLiteNullBufferHandle;
+    tensor->quantization = {kTfLiteNoQuantization};
+
+    IntArrayUniquePtr element_shape =
+        BuildTfLiteArray(element_shape_data.size(), element_shape_data.data());
+
+    TfLiteStatus stat = TfLiteTensorVariantRealloc<TensorArray>(
+        tensor, element_type, std::move(element_shape));
+    TF_LITE_ASSERT_EQ(stat, kTfLiteOk);
+
+    TensorArray* arr =
+        static_cast<TensorArray*>(static_cast<VariantData*>(tensor->data.data));
+    arr->Resize(num_elements);
+  }
+
+  // Retreives a pointer to the `TensorArray` sitting behind the
+  //  `kTfLiteVariant` tensor at given index.
+  const TensorArray* GetOutputTensorArray(int tensor_id) {
+    TfLiteTensor* tensor = interpreter_->tensor(tensor_id);
+    TFLITE_CHECK(tensor != nullptr && tensor->type == kTfLiteVariant &&
+                 tensor->allocation_type == kTfLiteVariantObject);
+    return static_cast<const TensorArray*>(
+        static_cast<const VariantData*>(tensor->data.data));
+  }
+
+  ListOpsSubgraphBuilder builder_;
+};
+
+TEST_F(WhileIncrementListOpsTest, PopulateListWithWhile) {
+  interpreter_->tensor(interpreter_->inputs()[0])->data.i32[0] = 0;
+  PopulateListTensor(interpreter_->inputs()[1], {2, 2}, 3, kTfLiteInt32);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  const TensorArray* output = GetOutputTensorArray(interpreter_->outputs()[1]);
+  ASSERT_TRUE(output != nullptr);
+
+  ASSERT_EQ(output->NumElements(), 3);
+
+  for (int i = 0; i < 3; ++i) {
+    const TfLiteTensor* item = output->At(i);
+    ASSERT_TRUE(item != nullptr);
+
+    ASSERT_THAT(item, DimsAre({2}));
+    EXPECT_THAT(std::vector<int>(item->data.i32, item->data.i32 + 2),
+                ElementsAreArray({2, 2}));
+  }
+}
+
+TEST_F(WhileIncrementListOpsTest,
+       PartiallyPopulateListWithWhile_UnsetItemsZeroed) {
+  interpreter_->tensor(interpreter_->inputs()[0])->data.i32[0] = 1;
+  PopulateListTensor(interpreter_->inputs()[1], {2, 2}, 3, kTfLiteInt32);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  const TensorArray* output = GetOutputTensorArray(interpreter_->outputs()[1]);
+  ASSERT_TRUE(output != nullptr);
+
+  ASSERT_EQ(output->NumElements(), 3);
+  ASSERT_EQ(output->At(0), nullptr);
+
+  for (int i = 1; i < 3; ++i) {
+    const TfLiteTensor* item = output->At(i);
+    ASSERT_TRUE(item != nullptr);
+
+    ASSERT_THAT(item, DimsAre({2}));
+    EXPECT_THAT(std::vector<int>(item->data.i32, item->data.i32 + 2),
+                ElementsAreArray({2, 2}));
+  }
+}
 
 }  // namespace
 }  // namespace tflite

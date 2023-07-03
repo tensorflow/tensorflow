@@ -187,7 +187,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

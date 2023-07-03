@@ -21,8 +21,6 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -58,14 +56,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);
 
-// Converts the list of prefetches.
-mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
-    mlir::Builder* builder);
-
-mlir::ArrayAttr ConvertDynamicParameterBindings(DynamicParameterBinding dpb,
-                                                mlir::Builder* builder);
-
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
     TriangularSolveOptions_Transpose transpose);
@@ -83,19 +73,6 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 // tuple shapes.
 StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
                                                   mlir::Builder* builder);
-
-// Returns a StringAttr that carries a prettyprinted representation of the
-// given HLO C++ sharding.
-// Always succeeds and returns a non-empty attribute.
-mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
-                                mlir::Builder* builder);
-
-// Returns a StringAttr that carries a prettyprinted representation of the
-// given HLO proto sharding.
-// Will fail and return an empty attribute if the proto sharding cannot be
-// converted to the C++ sharding.
-mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
-                                mlir::Builder* builder);
 
 }  // namespace xla
 

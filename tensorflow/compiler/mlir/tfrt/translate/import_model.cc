@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -148,6 +149,22 @@ Status ConvertTfMlirToRuntimeExecutable(
     tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+
+  {
+    mlir::PassManager pm(module.getContext());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::tf_executor::CreateTFExecutorGraphPruningPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::CreateExecutorDialectToFunctionalConversionPass());
+    if (!options.saved_model_dir.empty()) {
+      pm.addPass(mlir::tf_saved_model::CreateAssetSinkingPass(
+          options.saved_model_dir));
+    }
+    if (mlir::failed(pm.run(module))) {
+      return diag_handler.Combine(absl::InternalError(
+          "Failed to sinking assets into initialization graphs."));
+    }
+  }
 
   if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
     VLOG(1) << "Running MLIR TPU bridge for tpurt";

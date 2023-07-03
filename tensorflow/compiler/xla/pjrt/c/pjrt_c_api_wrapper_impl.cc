@@ -28,6 +28,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -458,6 +459,29 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     byte_strides =
         absl::Span<const int64_t>(args->byte_strides, args->num_byte_strides);
   }
+  std::optional<xla::Layout> layout = std::nullopt;
+  if (args->device_layout != nullptr) {
+    switch (args->device_layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        PJRT_ASSIGN_OR_RETURN(layout,
+                              ConvertToLayout(args->device_layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "PJRT_Buffer_MemoryLayout_Type_Strides in device_layout is not "
+            "supported in  PJRT_Client_BufferFromHostBuffer for platform '%s'",
+            args->client->client->platform_name())));
+        break;
+      }
+      default: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            absl::StrCat("Unexpected PJRT_Buffer_MemoryLayout_Type type: ",
+                         args->device_layout->type)));
+      }
+    }
+  }
 
   xla::PjRtFuture<xla::Status>::Promise promise =
       xla::PjRtFuture<xla::Status>::CreatePromise();
@@ -466,14 +490,25 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     promise.Set(xla::OkStatus());
   };
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtBuffer> buffer,
-      args->client->client->BufferFromHostBuffer(
-          args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
-          byte_strides,
-          ::pjrt::ConvertFromPjRtHostBufferSemantics(
-              args->host_buffer_semantics),
-          on_done_with_host_buffer, args->device->device));
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+  if (layout.has_value()) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer,
+        args->client->client->BufferFromHostBuffer(
+            args->data, ::pjrt::ConvertFromPjRtBufferType(args->type), dims,
+            byte_strides,
+            ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                args->host_buffer_semantics),
+            on_done_with_host_buffer, args->device->device, &layout.value()));
+  } else {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->device->device));
+  }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   args->done_with_host_buffer =
@@ -1211,6 +1246,41 @@ PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args) {
       "PJRT_Buffer_Destroy_Args", PJRT_Buffer_Destroy_Args_STRUCT_SIZE,
       args->struct_size));
   delete args->buffer;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_ElementType_Args", PJRT_Buffer_ElementType_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->type = ConvertToPjRtBufferType(args->buffer->buffer->element_type());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Dimensions_Args", PJRT_Buffer_Dimensions_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->dims = args->buffer->buffer->dimensions().data();
+  args->num_dims = args->buffer->buffer->dimensions().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_UnpaddedDimensions_Args",
+      PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE, args->struct_size));
+
+  std::optional<std::vector<int64_t>>& unpadded_dims =
+      args->buffer->unpadded_dims;
+  if (!unpadded_dims.has_value()) {
+    PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
+                          args->buffer->buffer->logical_dimensions());
+    unpadded_dims.emplace(std::move(dims));
+  }
+  args->unpadded_dims = unpadded_dims->data();
+  args->num_dims = unpadded_dims->size();
   return nullptr;
 }
 

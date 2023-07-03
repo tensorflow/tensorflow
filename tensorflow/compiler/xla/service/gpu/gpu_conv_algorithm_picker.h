@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
@@ -95,7 +95,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Run autotuning on allocated buffers and pick the best algorithm.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
+  StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
       GpuConvConfig conv_config, const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options,
       std::vector<se::DeviceMemoryBase> buffers,
@@ -105,9 +105,9 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
 
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+  StatusOr<AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -136,7 +136,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
         se::RedzoneAllocator* input_output_allocator);
   };
 
-  StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
+  StatusOr<AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       MaybeFusedConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
@@ -145,14 +145,14 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const AutotuneRuntimeArguments& runtime_arguments);
 
   // Pick the best algorithm for CUDA platform.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 

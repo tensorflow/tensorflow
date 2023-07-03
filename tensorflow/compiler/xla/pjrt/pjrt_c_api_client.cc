@@ -332,7 +332,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
       host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
       host_buffer_semantics !=
@@ -360,6 +361,15 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     args.byte_strides = nullptr;
     args.num_byte_strides = 0;
   }
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (device_layout != nullptr) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(device_layout));
+    args.device_layout = &c_layout_data.c_layout;
+  } else {
+    args.device_layout = nullptr;
+  }
+
   args.host_buffer_semantics =
       ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
@@ -397,6 +407,16 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
   }
 
   return buffer;
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  return BufferFromHostBuffer(data, type, dims, byte_strides,
+                              host_buffer_semantics, on_done_with_host_buffer,
+                              device, /*device_layout=*/nullptr);
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
@@ -1240,6 +1260,37 @@ PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
       readiness_event_(nullptr,
                        ::pjrt::MakeEventDeleter(client->pjrt_c_api())) {
   set_shape();
+}
+
+PrimitiveType PjRtCApiBuffer::element_type() const {
+  PJRT_Buffer_ElementType_Args args;
+  args.struct_size = PJRT_Buffer_ElementType_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Buffer_ElementType(&args),
+                            pjrt_c_api());
+  return pjrt::ConvertFromPjRtBufferType(args.type);
+}
+
+absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
+  PJRT_Buffer_Dimensions_Args args;
+  args.struct_size = PJRT_Buffer_Dimensions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Buffer_Dimensions(&args),
+                            pjrt_c_api());
+  return absl::Span<const int64_t>(args.dims, args.num_dims);
+}
+
+StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
+  PJRT_Buffer_UnpaddedDimensions_Args args;
+  args.struct_size = PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Buffer_UnpaddedDimensions(&args),
+                         pjrt_c_api());
+  return std::vector<int64_t>(args.unpadded_dims,
+                              args.unpadded_dims + args.num_dims);
 }
 
 const Shape& PjRtCApiBuffer::on_device_shape() const {

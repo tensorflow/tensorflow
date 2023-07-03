@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -557,6 +558,9 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
               /*error_message=*/
               "Stateful random operations are not supported in DTensor. Please "
               "use stateless random operations instead.");
+
+// Where
+REGISTER_SPMD(Where, TF::WhereOp, WhereOpSPMDExpander);
 
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,

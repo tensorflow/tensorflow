@@ -16,6 +16,10 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
@@ -86,6 +90,8 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_estimator",
+        "//tensorflow/python/training",
+        "//tensorflow/python/training:quantize_training",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
@@ -286,7 +292,8 @@ py_library(
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
         "//tensorflow/python/tpu:tpu_noestimator",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:evaluation",
+        "//tensorflow/python/training:quantize_training",
         "//tensorflow/python/training:saver",
         "//tensorflow/python/training:saver_test_utils",
         "//tensorflow/python/types:core",
@@ -344,6 +351,16 @@ py_library(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:extension_type",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_combinations_lib",
+        "//tensorflow/python/framework:versions",
         "//tensorflow/python/ops:audio_ops_gen",
         "//tensorflow/python/ops:bincount_ops",
         "//tensorflow/python/ops:bitwise_ops",
@@ -568,7 +585,7 @@ py_strict_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = ["//tensorflow/tsl/python/lib/core:bfloat16.so"] + select({
+    dynamic_deps = ["//tensorflow/tsl/python/lib/core:ml_dtypes.so"] + select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
@@ -762,7 +779,15 @@ pywrap_tensorflow_macro(
     )) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-    ]) + if_xla_available([
+    ]) + if_oss(if_cuda_is_configured([
+        # TODO(tmorris): These dependencies are added to get the RPATHs for
+        # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
+        # able to remove this in the future, as these stubs should already
+        # be brought in via other dependencies.
+        "//tensorflow/tsl/cuda:cudnn_stub",
+        "//tensorflow/tsl/cuda:cufft_stub",
+        "//tensorflow/tsl/cuda:nccl_rpath_stub",
+    ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
 )
@@ -854,9 +879,7 @@ filegroup(
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
-        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
-        "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
+        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "//tensorflow/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
@@ -1253,20 +1276,6 @@ py_strict_library(
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/util:tf_export",
     ],
-)
-
-py_strict_library(
-    name = "platform_test",
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/platform:test"],
-)
-
-py_strict_library(
-    name = "learning_rate_decay",
-    # This rule depends on a target that only python:__pkg__ has visibility for.
-    srcs = ["//tensorflow/python/training:learning_rate_decay.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
 
 # copybara:uncomment_begin(google-only)

@@ -56,7 +56,7 @@ Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
     return errors::InvalidArgument(
         "Conv input's channel dimension must be replicated.");
 
-  if (input_layout.IsBatchParallel())
+  if (input_layout.IsBatchParallel() || input_layout.IsFullyReplicated())
     // No further checks needed for replicated case.
     return OkStatus();
 
@@ -148,7 +148,7 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
 
   TF_RETURN_IF_ERROR(VerifyConvLayout(input_layout, filter_layout, conv_op));
 
-  if (input_layout.IsBatchParallel())
+  if (input_layout.IsBatchParallel() || input_layout.IsFullyReplicated())
     // No special handling needed for replicated case.
     return InferSPMDExpandedLocalShape(conv_op);
 
@@ -300,7 +300,8 @@ StatusOr<mlir::Operation*> HandleConvBackpropInput(
 
   // We only support batch sharding for these. In this case the output and input
   // gradient must both be batch sharded. The filter input must be replicated.
-  if (!output_layout.IsBatchParallel() || !grad_layout.IsBatchParallel()) {
+  if (!(output_layout.IsBatchParallel() || output_layout.IsFullyReplicated()) ||
+      !(grad_layout.IsBatchParallel() || grad_layout.IsFullyReplicated())) {
     return errors::InvalidArgument("{0} only supports batch parallel layouts.",
                                    conv_op->getName().getStringRef().str());
   }
@@ -436,7 +437,8 @@ StatusOr<mlir::Operation*> HandleConvBackpropFilter(
   // We only support batch sharding for these. In this case the input
   // activations and input gradient should both be batch sharded and
   // the output (the filter gradient) should be replicated.
-  if (!input_layout.IsBatchParallel() || !grad_layout.IsBatchParallel()) {
+  if (!(output_layout.IsBatchParallel() || output_layout.IsFullyReplicated()) ||
+      !(grad_layout.IsBatchParallel() || grad_layout.IsFullyReplicated())) {
     return errors::InvalidArgument("{0} only supports batch parallel layouts.",
                                    conv_op->getName().getStringRef().str());
   }

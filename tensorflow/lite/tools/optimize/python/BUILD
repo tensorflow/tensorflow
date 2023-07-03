@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -8,7 +9,7 @@ package(
     licenses = ["notice"],
 )
 
-py_binary(
+py_strict_binary(
     name = "modify_model_interface",
     srcs = ["modify_model_interface.py"],
     python_version = "PY3",
@@ -21,19 +22,18 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "modify_model_interface_lib",
     srcs = ["modify_model_interface_lib.py"],
     srcs_version = "PY3",
     deps = [
         ":_pywrap_modify_model_interface",
         ":modify_model_interface_constants",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:schema_py",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "modify_model_interface_lib_test",
     srcs = ["modify_model_interface_lib_test.py"],
     python_version = "PY3",
@@ -47,7 +47,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "modify_model_interface_constants",
     srcs = ["modify_model_interface_constants.py"],
     srcs_version = "PY3",

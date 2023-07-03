@@ -495,8 +495,24 @@ struct PyGraph {
   int version() const { return ops_by_id.size(); }
 
   py::bytes version_def() const {
-    tsl::mutex_lock l(graph->mu);
-    return py::bytes(graph->graph.versions().SerializeAsString());
+    // Potential deadlock:
+    //
+    // If different threads are building and executing the graph, there is a
+    // potential for a deadlock. This can happen if one thread holds the GIL and
+    // waits for the graph mutex, while another thread holds the graph mutex and
+    // waits for the GIL.
+    //
+    // To avoid this, the GIL must be released before acquiring the graph mutex.
+    // The graph mutex must then be held while getting the VersionDef. Finally,
+    // the GIL must be reacquired.
+    std::string versions;
+    {
+      py::gil_scoped_release release;
+      tsl::mutex_lock l(graph->mu);
+      versions = graph->graph.versions().SerializeAsString();
+    }
+    pybind11::gil_scoped_acquire acquire;
+    return py::bytes(versions);
   }
 
   tsl::StatusOr<py::bytes> _op_def_for_type(

@@ -231,10 +231,13 @@ Status DataServiceDispatcherImpl::Start() {
   } else if (!s.ok()) {
     return s;
   } else {
+    int64_t start = env_->NowMicros();
     while (!end_of_journal) {
       TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
       TF_RETURN_IF_ERROR(reader.Read(update, end_of_journal));
     }
+    absl::Duration duration = absl::Microseconds(env_->NowMicros() - start);
+    LOG(INFO) << "Restored from journal in " << duration << ".";
   }
   for (const auto& iteration : state_.ListIterations()) {
     if (IsDynamicShard(iteration->job->processing_mode)) {

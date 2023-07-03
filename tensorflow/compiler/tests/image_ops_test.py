@@ -878,6 +878,91 @@ class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
         self.assertAllClose(expected[:, :, :, np.newaxis], out)
 
 
+class ResizeBilinearGradHalfPixelCentersTest(
+    parameterized.TestCase, xla_test.XLATestCase
+):
+
+  def _assertBackwardOpMatchesExpected(self, grads_np, expected):
+    with self.session() as sess, self.test_scope():
+      grads = array_ops.placeholder(np.float32)
+      resized = gen_image_ops.resize_bilinear_grad(
+          grads,
+          np.zeros(expected.shape, dtype=np.float32),
+          align_corners=False,
+          half_pixel_centers=True,
+      )
+      out = sess.run(resized, {grads: grads_np})
+      self.assertAllCloseAccordingToType(expected, out)
+
+  def test3x2To6x4(self):
+    grad_data = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [8, 9, 10, 11],
+        [12, 13, 14, 15],
+        [16, 17, 18, 19],
+        [20, 21, 22, 23],
+    ]
+    expected_data = [[12.5, 19.5], [42.5, 49.5], [72.5, 79.5]]
+    self._assertBackwardOpMatchesExpected(
+        np.array(grad_data, dtype=np.float32)[np.newaxis, :, :, np.newaxis],
+        expected=np.array(expected_data, dtype=np.float32)[
+            np.newaxis, :, :, np.newaxis
+        ],
+    )
+
+  def test6x4To3x2(self):
+    grad_data = [[0, 1], [2, 3], [4, 5]]
+    expected_data = [
+        [0.0, 0.0, 0.25, 0.25],
+        [0.0, 0.0, 0.25, 0.25],
+        [0.5, 0.5, 0.75, 0.75],
+        [0.5, 0.5, 0.75, 0.75],
+        [1.0, 1.0, 1.25, 1.25],
+        [1.0, 1.0, 1.25, 1.25],
+    ]
+    self._assertBackwardOpMatchesExpected(
+        np.array(grad_data, dtype=np.float32)[np.newaxis, :, :, np.newaxis],
+        expected=np.array(expected_data, dtype=np.float32)[
+            np.newaxis, :, :, np.newaxis
+        ],
+    )
+
+  def test3x2To6x4Batch2(self):
+    dst_y = 6
+    dst_x = 4
+    grad_data = np.arange(2 * dst_y * dst_x).reshape(2, dst_y, dst_x, 1)
+    expected_data = [
+        [[[12.5], [19.5]], [[42.5], [49.5]], [[72.5], [79.5]]],
+        [[[108.5], [115.5]], [[138.5], [145.5]], [[168.5], [175.5]]],
+    ]
+    self._assertBackwardOpMatchesExpected(
+        np.array(grad_data, dtype=np.float32),
+        expected=np.array(expected_data, dtype=np.float32),
+    )
+
+  def test3x2To6x4Batch2Channel3(self):
+    dst_y = 6
+    dst_x = 4
+    grad_data = np.arange(2 * dst_y * dst_x * 3).reshape(2, dst_y, dst_x, 3)
+    expected_data = [
+        [
+            [[37.5, 41.5, 45.5], [58.5, 62.5, 66.5]],
+            [[127.5, 131.5, 135.5], [148.5, 152.5, 156.5]],
+            [[217.5, 221.5, 225.5], [238.5, 242.5, 246.5]],
+        ],
+        [
+            [[325.5, 329.5, 333.5], [346.5, 350.5, 354.5]],
+            [[415.5, 419.5, 423.5], [436.5, 440.5, 444.5]],
+            [[505.5, 509.5, 513.5], [526.5, 530.5, 534.5]],
+        ],
+    ]
+    self._assertBackwardOpMatchesExpected(
+        np.array(grad_data, dtype=np.float32),
+        expected=np.array(expected_data, dtype=np.float32),
+    )
+
+
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMSV3(self):

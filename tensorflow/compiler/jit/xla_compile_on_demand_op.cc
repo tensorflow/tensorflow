@@ -266,9 +266,9 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
     VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
     VLOG(2) << "Executing with PJRT ...";
 
-    OP_REQUIRES_OK(ctx,
-                   RunPjRtExecutable(*pjrt_device_compiler->client(), inputs,
-                                     variables, *result, pjrt_executable, ctx));
+    OP_REQUIRES_OK(ctx, RunPjRtExecutable(inputs, variables, *result,
+                                          pjrt_device_compiler->client(),
+                                          pjrt_executable, ctx));
 
     VLOG(2) << "Completed executing with PJRT!";
   } else {

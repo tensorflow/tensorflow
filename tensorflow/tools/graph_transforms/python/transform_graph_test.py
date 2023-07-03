@@ -19,7 +19,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import test
-from tensorflow.tools.graph_transforms import TransformGraph
+from tensorflow.tools import graph_transforms
 
 
 class TransformGraphTest(test.TestCase):
@@ -69,8 +69,8 @@ class TransformGraphTest(test.TestCase):
     input_names = []
     output_names = ["add_op"]
     transforms = ["strip_unused_nodes"]
-    transformed_graph_def = TransformGraph(input_graph_def, input_names,
-                                           output_names, transforms)
+    transformed_graph_def = graph_transforms.TransformGraph(
+        input_graph_def, input_names, output_names, transforms)
 
     # We expect that the relu is no longer present after running the transform.
     for node in transformed_graph_def.node:

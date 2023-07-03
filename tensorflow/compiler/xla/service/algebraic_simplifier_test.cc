@@ -5691,6 +5691,35 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
             PrecisionConfig::HIGHEST);
 }
 
+TEST_F(AlgebraicSimplifierTest, DotAttentionReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[1024,2] parameter(0)
+        b = f32[2,1024] parameter(1)
+        c = f32[1024,2] parameter(2)
+        inner_dot = f32[1024,1024] dot(a,b),
+                    lhs_contracting_dims={1},
+                    rhs_contracting_dims={0}
+        ROOT outer_dot = f32[1024,2] dot(inner_dot, c),
+                         lhs_contracting_dims={1},
+                         rhs_contracting_dims={0}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.5);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(0),
+                                m::Dot(m::Parameter(1), m::Parameter(2)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module

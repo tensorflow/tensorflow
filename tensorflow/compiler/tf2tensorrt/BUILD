@@ -19,6 +19,10 @@ load(
     "tf_additional_all_protos",
     "tf_proto_library",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
+)
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 # Platform specific build config
@@ -65,6 +69,7 @@ cc_library(
         "stub/nvinfer_stub.cc",
         "stub/nvinfer_plugin_stub.cc",
     ]),
+    linkopts = if_tensorrt(cuda_rpath_flags("tensorrt")),
     textual_hdrs = glob(["stub/*.inc"]),
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
@@ -79,7 +84,6 @@ alias(
         "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
         "//conditions:default": ":tensorrt_stub",
     }),
-    visibility = ["//visibility:private"],
 )
 
 tf_cuda_cc_test(

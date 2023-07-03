@@ -11,6 +11,7 @@ package(
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+        "//third_party/py/tensorflow_addons/custom_ops/dtensor:__subpackages__",
     ],
     licenses = ["notice"],
 )

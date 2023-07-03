@@ -165,7 +165,10 @@ py_strict_binary(
     srcs = ["grpc_tensorflow_server.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [":grpc_tensorflow_server_lib"],
+    deps = [
+        ":grpc_tensorflow_server_lib",
+        "//tensorflow/python/training:server_lib",
+    ],
 )
 
 py_strict_library(
@@ -177,7 +180,7 @@ py_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:server_lib",
         "@absl_py//absl:app",
     ],
 )
@@ -421,7 +424,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
     ],
 )
 
@@ -545,7 +548,7 @@ py_strict_library(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )
@@ -659,7 +662,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
     ],
 )
 

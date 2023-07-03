@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
@@ -56,7 +57,7 @@ pytype_strict_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "metrics_wrapper_test",
     srcs = ["wrapper/metrics_wrapper_test.py"],
     python_version = "PY3",
@@ -64,6 +65,8 @@ py_test(
     deps = [
         ":metrics_wrapper",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:convert",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -106,7 +109,7 @@ pytype_strict_library(
     ) + [":metrics_interface"],
 )
 
-py_test(
+py_strict_test(
     name = "metrics_test",
     srcs = if_portable(
         if_false = ["metrics_nonportable_test.py"],
@@ -124,9 +127,28 @@ py_test(
         ":converter_error_data_proto_py",
         ":metrics",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/trackable:autotrackable",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

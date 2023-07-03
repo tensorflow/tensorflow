@@ -11,6 +11,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
+        "//learning/brain/mlir/quantization:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
@@ -158,5 +159,39 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "constant_fold",
+    srcs = [
+        "constant_fold.cc",
+    ],
+    hdrs = [
+        "constant_fold.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:constant_fold_utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "constant_fold_test",
+    srcs = ["constant_fold_test.cc"],
+    deps = [
+        ":constant_fold",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
     ],
 )

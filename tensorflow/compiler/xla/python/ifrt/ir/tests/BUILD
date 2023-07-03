@@ -72,7 +72,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
-        "//tensorflow/compiler/xla/python/ifrt/ir:compile_options",
+        "//tensorflow/compiler/xla/python/ifrt/ir:compiler",
         "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",

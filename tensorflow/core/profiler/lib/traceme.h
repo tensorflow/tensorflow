@@ -29,7 +29,7 @@ limitations under the License.
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 #endif
 
 namespace tensorflow {

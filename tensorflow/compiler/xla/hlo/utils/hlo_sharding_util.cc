@@ -2580,5 +2580,23 @@ bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
   }
   return false;
 }
+
+std::optional<HloSharding> GetOutputSharding(
+    const HloInstruction* instruction) {
+  if (!instruction->has_sharding()) {
+    return std::nullopt;
+  }
+  if (instruction->opcode() == HloOpcode::kOutfeed) {
+    // Sometime when the same sharding is applied to both the tuple sharding
+    // encoding is a single element sharding.
+    if (!instruction->sharding().IsTuple()) {
+      return instruction->sharding();
+    }
+    // Token sharding is always the last one.
+    return instruction->sharding().tuple_elements().back();
+  }
+  return instruction->sharding();
+}
+
 }  // namespace hlo_sharding_util
 }  // namespace xla

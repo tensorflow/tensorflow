@@ -437,15 +437,17 @@ py_strict_library(
 )
 
 tf_py_strict_test(
-    name = "quarantine_test",
+    name = "tracing_compilation_test",
     size = "medium",
-    srcs = ["quarantine_test.py"],
+    srcs = ["tracing_compilation_test.py"],
     python_version = "PY3",
     deps = [
+        ":function_type_utils",
         ":polymorphic_function",
         ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",

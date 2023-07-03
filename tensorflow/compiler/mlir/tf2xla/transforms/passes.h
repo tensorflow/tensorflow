@@ -91,9 +91,6 @@ void PopulateLegalizeTfPatterns(MLIRContext* context,
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
                                             RewritePatternSet* patterns);
 
-/// Checks whether the op is supported by the Tf2Xla fallback for legalization.
-bool HasTf2XlaFallback(Operation* op);
-
 /// Converts the provided Operation as well as all nested operations into HLO
 /// dialect using the conversion patterns registered by the HLO dialect. When
 /// allow_partial_conversion is false, emits an error if there is any operation

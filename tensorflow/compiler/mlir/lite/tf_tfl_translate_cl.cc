@@ -182,3 +182,10 @@ opt<bool> post_training_quantization(
     "post-training-quantization",
     llvm::cl::desc("Enable post_training_quantization."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> legalize_custom_tensor_list_ops(
+    "legalize-custom-tensor-list-ops",
+    llvm::cl::desc("Convert \"tf.TensorList*\" ops to \"tfl.custom_op\""
+                   "if they can all be supported."),
+    llvm::cl::init(false));

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 
+#include <limits>
 #include <mutex>  // NOLINT
+#include <optional>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -226,6 +228,7 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
   ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = false;
   ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_gpu_ = false;
 
   call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
@@ -303,6 +306,11 @@ void AllocateAndParseFlags() {
             "of ops one-by-one in 'on-demand' mode, for functions marked for "
             "JIT compilation, or when auto-clustering is enabled. Defaults to "
             "false."),
+       Flag("tf_xla_enable_device_api_for_gpu",
+            &ops_flags->tf_xla_use_device_api.enabled_for_gpu_,
+            "If true, uses Device API (PjRt) for TF GPU device. This is a "
+            "helper flag so that individual tests can turn on PjRt for GPU "
+            "specifically."),
 
        Flag("tf_xla_call_module_disabled_checks",
             SetterForXlaCallModuleDisabledChecks, "",

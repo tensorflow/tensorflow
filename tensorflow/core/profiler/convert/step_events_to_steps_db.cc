@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -41,7 +41,7 @@ namespace {
 StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64_t step_num,
                                             const StepDetails& step_details) {
   GenericStepBreakdown generic;
-  Timespan step_time = step_details.StepTime();
+  tsl::profiler::Timespan step_time = step_details.StepTime();
   auto& type_ps = *(generic.mutable_type_ps());
   uint64 total_event_duration = 0;
   for (const auto& event : step_details.Events()) {

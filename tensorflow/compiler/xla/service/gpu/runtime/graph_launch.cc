@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -36,6 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
@@ -44,6 +45,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+
 using xla::runtime::Arguments;
 using xla::runtime::AsyncTaskRunner;
 using xla::runtime::CustomCall;
@@ -51,7 +55,6 @@ using xla::runtime::Executable;
 using xla::runtime::MemrefDesc;
 using xla::runtime::ScalarArg;
 using xla::runtime::StridedMemrefView;
-using xla::runtime::success;
 
 //===----------------------------------------------------------------------===//
 // CUDA graphs caching.
@@ -130,6 +133,11 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
         absl::StrFormat("Failed to borrow a stream for graph capture: %s",
                         capture_stream.status().message()));
 
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.capture",
+                         {{"ordinal", function_ref.ordinal()}});
+  });
+
   // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
   // via UserData to be able to detect when executing custom call in graph
   // capture mode. Currently we rely on the fact that we know for sure that
@@ -199,6 +207,11 @@ static absl::Status RunGraphWithoutCapture(
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
+
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.run_no_capture",
+                         {{"ordinal", function_ref.ordinal()}});
+  });
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
@@ -318,6 +331,11 @@ static absl::Status LaunchGraph(
 
     // If pointers did not change we can run captured graph.
     if (ptrs_hash == instance->ptr_hash) {
+      TraceMe trace([&] {
+        return TraceMeEncode("cuda.graph.launch_cached",
+                             {{"ordinal", capture.ordinal}});
+      });
+
       VLOG(3) << "Execute cached graph instance";
       return instance->exec.Launch(run_options->stream());
     }
@@ -338,6 +356,11 @@ static absl::Status LaunchGraph(
 
   // Update captured graph pointers hash.
   instance->ptr_hash = ptrs_hash;
+
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.launch_updated",
+                         {{"ordinal", capture.ordinal}});
+  });
 
   return instance->exec.Launch(run_options->stream());
 

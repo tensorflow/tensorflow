@@ -188,6 +188,32 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
 
+  def testCollectiveOpsOnComplex64(self):
+    # This functions tests for AllScatter, AllGather, and AllReduce.
+    a = constant_op.constant(
+        np.array([[1, 2 + 2j], [3 + 1j, 4 + 5j]]), dtype=dtypes.complex64
+    )
+    # Tests AllScatter
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    # Tests AllGather / AllReduce
+    unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
+
+    self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
+
+  def testCollectiveOpsOnComplex128(self):
+    # This function tests for AllScattering, AllReduce, and AllToAll.
+    self.skipForDeviceType(['TPU'], 'TPU does not support comolex128')
+    expected_layout = Layout.inner_sharded(self.mesh, 'x', rank=2)
+    initial_layout = Layout.batch_sharded(self.mesh, 'x', rank=2)
+
+    a = constant_op.constant(
+        np.array([[1, 2 + 2j], [3 + 1j, 4 + 5j]]), dtype=dtypes.complex128)
+    # Tests AllScatter
+    sharded_a_initial = api.relayout(a, initial_layout)
+    # Tests AllToAll / AllReduce
+    sharded_a = api.relayout(sharded_a_initial, expected_layout)
+    api.check_layout(sharded_a, expected_layout)
+
   def testNoOpAllToAll(self):
     self.skipForDeviceType(['TPU'],
                            'This test only needs to run on 2 cores.',

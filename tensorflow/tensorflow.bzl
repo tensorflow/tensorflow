@@ -2165,7 +2165,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()
+    return []
 
 check_deps = rule(
     _check_deps_impl,
@@ -2446,7 +2446,7 @@ def pywrap_tensorflow_macro_opensource(
     # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
     # (there is only one currently) that is not in the same directory, otherwise Python will fail to
     # link the pyd (which is just a dll) because of missing dependencies.
-    _create_symlink("bfloat16.so", "//tensorflow/tsl/python/lib/core:bfloat16.so")
+    _create_symlink("ml_dtypes.so", "//tensorflow/tsl/python/lib/core:ml_dtypes.so")
 
     native.py_library(
         name = name,
@@ -2455,8 +2455,8 @@ def pywrap_tensorflow_macro_opensource(
         data = select({
             clean_dep("//tensorflow:windows"): [
                 ":" + cc_library_pyd_name,
-                ":bfloat16.so",
-                "//tensorflow/tsl/python/lib/core:bfloat16.so",
+                ":ml_dtypes.so",
+                "//tensorflow/tsl/python/lib/core:ml_dtypes.so",
             ],
             "//conditions:default": [
                 ":" + cc_shared_library_name,
