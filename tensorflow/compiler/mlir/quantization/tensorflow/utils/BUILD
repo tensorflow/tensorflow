@@ -76,6 +76,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/lite/kernels:padding",
         "@com_google_absl//absl/algorithm:container",
