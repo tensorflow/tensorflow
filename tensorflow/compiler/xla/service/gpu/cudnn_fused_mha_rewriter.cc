@@ -51,8 +51,7 @@ auto OptionalConvert(Pattern pattern) {
 template <typename Pattern>
 auto OptionalBroadcast(Pattern pattern) {
   auto shared = m::SharedSubpattern(pattern);
-  return m::SharedSubpattern(
-      m::AnyOf<HloInstruction>(m::Broadcast(shared), shared));
+  return m::AnyOf<HloInstruction>(m::Broadcast(shared), shared);
 }
 
 bool IsBatchedMatmul(const HloInstruction* instr) {
