@@ -40,6 +40,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#ifdef INTEL_MKL
+#include "tensorflow/core/util/mkl_heuristics.h"
+#endif  // INTEL_MKL
 #include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
@@ -744,7 +747,7 @@ void AddInputShapesAttr(const RemapperContext& ctx, int node_index) {
     *proto = tensor_property.shape();
   }
 
-  if (IsMKLEnabled()) {
+  if (IsMKLEnabled() && tensor_properties.size() > 0) {
     (*mutable_node->mutable_attr())["_input_shapes"] =
         std::move(attr_input_shape);
   }
@@ -1836,6 +1839,50 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
   return found_op_type_match;
 }
 
+bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
+                       std::map<string, int>* matched_nodes_map,
+                       std::set<int>* remove_node_indices) {
+  // Gelu fusion is enabled only with oneDNN library.
+  if (!IsMKLEnabled()) return false;
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  // Convert Sigmoid+Mul to Swish
+  // Mul(x, Sigmoid(x)) --> _MklSwish(x)
+
+  utils::OpTypePattern sigmoidmul_pattern{
+    "Mul", "mul_to_swish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "*", "input", NodeStatus::kRemain}
+        }
+      },
+      { "*", "input", NodeStatus::kRemain}
+    }
+  };
+  // clang-format on
+  // check for data types
+  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(mul_node_def, DT_FLOAT) &&
+      !HasDataType(mul_node_def, DT_BFLOAT16))
+    return false;
+
+  if (!NodeIsOnCpu(mul_node_def)) return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      sigmoidmul_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+
+  return found_op_type_match;
+}
+
 // Keras LayerNormalization api uses multiple TensorFlow ops. Current fusion
 // pattern is only for the case, when LayerNormalization uses FusedBatcNormV3.
 // We further restrict it to only 2D or 3D tensor inputs to keras
@@ -2737,7 +2784,7 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
   // When copying attributes check whether this convolution has
   // attribute that describes the shapes on which it is working.
-  if (IsMKLEnabled()) {
+  if (IsMKLEnabled() && src_attr.find("_input_shapes") != src_attr.end()) {
     (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
   }
   // Copy LeakyRelu's attr alpha to FusedConv2D's attr leakyrelu_alpha
@@ -3351,6 +3398,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
     SetFusedOpAttributes(&fused_op, {"FusedBatchNorm", "_MklSwish"},
                          /*num_args=*/4, /*epsilon=*/epsilon);
   }
+  AddInputShapesAttr(*ctx, matched_nodes_map.at("conv"));
   CopyConv2DAttributes(*conv2d, &fused_op);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
@@ -4376,6 +4424,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       ctx.graph_view.SortTopologically(/*ignore_cycles=*/false, {}));
 
   const int num_nodes = item.graph.node_size();
+  const int intra_op_parallelism_threads =
+      item.optimization_options().intra_op_parallelism_threads;
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd
   // and Activation nodes that were fused into a Conv2D node.
   std::vector<bool> invalidated_nodes(num_nodes);
@@ -4507,6 +4557,41 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
             &ctx, mulmax_matched_nodes_map, mulmax_remove_node_indices,
             &invalidated_nodes, &nodes_to_delete, alpha));
         continue;
+      }
+
+      // Remap Mul(x, Sigmoid(x)) pattern, fuse them into the Swish(x).
+      std::map<string, int> sigmoidmul_matched_nodes_map;
+      std::set<int> sigmoidmul_remove_node_indices;
+      if (FindSigmoidAndMul(&ctx, i, &sigmoidmul_matched_nodes_map,
+                            &sigmoidmul_remove_node_indices)) {
+        bool replace = true;
+#ifdef DNNL_AARCH64_USE_ACL
+        // Need to check whether the cost of rewriting node
+        // to execute using oneDNN kernel will be amortised
+        // based on the size of the input
+        const int sigmoid_idx = sigmoidmul_matched_nodes_map.at("sigmoid");
+        // We need to infer what is the shape of sigmoid
+        AddInputShapesAttr(ctx, sigmoid_idx);
+        const NodeDef* sigmoid = ctx.graph_view.GetNode(sigmoid_idx)->node();
+
+        double total_mflops =
+            CalculateNodeMFlops(AttrSlice(*sigmoid), "Sigmoid");
+        double thr =
+            FindRewriteThreshold("Sigmoid", intra_op_parallelism_threads);
+
+        if (total_mflops != -1 && total_mflops < thr) {
+          // The overhead of using oneDNN kernel is not amortized
+          // so we are not going to rewrite node
+          replace = false;
+        }
+#endif
+        if (replace) {
+          TF_RETURN_IF_ERROR(
+              ReplaceSigmoidMulWithSwish(&ctx, sigmoidmul_matched_nodes_map,
+                                         sigmoidmul_remove_node_indices,
+                                         &invalidated_nodes, &nodes_to_delete));
+          continue;
+        }
       }
 
       // Remap smaller ops from layernorm python api into _MklLayerNorm

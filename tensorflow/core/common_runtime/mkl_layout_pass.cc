@@ -45,22 +45,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/mkl_heuristics.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
-
-// Table storing thread synchronization and framework overhead costs on each CPU
-// architecture for each oneNN-eligible operation. Our heuristics use these
-// costs to determine whether we should rewrite the operation to use oneDNN.
-static const RewriteThreshold rewrite_thresholds[] = {
-#ifdef DNNL_AARCH64_USE_ACL
-    {"Conv2D", 0x41, 0xd40, {0.9349, 22.603}},
-    {"_FusedConv2D", 0x41, 0xd40, {0.9349, 22.603}},
-    {"FusedBatchNormV3", 0x41, 0xd40, {0.3223, -0.8822}},
-    {"Sigmoid", 0x41, 0xd40, {0.0, 0.064736}},
-#endif  // DNNL_AARCH64_USE_ACL
-    {"", 0x0, 0x0, {0, 0}}};
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -765,9 +754,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     wsinfo_.push_back(
         {csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
 
-    // Rule for merging sigmoid and multiplication to oneDNN swish.
-    minfo_.push_back(
-        {csinfo_.sigmoid, csinfo_.mul, csinfo_.mkl_swish, GetSigmoidAndMul});
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
                       csinfo_.conv2d_with_bias, GetConv2DOrBiasAdd});
@@ -1133,26 +1119,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status MergeNode(std::unique_ptr<Graph>* g, Node* m, Node* n);
 
   // Helper function to merge different nodes
-  Status MergeSigmoidWithMul(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergePadWithConv2D(std::unique_ptr<Graph>* g, Node* m, Node* n);
   Status MergeConv2DBackpropFilterWithBiasAddGrad(std::unique_ptr<Graph>* g,
                                                   Node* m, Node* n);
 
-  static Node* GetSigmoidAndMul(const Node* m) {
-    Node* n = nullptr;
-
-    if (m && m->type_string() == csinfo_.sigmoid) {
-      for (const Edge* e : m->out_edges()) {
-        if (!e->IsControlEdge() && e->dst()->type_string() == csinfo_.mul &&
-            e->dst_input() == 0) {
-          n = e->dst();
-          break;
-        }
-      }
-    }
-    return n;
-  }
   // Find BiasAdd or Conv2D node that can be merged with input node 'm'.
   // If input 'm' is BiasAdd, then check if there exists Conv2D node that can be
   // merged with 'm'. If input 'm' is Conv2D, then check if there exists BiasAdd
@@ -1191,27 +1162,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
 
     return n;
-  }
-
-  static double FindRewriteThreshold(const Node* n, int threads) {
-    int cpu_family_ = port::CPUFamily();
-    int cpu_model_num_ = port::CPUModelNum();
-
-    if (threads == 0) {
-      // if we do not have information how many threads are used
-      // to parallelise operation we revert to the old behaviour
-      return 0;
-    }
-
-    for (const RewriteThreshold* i = rewrite_thresholds;
-         i->op != "" && threads > 0; i++) {
-      if (n->type_string() == i->op && cpu_family_ == i->cpu_family &&
-          cpu_model_num_ == i->cpu_model_num) {
-        return i->params.thread_sync_cost * threads + i->params.framework_cost;
-      }
-    }
-
-    return 0;
   }
 
   // Find Pad or Conv2D node that can be merged with input node 'm'.
@@ -1832,8 +1782,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool FusedBatchNormV3RewriteWithThreads(const Node* n, int threads) {
-    double mflops = CalculateNodeMFlops(n);
-    double thr = FindRewriteThreshold(n, threads);
+    double mflops = CalculateNodeMFlops(n->attrs(), n->type_string());
+    double thr = FindRewriteThreshold(n->type_string(), threads);
     if (mflops > 0 && mflops < thr) {
       return false;
     }
@@ -1866,55 +1816,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return true;
   }
 
-  static double CalculateNodeMFlops(const Node* n) {
-    // Check if we can obtained dimensions for this node.
-    std::vector<const TensorShapeProto*> shape_attrs;
-    if (!TryGetNodeAttr(n->attrs(), "_input_shapes", &shape_attrs)) {
-      // We can't obtain shape so we will revert to default behaviour
-      // to rewrite node.
-      return -1;
-    }
-
-    if ((n->type_string() == "Conv2D" || n->type_string() == "_FusedConv2D") &&
-        shape_attrs.size() == 2) {
-      TensorShape input_shape, filter_shape;
-      if (TensorShape::BuildTensorShape(*shape_attrs[0], &input_shape) !=
-          tsl::OkStatus()) {
-        return -1;
-      }
-      if (TensorShape::BuildTensorShape(*shape_attrs[1], &filter_shape) !=
-          tsl::OkStatus()) {
-        return -1;
-      }
-
-      // MFLOPS = N * H * W * C * FH * FW * FC / 1e6.
-      return input_shape.dim_size(0) * input_shape.dim_size(1) *
-             input_shape.dim_size(2) * input_shape.dim_size(3) *
-             filter_shape.dim_size(0) * filter_shape.dim_size(1) *
-             filter_shape.dim_size(3) / (double)1e6;
-    } else if ((n->type_string() == "FusedBatchNormV3" ||
-                n->type_string() == "Sigmoid") &&
-               shape_attrs.size() >= 1) {
-      TensorShape input_shape;
-      if (TensorShape::BuildTensorShape(*shape_attrs[0], &input_shape) !=
-          tsl::OkStatus()) {
-        return -1;
-      }
-      return input_shape.dim_size(0) * input_shape.dim_size(1) *
-             input_shape.dim_size(2) * input_shape.dim_size(3) / (double)1e6;
-    }
-
-    return -1;
-  }
-
   static bool Conv2DRewrite(const Node* n, int threads) {
     // Find out what are dimensions of the convolution,
     // if dimensions are small we will not rewrite node
     // to use oneDNN operations as overhead to call into oneDNN
     // as data setup is higher then actual useful work we
     // might end up doing.
-    double total_mflops = CalculateNodeMFlops(n);
-    double thr = FindRewriteThreshold(n, threads);
+    double total_mflops = CalculateNodeMFlops(n->attrs(), n->type_string());
+    double thr = FindRewriteThreshold(n->type_string(), threads);
 
     return true ? (total_mflops < 0 || total_mflops >= thr) : false;
   }
@@ -3147,147 +3056,6 @@ Node* MklLayoutRewritePass::CheckForNodeMerge(const Node* a) const {
   return nullptr;
 }
 
-Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
-                                                 Node* m, Node* n) {
-  if (!(m->type_string() == csinfo_.sigmoid &&
-        n->type_string() == csinfo_.mul)) {
-    return Status(absl::StatusCode::kCancelled,
-                  "Mul doesn't follow Sigmoid. "
-                  "Will skip node merge optimization");
-  }
-
-  // Decide whether it is worth optimizing SigMoid+Mul to
-  // call to _MklSwish.
-  double total_mflops = CalculateNodeMFlops(m);
-  double thr = FindRewriteThreshold(m, num_intra_threads_);
-
-  if (total_mflops != -1 && total_mflops < thr) {
-    // Do not merge and execute them as they are,
-    // because overheads of going to oneDNN will dominate
-    // any benefits from accelerating compute.
-    return Status(absl::StatusCode::kCancelled,
-                  "Sigmoid and Mul operate on small shapes, "
-                  "so there is no benefit in optimizing to Swish. "
-                  "Will skip node merge optimization");
-  }
-
-  Node* sigmoid = m;
-  Node* mul = n;
-
-  DataType T_sigmoid, T_mul;
-  TF_CHECK_OK(GetNodeAttr(sigmoid->def(), "T", &T_sigmoid));
-  TF_CHECK_OK(GetNodeAttr(mul->def(), "T", &T_mul));
-
-  const int mul_num = mul->num_inputs();
-  gtl::InlinedVector<Node*, 4> mul_control_edges;
-  gtl::InlinedVector<std::pair<Node*, int>, 4> mul_in(mul_num);
-  FillInputs(mul, &mul_control_edges, &mul_in);
-
-  const int sigmoid_num = sigmoid->num_inputs();
-  gtl::InlinedVector<Node*, 4> sigmoid_control_edges;
-  gtl::InlinedVector<std::pair<Node*, int>, 4> sigmoid_in(sigmoid_num);
-  FillInputs(sigmoid, &sigmoid_control_edges, &sigmoid_in);
-
-  // Sigmoid has 1 input.
-  if (sigmoid->in_edges().size() != 1) {
-    return Status(absl::StatusCode::kCancelled,
-                  "Sigmoid must have only one input edge."
-                  "Will skip node merge optimization");
-  }
-  // Mul has 2 inputs.
-  if (mul->in_edges().size() != 2) {
-    return Status(absl::StatusCode::kCancelled,
-                  "Mul must have only two input edges."
-                  "Will skip node merge optimization");
-  }
-
-  for (const Edge* e : mul->in_edges()) {
-    const int kFirstInputSlot = 0;  // This should be sigmoid.
-    const int kSecondInputSlot =
-        1;  // This should be the same input as in sigmoid.
-    if (e->dst_input() == kFirstInputSlot && e->src() != sigmoid) {
-      return Status(absl::StatusCode::kInvalidArgument,
-                    "Sigmoid doesn't feed to Mul. "
-                    "Will skip node merge optimization");
-    }
-    const Edge* kSigmoidInputEdge = nullptr;
-    TF_CHECK_OK(sigmoid->input_edge(kFirstInputSlot, &kSigmoidInputEdge));
-    if (e->dst_input() == kSecondInputSlot &&
-        e->src() != kSigmoidInputEdge->src()) {
-      return Status(absl::StatusCode::kInvalidArgument,
-                    "Input to Sigmoid and Mul is not the same. "
-                    "Will skip node merge optimization");
-    }
-  }
-
-  NodeBuilder nb(mul->name(), csinfo_.mkl_swish);
-  nb.Input(sigmoid_in[0].first, sigmoid_in[0].second);
-  nb.Attr("T", T_mul);  // Copy type attribute.
-  nb.Device(mul->def().device());
-
-  // Create new node.
-  Node* new_node;
-  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-
-  std::unordered_set<Node*> unique_node;
-  for (const Edge* e : sigmoid->in_edges()) {
-    if (e->IsControlEdge()) {
-      auto result = unique_node.insert(e->src());
-      if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, true);
-      }
-    }
-  }
-  unique_node.clear();
-
-  for (const Edge* e : mul->in_edges()) {
-    if (e->IsControlEdge()) {
-      auto result = unique_node.insert(e->src());
-      if (result.second) {
-        (*g)->AddControlEdge(e->src(), new_node, true);
-      }
-    }
-  }
-  unique_node.clear();
-
-  for (const Edge* e : sigmoid->out_edges()) {
-    if (e->IsControlEdge()) {
-      auto result = unique_node.insert(e->dst());
-      if (result.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), true);
-      }
-    }
-  }
-  unique_node.clear();
-  for (const Edge* e : mul->out_edges()) {
-    if (e->IsControlEdge()) {
-      auto results = unique_node.insert(e->dst());
-      if (results.second) {
-        (*g)->AddControlEdge(new_node, e->dst(), true);
-      }
-    } else {
-      const int kMulOutputSlot = 0;
-      auto new_edge =
-          (*g)->AddEdge(new_node, kMulOutputSlot, e->dst(), e->dst_input());
-      if (!new_edge) {
-        return Status(absl::StatusCode::kCancelled,
-                      "Failed to create a new edge from new node to output."
-                      "Will skip node merge optimization");
-      }
-    }
-  }
-
-  new_node->set_assigned_device_name(mul->assigned_device_name());
-  VLOG(1) << "MklLayoutRewritePass: Merged old node: " << sigmoid->DebugString()
-          << ", and node: " << mul->DebugString()
-          << ", into node: " << new_node->DebugString();
-
-  (*g)->RemoveNode(sigmoid);
-  (*g)->RemoveNode(mul);
-
-  return OkStatus();
-}
-
 Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
                                                     Node* m, Node* n) {
   CHECK_EQ(((m->type_string() == csinfo_.bias_add &&
@@ -3771,9 +3539,6 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
   DCHECK(m);
   DCHECK(n);
 
-  if (m->type_string() == csinfo_.sigmoid && n->type_string() == csinfo_.mul) {
-    return this->MergeSigmoidWithMul(g, m, n);
-  }
   if (((m->type_string() == csinfo_.bias_add &&
         n->type_string() == csinfo_.conv2d)) ||
       ((n->type_string() == csinfo_.bias_add &&

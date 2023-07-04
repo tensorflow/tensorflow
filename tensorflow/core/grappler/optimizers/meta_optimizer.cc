@@ -1383,6 +1383,12 @@ Status OptimizeGraph(
   tensorflow::grappler::GrapplerItem item;
   item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
+  if (cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    item.optimization_options().intra_op_parallelism_threads =
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads;
+  }
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
