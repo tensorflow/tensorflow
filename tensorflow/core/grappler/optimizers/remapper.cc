@@ -4401,7 +4401,9 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
-           is_act_biasadd_conv_candidate();
+           is_act_biasadd_conv_candidate() ||
+           IsBiasAdd(*node_def) ||
+           IsTranspose(*node_def);
 
   return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
@@ -4463,6 +4465,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (IsConv2D(ctx.graph_view.graph()->node(i)) ||
         IsFusedBatchNorm(ctx.graph_view.graph()->node(i)) ||
         IsDepthwiseConv2dNative(ctx.graph_view.graph()->node(i)) ||
+        IsBiasAdd(ctx.graph_view.graph()->node(i)) ||
+        IsTranspose(ctx.graph_view.graph()->node(i)) ||
         IsSigmoid(ctx.graph_view.graph()->node(i))) {
       AddInputShapesAttr(ctx, i);
     }
