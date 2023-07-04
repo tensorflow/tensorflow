@@ -556,7 +556,7 @@ void PrepareLiftingPass::runOnOperation() {
   }
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-    func.emitError() << "quant-internal-prepare-lifting failed.";
+    func.emitError() << "quant-prepare-lifting failed.";
     signalPassFailure();
   }
 }
