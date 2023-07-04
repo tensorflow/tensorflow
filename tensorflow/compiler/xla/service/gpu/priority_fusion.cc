@@ -358,8 +358,24 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  return FusionFitsInBudget(*consumer, *producer, device_info_,
-                            /*is_consumer_producer_fusion=*/true);
+  if (auto fusible = FusionFitsInBudget(*consumer, *producer, device_info_,
+                                        /*is_consumer_producer_fusion=*/true);
+      !fusible) {
+    return fusible;
+  }
+
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  // TODO(kramerb): Re-enable caching of FusionNodeIndexingEvaluation. It
+  // doesn't get invalidated when fusions are merged.
+  if (consumer->opcode() == HloOpcode::kFusion &&
+      FusionNodeIndexingEvaluation(consumer).CodeDuplicationTooHigh(producer)) {
+    return "the fusion would result in an overly large code duplication";
+  }
+
+  return {};
 }
 
 HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
