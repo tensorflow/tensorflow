@@ -340,6 +340,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   if (gpu_target_config.platform_name == "ROCM") {
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
+  layout_insensitive_algsimp_opts
+      .set_enable_unconditional_reduce_of_concat_replacement(false);
 
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
   // Run some IR cleanup passes before running the SPMD partitioning
@@ -906,6 +908,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !debug_options.xla_gpu_enable_fast_min_max());
+    options.set_enable_unconditional_reduce_of_concat_replacement(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // GemmRewriter assumes that all transposes are folded into gemms, but,
@@ -1031,6 +1034,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
+    options.set_enable_unconditional_reduce_of_concat_replacement(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
   }
 

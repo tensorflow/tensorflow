@@ -2964,6 +2964,61 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
                         m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
 }
 
+// Test that reduce of concat is simplified if the concat operand shapes
+// differ and enable_unconditional_reduce_of_concat_replacement() is true.
+TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcatWithDifferentShapes) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,90,100]{2,1,0} parameter(2)
+      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Map(m::Map(m::Reduce(m::Parameter(0), m::Constant()),
+                               m::Reduce(m::Parameter(1), m::Constant())),
+                        m::Reduce(m::Parameter(2), m::Constant()))));
+}
+
+// Test that reduce of concat is not simplified if the concat operand shapes
+// differ and enable_unconditional_reduce_of_concat_replacement() is false.
+TEST_F(AlgebraicSimplifierTest,
+       DoNotSimplifyReduceOfConcatBecauseShapesDiffer) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,90,100]{2,1,0} parameter(2)
+      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_unconditional_reduce_of_concat_replacement(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 // Test a concatenate with only empty operands is removed.
 TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   auto m = CreateNewVerifiedModule();
