@@ -99,7 +99,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#endif
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -199,13 +201,6 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
