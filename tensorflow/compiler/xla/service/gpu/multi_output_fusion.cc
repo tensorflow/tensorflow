@@ -101,6 +101,12 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
+  // If the producer is not a valid candidate for MOF, no need to check any of
+  // its users.
+  if (!IsProducerMultiOutputFusible(*producer)) {
+    return fusion_candidates;
+  }
+
   // If there is only one user, and it is not a multi-output fusion node, this
   // fusion possibility was already considered and rejected by the FusionMerger
   // pass. No need to try again!
@@ -130,9 +136,10 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
           << "consumer not eligible as multi-output fusion root.");
       continue;
     }
-    if (NoFusionPossible fusible =
-            !IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
-      dump_negative_explanation(!fusible);
+    if (auto fusible =
+            ShapesCompatibleForMultiOutputFusion(*producer, *consumer);
+        !fusible) {
+      dump_negative_explanation(fusible);
       continue;
     }
     // Do not fuse a producer if the other operands of the fusion are
