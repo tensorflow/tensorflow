@@ -227,8 +227,7 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
     producer = producer->mutable_operand(0);
   }
 
-  if (!IsTritonSupportedInstruction(producer) ||
-      !HasDefaultLayout(producer->shape()) ||
+  if (!HasDefaultLayout(producer->shape()) ||
       !IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0)) ||
       !(producer == instr->operand(0) ||
         instr->operand(0)->user_count() == 1)) {

@@ -23,8 +23,6 @@ namespace {
 
 namespace m = ::xla::match;
 
-// using SoftmaxRewriterTritonTest = HloTestBase;
-
 class SoftmaxRewriterTritonTest : public HloTestBase {
  public:
   void SetUp() override {
@@ -651,6 +649,34 @@ ENTRY main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Fusion(m::Fusion()), m::Fusion(m::Parameter()))));
+}
+
+TEST_F(SoftmaxRewriterTritonTest,
+       CanFuseSoftmaxDiamondWithTritonIncompatibleProducer) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  floor_0 = f32[127,125] floor(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(floor_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(floor_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
+  EXPECT_TRUE(fusion_rewriter.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Floor(m::Parameter()))));
 }
 
 }  // anonymous namespace
