@@ -223,9 +223,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
       return "not fusing bitcast ops";
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
-    if (NoFusionPossible compatible =
-            !FusionHeroesAreCompatible(producer_hero, consumer_hero)) {
-      return !compatible;
+    if (auto compatible =
+            FusionHeroesAreCompatible(producer_hero, consumer_hero);
+        !compatible) {
+      return compatible;
     }
     FusionDecision fusible = IsProducerConsumerFusible(*producer, *user);
     if (!fusible) {

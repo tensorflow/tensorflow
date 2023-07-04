@@ -756,17 +756,14 @@ TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
   FusionDecision a = {};
   FusionDecision b = "not possible";
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
 
   a = "not possible";
   b = {};
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
 
   a = "impossible";
   b = "very impossible";
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "impossible");
 
   a = {};
   b = {};

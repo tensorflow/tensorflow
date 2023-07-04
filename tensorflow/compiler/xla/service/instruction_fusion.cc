@@ -1052,11 +1052,7 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                           : "fusion pass cannot duplicate";
   }
 
-  if (NoFusionPossible fusible = !ShouldFuseInPlaceOp(producer, consumer)) {
-    return !fusible;
-  }
-
-  return {};
+  return ShouldFuseInPlaceOp(producer, consumer);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

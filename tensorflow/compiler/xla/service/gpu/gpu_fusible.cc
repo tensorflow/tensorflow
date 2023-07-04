@@ -254,9 +254,8 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  if (NoFusionPossible heroes_are_compatible =
-          !FusionHeroesAreCompatible(hero1, hero2)) {
-    return !heroes_are_compatible;
+  if (auto compatible = FusionHeroesAreCompatible(hero1, hero2); !compatible) {
+    return compatible;
   }
 
   const Shape& l1 = get_loop_shape(hero1);
