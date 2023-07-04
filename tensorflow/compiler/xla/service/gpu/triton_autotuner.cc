@@ -48,9 +48,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/float_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
-#include "tensorflow/compiler/xla/service/gpu/bitcast_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -153,82 +155,65 @@ class CustomHloRunner {
  public:
   // Create a CustomHloRunner.
   static StatusOr<std::unique_ptr<CustomHloRunner>> Create(
-      se::Stream& stream, se::DeviceMemoryAllocator& allocator);
+      se::Stream& stream, se::DeviceMemoryAllocator& allocator) {
+    se::StreamExecutor& stream_executor = *stream.parent();
 
-  // Compile the module, running the HLO passes as well.
-  StatusOr<std::unique_ptr<Executable>> CompileRunningHloPasses(
-      std::unique_ptr<HloModule> module);
+    TF_ASSIGN_OR_RETURN(
+        se::Platform * platform,
+        PlatformUtil::GetPlatform(stream_executor.platform()->Name()));
+
+    BackendOptions backend_options;
+    backend_options.set_platform(platform);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                        Backend::CreateBackend(backend_options));
+
+    return std::make_unique<CustomHloRunner>(
+        std::move(backend), stream_executor, stream, allocator);
+  }
+
+  CustomHloRunner(std::unique_ptr<Backend> backend,
+                  se::StreamExecutor& stream_executor, se::Stream& stream,
+                  se::DeviceMemoryAllocator& allocator)
+      : backend_(std::move(backend)),
+        stream_executor_(stream_executor),
+        stream_(stream),
+        allocator_(allocator) {}
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        backend_->compiler()->RunBackend(
+                            std::move(module), &stream_executor_, &allocator_));
+    return executable;
+  }
 
   // Execute the executable using the arguments.
   StatusOr<ExecutionOutput> Execute(Executable& executable,
-                                    std::vector<ExecutionInput> arguments);
+                                    std::vector<ExecutionInput> arguments) {
+    ExecutableRunOptions run_options;
+    run_options.set_device_ordinal(stream_executor_.device_ordinal());
+    run_options.set_stream(&stream_);
+    run_options.set_allocator(&allocator_);
+    run_options.set_intra_op_thread_pool(
+        backend_->eigen_intra_op_thread_pool_device());
+    run_options.set_run_id(RunId());
+
+    ServiceExecutableRunOptions service_run_options(
+        run_options, backend_->StreamBorrowerWithPriority());
+
+    TF_ASSIGN_OR_RETURN(ExecutionOutput output,
+                        executable.ExecuteOnStreamWrapper(
+                            &service_run_options, std::move(arguments)));
+
+    return std::move(output);
+  }
 
  private:
-  CustomHloRunner(std::unique_ptr<Backend> backend,
-                  se::StreamExecutor& stream_executor, se::Stream& stream,
-                  se::DeviceMemoryAllocator& allocator);
-
   std::unique_ptr<Backend> backend_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;
   se::DeviceMemoryAllocator& allocator_;
 };
-
-CustomHloRunner::CustomHloRunner(std::unique_ptr<Backend> backend,
-                                 se::StreamExecutor& stream_executor,
-                                 se::Stream& stream,
-                                 se::DeviceMemoryAllocator& allocator)
-    : backend_(std::move(backend)),
-      stream_executor_(stream_executor),
-      stream_(stream),
-      allocator_(allocator) {}
-
-StatusOr<std::unique_ptr<CustomHloRunner>> CustomHloRunner::Create(
-    se::Stream& stream, se::DeviceMemoryAllocator& allocator) {
-  se::StreamExecutor& stream_executor = *stream.parent();
-
-  TF_ASSIGN_OR_RETURN(
-      se::Platform * platform,
-      PlatformUtil::GetPlatform(stream_executor.platform()->Name()));
-
-  BackendOptions backend_options;
-  backend_options.set_platform(platform);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
-                      Backend::CreateBackend(backend_options));
-
-  return absl::WrapUnique(new CustomHloRunner(
-      std::move(backend), stream_executor, stream, allocator));
-}
-
-StatusOr<std::unique_ptr<Executable>> CustomHloRunner::CompileRunningHloPasses(
-    std::unique_ptr<HloModule> module) {
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
-  TF_ASSIGN_OR_RETURN(
-      auto executables,
-      backend_->compiler()->Compile(std::move(module_group),
-                                    {{&stream_executor_}}, &allocator_));
-  return std::move(executables[0]);
-}
-
-StatusOr<ExecutionOutput> CustomHloRunner::Execute(
-    Executable& executable, std::vector<ExecutionInput> arguments) {
-  ExecutableRunOptions run_options;
-  run_options.set_device_ordinal(stream_executor_.device_ordinal());
-  run_options.set_stream(&stream_);
-  run_options.set_allocator(&allocator_);
-  run_options.set_intra_op_thread_pool(
-      backend_->eigen_intra_op_thread_pool_device());
-  run_options.set_run_id(RunId());
-
-  ServiceExecutableRunOptions service_run_options(
-      run_options, backend_->StreamBorrowerWithPriority());
-
-  TF_ASSIGN_OR_RETURN(ExecutionOutput output,
-                      executable.ExecuteOnStreamWrapper(&service_run_options,
-                                                        std::move(arguments)));
-
-  return std::move(output);
-}
 
 class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
  public:
@@ -510,17 +495,15 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloModule> module =
         AutotunerUtil::ExtractComputationIntoNewModule(original_computation);
     VLOG(3) << "Extracted module: " << module->ToString();
-    BitcastRemover bitcast_remover;
-    TF_RETURN_IF_ERROR(bitcast_remover.Run(module.get()).status());
-    VLOG(3) << "Deoptimized module: " << module->ToString();
+    HloPassPipeline pipeline("run_cublas");
+    pipeline.AddPass<GemmRewriter>(config_.GetCudaComputeCapability());
+    pipeline.AddPass<GpuInstructionFusion>(
+        /*may_duplicate=*/false, GetGpuDeviceInfo(config_.GetExecutor()));
+    TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
+    VLOG(3) << "Module with cuBLAS calls: " << module->ToString();
 
     DebugOptions options =
         original_computation.parent()->config().debug_options();
-    // Use cuBLAS gemm.
-    options.set_xla_gpu_enable_triton_gemm(false);
-    // Avoid any autotuning: the result is only used to check numerics,
-    // use default algorithms to save compilation time and memory.
-    options.set_xla_gpu_autotune_level(0);
     // Avoid dumping compilation steps.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_autotune_results_to("");
@@ -529,8 +512,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // Avoid using another thread pool.
     options.set_xla_gpu_force_compilation_parallelism(1);
     module->config().set_debug_options(options);
-
-    return custom_hlo_runner.CompileRunningHloPasses(std::move(module));
+    return custom_hlo_runner.RunBackend(std::move(module));
   }
 
   // Runs a matmul fusion without Triton - with cuBLAS, to generate a reference
