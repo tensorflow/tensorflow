@@ -225,6 +225,11 @@ class GpuPriorityFusionQueue : public FusionQueue {
   Priority CalculateProducerPriority(HloInstruction* producer) {
     std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
 
+    // Don't bother computing cost for non-fusible ops.
+    if (fusible_users.empty()) {
+      return std::numeric_limits<Priority>::min();
+    }
+
     GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
         producer, &cost_analysis_, gpu_device_info_, std::nullopt,
         fusible_users, /*multi_output=*/false);
