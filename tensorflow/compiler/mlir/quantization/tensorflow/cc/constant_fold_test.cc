@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -145,6 +146,71 @@ TEST_F(ConstantFoldingTest, NotFoldingArgument) {
   // Even though the preceding CastOp is foldable, it shouldn't be folded since
   // we are calling from the MulOp.
   EXPECT_TRUE(isa<TF::CastOp>(mul_op.getX().getDefiningOp()));
+}
+
+TEST_F(ConstantFoldingTest, FoldDepthwiseConvWeight) {
+  constexpr absl::string_view kModuleCode = R"mlir(
+    module {
+      func.func @test_fold_constant(%arg0: tensor<*xf32>) -> (tensor<?x?x?x3xf32>) {
+        %cst = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x3x3x1xf32>} : () -> tensor<2x3x3x1xf32>
+        %cst_0 = "tf.Const"() {value = dense<0.400000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+        %cst_1 = "tf.Const"() {value = dense<0.500000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+        %cst_2 = "tf.Const"() {value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
+        %w = "tf.Mul"(%cst, %cst_2) : (tensor<2x3x3x1xf32>, tensor<f32>) -> tensor<2x3x3x1xf32>
+        %0 = "tf.DepthwiseConv2dNative"(%arg0, %w) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<2x3x3x1xf32>) -> tensor<?x?x?x3xf32>
+        %1 = "tf.BiasAdd"(%0, %cst_0) {data_format = "NHWC"} : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+        %2 = "tf.Mul"(%1, %cst_1) : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+        func.return %2 : tensor<?x?x?x3xf32>
+      }
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
+  func::FuncOp test_func =
+      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+
+  RewritePatternSet patterns(&ctx_);
+  patterns.add<ConstantFoldQuantizableOperands>(&ctx_);
+  EXPECT_TRUE(
+      succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
+
+  auto depthwise_conv_op =
+      FindOperationOfType<TF::DepthwiseConv2dNativeOp>(test_func);
+  EXPECT_THAT(depthwise_conv_op, NotNull());
+  // The filter of the DepthwiseConv2dNativeOp is expected to be a constant.
+  EXPECT_TRUE(isa<TF::ConstOp>(depthwise_conv_op.getFilter().getDefiningOp()));
+}
+
+TEST_F(ConstantFoldingTest, DepthwiseConvWeightNotFoldable) {
+  constexpr absl::string_view kModuleCode = R"mlir(
+    module {
+      func.func @test_fold_constant(%arg0: tensor<*xf32>, %arg1: tensor<f32>) -> (tensor<?x?x?x3xf32>) {
+        %cst = "tf.Const"() {value = dense<2.000000e+00> : tensor<2x3x3x1xf32>} : () -> tensor<2x3x3x1xf32>
+        %cst_0 = "tf.Const"() {value = dense<0.400000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+        %cst_1 = "tf.Const"() {value = dense<0.500000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+        %w = "tf.Mul"(%cst, %arg1) : (tensor<2x3x3x1xf32>, tensor<f32>) -> tensor<2x3x3x1xf32>
+        %0 = "tf.DepthwiseConv2dNative"(%arg0, %w) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<2x3x3x1xf32>) -> tensor<?x?x?x3xf32>
+        %1 = "tf.BiasAdd"(%0, %cst_0) {data_format = "NHWC"} : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+        %2 = "tf.Mul"(%1, %cst_1) : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+        func.return %2 : tensor<?x?x?x3xf32>
+      }
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
+  func::FuncOp test_func =
+      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+
+  RewritePatternSet patterns(&ctx_);
+  patterns.add<ConstantFoldQuantizableOperands>(&ctx_);
+  EXPECT_TRUE(
+      succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
+
+  auto depthwise_conv_op =
+      FindOperationOfType<TF::DepthwiseConv2dNativeOp>(test_func);
+  EXPECT_THAT(depthwise_conv_op, NotNull());
+  // The filter of the DepthwiseConv2dNativeOp is not constant-foldable.
+  EXPECT_TRUE(isa<TF::MulOp>(depthwise_conv_op.getFilter().getDefiningOp()));
 }
 
 }  // namespace

@@ -172,8 +172,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:constant_fold_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -193,5 +195,6 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Transforms",
     ],
 )
