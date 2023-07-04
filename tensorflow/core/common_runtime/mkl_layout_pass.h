@@ -25,26 +25,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
-
-struct RewriteThreshold {
-  string op;
-  int cpu_family;
-  int cpu_model_num;
-  // The model that is used to decide whether it is worth
-  // accelerating operations using oneDNN is:
-  //
-  // threshold = thread_synchronisation * thread_num + framework_tax
-  //
-  // This finds threshold when framework overhead and thread synchronisations
-  // are amortized with amount of computation that has to be performed.
-  // If we are below this threshold then we will not rewrite the operation to
-  // to be run using oneDNN primitive.
-  struct PerformanceParameters {
-    double thread_sync_cost;
-    double framework_cost;
-  } params;
-};
-
 // Interface to invoke the pass for unit test
 //
 // Returns true if and only if 'g' is mutated.
