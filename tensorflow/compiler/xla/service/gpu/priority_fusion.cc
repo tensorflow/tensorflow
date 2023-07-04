@@ -317,10 +317,6 @@ FusionDecision GpuPriorityFusion::ShouldFuseInexpensiveChecks(
     HloInstruction* consumer, int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
-  // Output fusions are not currently supported on GPUs.
-  if (producer->opcode() == HloOpcode::kFusion) {
-    return "the producer is a fusion";
-  }
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
@@ -377,6 +373,10 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
 
 HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
+  if (producer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction->MergeFusionInstruction(producer);
+    return fusion_instruction;
+  }
   return InstructionFusion::FuseInstruction(fusion_instruction, producer);
 }
 
