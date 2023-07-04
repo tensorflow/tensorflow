@@ -1633,8 +1633,12 @@ ENTRY main {
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%[[P0:[^,]*]])
-; CHECK-SAME: kind=kCustom
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
@@ -1667,13 +1671,17 @@ ENTRY main {
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%[[P0:[^,]*]])
-; CHECK-SAME: kind=kCustom
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,5]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
-TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF16) {
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitFirstSoftmaxDiamondF16) {
   const std::string& hlo_text = R"(
 HloModule softmax
 max_computation {
@@ -1691,18 +1699,17 @@ ENTRY main {
   constant_neg_inf = f16[] constant(-inf)
   reduce = f16[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f16[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f16[127,125]{1,0} exponential(subtract)
-  constant_zero = f16[] constant(0)
-  second_reduce = f16[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f16[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f16[127,125]{1,0} divide(exponential, second_broadcast)
+  ROOT subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
 }
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%[[P0:[^,]*]])
-; CHECK-SAME: kind=kCustom
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f16[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(2e-3, 1e-5)));
 }
@@ -1735,8 +1742,258 @@ ENTRY main {
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%[[P0:[^,]*]])
-; CHECK-SAME: kind=kCustom
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f64[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitSoftmaxWithBatchDimMergingAndSplittingBitcastsOnEveryEdge) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY main {
+  param_0 = f32[2,65,125] parameter(0)
+  bitcasted_param_0 = f32[65,2,125] reshape(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[65,2]{1,0} reduce(bitcasted_param_0, constant_neg_inf), dimensions={2}, to_apply=max_computation
+  bitcasted_reduce = f32[130] reshape(reduce)
+  broadcast = f32[130,125]{1,0} broadcast(bitcasted_reduce), dimensions={0}
+  bitcasted_broadcast = f32[65,2,125] reshape(broadcast)
+  subtract = f32[65,2,125]{2,1,0} subtract(bitcasted_param_0, bitcasted_broadcast)
+  bitcasted_subtract = f32[130,125] reshape(subtract)
+  exponential = f32[130,125]{1,0} exponential(bitcasted_subtract)
+  constant_zero = f32[] constant(0)
+  bitcasted_exponential = f32[2,65,125] reshape(exponential)
+  second_reduce = f32[2,65]{1,0} reduce(bitcasted_exponential, constant_zero), dimensions={2}, to_apply=add_computation
+  second_bitcasted_reduce = f32[130] reshape(second_reduce)
+  second_broadcast = f32[130,125]{1,0} broadcast(second_bitcasted_reduce), dimensions={0}
+  second_bitcasted_broadcast = f32[2,65,125] reshape(second_broadcast)
+  ROOT divide = f32[2,65,125]{2,1,0} divide(bitcasted_exponential, second_bitcasted_broadcast)
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[2,65,125]{2,1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest,
+       CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[1,3,125,125]{3,2,1,0} parameter(0)
+  reshape = f32[3,125,125]{2,1,0} reshape(f32[1,3,125,125]{3,2,1,0} param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[3,125]{1,0} reduce(f32[3,125,125]{2,1,0} reshape, f32[] constant_neg_inf), dimensions={2}, to_apply=max_computation
+  broadcast = f32[1,3,125,125]{3,2,1,0} broadcast(f32[3,125]{1,0} reduce), dimensions={1,2}
+  ROOT subtract = f32[1,3,125,125]{3,2,1,0} subtract(f32[1,3,125,125]{3,2,1,0} param_0, f32[1,3,125,125]{3,2,1,0} broadcast)
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[1,3,125,125]{3,2,1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest,
+       CanFuseAndEmitSoftmaxWithIntermediateUnaryElementwise) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  abs = f32[127,125]{1,0} abs(subtract)
+  exponential = f32[127,125]{1,0} exponential(abs)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {  // NOLINT(whitespace/line_length)
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(subtract, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(subtract, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest,
+       CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  ROOT abs = f32[127,125]{1,0} abs(subtract)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest, CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  abs = f32[127,125]{1,0} abs(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(abs, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(TritonSoftmaxTest,
+       CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
+  const std::string& hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f32[3,127,125]{2,1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[3,127]{1,0} reduce(param_0, constant_neg_inf), dimensions={2}, to_apply=max_computation
+  bitcasted_reduce = f32[381]{0} reshape(reduce)
+  broadcast = f32[381,125]{1,0} broadcast(bitcasted_reduce), dimensions={0}
+  bitcasted_broadcast = f32[3,127,125]{2,1,0} reshape(broadcast)
+  ROOT subtract = f32[3,127,125]{2,1,0} subtract(param_0, bitcasted_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[3,127,125]{2,1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }

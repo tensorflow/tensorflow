@@ -1199,6 +1199,7 @@ cc_library(
     hdrs = ["softmax_rewriter_triton.h"],
     deps = [
         ":backend_configs_cc",
+        ":gemm_rewriter_triton",
         ":gpu_types",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -1206,8 +1207,8 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
