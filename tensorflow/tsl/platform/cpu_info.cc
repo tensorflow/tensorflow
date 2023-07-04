@@ -24,7 +24,9 @@ limitations under the License.
 #endif
 #if defined(PLATFORM_IS_ARM64)
 #include <sys/auxv.h>
-
+#ifndef HWCAP_CPUID
+#define HWCAP_CPUID (1 << 11)
+#endif
 #include <fstream>
 #endif
 
