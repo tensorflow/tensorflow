@@ -169,10 +169,8 @@ ENTRY entry {
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context),
-      tsl::testing::StatusIs(
-          tsl::error::RESOURCE_EXHAUSTED,
-          absl::StrFormat("Requires too much shared memory: 294912 > %d",
-                          dev_info.shared_memory_per_block_optin)));
+      tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                             "Shared memory size limit exceeded."));
 
   config.set_block_m(64);
   config.set_block_n(128);
@@ -1431,6 +1429,111 @@ ENTRY triton_gemm___computation {
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, TritonDotFusionCanHaveManyParameters) {
+  const std::string kHloTextTest = R"(
+HloModule m
+
+triton_gemm_dot_computation {
+  tmp_1 = pred[3,32]{1,0} parameter(0)
+  tmp_2 = f32[3,32]{1,0} parameter(1)
+  tmp_3 = f32[3,32]{1,0} parameter(2)
+  tmp_4 = f32[3,32]{1,0} select(tmp_1, tmp_2, tmp_3)
+  tmp_5 = f32[3,32]{1,0} parameter(3)
+  tmp_6 = f32[3,32]{1,0} multiply(tmp_4, tmp_5)
+  tmp_7 = f32[3,32]{1,0} parameter(4)
+  tmp_8 = f32[3,32]{1,0} maximum(tmp_6, tmp_7)
+  tmp_9 = f32[3,57]{1,0} parameter(9)
+  tmp_10 = f32[3,57]{1,0} parameter(10)
+  tmp_11 = f32[3,57]{1,0} multiply(tmp_9, tmp_10)
+  tmp_12 = f32[3,57]{1,0} parameter(11)
+  tmp_13 = f32[3,57]{1,0} add(tmp_11, tmp_12)
+  tmp_14 = pred[3,57]{1,0} parameter(5)
+  tmp_15 = f32[3,57]{1,0} parameter(6)
+  tmp_16 = f32[3,57]{1,0} parameter(7)
+  tmp_17 = f32[3,57]{1,0} select(tmp_14, tmp_15, tmp_16)
+  tmp_18 = f32[3,57]{1,0} parameter(8)
+  tmp_19 = f32[3,57]{1,0} multiply(tmp_17, tmp_18)
+  tmp_20 = f32[3,57]{1,0} negate(tmp_19)
+  tmp_21 = f32[3,57]{1,0} add(tmp_13, tmp_20)
+  ROOT tmp_22 = f32[32,57]{0,1} dot(tmp_8, tmp_21), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  tmp_1 = pred[3,32]{1,0} parameter(0)
+  tmp_2 = f32[3,32]{1,0} parameter(1)
+  tmp_3 = f32[3,32]{1,0} parameter(2)
+  tmp_5 = f32[3,32]{1,0} parameter(3)
+  tmp_7 = f32[3,32]{1,0} parameter(4)
+  tmp_14 = pred[3,57]{1,0} parameter(5)
+  tmp_15 = f32[3,57]{1,0} parameter(6)
+  tmp_16 = f32[3,57]{1,0} parameter(7)
+  tmp_18 = f32[3,57]{1,0} parameter(8)
+  tmp_9 = f32[3,57]{1,0} parameter(9)
+  tmp_10 = f32[3,57]{1,0} parameter(10)
+  tmp_12 = f32[3,57]{1,0} parameter(11)
+  ROOT r = f32[32,57]{0,1} fusion(tmp_1, tmp_2, tmp_3, tmp_5, tmp_7, tmp_14, tmp_15, tmp_16, tmp_18, tmp_9, tmp_10, tmp_12), kind=kCustom,
+    calls=triton_gemm_dot_computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"64","block_n":"64",
+                                          "block_k":"64","split_k":"1",
+                                          "num_stages":"1","num_warps":"4"}}
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m
+
+fused_computation {
+  param_5.1 = f32[3,57]{1,0} parameter(5)
+  param_6 = f32[3,57]{1,0} parameter(6)
+  multiply.4 = f32[3,57]{1,0} multiply(param_5.1, param_6)
+  param_4.2 = f32[3,57]{1,0} parameter(4)
+  add.3 = f32[3,57]{1,0} add(multiply.4, param_4.2)
+  param_1.4 = pred[3,57]{1,0} parameter(1)
+  param_2.2 = f32[3,57]{1,0} parameter(2)
+  param_3.1 = f32[3,57]{1,0} parameter(3)
+  select.2 = f32[3,57]{1,0} select(param_1.4, param_2.2, param_3.1)
+  param_0.1 = f32[3,57]{1,0} parameter(0)
+  multiply.3 = f32[3,57]{1,0} multiply(select.2, param_0.1)
+  negate.1 = f32[3,57]{1,0} negate(multiply.3)
+  ROOT add.2 = f32[3,57]{1,0} add(add.3, negate.1)
+}
+
+fused_computation.1 {
+  param_2.4 = pred[3,32]{1,0} parameter(2)
+  param_3.2 = f32[3,32]{1,0} parameter(3)
+  param_4.3 = f32[3,32]{1,0} parameter(4)
+  select.3 = f32[3,32]{1,0} select(param_2.4, param_3.2, param_4.3)
+  param_1.7 = f32[3,32]{1,0} parameter(1)
+  multiply.5 = f32[3,32]{1,0} multiply(select.3, param_1.7)
+  param_0.3 = f32[3,32]{1,0} parameter(0)
+  ROOT maximum.1 = f32[3,32]{1,0} maximum(multiply.5, param_0.3)
+}
+
+ENTRY e {
+  tmp_18 = f32[3,57]{1,0} parameter(8)
+  tmp_16 = f32[3,57]{1,0} parameter(7)
+  tmp_15 = f32[3,57]{1,0} parameter(6)
+  tmp_14 = pred[3,57]{1,0} parameter(5)
+  tmp_12 = f32[3,57]{1,0} parameter(11)
+  tmp_10 = f32[3,57]{1,0} parameter(10)
+  tmp_9 = f32[3,57]{1,0} parameter(9)
+  tmp_7 = f32[3,32]{1,0} parameter(4)
+  tmp_5 = f32[3,32]{1,0} parameter(3)
+  tmp_3 = f32[3,32]{1,0} parameter(2)
+  tmp_2 = f32[3,32]{1,0} parameter(1)
+  tmp_1 = pred[3,32]{1,0} parameter(0)
+  fusion.1 = f32[3,32]{1,0} fusion(tmp_7, tmp_5, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.1
+  fusion = f32[3,57]{1,0} fusion(tmp_18, tmp_14, tmp_15, tmp_16, tmp_12, /*index=5*/tmp_9, tmp_10), kind=kLoop, calls=fused_computation
+  ROOT custom-call = f32[32,57]{0,1} custom-call(fusion.1, fusion),
+    custom_call_target="__cublas$gemm",
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
                                       /*run_hlo_passes=*/false));
 }
 

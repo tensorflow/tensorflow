@@ -846,25 +846,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
 
-  {
-    int required_shmem_size = 0;
-    for (const HloInstruction* hlo :
-         analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS)) {
-      required_shmem_size += block_m * ShapeUtil::ByteSizeOfPrimitiveType(
-                                           hlo->shape().element_type());
-    }
-    for (const HloInstruction* hlo :
-         analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS)) {
-      required_shmem_size += block_n * ShapeUtil::ByteSizeOfPrimitiveType(
-                                           hlo->shape().element_type());
-    }
-    required_shmem_size *= block_k * config.num_stages();
-    if (required_shmem_size > shmem_budget) {
-      return ResourceExhausted("Requires too much shared memory: %d > %d",
-                               required_shmem_size, shmem_budget);
-    }
-  }
-
   // Data type of dot() immediate inputs.
   Type dot_input_ty = b.getF32Type();
   {
