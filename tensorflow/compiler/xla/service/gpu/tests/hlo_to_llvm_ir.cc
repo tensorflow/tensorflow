@@ -100,7 +100,9 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     TF_ASSIGN_OR_RETURN(
       std::vector<uint8_t> ptx,
       xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
-                                    hlo_module->config(), libdevice_dir));
+                                      hlo_module->config().debug_options(), 
+                                      libdevice_dir,
+                                      hlo_module->config().compilation_cache_key()));
 #endif
   }
   return xla::OkStatus();
