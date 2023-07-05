@@ -1335,7 +1335,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 
 /* static */ tsl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
     CUdeviceptr pointer) {
-  GpuContext* context = nullptr;
+  CUcontext context = nullptr;
   CUresult result =
       cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT, pointer);
   if (result == CUDA_SUCCESS) {
@@ -1349,7 +1349,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
           absl::StatusCode::kUnavailable,
           "Empty context returned while querying context for device pointer");
     }
-    return context;
+    return CreatedContexts::Get(context);
   }
 
   return tsl::Status(
