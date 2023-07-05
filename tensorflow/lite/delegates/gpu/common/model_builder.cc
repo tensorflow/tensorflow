@@ -3250,7 +3250,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<UnpackOperationParser>();
     case kTfLiteBuiltinCustom: {
       const absl::string_view custom_name = registration->custom_name;
-      fprintf(stderr, "Found Custom Op: %s\n", registration->custom_name);
       if (custom_name == "Convolution2DTransposeBias") {
         return std::make_unique<TransposeConvCustomOperationParser>();
       }
