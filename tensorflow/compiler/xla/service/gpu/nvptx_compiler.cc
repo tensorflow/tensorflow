@@ -140,7 +140,6 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_enable_scalar_multiply_reduction(true);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
@@ -205,7 +204,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
     AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
-    algebraic_simplifier_options.set_enable_scalar_multiply_reduction(true);
     algebraic_simplifier_options
         .set_enable_unconditional_reduce_of_concat_replacement(false);
     mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
