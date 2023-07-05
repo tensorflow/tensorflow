@@ -170,6 +170,7 @@ cuda_py_strict_test(
         "no_rocm",
         "no_windows",
         "nomac",
+        "notap",  #TODO(b/290051231)
         "requires-net:external",
     ],
     xla_enable_strict_auto_jit = False,
