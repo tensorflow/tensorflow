@@ -64,6 +64,9 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonSoftmaxFusionKind =
     "__triton_softmax";
 
+inline constexpr absl::string_view kUncompilableFusion =
+    "__uncompilable_fusion";
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
