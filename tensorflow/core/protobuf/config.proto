@@ -99,6 +99,48 @@ message GPUOptions {
   // the overall host system performance.
   bool force_gpu_compatible = 8;
 
+  // Whether to merge streams in one stream group. Four types of streams will be
+  // created within a stream group by default: one compute stream, one HtoD copy
+  // stream, one DtoH copy stream, several DtoD copy streams. Use the
+  // STREAM_MERGE_OPTIONS to merge the copy streams into the compute stream. For
+  // example, setting "merge_h_to_d_stream = true" to make the compute stream
+  // responsible for both computation and HtoD memory copy. Stream merging helps
+  // reduce the overhead caused by stream synchronization, especially when data
+  // transfers are frequent.
+  message STREAM_MERGE_OPTIONS {
+    bool merge_h_to_d_stream = 1;
+    bool merge_d_to_h_stream = 2;
+    bool merge_d_to_d_stream = 3;
+  }
+
+  STREAM_MERGE_OPTIONS stream_merge_options = 9;
+
+  message MULTI_STREAM_OPTIONS {
+    // If stream_group_count > 1, TF will create multiple stream groups in one
+    // logical GPU device and concurrent session.run() calls will be allocated
+    // to different groups for parallelism.
+    int32 stream_group_count = 1;
+
+    // Supported values: private or shared. Default is shared.
+    // Only effective when stream_group_count > 1. If set to "private", each
+    // stream group will use its own host memory allocators to avoid lock
+    // contention in host memory allocation.
+    string host_allocator_mode = 2;
+
+    // Supported values: private or shared. Default is private.
+    // Only effective when stream_group_count > 1. If set to "shared", the
+    // stream groups will share the same copy of memory buffer of Constant Ops.
+    // Otherwise, the constant buffers would have to be copied multiple times.
+    // This helps to save GPU memory as model parameters are usually saved in
+    // Constant Ops in inference. However, when multiple CUDA contexts is
+    // enabled (with the environment variable "TF_GPU_CONTEXT_COUNT"), this
+    // option may cause cross-context memory copying, introducing more stream
+    // synchronization overhead.
+    string constant_memory_mode = 3;
+  }
+
+  MULTI_STREAM_OPTIONS multi_stream_options = 10;
+
   message Experimental {
     // Configuration for breaking down a visible GPU into multiple "virtual"
     // devices.
@@ -257,7 +299,7 @@ message GPUOptions {
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
-  Experimental experimental = 9;
+  Experimental experimental = 11;
 }
 
 // Options passed to the graph optimizer
