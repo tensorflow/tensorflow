@@ -46,7 +46,8 @@ class LocalClientOptions {
   LocalClientOptions(
       se::Platform* platform = nullptr, int number_of_replicas = 1,
       int intra_op_parallelism_threads = -1,
-      const std::optional<std::set<int>>& allowed_devices = std::nullopt);
+      const std::optional<std::set<int>>& allowed_devices = std::nullopt,
+      int gpu_stream_group_index = 0);
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -67,10 +68,15 @@ class LocalClientOptions {
       const std::optional<std::set<int>>& allowed_devices);
   const std::optional<std::set<int>>& allowed_devices() const;
 
+  // Sets the stream group index for the given GPU device.
+  LocalClientOptions& set_gpu_stream_group_index(int stream_group_index);
+  int gpu_stream_group_index() const;
+
  private:
   se::Platform* platform_;
   int number_of_replicas_;
   int intra_op_parallelism_threads_;
+  int gpu_stream_group_index_;
   std::optional<std::set<int>> allowed_devices_;
 };
 

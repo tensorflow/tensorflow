@@ -67,11 +67,16 @@ class ServiceOptions {
       const std::optional<std::set<int>>& allowed_devices);
   const std::optional<std::set<int>>& allowed_devices() const;
 
+  // Sets the stream group index for the given GPU device.
+  ServiceOptions& set_gpu_stream_group_index(int stream_group_index);
+  int gpu_stream_group_index() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
   std::optional<std::set<int>> allowed_devices_;
+  int gpu_stream_group_index_ = 0;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains

@@ -31,11 +31,13 @@ namespace xla {
 LocalClientOptions::LocalClientOptions(
     se::Platform* platform, int number_of_replicas,
     int intra_op_parallelism_threads,
-    const std::optional<std::set<int>>& allowed_devices)
+    const std::optional<std::set<int>>& allowed_devices,
+    int gpu_stream_group_index)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads),
-      allowed_devices_(allowed_devices) {}
+      allowed_devices_(allowed_devices),
+      gpu_stream_group_index_(gpu_stream_group_index) {}
 
 LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
@@ -62,6 +64,16 @@ LocalClientOptions& LocalClientOptions::set_intra_op_parallelism_threads(
 
 int LocalClientOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
+}
+
+LocalClientOptions& LocalClientOptions::set_gpu_stream_group_index(
+    int stream_group_index) {
+  gpu_stream_group_index_ = stream_group_index;
+  return *this;
+}
+
+int LocalClientOptions::gpu_stream_group_index() const {
+  return gpu_stream_group_index_;
 }
 
 LocalClientOptions& LocalClientOptions::set_allowed_devices(
@@ -95,6 +107,7 @@ ClientLibrary::~ClientLibrary() = default;
     const LocalClientOptions& options) {
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
+  int gpu_stream_group_index = options.gpu_stream_group_index();
   ClientLibrary& client_library = Singleton();
   absl::MutexLock lock(&client_library.service_mutex_);
 
@@ -113,6 +126,7 @@ ClientLibrary::~ClientLibrary() = default;
   service_options.set_intra_op_parallelism_threads(
       options.intra_op_parallelism_threads());
   service_options.set_allowed_devices(options.allowed_devices());
+  service_options.set_gpu_stream_group_index(gpu_stream_group_index);
   auto instance = std::make_unique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));

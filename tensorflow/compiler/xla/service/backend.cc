@@ -55,6 +55,16 @@ int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+BackendOptions& BackendOptions::set_gpu_stream_group_index(
+    int stream_group_index) {
+  gpu_stream_group_index_ = stream_group_index;
+  return *this;
+}
+
+int BackendOptions::gpu_stream_group_index() const {
+  return gpu_stream_group_index_;
+}
+
 BackendOptions& BackendOptions::set_allowed_devices(
     const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
