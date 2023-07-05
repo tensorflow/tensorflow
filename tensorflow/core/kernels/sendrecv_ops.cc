@@ -91,6 +91,7 @@ void SendOp::Compute(OpKernelContext* ctx) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->input_alloc_attr(0);
+  args.tensor_holder = ctx->tensor_holder();
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {

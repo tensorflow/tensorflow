@@ -679,6 +679,7 @@ Status DirectSession::RunInternal(
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
   args.deadline = deadline;
+  args.tensor_holder = &run_state.tensor_holder;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -1025,6 +1026,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.session_handle = session_handle_;
   args.tensor_store = &run_state->tensor_store;
   args.step_container = &run_state->step_container;
+  args.tensor_holder = &run_state->tensor_holder;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
