@@ -31,7 +31,7 @@ DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
 
 DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>>&& devices)
-    : cpu_device_(nullptr) {
+    : cpu_device_(nullptr), stream_group_count_(0) {
   Status status = AddDevices(std::move(devices));
   CHECK(status.ok());  // Crash OK
   mutex_lock l(devices_mu_);
@@ -252,6 +252,18 @@ Device* DynamicDeviceMgr::HostCPU() const {
   }
 
   return cpu_device_.load(std::memory_order_relaxed);
+}
+
+int DynamicDeviceMgr::StreamGroupCount() const { return stream_group_count_; }
+
+Device* DynamicDeviceMgr::LookupStream(const Device* device,
+                                       const int stream_id) const {
+  if (stream_id < 0 ||
+      stream_device_map_.find(device) == stream_device_map_.end() ||
+      stream_device_map_.at(device).size() <= stream_id) {
+    return const_cast<Device*>(device);
+  }
+  return stream_device_map_.at(device).at(stream_id);
 }
 
 }  // namespace tensorflow
