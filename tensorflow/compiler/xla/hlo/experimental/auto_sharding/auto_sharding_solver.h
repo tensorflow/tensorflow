@@ -88,6 +88,11 @@ struct AutoShardingEvaluation {
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverResult& result);
 
+// Produces a list of rationales for why an alternate result may be suboptimal.
+std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
+                                     const AutoShardingSolverResult& result,
+                                     const AutoShardingSolverResult& subopt);
+
 }  // namespace spmd
 }  // namespace xla
 

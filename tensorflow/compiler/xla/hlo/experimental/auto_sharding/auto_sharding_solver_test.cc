@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -63,6 +64,7 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   request.v = {{0, 1, 1,
                 1, 0, 1,
                 1, 1, 0}};
+  request.instruction_names = {"A", "B", "C", "D", "E"};
   return request;
 }
 
@@ -147,6 +149,34 @@ TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
   expected_evaluation.total_resharding_cost = 9400.0;  // 3200+6200
   expected_evaluation.total_cost = 11138.0;  // 158+1580+9400
   EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingRationalizerTest, RationalizesProperly) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<int64_t> chosen_strategy = {0, 1, 2, 2, 1};
+  const std::vector<int64_t> e_val = {2, 6};
+  const double objective_value = 9116.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+  const std::vector<int64_t> subopt_strategy = {3, 1, 2, 2, 1};
+  const std::vector<int64_t> subopt_val = {14, 6};
+  const double subopt_value = 12149.0;
+  const AutoShardingSolverResult subopt = {
+      std::make_tuple(
+          std::move(subopt_strategy), std::move(subopt_val), subopt_value),
+      false};
+
+  const std::vector<std::string> rationales =
+      Rationalize(request, result, subopt);
+
+  const std::vector<std::string> expected_rationales = {
+      "strategy changes for A (0 -> 3)",
+      "communication cost increases for A (100 -> 130)",
+      "computation cost increases for A (10 -> 13)",
+      "resharding cost increases for A and C (1200 -> 4200)"};
+  EXPECT_EQ(rationales, expected_rationales);
 }
 
 // clang-format on

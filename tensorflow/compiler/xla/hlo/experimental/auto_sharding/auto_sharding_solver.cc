@@ -544,5 +544,48 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   return evaluation;
 }
 
+std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
+                                     const AutoShardingSolverResult& result,
+                                     const AutoShardingSolverResult& subopt) {
+  std::vector<std::string> rationales;
+  const std::vector<std::string>& names = request.instruction_names;
+
+  const std::vector<int64_t>& s_result = std::get<0>(*result.status);
+  const std::vector<int64_t>& s_subopt = std::get<0>(*subopt.status);
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    const int64_t j = s_result[i], k = s_subopt[i];
+    if (j != k) {
+      rationales.push_back(absl::StrCat("strategy changes for ", names[i], " (",
+                                        j, " -> ", k, ")"));
+    }
+    const double dj = request.d[i][j], dk = request.d[i][k];
+    if (dj < dk) {
+      rationales.push_back(absl::StrCat("communication cost increases for ",
+                                        names[i], " (", dj, " -> ", dk, ")"));
+    }
+    const double cj = request.c[i][j], ck = request.c[i][k];
+    if (cj < ck) {
+      rationales.push_back(absl::StrCat("computation cost increases for ",
+                                        names[i], " (", cj, " -> ", ck, ")"));
+    }
+  }
+
+  const std::vector<int64_t>& e_result = std::get<1>(*result.status);
+  const std::vector<int64_t>& e_subopt = std::get<1>(*subopt.status);
+  for (size_t i = 0; i < request.e.size(); ++i) {
+    const std::pair<int, int>& edge = request.e[i];
+    const int64_t j = e_result[i], k = e_subopt[i];
+    const double rj = request.r[i][j], rk = request.r[i][k];
+    if (rj < rk) {
+      const std::string edge_name =
+          absl::StrCat(names[edge.first], " and ", names[edge.second]);
+      rationales.push_back(absl::StrCat("resharding cost increases for ",
+                                        edge_name, " (", rj, " -> ", rk, ")"));
+    }
+  }
+
+  return rationales;
+}
+
 }  // namespace spmd
 }  // namespace xla
