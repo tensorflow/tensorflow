@@ -295,12 +295,19 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
   return EmitterFusionKind::kLoop;
 }
 
-StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
+StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
+    bool use_experimental_block_size) const {
   TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind, GetEmitterFusionKind());
   switch (emitter_fusion_kind) {
-    case EmitterFusionKind::kLoop:
+    case EmitterFusionKind::kLoop: {
+      // Disable experimental block size if few_waves or row_vectorized enabled.
+      auto loop_fusion_config = GetLoopFusionConfig();
+      use_experimental_block_size &= !(loop_fusion_config.row_vectorized) &&
+                                     !(loop_fusion_config.few_waves);
       return CalculateLaunchDimensions(GetElementShape(), *device_info_,
-                                       GetLoopFusionConfig());
+                                       use_experimental_block_size,
+                                       loop_fusion_config);
+    }
     case EmitterFusionKind::kReduction: {
       TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
                           GetReductionCodegenInfo());

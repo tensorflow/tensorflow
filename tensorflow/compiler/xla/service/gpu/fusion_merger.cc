@@ -275,9 +275,15 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     }
   }
 
+  bool use_experimental_block_size =
+      producer->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_enable_experimental_block_size();
+
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_, compute_capability_,
-      producer->users(), /*multi_output=*/false);
+      producer, &*cost_analysis_, gpu_device_info_, use_experimental_block_size,
+      compute_capability_, producer->users(), /*multi_output=*/false);
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

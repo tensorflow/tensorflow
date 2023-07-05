@@ -55,7 +55,8 @@ class HloFusionAnalysis {
   StatusOr<EmitterFusionKind> GetEmitterFusionKind() const;
 
   // Determine the launch dimensions for the fusion.
-  StatusOr<LaunchDimensions> GetLaunchDimensions() const;
+  StatusOr<LaunchDimensions> GetLaunchDimensions(
+      bool use_experimental_block_size = false) const;
 
   // Calculate reduction information (kind: kReduction).
   StatusOr<ReductionCodegenInfo> GetReductionCodegenInfo() const;

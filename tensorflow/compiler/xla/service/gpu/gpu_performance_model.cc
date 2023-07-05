@@ -132,11 +132,13 @@ absl::Duration ProducerInputAccessTime(
 // IR emitter will use. Return std::nullopt if this data is not available.
 std::optional<int64_t> EstimateThreadCount(
     const HloInstruction* instr, const GpuDeviceInfo& gpu_device_info,
-    std::optional<se::CudaComputeCapability> cc) {
+    std::optional<se::CudaComputeCapability> cc,
+    bool use_experimental_block_size) {
   auto fusion = DynCast<const HloFusionInstruction>(instr);
   if (fusion != nullptr && cc.has_value()) {
     HloFusionAnalysis fusion_analysis(fusion, &gpu_device_info, cc.value());
-    auto launch_dimensions = fusion_analysis.GetLaunchDimensions();
+    auto launch_dimensions =
+        fusion_analysis.GetLaunchDimensions(use_experimental_block_size);
     if (launch_dimensions.ok()) {
       return launch_dimensions->launch_bound();
     }
@@ -149,7 +151,7 @@ std::optional<int64_t> EstimateThreadCount(
 /*static*/ struct GpuPerformanceModel::RunTimes
 GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-    const GpuDeviceInfo& gpu_device_info,
+    const GpuDeviceInfo& gpu_device_info, bool use_experimental_block_size,
     std::optional<se::CudaComputeCapability> cc,
     std::vector<HloInstruction*> fused_users, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
@@ -202,7 +204,8 @@ GpuPerformanceModel::EstimateRunTimes(
         cost_analysis->operand_utilization(*u, u->operand_index(producer));
     total_producer_utilization += utilization_by_this_consumer;
 
-    auto thread_count = EstimateThreadCount(u, gpu_device_info, cc);
+    auto thread_count = EstimateThreadCount(u, gpu_device_info, cc,
+                                            use_experimental_block_size);
     int64_t upper_bound = producer_elements_out * utilization_by_this_consumer;
     absl::Duration compute_time_by_this_consumer = compute_time(
         cost_analysis->flop_count(*producer) * utilization_by_this_consumer,

@@ -180,8 +180,14 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       continue;
     }
 
+    bool use_experimental_block_size =
+        producer->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_enable_experimental_block_size();
     GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-        producer, cost_analysis, device_info, cc, {consumer},
+        producer, cost_analysis, device_info, use_experimental_block_size, cc,
+        {consumer},
         /*multi_output=*/true);
     if (t.time_fused > t.time_unfused) {
       dump_negative_explanation(FusionDecision{}
