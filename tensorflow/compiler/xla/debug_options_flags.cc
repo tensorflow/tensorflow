@@ -82,9 +82,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
   // integration.
   opts.set_xla_gpu_cuda_graph_level(0);
-  opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
+  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
-  opts.set_xla_gpu_cuda_graph_capture_threshold(2);
+  opts.set_xla_gpu_cuda_graph_min_graph_size(2);
   opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
@@ -873,16 +873,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
       "capture convolutions and gemms; 3 = capture collectives."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_instantiation_threshold",
+      "xla_gpu_cuda_graph_num_runs_to_instantiate",
       int32_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_instantiation_threshold),
-      debug_options->xla_gpu_cuda_graph_instantiation_threshold(),
+          &DebugOptions::set_xla_gpu_cuda_graph_num_runs_to_instantiate),
+      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate(),
       "Instantiate a cuda graph after the time a captured function is executed "
       "reaches the threshold."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_cuda_graph_capture_threshold",
-      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_capture_threshold),
-      debug_options->xla_gpu_cuda_graph_capture_threshold(),
+      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_min_graph_size),
+      debug_options->xla_gpu_cuda_graph_min_graph_size(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
   flag_list->push_back(tsl::Flag(

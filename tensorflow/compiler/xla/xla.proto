@@ -444,12 +444,12 @@ message DebugOptions {
   // Only instantiates a CUDA graph after the captured function execution count
   // reaches the threshold. This constant is a heuristic to avoid creating a
   // large number of CUDA graph instances in memory.
-  int32 xla_gpu_cuda_graph_instantiation_threshold = 202;
+  int32 xla_gpu_cuda_graph_num_runs_to_instantiate = 202;
 
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a cuda
   // graph.
-  int32 xla_gpu_cuda_graph_capture_threshold = 208;
+  int32 xla_gpu_cuda_graph_min_graph_size = 208;
 
   // Identify concurrent regions in cuda graphs and execute them concurrently.
   bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
