@@ -202,6 +202,18 @@ class Device : public DeviceBase {
   // device.
   virtual const Device* GetRealDevice() const { return this; }
 
+  // Whether to merge the DtoD copy streams with the compute stream. Only useful
+  // for GPU.
+  virtual bool merge_DtoD_copy_stream() const { return false; }
+
+  // Whether to merge the DtoH copy stream with the compute stream. Only useful
+  // for GPU.
+  virtual bool merge_DtoH_copy_stream() const { return false; }
+
+  // Whether to merge the HtoD copy stream with the compute stream. Only useful
+  // for GPU.
+  virtual bool merge_HtoD_copy_stream() const { return false; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
