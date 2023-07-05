@@ -1142,27 +1142,22 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   if (gpu_dst == 0 || gpu_src == 0) {
     result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   } else {
-    // Any context work here.
-    CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
-
-    if (static_cast<void*>(dst_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
+    CUcontext dst_context = nullptr, src_context = nullptr;
+    tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+    if (tmp_context.ok()) {
+      dst_context = tmp_context.value()->context();
+    }
+    tmp_context = GetPointerContext(gpu_src);
+    if (tmp_context.ok()) {
+      src_context = tmp_context.value()->context();
     }
 
-    if (static_cast<void*>(src_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
+    // The context will be null if Async Allocator is used.
+    if (dst_context == nullptr || src_context == nullptr) {
+      result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
+    } else {
+      result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
     }
-
-    result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
   }
 
   RETURN_IF_CUDA_RES_ERROR(
@@ -1239,29 +1234,21 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
-    // Any context work here.
-    CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
-
-    if (static_cast<void*>(dst_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
+    CUcontext dst_context = nullptr, src_context = nullptr;
+    tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+    if (tmp_context.ok()) {
+      dst_context = tmp_context.value()->context();
+    }
+    tmp_context = GetPointerContext(gpu_src);
+    if (tmp_context.ok()) {
+      src_context = tmp_context.value()->context();
     }
 
-    if (static_cast<void*>(src_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
-    }
-
-    if (dst_context == src_context) {
+    if (dst_context == src_context || dst_context == nullptr ||
+        src_context == nullptr) {
       // Since the CUDA context is the same, the src and dst are within the same
-      // GPU. So we can use cuMemcpyDtoD.
+      // GPU. So we can use cuMemcpyDtoD. Besides, the context will be null if
+      // Async Allocator is used.
       result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
     } else {
       result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context,
