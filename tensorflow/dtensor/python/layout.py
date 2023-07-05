@@ -15,6 +15,7 @@
 """Python definitions for `Mesh` and `Layout`."""
 
 import collections
+import functools
 import itertools
 from typing import List, Dict, Optional, Union
 
@@ -267,11 +268,15 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
     return mesh
 
+  @functools.cached_property
+  def _host_mesh(self) -> 'Mesh':
+    return Mesh.from_string(super().host_mesh().to_string())
+
   def host_mesh(self) -> 'Mesh':
     """Returns a host mesh."""
     # TODO(b/242201545): Find a way to get the super class to return correct
     # typed objects.
-    return Mesh.from_string(super().host_mesh().to_string())
+    return self._host_mesh
 
   # TODO(b/242201545): implement this in Mesh C++ class
   def local_device_locations(self) -> List[Dict[str, int]]:
