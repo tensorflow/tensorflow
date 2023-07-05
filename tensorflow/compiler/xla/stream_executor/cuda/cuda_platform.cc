@@ -29,6 +29,23 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+void GetGPUContextCountFromEnv(char** context_count_string,
+                               int* context_count) {
+  *context_count_string = std::getenv("TF_GPU_CONTEXT_COUNT");
+  int context_count_int;
+  if (*context_count_string != nullptr) {
+    if (!absl::SimpleAtoi(*context_count_string, &context_count_int)) {
+      LOG(QFATAL) << "Unknown option for environment variable "
+                     "TF_GPU_CONTEXT_COUNT "
+                  << *context_count_string
+                  << " unable to be parsed as an integer.";
+    } else {
+      *context_count = context_count_int;
+    }
+  }
+}
+
 namespace {
 
 // Synchronize with spinlocks.
@@ -42,26 +59,34 @@ const DeviceOptions GetDeviceOptionsFromEnv() {
   const char* gpu_schedule_string =
       std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
 
-  if (gpu_schedule_string == nullptr) {
-    return DeviceOptions::Default();
+  DeviceOptions device_options = DeviceOptions::Default();
+  if (gpu_schedule_string != nullptr) {
+    unsigned device_flags = 0;
+    if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
+      device_flags = DeviceOptions::kScheduleSpin;
+    } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
+      device_flags = DeviceOptions::kScheduleYield;
+    } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
+      device_flags = DeviceOptions::kScheduleBlockingSync;
+    } else {
+      LOG(QFATAL) << "Unknown option for environment variable "
+                     "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
+                  << gpu_schedule_string << " should be one of {"
+                  << kScheduleBlockingSyncString << ", " << kScheduleSpinString
+                  << ", " << kScheduleYieldString << "}";
+    }
+
+    device_options = DeviceOptions(device_flags);
   }
 
-  unsigned device_flags = 0;
-  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleSpin;
-  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleYield;
-  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleBlockingSync;
-  } else {
-    LOG(QFATAL) << "Unknown option for environment variable "
-                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
-                << gpu_schedule_string << " should be one of {"
-                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
-                << ", " << kScheduleYieldString << "}";
+  char* context_count_string;
+  int context_count = 1;
+  GetGPUContextCountFromEnv(&context_count_string, &context_count);
+  if (context_count > 1) {
+    device_options.non_portable_tags.emplace(
+        std::make_pair("gpu_context_count", context_count_string));
   }
-
-  return DeviceOptions(device_flags);
+  return device_options;
 }
 
 }  // namespace

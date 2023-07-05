@@ -38,6 +38,11 @@ extern const Platform::Id kCudaPlatformId;
 }  // namespace cuda
 
 namespace gpu {
+
+// Get the number of CUDA Contexts to use for one GPU from the environment
+// variable "TF_GPU_CONTEXT_COUNT".
+void GetGPUContextCountFromEnv(char** context_count, int* context_count_int);
+
 // Cuda-specific platform plugin, registered as a singleton value via module
 // initializer.
 class CudaPlatform : public Platform {
