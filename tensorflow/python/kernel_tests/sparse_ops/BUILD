@@ -105,6 +105,7 @@ cuda_py_strict_test(
     shard_count = 5,
     tags = [
         "optonly",  # b/77589990
+        "no_rocm"
     ],
     deps = [
         "//tensorflow/python/eager:def_function",
