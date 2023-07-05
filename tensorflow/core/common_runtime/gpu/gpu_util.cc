@@ -316,7 +316,8 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
 void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
-                                 StatusCallback done, bool sync_dst_compute) {
+                                 StatusCallback done, bool sync_dst_compute,
+                                 TensorHolder* tensor_holder) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;

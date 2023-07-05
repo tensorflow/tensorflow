@@ -59,9 +59,10 @@ class XlaHostSendDeviceContext : public DeviceContext {
 
   // Copies 'cpu_tensor' to `device_memory_base_` with `shape_`.
   // `device_tensor` is unused.
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute) const override;
+  void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute,
+      TensorHolder* tensor_holder = nullptr) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,

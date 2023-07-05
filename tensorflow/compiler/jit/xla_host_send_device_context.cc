@@ -21,7 +21,8 @@ namespace tensorflow {
 
 void XlaHostSendDeviceContext::CopyCPUTensorToDevice(
     const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
-    StatusCallback done, bool sync_dst_compute) const {
+    StatusCallback done, bool sync_dst_compute,
+    TensorHolder* tensor_holder) const {
   stream_->ThenMemcpy(device_memory_base_, cpu_tensor->data(),
                       device_memory_base_->size());
   stream_->ThenRecordEvent(&done_event_.get());
