@@ -19,6 +19,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/platform/logging.h"
@@ -141,10 +145,21 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
     return;
   }
   GPURuntimeCache *cache = nullptr;
-  OP_REQUIRES_OK(op_kernel_ctx, rm->LookupOrCreate<GPURuntimeCache>(
-                                    rm->default_container(),
-                                    GPURuntimeCache::kDefaultResourceName,
-                                    &cache, GPURuntimeCache::Create));
+#if GOOGLE_CUDA
+  // Encode the GPU Context ID into the cache key because different contexts
+  // should cache different kernels.
+  auto *gpu_executor = static_cast<stream_executor::gpu::GpuExecutor *>(
+      op_kernel_ctx->op_device_context()->stream()->parent()->implementation());
+  int ctx_id = gpu_executor->gpu_context()->id();
+#else
+  int ctx_id = 0;
+#endif
+  OP_REQUIRES_OK(
+      op_kernel_ctx,
+      rm->LookupOrCreate<GPURuntimeCache>(
+          rm->default_container(),
+          absl::StrCat(GPURuntimeCache::kDefaultResourceName, ctx_id), &cache,
+          GPURuntimeCache::Create));
   assert(cache != nullptr && "cache creation must not fail");
   tensorflow::core::ScopedUnref ref(cache);
 
