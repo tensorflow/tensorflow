@@ -690,7 +690,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.reciprocal(x)
+    return grad / x
 
 
 @ops.RegisterGradient("Log1p")
@@ -699,7 +699,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.reciprocal(1 + x)
+    return grad / (1 + x)
 
 
 @ops.RegisterGradient("Xlogy")
@@ -806,8 +806,7 @@ def _AtanhGrad(op, grad):
     x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
-    inv = math_ops.reciprocal(math_ops.subtract(one, x2))
-    return grad * inv
+    return grad / math_ops.subtract(one, x2)
 
 
 @ops.RegisterGradient("TanhGrad")
@@ -1220,8 +1219,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    inv = math_ops.reciprocal(den)
-    return grad * inv
+    return grad / den
 
 
 @ops.RegisterGradient("Acos")
@@ -1233,8 +1231,7 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    inv = math_ops.reciprocal(den)
-    return -grad * inv
+    return -grad / den
 
 
 @ops.RegisterGradient("Atan")
@@ -1245,8 +1242,7 @@ def _AtanGrad(op, grad):
     x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
-    inv = math_ops.reciprocal(math_ops.add(one, x2))
-    return grad * inv
+    return grad / math_ops.add(one, x2)
 
 
 @ops.RegisterGradient("Atan2")
