@@ -41,6 +41,12 @@ using MPVariable = operations_research::MPVariable;
 namespace xla {
 namespace spmd {
 
+bool AutoShardingSolverResult::operator==(
+    const AutoShardingSolverResult& other) const {
+  return status == other.status &&
+         skip_auto_sharding == other.skip_auto_sharding;
+}
+
 void PrintLargestInstructions(
     const std::vector<int64_t>& chosen_strategy,
     const std::vector<std::vector<double>>& memory_cost,
@@ -515,6 +521,16 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     size_t p = s_val[alias.first], q = s_val[alias.second];
     if (request.v[i][p * request.s_len[alias.second] + q] > 0.5) {
       evaluation.violation_codes.insert(kAliasViolationCode);
+    }
+  }
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    if (request.c[i][s_val[i]] + request.d[i][s_val[i]] >= kInfinityCost) {
+      evaluation.violation_codes.insert(kInfiniteCostViolationCode);
+    }
+  }
+  for (size_t i = 0; i < request.e.size(); ++i) {
+    if (request.r[i][e_val[i]] >= kInfinityCost) {
+      evaluation.violation_codes.insert(kInfiniteCostViolationCode);
     }
   }
   if (request.memory_budget > 0) {

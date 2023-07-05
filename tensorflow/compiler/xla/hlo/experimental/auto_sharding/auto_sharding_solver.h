@@ -53,6 +53,7 @@ struct AutoShardingSolverResult {
           status,
       bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}
+  bool operator==(const AutoShardingSolverResult& other) const;
   StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
       status;
   bool skip_auto_sharding;
@@ -64,7 +65,8 @@ AutoShardingSolverResult CallORToolsSolver(
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
   kFollowerViolationCode,  // Some node's strategy does not match its follower
-  kMemoryViolationCode,    // The solution eclipses the memory budget
+  kInfiniteCostViolationCode,  // Some node or edge incurs infinite cost
+  kMemoryViolationCode,        // The solution eclipses the memory budget
 };
 
 // Captures the metrics and constraint violations for the sharding result.
