@@ -198,7 +198,7 @@ class HloSharding {
     });
   }
 
-  // Returns weather the sharding represents a tiled sharding where the mapping
+  // Returns whether the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const { return !IsTileMaximal() && !IsManual(); }
 
