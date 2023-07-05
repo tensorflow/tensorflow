@@ -2294,7 +2294,6 @@ cc_library(
         ":all_reduce_blueconnect",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
-        ":copy_fusion",
         ":dot_dimension_sorter",
         ":executable_proto_cc",
         ":fusion_merger",
