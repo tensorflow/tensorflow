@@ -190,7 +190,7 @@ cc_library(
     hdrs = ["sync_resource_state.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow_serving/util:any_ptr",
+        "//tensorflow/core/tfrt/utils:any_ptr",
         "@tf_runtime//:tensor",
     ],
 )

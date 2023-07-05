@@ -1,10 +1,10 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
-    "tf_py_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",
@@ -206,7 +206,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/tfr:tfr-opt",
+        ":tfr-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
         "@llvm-project//mlir:run_lit.sh",
@@ -273,7 +273,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "graph_decompose_test",
     size = "small",
     srcs = ["integration/graph_decompose_test.py"],
@@ -281,13 +281,16 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -306,7 +309,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "node_expansion_test",
     size = "small",
     srcs = ["integration/node_expansion_test.py"],
@@ -314,12 +317,17 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:resource_variable_ops_gen",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -328,8 +336,8 @@ tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
     deps = [
+        ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfr",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:Support",
@@ -343,19 +351,20 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "composite",
     srcs = ["python/composite.py"],
     srcs_version = "PY3",
 )
 
-py_library(
+py_strict_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
     srcs_version = "PY3",
     deps = [
+        ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/autograph/converters:control_flow",
         "//tensorflow/python/autograph/converters:return_statements",
         "//tensorflow/python/autograph/impl:api",
@@ -377,25 +386,27 @@ py_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "tfr_gen_test",
     size = "small",
     srcs = ["python/tfr_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_pip"],
     deps = [
         ":composite",
         ":tfr_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/tfr/resources:test_ops",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
     srcs_version = "PY3",
@@ -403,16 +414,18 @@ py_library(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/autograph/pyct:transpiler",
+        "//tensorflow/python/framework:op_def_registry",
+        "//tensorflow/python/util:tf_inspect",
+        "@gast_archive//:gast",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "op_reg_gen_test",
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_pip"],
     deps = [
         ":composite",
         ":op_reg_gen",
@@ -421,12 +434,14 @@ tf_py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -434,4 +449,8 @@ py_library(
 gen_op_libraries(
     name = "one_op",
     src = "define_op_template.py",
+    deps = [
+        "//tensorflow/python/platform:flags",
+        "@absl_py//absl:app",
+    ],
 )

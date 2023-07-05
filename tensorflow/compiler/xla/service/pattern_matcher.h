@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <ios>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -2656,6 +2657,81 @@ template <typename HloInstructionType, typename ScalarTy>
 inline auto ConstantEffectiveScalar(HloInstructionType** matched_inst,
                                     ScalarTy val) {
   return Op(matched_inst).IsConstantEffectiveScalar(val);
+}
+
+namespace detail {
+
+// A helper for the type erasure.
+class InstructionPatternInterface {
+ public:
+  virtual ~InstructionPatternInterface() = default;
+
+  virtual bool Match(::xla::HloInstruction* instr,
+                     MatchOption option) const = 0;
+
+  virtual void DescribeTo(std::ostream* os, int64_t indent) const = 0;
+};
+
+// A helper for the type erasure.
+template <typename Pattern>
+class TypedInstructionPattern : public InstructionPatternInterface {
+ public:
+  explicit TypedInstructionPattern(Pattern pattern)
+      : pattern_(std::move(pattern)) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const override {
+    return pattern_.Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent) const override {
+    pattern_.DescribeTo(os, indent);
+  }
+
+ private:
+  Pattern pattern_;
+};
+
+// An Impl class for HloInstructionPattern that stores the inner pattern in a
+// type-erased shared_ptr.
+class HloInstructionPatternSharedImpl {
+ public:
+  template <typename Pattern>
+  explicit HloInstructionPatternSharedImpl(Pattern pattern)
+      // The return type annotation of the lambda is needed for correctness.
+      : pattern_(std::make_shared<TypedInstructionPattern<Pattern>>(
+            std::move(pattern))) {}
+
+  bool Match(::xla::HloInstruction* instr, MatchOption option) const {
+    return pattern_->Match(instr, option);
+  }
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    pattern_->DescribeTo(os, indent);
+  }
+
+ private:
+  // We use std::shared_ptr to avoid copying the underlying pattern when reusing
+  // it, thus avoiding exponential memory use.
+  std::shared_ptr<InstructionPatternInterface> pattern_;
+};
+
+}  // namespace detail
+
+// Wraps the HloInstructionPattern in a type-erased shared_ptr.
+//
+// This can be used around repeated subpatterns to avoid exponential code growth
+// and compilation time, while keeping memory usage minimal at runtime. This is
+// similar to defining a subroutine in imperative programming languages.
+//
+// If used excessively, this may slightly increase the runtime of the patterns.
+//
+// Example usage:
+// auto shared = m::SharedSubpattern(sub_pattern);
+// return m::AnyOf<HloInstruction>(m::Convert(shared), shared);
+template <typename HloInstructionType, typename OriginalImpl>
+inline auto SharedSubpattern(
+    detail::HloInstructionPattern<HloInstructionType, OriginalImpl> pattern) {
+  auto impl = detail::HloInstructionPatternSharedImpl(std::move(pattern));
+  return detail::HloInstructionPattern<HloInstructionType, decltype(impl)>(
+      std::move(impl), /*matched_inst=*/nullptr);
 }
 
 }  // namespace match

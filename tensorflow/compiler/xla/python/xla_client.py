@@ -44,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 162
+_version = 165
 
 # Version number for MLIR:Python components.
-mlir_api_version = 50
+mlir_api_version = 51
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -133,6 +133,7 @@ def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
 def make_c_api_client(
     plugin_name: str,
     options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -142,13 +143,14 @@ def make_c_api_client(
   Args:
      plugin_name: the name of the PJRT plugin.
      options: extra platform-specific options.
+     distributed_client: distributed client.
 
   Returns:
      A PJRT C API client for plugin_name.
   """
   if options is None:
     options = {}
-  return _xla.get_c_api_client(plugin_name, options)
+  return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
 def _use_pjrt_c_api() -> bool:
@@ -163,8 +165,9 @@ def _use_pjrt_c_api() -> bool:
 def make_tpu_client(use_pjrt_c_api: bool = False):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if use_pjrt_c_api or _use_pjrt_c_api():
-    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-    load_pjrt_plugin_dynamically('tpu', library_path)
+    if not pjrt_plugin_loaded('tpu'):
+      library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+      load_pjrt_plugin_dynamically('tpu', library_path)
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(
@@ -211,7 +214,9 @@ float8_e4m3b11fnuz = (
     if hasattr(ml_dtypes, 'float8_e4m3b11fnuz')
     else ml_dtypes.float8_e4m3fn
 )
+float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
 float8_e5m2 = ml_dtypes.float8_e5m2
+float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -226,6 +231,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
     PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
+    PrimitiveType.F8E4M3FNUZ: np.dtype(float8_e4m3fnuz),
+    PrimitiveType.F8E5M2FNUZ: np.dtype(float8_e5m2fnuz),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),

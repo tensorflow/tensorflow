@@ -38,8 +38,10 @@ except ImportError:
 
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e4m3fnuz = xla_client.float8_e4m3fnuz
 float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
 float8_e5m2 = xla_client.float8_e5m2
+float8_e5m2fnuz = xla_client.float8_e5m2fnuz
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
@@ -732,7 +734,7 @@ def TestFactory(xla_backend,
           continue
         # float8_e4m3b11fnuz not supported on some TPU backends.
         if (
-            dtype in [float8_e4m3b11fnuz]
+            dtype in [float8_e5m2fnuz, float8_e4m3fnuz, float8_e4m3b11fnuz]
             and self.backend.platform == "tpu"
         ):
           if self.backend.platform_version.find("TPU") == -1:

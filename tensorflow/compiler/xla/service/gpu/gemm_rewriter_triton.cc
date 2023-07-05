@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <queue>
 #include <stack>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -170,8 +171,14 @@ class DimensionOrder {
   // of `hlo` it becomes a description of the input of `hlo`.
   Status HandleInstruction(const HloInstruction* hlo) {
     VLOG(7) << hlo->ToString();
-    if (hlo->opcode() == HloOpcode::kParameter ||
-        hlo->opcode() == HloOpcode::kConstant) {
+    if (hlo->opcode() == HloOpcode::kParameter) {
+      return OkStatus();
+    } else if (hlo->opcode() == HloOpcode::kTranspose ||
+               hlo->opcode() == HloOpcode::kCopy) {
+      return HandleCopyOrTranspose(hlo);
+    } else if (hlo->operand_count() > 0 &&
+               IsTritonSupportedElementwise(
+                   hlo->opcode(), hlo->operand(0)->shape().element_type())) {
       return OkStatus();
     } else if (hlo->opcode() == HloOpcode::kBitcast) {
       return HandleBitcast(hlo);
@@ -181,10 +188,10 @@ class DimensionOrder {
         return Unimplemented("Non-bitcast reshape.");
       }
       return HandleBitcast(hlo);
-    } else if (hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy) {
-      return HandleCopyOrTranspose(hlo);
-    } else if (hlo->opcode() == HloOpcode::kConvert) {
+    } else if (hlo_query::IsScalarConstant(hlo) ||
+               hlo_query::IsBroadcastOfScalarConstant(*hlo)) {
+      // Dimension order collapses on a scalar, for simplicity leave it equal
+      // to the output one for now.
       return OkStatus();
     } else {
       return Unimplemented("Instruction: %s", hlo->ToString());
@@ -454,6 +461,10 @@ Status CanFuse(const HloInstruction* hlo, DimensionOrder& dim_order,
                const GpuVersion gpu_version) {
   if (hlo->opcode() == HloOpcode::kConvert) {
     return RequireTritonFusibleConvert(hlo, gpu_version);
+  } else if (hlo->IsElementwise() && hlo->opcode() != HloOpcode::kCopy) {
+    // Temporarily forbid fusing elementwise operations
+    // other than copy and convert.
+    return Unimplemented("Unsupported elementwise operation");
   }
   TF_RETURN_IF_ERROR(dim_order.HandleInstruction(hlo));
   return RequireTritonGemmSupportedDimOrder(dim_order);
@@ -598,7 +609,7 @@ void CopyIncrementingAboveThreshold(
 
 StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const DotFusionAnalysis& analysis,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling,
+    const AutotuneResult::TritonGemmKey& tiling,
     const int64_t contracting_dim_idx, const int operand_number) {
   const Shape& shape = dot.operand(operand_number)->shape();
   Shape new_shape(shape.element_type(), {}, {}, {});
@@ -665,8 +676,8 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
 // Apply split K configuration from the tiling to the fused dot() computation:
 // bitcast the operands, change the output shape and the dot dimensions.
 Status MakeDotComputationSplitKBatch(
-    HloComputation* computation,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
+    HloComputation* computation, const AutotuneResult::TritonGemmKey& tiling,
+    bool disable_reduced_precision_reduction) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
   const DotFusionAnalysis analysis(computation);
@@ -709,24 +720,101 @@ Status MakeDotComputationSplitKBatch(
   dot->SetupDerivedInstruction(new_dot);
   TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWithDifferentShape(new_dot));
   TF_RETURN_IF_ERROR(dot->parent()->RemoveInstruction(dot));
+  if (disable_reduced_precision_reduction) {
+    PrimitiveType output_type =
+        computation->root_instruction()->shape().element_type();
+    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
+                                         ? PrimitiveType::F64
+                                         : PrimitiveType::F32;
+
+    computation->root_instruction()->mutable_shape()->set_element_type(
+        accumulator_type);
+  }
   return OkStatus();
 }
 
 }  // anonymous namespace
 
-Status MakeDotSplitKBatch(
-    HloInstruction* dot_fusion,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
+// BF16 is supported in a sense that all operations on it are implemented
+// through F32 and converts have to be inserted into the HLO graph, but
+// they can be missing during fusion.
+
+std::vector<HloOpcode> TritonSupportedUnaryElementwise(
+    PrimitiveType element_type) {
+  std::vector<HloOpcode> ret = {HloOpcode::kConvert};
+  if (element_type == PrimitiveType::PRED) {
+    ret.push_back(HloOpcode::kNot);
+    return ret;
+  }
+  ret.push_back(HloOpcode::kAbs);
+  ret.push_back(HloOpcode::kNegate);
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F64) {
+    absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
+                                        HloOpcode::kExpm1, HloOpcode::kLog,
+                                        HloOpcode::kLog1p, HloOpcode::kRsqrt,
+                                        HloOpcode::kSin, HloOpcode::kSqrt,
+                                        HloOpcode::kCbrt, HloOpcode::kTan,
+                                        HloOpcode::kTanh},
+                 std::back_inserter(ret));
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedBinaryElementwise(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
+            HloOpcode::kCompare};
+  }
+  std::vector<HloOpcode> ret = {HloOpcode::kAdd,      HloOpcode::kCompare,
+                                HloOpcode::kMaximum,  HloOpcode::kMinimum,
+                                HloOpcode::kMultiply, HloOpcode::kSubtract};
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F64) {
+    ret.push_back(HloOpcode::kAtan2);
+    ret.push_back(HloOpcode::kDivide);
+    ret.push_back(HloOpcode::kPower);
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedTernaryElementwise(
+    PrimitiveType element_type) {
+  return {HloOpcode::kSelect};
+}
+
+bool IsTritonSupportedElementwise(HloOpcode opcode,
+                                  PrimitiveType element_type) {
+  return absl::c_linear_search(TritonSupportedUnaryElementwise(element_type),
+                               opcode) ||
+         absl::c_linear_search(TritonSupportedBinaryElementwise(element_type),
+                               opcode) ||
+         absl::c_linear_search(TritonSupportedTernaryElementwise(element_type),
+                               opcode);
+}
+
+Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                          const AutotuneResult::TritonGemmKey& tiling) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
 
   if (dot_fusion->shape().IsTuple()) {
     return Unimplemented("Tuple output is not supported with split-K yet.");
   }
 
-  const Layout old_dot_layout = dot_fusion->shape().layout();
+  const bool disable_reduced_precision_reduction =
+      dot_fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
+  const PrimitiveType output_type = dot_fusion->shape().element_type();
+  const Layout output_layout = dot_fusion->shape().layout();
 
   TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
-      dot_fusion->fused_instructions_computation(), tiling));
+      dot_fusion->fused_instructions_computation(), tiling,
+      disable_reduced_precision_reduction));
   const HloInstruction* root = dot_fusion->fused_expression_root();
 
   *dot_fusion->mutable_shape() = root->shape();
@@ -740,13 +828,25 @@ Status MakeDotSplitKBatch(
 
   // If the original dot had non-standard layout, this reduce should have that
   // too.
-  *reduce->mutable_shape()->mutable_layout() = old_dot_layout;
+  *reduce->mutable_shape()->mutable_layout() = output_layout;
 
   if (dot_fusion->IsRoot()) {
-    dot_fusion->parent()->set_root_instruction(reduce, true);
+    dot_fusion->parent()->set_root_instruction(reduce,
+                                               /*accept_different_shape=*/true);
   } else {
     TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(reduce));
   }
+
+  if (disable_reduced_precision_reduction) {
+    HloInstruction* convert = MakeConvertToHlo(reduce, output_type);
+    if (reduce->IsRoot()) {
+      reduce->parent()->set_root_instruction(convert,
+                                             /*accept_different_shape=*/true);
+    } else {
+      TF_RETURN_IF_ERROR(reduce->ReplaceAllUsesWithDifferentShape(convert));
+    }
+  }
+
   return OkStatus();
 }
 

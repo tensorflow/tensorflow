@@ -157,14 +157,17 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();
 }
 
-std::shared_ptr<const Sharding> SingleDeviceSharding::Create(Device* device) {
-  return std::shared_ptr<const Sharding>(new SingleDeviceSharding(device));
+std::unique_ptr<Sharding> SingleDeviceSharding::Create(Device* device) {
+  return std::unique_ptr<Sharding>(new SingleDeviceSharding(device));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  return InvalidArgument("Single-device sharding does not support disassembly");
+  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  result.reserve(1);
+  result.push_back({shape, SingleDeviceSharding::Create(devices_[0])});
+  return result;
 }
 
 StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
@@ -182,8 +185,8 @@ std::string SingleDeviceSharding::DebugString() const {
                          devices_.front()->ToString());
 }
 
-std::shared_ptr<const Sharding> OpaqueSharding::Create(DeviceList devices) {
-  return std::shared_ptr<const Sharding>(new OpaqueSharding(
+std::unique_ptr<Sharding> OpaqueSharding::Create(DeviceList devices) {
+  return std::unique_ptr<Sharding>(new OpaqueSharding(
       std::move(devices),
       DisassembleFunc([](const OpaqueSharding& sharding,
                          const Shape& shape) -> StatusOr<std::vector<Shape>> {
@@ -194,9 +197,9 @@ std::shared_ptr<const Sharding> OpaqueSharding::Create(DeviceList devices) {
       })));
 }
 
-std::shared_ptr<const Sharding> OpaqueSharding::Create(
+std::unique_ptr<Sharding> OpaqueSharding::Create(
     DeviceList devices, DisassembleFunc disassemble_func) {
-  return std::shared_ptr<const Sharding>(
+  return std::unique_ptr<Sharding>(
       new OpaqueSharding(std::move(devices), std::move(disassemble_func)));
 }
 
@@ -249,7 +252,7 @@ std::string OpaqueSharding::DebugString() const {
       }));
 }
 
-StatusOr<std::shared_ptr<const Sharding>> ShardingParamSharding::Create(
+StatusOr<std::unique_ptr<Sharding>> ShardingParamSharding::Create(
     ShardingParam sharding_param, DeviceList devices) {
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
@@ -260,7 +263,7 @@ StatusOr<std::shared_ptr<const Sharding>> ShardingParamSharding::Create(
         "%d",
         device_count, devices.size());
   }
-  return std::shared_ptr<const Sharding>(
+  return std::unique_ptr<Sharding>(
       new ShardingParamSharding(std::move(sharding_param), std::move(devices)));
 }
 

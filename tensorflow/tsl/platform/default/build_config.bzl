@@ -654,6 +654,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:casts.h"),
         clean_dep("//tensorflow/tsl/platform/default:context.h"),
         clean_dep("//tensorflow/tsl/platform/default:cord.h"),
+        clean_dep("//tensorflow/tsl/platform/default:criticality.h"),
         clean_dep("//tensorflow/tsl/platform/default:dynamic_annotations.h"),
         clean_dep("//tensorflow/tsl/platform/default:integral_types.h"),
         clean_dep("//tensorflow/tsl/platform/default:logging.h"),
@@ -686,7 +687,7 @@ def tf_protos_all():
         extra_deps = [
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
-            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],

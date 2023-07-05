@@ -390,6 +390,7 @@ cc_library(
     srcs = [
         "transforms/cross_device_transfer.cc",
         "transforms/deduplicate_batch_function.cc",
+        "transforms/deduplicate_if_result_pass.cc",
         "transforms/fuse_tpu_compile_and_execute_ops.cc",
         "transforms/insert_tensor_copy.cc",
         "transforms/lower_saved_model.cc",
@@ -540,6 +541,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
     deps = [
+        ":backend_compiler",
         ":function",
         ":tf_to_tfrt",
         ":tfrt_compile_options",
@@ -549,11 +551,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_asset_sinking_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:errors",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
@@ -908,4 +912,13 @@ cc_library(
     srcs = ["test_opkernels.cc"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = True,
+)
+
+cc_library(
+    name = "backend_compiler",
+    hdrs = ["backend_compiler.h"],
+    deps = [
+        "//tensorflow/core/tfrt/runtime",
+        "@llvm-project//mlir:IR",
+    ],
 )

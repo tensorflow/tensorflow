@@ -50,7 +50,7 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "xla",
     srcs = ["xla.py"],
     srcs_version = "PY3",
@@ -131,7 +131,7 @@ tf_py_strict_test(
     name = "pjrt_compile_test",
     srcs = ["pjrt_compile_test.py"],
     env = {
-        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices",
+        "TF_XLA_FLAGS": "--tf_xla_use_device_api --tf_xla_enable_xla_devices --tf_xla_enable_device_api_for_gpu",
     },
     python_version = "PY3",
     tags = [
@@ -148,6 +148,7 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
     ],
 )

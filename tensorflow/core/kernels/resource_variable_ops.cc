@@ -595,6 +595,9 @@ class AssignUpdateVariableOp : public OpKernel {
     Tensor* var_tensor = variable->tensor();
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
+    OP_REQUIRES(context, var_tensor->dtype() == value.dtype(),
+                errors::InvalidArgument(
+                    "DType of variable handle and value does not match."));
     OP_REQUIRES_OK(
         context, PrepareToUpdateVariable<Device, T>(
                      context, var_tensor, variable->copy_on_read_mode.load()));

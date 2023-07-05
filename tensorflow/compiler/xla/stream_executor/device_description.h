@@ -194,6 +194,8 @@ class RocmComputeCapability {
     return {"gfx908", "gfx90a"};
   }
   std::set<std::string> gfx_versions_with_fp16_atomics_support() {
+    // TODO(rocm): Check. This should be the same as
+    // gfx_versions_with_fast_fp16_support.
     return {"gfx90a"};
   }
 };

@@ -36,7 +36,7 @@ absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
                         runtime::StridedMemrefView src) {
   se::Stream* stream = run_options->stream();
   if (region_status->IsInConcurrentRegion()) {
-    TF_ASSIGN_OR_RETURN(stream, region_status->GetNextStream());
+    stream = region_status->GetNextStream();
   }
 
   if (dst.sizes != src.sizes) {

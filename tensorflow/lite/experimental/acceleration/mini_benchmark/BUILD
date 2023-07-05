@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
-load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
+load("build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant", "embedded_binary")
+load("special_rules.bzl", "libjpeg_deps", "libjpeg_handle_deps", "libjpeg_hdrs_deps", "minibenchmark_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -65,7 +67,7 @@ cc_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
     python_version = "PY3",
@@ -130,17 +132,32 @@ cc_library(
     ],
 )
 
+# The actual symbols are defined in the dependencies returned by libjpeg_handle_deps().
 cc_library(
-    name = "libjpeg_handle",
-    srcs = ["libjpeg_handle.cc"],
-    hdrs = [
-        "libjpeg_handle.h",
-    ],
-    copts = jpeg_copts(),
+    name = "libjpeg_handle_hdr",
+    hdrs = ["libjpeg_handle.h"],
     deps = [
         ":decode_jpeg_status",
-        ":jpeg_common",
         ":libjpeg_hdrs",
+    ],
+)
+
+cc_library(
+    name = "libjpeg_handle_static_link",
+    srcs = ["libjpeg_handle_static_link.cc"],
+    deps = [
+        ":decode_jpeg_status",
+        ":libjpeg_handle_hdr",
+        "//tensorflow/lite/core/c:c_api_types",
+    ] + libjpeg_deps(),
+)
+
+cc_library(
+    name = "libjpeg_handle_dynamic_link",
+    srcs = ["libjpeg_handle_dynamic_link.cc"],
+    deps = [
+        ":decode_jpeg_status",
+        ":libjpeg_handle_hdr",
         "//tensorflow/lite/core/c:c_api_types",
     ],
 )
@@ -153,10 +170,10 @@ cc_test(
     ],
     deps = [
         ":decode_jpeg_status",
-        ":libjpeg_handle",
+        ":libjpeg_handle_hdr",
         "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + libjpeg_handle_deps(),
 )
 
 cc_library(
@@ -195,7 +212,7 @@ cc_test(
 cc_library(
     name = "libjpeg_hdrs",
     hdrs = ["libjpeg.h"],
-    deps = libjpeg_deps(),
+    deps = libjpeg_hdrs_deps(),
 )
 
 cc_library(
@@ -219,7 +236,7 @@ cc_library(
         ":jpeg_decompress_buffered_struct",
         ":jpeg_header_parser",
         ":libc_handle",
-        ":libjpeg_handle",
+        ":libjpeg_handle_hdr",
         ":libjpeg_hdrs",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
@@ -265,7 +282,7 @@ cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + libjpeg_handle_deps(),
 )
 
 cc_library(
@@ -323,7 +340,7 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps(),
 )
 
 cc_library(
@@ -415,6 +432,7 @@ cc_library(
     hdrs = ["validator.h"],
     deps = [
         ":call",
+        ":constants",
         ":decode_jpeg",
         # Link in the GpuModulePlugin statically. It is created by name.
         ":gpu_module_plugin",  # buildcleaner: keep
@@ -422,16 +440,16 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
         "//tensorflow/lite/tools:model_loader",
     ],
 )
@@ -452,17 +470,19 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_forced_in_process_benchmark_variant(
     name = "validator_runner_impl",
     srcs = ["validator_runner_impl.cc"],
     hdrs = ["validator_runner_impl.h"],
+    in_process_deps = [
+        ":runner",
+    ],
     deps = [
         ":benchmark_result_evaluator",
         ":fb_storage",
         ":file_lock",
-        ":runner",
-        ":status_codes",
         ":validator",
+        ":status_codes",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
@@ -480,14 +500,16 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_forced_in_process_benchmark_variant(
     name = "blocking_validator_runner",
     srcs = ["blocking_validator_runner.cc"],
     hdrs = ["blocking_validator_runner.h"],
+    in_process_deps = [
+        ":validator_runner_impl",
+    ],
     deps = [
         ":status_codes",
         ":validator",
-        ":validator_runner_impl",
         ":validator_runner_options",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
@@ -531,11 +553,11 @@ cc_library(
     hdrs = ["validator_runner_entrypoint.h"],
     deps = [
         ":constants",
+        ":validator",
         ":fb_storage",
         ":file_lock",
         ":set_big_core_affinity_h",
         ":status_codes",
-        ":validator",
         "@flatbuffers",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         # For NNAPI support library, the headears and source files are defined
@@ -618,7 +640,7 @@ embedded_binary(
     binary = ":runner_main_binary",
 )
 
-cc_library(
+cc_library_with_forced_in_process_benchmark_variant(
     name = "runner",
     srcs = ["runner.cc"],
     hdrs = ["runner.h"],
@@ -702,7 +724,7 @@ cc_library(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps(),
     alwayslink = 1,
 )
 
@@ -726,7 +748,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
-        "@com_google_googletest//:gtest",
+        "//testing/base/public:gunit_for_library_testonly",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -869,14 +891,13 @@ cc_binary(
         ":constants",
         ":fb_storage",
         ":file_lock",
-        ":runner",
         ":set_big_core_affinity",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
@@ -890,7 +911,7 @@ cc_binary(
             "//tensorflow/lite/acceleration/configuration:xnnpack_plugin",
         ],
         "//conditions:default": [],
-    }),
+    }) + libjpeg_handle_deps(),
 )
 
 cc_library(
@@ -989,7 +1010,7 @@ cc_test(
             "//tensorflow/lite/acceleration/configuration:gpu_plugin",
         ],
         "//conditions:default": [],
-    }),
+    }) + libjpeg_handle_deps(),
 )
 
 cc_test(
@@ -1019,6 +1040,43 @@ cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+    ] + libjpeg_handle_deps(),
+)
+
+cc_test(
+    name = "validator_runner_impl_opaque_delegate_test",
+    srcs = ["validator_runner_impl_opaque_delegate_test.cc"],
+    data = ["//tensorflow/lite/delegates/utils/experimental/stable_delegate:libtensorflowlite_stable_xnnpack_delegate.so"],
+    linkopts = select({
+        clean_dep("//tensorflow:android"): [
+            # Exports the entrypoint, so that the validator runner impl class can successfully load
+            # the entrypoint symbol from the test binary directly.
+            "-Wl,--export-dynamic-symbol=Java_org_tensorflow_lite_acceleration_validation_entrypoint",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = [
+        # TODO(b/259303511): Propagate build config to data correctly to enable the test on x86 platforms.
+        "no_test_android_x86",
+    ],
+    deps = [
+        ":benchmark_result_evaluator",
+        ":embedded_mobilenet_validation_model",
+        ":fb_storage",
+        ":libjpeg_handle_static_link",  # buildcleaner: keep
+        ":mini_benchmark_test_helper",
+        ":status_codes",
+        ":validator_runner_entrypoint",
+        ":validator_runner_impl_in_process",
+        ":validator_runner_options",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader_opaque_delegate",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -1039,7 +1097,7 @@ cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps(),
 )
 
 cc_test(
@@ -1071,7 +1129,7 @@ cc_test(
         "//conditions:default": [
             ":validator_runner_entrypoint",
         ],
-    }),
+    }) + libjpeg_handle_deps(),
 )
 
 cc_test(
@@ -1094,7 +1152,27 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-    ],
+    ] + libjpeg_handle_deps(),
+)
+
+# Any target that depends on this one, directly or indirectly,
+# will have -DTFLITE_ACCELERATION_BENCHMARK_IN_PROCESS=1 passed to the C/C++ compiler.
+cc_library(
+    name = "tflite_acceleration_in_process_enable",
+    defines = ["TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS=1"],
+)
+
+# By default, MiniBenchmark on Android runs the benchmark in a separate process that is forked from
+# the host application. This is done to prevent the benchmark from crashing or hanging the host
+# application. All other platforms, including iOS, run the benchmark in the same process. This is
+# because support for running the benchmark in a separate process has not been added for these
+# platforms.
+cc_library(
+    name = "tflite_acceleration_in_process_default",
+    deps = select({
+        clean_dep("//tensorflow:android"): [],
+        "//conditions:default": [":tflite_acceleration_in_process_enable"],
+    }),
 )
 
 exports_files(["model_validation_test.cc"])

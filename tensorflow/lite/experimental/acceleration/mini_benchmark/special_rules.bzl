@@ -14,14 +14,22 @@
 # ==============================================================================
 """External-only build rules for mini-benchmark."""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
+
+def libjpeg_hdrs_deps():
+    """Returns the deps for the jpeg header used in the mini-benchmark."""
+    return [clean_dep("//tensorflow/core/platform:jpeg")]
+
 def libjpeg_deps():
     """Returns the deps for the jpeg lib used in the mini-benchmark."""
-    return ["//tensorflow/core/platform:jpeg"]
+    return [clean_dep("//tensorflow/core/platform:jpeg")]
 
-def jpeg_copts():
-    """Returns copts for jpeg decoding code used in the mini-benchmark."""
-    return []
+def libjpeg_handle_deps():
+    """Returns the deps for the jpeg handle used in the mini-benchmark."""
+    return [clean_dep("//tensorflow/lite/experimental/acceleration/mini_benchmark:libjpeg_handle_static_link")]
 
 def minibenchmark_visibility_allowlist():
     """Returns a list of packages that can depend on mini_benchmark."""
-    return []
+    return [
+        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance:__subpackages__",
+    ]

@@ -15,7 +15,6 @@ limitations under the License.
 
 // TODO(opensource): Use a more generic sounding preprocessor name than
 // GOOGLE_CUDA
-#include "tensorflow/tsl/framework/allocator.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
@@ -69,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/framework/device_id_utils.h"
 #if GOOGLE_CUDA
@@ -438,6 +438,18 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   // XLA device IDs for GPUs are arbitrary but must be unique, so we hash device
   // names (which include a replica index even for multi-client).
   set_xla_global_id(Fingerprint32(name) % std::numeric_limits<int32_t>::max());
+
+#ifdef TF_GPU_USE_PJRT
+  pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+
+  // Note: ShapeDeterminationFns is not used in GPU.
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+
+  pjrt_device_context_ = core::RefCountPtr<DeviceContext>(
+      new PjRtDeviceContext(shape_fns, /*use_pjrt_tensor_buffer=*/true));
+#endif  // TF_GPU_USE_PJRT
+
   GPUProcessState::singleton()->EnableGPUDevice();
 }
 
@@ -559,6 +571,14 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   accelerator_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   accelerator_device_info_->stream = stream_->compute;
   accelerator_device_info_->default_context = device_context_;
+#ifdef TF_GPU_USE_PJRT
+  accelerator_device_info_->pjrt_context = pjrt_device_context_.get();
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu();
+  accelerator_device_info_->use_pjrt_tensor_buffer =
+      use_pjrt && static_cast<PjRtDeviceContext*>(pjrt_device_context_.get())
+                      ->use_pjrt_tensor_buffer();
+#endif  // TF_GPU_USE_PJRT
   accelerator_device_info_->event_mgr = em_;
   tsl::PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
@@ -1617,7 +1637,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // tf_device_id.
   std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
 
-  // TODO(chuanhao): create allowed_devices in TF.
+  // TODO(b/288965419): create allowed_devices in TF.
   TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
                       xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
                                            /*allowed_devices=*/std::nullopt));
@@ -1721,14 +1741,13 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
   std::vector<std::unique_ptr<xla::PjRtStreamExecutorDevice>> pjrt_devices =
       xla::BuildLocalDevices(std::move(local_device_states),
-                              /*node_id=*/numa_node);
+                             /*node_id=*/numa_node);
 
-  // TODO(chuanhao): set the rollout flag with
-  // AllowForDeviceInXlaLaunch("GPU") here at device creation.
-  //
+  auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
+
   // Creates PJRT GPU client and places it into a TF global resource manager.
-  auto gpu_run_options =
-      std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+  auto gpu_run_options = std::make_unique<xla::gpu::GpuExecutableRunOptions>();
   std::unique_ptr<xla::PjRtClient> pjrt_client =
       std::make_unique<xla::StreamExecutorGpuClient>(
           xla::GpuName(), xla_client, std::move(pjrt_devices),
@@ -1797,9 +1816,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   auto desc = std::move(desc_status).value();
 
   std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
-  if (!stats) {
-    return errors::Internal("No allocator statistics");
-  }
+
   // 'memory_limit' is the required memory size, but if the allocator with
   // given tf_device_id was created before, we'll use it instead of creating a
   // new one (as TF gpu device is a shared resource), in which case the actual
@@ -1808,7 +1825,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   //
   // TODO(laigd): report error if memory_limit doesn't match
   // stats->bytes_limit.
-  int64_t bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
+  int64_t bytes_limit = (stats && stats->bytes_limit) ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
       tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),

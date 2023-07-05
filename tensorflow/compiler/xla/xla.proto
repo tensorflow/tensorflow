@@ -462,6 +462,16 @@ message DebugOptions {
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
+  // Amount of padding the redzone allocator will put on one side of each buffer
+  // it allocates.  (So the buffer's total size will be increased by 2x this
+  // value.)
+  //
+  // Higher values make it more likely that we'll catch an out-of-bounds read or
+  // write.  Smaller values consume less memory during autotuning.  Note that a
+  // fused cudnn conv has up to 6 total buffers (4 inputs, 1 output, and 1
+  // scratch), so this can be multiplied by quite a lot.
+  int64 xla_gpu_redzone_padding_bytes = 228;
+
   // Allows all floating-point conversions to be simplified, including those
   // that affect the numerics. The `FloatNormalization` pass inserts many
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
@@ -508,7 +518,8 @@ message DebugOptions {
   bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
-  bool xla_gpu_enable_data_parallel_collective_optimizer = 217;
+  bool xla_gpu_enable_pipelined_all_reduce = 217;
+  bool xla_gpu_enable_pipelined_all_gather = 227;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -533,7 +544,33 @@ message DebugOptions {
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
-  // Next id: 220
+  bool xla_gpu_enable_triton_softmax_fusion = 220;
+
+  bool xla_gpu_enable_priority_fusion = 221;
+
+  // File to write autotune results to. It will be a binary file unless the name
+  // ends with .txt or .textproto. Warning: The results are written at every
+  // compilation, possibly multiple times per process. This only works on CUDA.
+  string xla_gpu_dump_autotune_results_to = 222;
+
+  // File to load autotune results from. It will be considered a binary file
+  // unless the name ends with .txt or .textproto. At most one loading will
+  // happen during the lifetime of one process, even if the first one is
+  // unsuccessful or different file paths are passed here. This only works on
+  // CUDA.
+  string xla_gpu_load_autotune_results_from = 223;
+
+  // Memory budget in GB per device for AutoSharding.
+  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+
+  // See the definition of the
+  // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
+  // this field.
+  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+
+  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+
+  // Next id: 229
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -930,18 +967,4 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
-}
-
-message ProfiledInstructionsProto {
-  message InstructionCost {
-    string name = 1;
-    double cost_us = 2;
-  }
-  message Latency {
-    string source = 1;
-    string target = 2;
-    double latency_us = 3;
-  }
-  repeated InstructionCost costs = 1;
-  repeated Latency latencies = 2;
 }

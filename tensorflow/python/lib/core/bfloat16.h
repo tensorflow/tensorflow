@@ -18,15 +18,21 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
-// NOLINTBEGIN(misc-unused-using-decls)
-using tsl::Bfloat16Dtype;
-using tsl::Bfloat16NumpyType;
-using tsl::Float8_E4M3B11Dtype;
-using tsl::RegisterNumpyBfloat16;
-// NOLINTEND(misc-unused-using-decls)
+
+// Deprecated, use underlying methods.
+inline PyObject* Bfloat16Dtype() { return tsl::ml_dtypes::GetBfloat16Dtype(); }
+
+inline int Bfloat16NumpyType() { return tsl::ml_dtypes::GetBfloat16TypeNum(); }
+
+inline bool RegisterNumpyBfloat16() { return tsl::ml_dtypes::RegisterTypes(); }
+
+inline PyObject* Float8_E4M3B11Dtype() {
+  return tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype();
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_

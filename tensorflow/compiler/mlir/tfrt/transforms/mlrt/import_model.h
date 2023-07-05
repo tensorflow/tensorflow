@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -34,6 +35,7 @@ namespace mlrt_compiler {
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
     const TfrtCompileOptions& options,
     const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
+    tfrt_stub::ModelRuntimeContext& model_context,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
 
 // Converts an MLIR `module_with_op_keys` in TF dialect to MLRT's bytecode

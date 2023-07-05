@@ -102,7 +102,9 @@ class PjRtCApiDevice : public PjRtDevice {
 
 class PjRtCApiClient : public PjRtClient {
  public:
-  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client);
+  PjRtCApiClient(
+      const PJRT_Api* c_api, PJRT_Client* c_client,
+      std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
 
   int process_index() const override;
 
@@ -171,6 +173,13 @@ class PjRtCApiClient : public PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {
@@ -242,7 +251,7 @@ class PjRtCApiClient : public PjRtClient {
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
-
+  std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data_;
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
@@ -255,7 +264,13 @@ class PjRtCApiBuffer : public PjRtBuffer {
  public:
   PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
 
+  PrimitiveType element_type() const override;
+
+  absl::Span<const int64_t> dimensions() const override;
+
   const Shape& on_device_shape() const override;
+
+  StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
   StatusOr<Shape> logical_on_device_shape() override;
 
@@ -346,6 +361,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
+
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
@@ -374,7 +392,9 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
-      const override;
+      const override {
+    return executable_->GetCostAnalysis();
+  }
 
   const DeviceAssignment& device_assignment() const override {
     CHECK(false) << "PJRT C API does not support device_assignment";
@@ -537,7 +557,9 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
-    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    PjRtClient::KeyValueGetCallback kv_get = nullptr,
+    PjRtClient::KeyValuePutCallback kv_put = nullptr);
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,

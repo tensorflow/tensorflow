@@ -88,7 +88,6 @@ tf_py_test(
     name = "custom_aggregator_op_test",
     size = "small",
     srcs = ["integration_test/custom_aggregator_op_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":gen_custom_aggregator_op_wrapper",
         "//tensorflow:tensorflow_py",

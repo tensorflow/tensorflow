@@ -20,3 +20,10 @@ def QuantizeWeightPass : Pass<"stablehlo-quantize-weight", "mlir::func::FuncOp">
   let constructor = "CreateQuantizeWeightPass()";
   let dependentDialects = ["stablehlo::StablehloDialect"];
 }
+
+def PrepareSrqQuantizePass : Pass<"stablehlo-prepare-srq-quantize", "mlir::func::FuncOp"> {
+  let summary = "Prepare StableHLO dialect for static range quantization.";
+  let constructor = "CreatePrepareSrqQuantizePass()";
+  let dependentDialects = ["stablehlo::StablehloDialect", "quant::QuantizationDialect"];
+}
+

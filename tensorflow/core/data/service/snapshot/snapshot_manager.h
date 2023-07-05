@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -39,6 +41,9 @@ namespace data {
 // across ongoing snapshots.
 class SnapshotAssignmentManager {
  public:
+  explicit SnapshotAssignmentManager(int64_t worker_max_concurrent_snapshots)
+      : worker_max_concurrent_snapshots_(worker_max_concurrent_snapshots) {}
+
   // Tries to record the event of a worker being assigned a stream. Returns
   // `false` if the worker has too many assignments. Returns an error if the
   // worker is already known to have been assigned this stream.
@@ -49,6 +54,11 @@ class SnapshotAssignmentManager {
   // Records the event of a worker stopping work on a stream.
   void RemoveAssignment(absl::string_view snapshot_path,
                         absl::string_view worker_address, int64_t stream_index);
+
+  // Returns the maximum concurrent snapshots processed by each worker.
+  int64_t worker_max_concurrent_snapshots() const {
+    return worker_max_concurrent_snapshots_;
+  }
 
  private:
   struct Assignment {
@@ -71,9 +81,16 @@ class SnapshotAssignmentManager {
           stream_index);
     }
   };
+
   // A mapping of worker address to ongoing assignments.
   absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>>
       assignments_;
+
+  // The maximum number of snapshots that a worker can concurrently process at a
+  // given point in time. This is a tradeoff between worker resource usage and
+  // snapshot wall time. A value of 0 indicates that the decision should be left
+  // up to the runtime.
+  const int64_t worker_max_concurrent_snapshots_;
 };
 
 // A helper used by `DataServiceDispatcherImpl` to manage a call to `Snapshot`.

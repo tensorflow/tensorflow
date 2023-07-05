@@ -606,6 +606,7 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
       self._handle_name = "Variable:0"
     else:
       self._handle_name = kwargs["handle_name"] + ":0"
+    self._validate_shape = kwargs.get("validate_shape", True)
 
   @classmethod
   def _variable_call(cls, *args, **kwargs):
@@ -647,7 +648,7 @@ class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
     """Create variable on each worker if it hasn't been created."""
     if not self._per_worker_vars:
       self._per_worker_vars = (
-          self._coordinator._create_per_worker_resources(self._var_creator))  # pylint: disable=protected-access
+          self._coordinator._create_per_worker_variables(self._var_creator))  # pylint: disable=protected-access
 
   def read_all(self):
     """Synchronously read variables from all workers into a list of Tensors."""

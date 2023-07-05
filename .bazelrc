@@ -274,7 +274,9 @@ build:dbg -c dbg
 # https://github.com/tensorflow/tensorflow/issues/48919.
 # Users can still include debug info for a specific kernel, e.g. with:
 #     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
-build:dbg --per_file_copt=+.*,-tensorflow.*@-g0
+# Since this .bazelrc file is synced between the tensorflow/tensorflow repo and
+# the openxla/xla repo, also include debug info for files under xla/.
+build:dbg --per_file_copt=+.*,-tensorflow.*,-xla.*@-g0
 build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
@@ -661,50 +663,8 @@ build:release_cpu_windows --define=no_tensorflow_py_deps=true
 build:release_gpu_windows --config=release_cpu_windows
 build:release_gpu_windows --config=release_gpu_base
 
-# Address sanitizer
-# CC=clang bazel build --config asan
-build:asan --strip=never
-build:asan --copt -fsanitize=address
-build:asan --copt -DADDRESS_SANITIZER
-build:asan --copt -g
-build:asan --copt -O3
-build:asan --copt -fno-omit-frame-pointer
-build:asan --linkopt -fsanitize=address
-build:asan --@libjpeg_turbo//:noasm=yes
-
-# Memory sanitizer
-# CC=clang bazel build --config msan
-build:msan --strip=never
-build:msan --copt -fsanitize=memory
-build:msan --copt -DMEMORY_SANITIZER
-build:msan --copt -g
-build:msan --copt -O3
-build:msan --copt -fno-omit-frame-pointer
-build:msan --linkopt -fsanitize=memory
-
-# Undefined Behavior Sanitizer
-# CC=clang bazel build --config ubsan
-build:ubsan --strip=never
-build:ubsan --copt -fsanitize=undefined
-build:ubsan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
-build:ubsan --copt -g
-build:ubsan --copt -O3
-build:ubsan --copt -fno-omit-frame-pointer
-build:ubsan --linkopt -fsanitize=undefined
-build:ubsan --linkopt -lubsan
-
 # Disable TFRT integration for now unless --config=tfrt is specified.
 build      --deleted_packages=tensorflow/core/tfrt/stubs,tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/ir,tensorflow/compiler/mlir/tfrt/ir/mlrt,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/mlrt,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/compiler/mlir/tfrt/transforms/mlrt,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/mlrt,tensorflow/core/tfrt/mlrt/attribute,tensorflow/core/tfrt/mlrt/kernel,tensorflow/core/tfrt/mlrt/bytecode,tensorflow/core/tfrt/mlrt/interpreter,tensorflow/compiler/mlir/tfrt/translate/mlrt,tensorflow/compiler/mlir/tfrt/translate/mlrt/testdata,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils,tensorflow/core/tfrt/utils/debug,tensorflow/core/tfrt/saved_model/python,tensorflow/core/tfrt/graph_executor/python
 # TODO(b/240450920): We are in the process of migrating JitRt backend to XLA
 # and while we are doing this we can't keep it buildable/testable in OSS.
 build:tfrt --deleted_packages=tensorflow/core/tfrt/stubs,tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/ir,tensorflow/compiler/mlir/tfrt/ir/mlrt,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/mlrt,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/compiler/mlir/tfrt/transforms/mlrt,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/mlrt,tensorflow/core/tfrt/mlrt/attribute,tensorflow/core/tfrt/mlrt/kernel,tensorflow/core/tfrt/mlrt/bytecode,tensorflow/core/tfrt/mlrt/interpreter,tensorflow/compiler/mlir/tfrt/translate/mlrt,tensorflow/compiler/mlir/tfrt/translate/mlrt/testdata,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils,tensorflow/core/tfrt/utils/debug,tensorflow/core/tfrt/saved_model/python,tensorflow/core/tfrt/graph_executor/python
-
-# TF Fuzztest config
-try-import fuzztest.bazelrc
-run:tf_fuzztest --config=fuzztest
-# Should aim to remove these
-build:tf_fuzztest --action_env=CC=clang
-build:tf_fuzztest --action_env=CXX=clang++
-build:tf_fuzztest --spawn_strategy=sandboxed
-build:tf_fuzztest --config=monolithic
-build:tf_fuzztest --@libjpeg_turbo//:noasm=yes

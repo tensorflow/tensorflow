@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -167,6 +168,13 @@ bool ShardVector::ContainsShard(const Shard& shard) const {
 
 bool IsDynamicSize(int64_t size) {
   return mlir::ShapedType::isDynamic(size) || size == -1;
+}
+
+bool IsDynamicShape(const std::vector<int64_t>& shape) {
+  for (int64_t size : shape) {
+    if (IsDynamicSize(size)) return true;
+  }
+  return false;
 }
 
 // static
@@ -1054,9 +1062,7 @@ bool Layout::IsFullyReplicated() const {
     return false;
   }
   for (const auto& sharding_spec : sharding_specs_) {
-    if (num_shards_for_dim(sharding_spec) > 1) {
-      return false;
-    }
+    if (sharding_spec.sharding_spec() != Layout::kUnshardedDim) return false;
   }
   return true;
 }
@@ -1064,7 +1070,7 @@ bool Layout::IsFullyReplicated() const {
 bool Layout::IsLastDimReplicated() const {
   return (mesh_.IsTile() &&
           ((sharding_specs_.empty()) ||
-           (num_shards_for_dim(sharding_specs_.back()) == 1)));
+           (sharding_specs_.back().sharding_spec() == Layout::kUnshardedDim)));
 }
 
 bool Layout::IsBatchParallel() const {
@@ -1072,16 +1078,16 @@ bool Layout::IsBatchParallel() const {
     return false;
   }
   if (sharding_specs_.empty()) {
-    return true;
+    return false;
   }
 
   for (int i = 1; i < sharding_specs_.size(); ++i) {
     const auto& dim = sharding_specs_[i];
-    if (num_shards_for_dim(dim) != 1) {
+    if (dim.sharding_spec() != Layout::kUnshardedDim) {
       return false;
     }
   }
-  return true;
+  return sharding_specs_[0].sharding_spec() != Layout::kUnshardedDim;
 }
 
 // TODO(samuelslee) Replace this with the IsBatchParallel() everywhere
@@ -1129,18 +1135,42 @@ bool Layout::operator==(const Layout& b) const {
 }
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
-    absl::Span<const int64_t> local_shape) const {
+    absl::Span<const int64_t> local_shape,
+    const std::vector<std::vector<int64_t>>* local_shapes) const {
   if (IsSingleDevice() || IsFullyReplicated()) {
     return std::vector<int64_t>(local_shape.begin(), local_shape.end());
   }
+
+  std::vector<int64_t> stride_for_dim;
+  stride_for_dim.resize(sharding_specs().size());
+  size_t stride = mesh().num_local_devices();
+  for (int i = 0; i < stride_for_dim.size(); i++) {
+    stride = stride / num_shards_for_dim(i);
+    stride_for_dim[i] = stride;
+  }
+
+  auto dimension_size = [&, this](int dim) -> int64_t {
+    int64_t local_size = local_shape[dim];
+    if (IsDynamicSize(local_size) && local_shapes &&
+        local_shapes->size() == mesh().num_local_devices()) {
+      // If `dim` is using dynamic shape and local tensor shapes are available,
+      // calculate global shape by adding up local tensor shapes.
+      int64_t dim_size = 0;
+      int index = 0;
+      for (int i = 0; i < num_shards_for_dim(dim); i++) {
+        dim_size += local_shapes->at(index)[dim];
+        index += stride_for_dim[dim];
+      }
+      return dim_size;
+    } else {
+      return local_size * num_shards_for_dim(dim);
+    }
+  };
+
   std::vector<int64_t> global_shape;
   global_shape.reserve(sharding_specs().size());
   for (int i = 0; i < sharding_specs().size(); ++i) {
-    int64_t l_shape = local_shape.empty() ? 1 : local_shape[i];
-    int64_t dim_shards = num_shards()[i];
-    int64_t global_size =
-        IsDynamicSize(l_shape) ? l_shape : l_shape * dim_shards;
-    global_shape.emplace_back(global_size);
+    global_shape.push_back(dimension_size(i));
   }
   return global_shape;
 }

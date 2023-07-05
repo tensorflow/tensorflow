@@ -413,6 +413,8 @@ class FunctionRef {
 
   bool RequiresBlas() const { return executable_->RequiresBlas(ordinal_); }
 
+  unsigned ordinal() const { return ordinal_; }
+
  private:
   const Executable* executable_;
   unsigned ordinal_;

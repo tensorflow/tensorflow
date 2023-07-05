@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -52,7 +52,7 @@ ParseHloProtosFromXSpace(const XSpace& space) {
   std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>> hlo_protos;
   const XPlane* raw_plane = FindPlaneWithName(space, kMetadataPlaneName);
   if (raw_plane != nullptr) {
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(raw_plane);
+    XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(raw_plane);
     if (raw_plane->stats_size() > 0) {
       // Fallback for legacy aggregated XPlane.
       // TODO(b/235990417): Remove after 06/14/2023.

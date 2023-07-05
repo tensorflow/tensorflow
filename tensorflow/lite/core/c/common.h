@@ -860,7 +860,7 @@ typedef struct TfLiteContext {
   // }
   //
   // NOTE: The context owns the memory referenced by partition_params_array. It
-  // will be cleared with another call to PreviewDelegateParitioning, or after
+  // will be cleared with another call to PreviewDelegatePartitioning, or after
   // TfLiteDelegateParams::Prepare returns.
   //
   // WARNING: This is an experimental interface that is subject to change.
@@ -919,6 +919,64 @@ typedef struct TfLiteContext {
 // uses stable API types (such as `TfLiteOpaqueContext`). The purpose of each
 // field is the exactly the same as with `TfLiteRegistration`.
 typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+
+// The valid values of the `inplace_operator` field in `TfLiteRegistration`.
+// This allow an op to signal to the runtime that the same data pointer
+// may be passed as an input and output without impacting the result.
+// This does not mean that the memory can safely be reused, it is up to the
+// runtime to determine this, e.g. if another op consumes the same input or not
+// or if an input tensor has sufficient memory allocated to store the output
+// data.
+//
+// Setting these flags authorizes the runtime to set the data pointers of an
+// input and output tensor to the same value. In such cases, the memory required
+// by the output must be less than or equal to that required by the shared
+// input, never greater. If kTfLiteInplaceOpDataUnmodified is set, then the
+// runtime can share the same input tensor with multiple operator's outputs,
+// provided that kTfLiteInplaceOpDataUnmodified is set for all of them.
+// Otherwise, if an input tensor is consumed by multiple operators, it may only
+// be shared with the operator which is the last to consume it.
+//
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum {
+  // The default value. This indicates that the same data pointer cannot safely
+  // be passed as an op's input and output.
+  kTfLiteInplaceOpNone = 0,
+  // This indicates that an op's first output's data is identical to its first
+  // input's data, for example Reshape.
+  kTfLiteInplaceOpDataUnmodified = 1,
+  // Setting kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput means
+  // that InputN may be shared with OutputN instead of with the first output.
+  // This flag requires one or more of kTfLiteInplaceOpInputNShared to be set.
+  kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput = 2,
+  // kTfLiteInplaceOpInputNShared indicates that it is safe for an op to share
+  // InputN's data pointer with an output tensor. If
+  // kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is set then
+  // kTfLiteInplaceOpInputNShared indicates that InputN may be shared
+  // with OutputN, otherwise kTfLiteInplaceOpInputNShared indicates that InputN
+  // may be shared with the first output.
+  //
+  // Indicates that an op's first input may be shared with the first output
+  // tensor. kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput has
+  // no impact on the behavior allowed by this flag.
+  kTfLiteInplaceOpInput0Shared = 4,
+  // Indicates that an op's second input may be shared with the first output
+  // if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is not set
+  // or second output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput
+  // is set.
+  kTfLiteInplaceOpInput1Shared = 8,
+  // Indicates that an op's third input may be shared with the first output
+  // if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is not set
+  // or third output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is
+  // set.
+  kTfLiteInplaceOpInput2Shared = 16,
+  // Placeholder to ensure that enum can hold 64 bit values to accommodate
+  // future fields.
+  kTfLiteInplaceOpMaxValue = UINT64_MAX,
+} TfLiteInPlaceOp;
+
+// The number of shareable inputs supported.
+static const int kTfLiteMaxSharableOpInputs = 3;
 
 typedef struct TfLiteRegistration {
   // Initializes the op from serialized data.
@@ -1000,7 +1058,36 @@ typedef struct TfLiteRegistration {
   // does not support asynchronous execution for this `node`.
   struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
                                             TfLiteNode* node);
+
+  // Indicates if an operator's output may safely overwrite its inputs.
+  // See the comments in `TfLiteInPlaceOp`.
+  uint64_t inplace_operator;
 } TfLiteRegistration;
+
+/// \private
+// Old version of `TfLiteRegistration` to maintain binary backward
+// compatibility.
+// The legacy registration type must be a POD struct type whose field types must
+// be a prefix of the field types in TfLiteRegistration, and offset of the first
+// field in TfLiteRegistration that is not present in the legacy registration
+// type must be greater than or equal to the size of the legacy registration
+// type.
+// WARNING: This structure is deprecated / not an official part of the
+// API. It should be only used for binary backward compatibility.
+typedef struct TfLiteRegistration_V3 {
+  void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
+  void (*free)(TfLiteContext* context, void* buffer);
+  TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);
+  TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
+  const char* (*profiling_string)(const TfLiteContext* context,
+                                  const TfLiteNode* node);
+  int32_t builtin_code;
+  const char* custom_name;
+  int version;
+  TfLiteRegistrationExternal* registration_external;
+  struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
+                                            TfLiteNode* node);
+} TfLiteRegistration_V3;
 
 /// \private
 // Old version of `TfLiteRegistration` to maintain binary backward
@@ -1314,9 +1401,9 @@ class AbstractVariantData : public VariantData {
       // If the output is still allocated, then its object may still be
       // in its life time and the destructor must be called before re-using the
       // buffer.
-      //     This may actual have a non-negligle effect on perfomance if the
+      //     This may actual have a non-negligible effect on performance if the
       // destructor is complex. A future iteration may
-      // introduce copy or move asignment semantics, allowing for the
+      // introduce copy or move assignment semantics, allowing for the
       // underlying implementation to optimize for this case.
       auto* derived = static_cast<ErasedDerived*>(maybe_alloc);
       derived->~ErasedDerived();

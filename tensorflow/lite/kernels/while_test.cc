@@ -324,7 +324,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
     auto body_subgraph = interpreter_->subgraph(2);
     TfLiteTensor* subgraph_input2 =
         body_subgraph->tensor(body_subgraph->inputs()[1]);
-    EXPECT_EQ(subgraph_input2->allocation_type, kTfLiteArenaRw);
+    EXPECT_EQ(subgraph_input2->allocation_type, kTfLiteCustom);
 
     ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
     TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
@@ -369,7 +369,7 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
     // While BODY inputs are dynamic tensors with shallow copy.
     TfLiteTensor* subgraph_input2 =
         body_subgraph->tensor(body_subgraph->inputs()[1]);
-    ASSERT_EQ(subgraph_input2->allocation_type, kTfLiteDynamic);
+    ASSERT_EQ(subgraph_input2->allocation_type, kTfLiteCustom);
 
     TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
     CheckIntTensor(output1, {1}, {i + 1});

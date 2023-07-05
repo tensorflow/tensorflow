@@ -34,6 +34,12 @@ constexpr char const kDefaultHostDeviceName[] =
 
 namespace tensorflow {
 namespace tfrt_stub {
+namespace {
+Runtime** GetGlobalRuntimeInternal() {
+  static Runtime* tfrt_runtime = nullptr;
+  return &tfrt_runtime;
+}
+}  // namespace
 
 std::unique_ptr<Runtime> Runtime::Create(
     std::unique_ptr<WorkQueueInterface> work_queue) {
@@ -67,5 +73,14 @@ Runtime::Runtime(std::unique_ptr<tfrt::CoreRuntime> core_runtime,
 
 Runtime::~Runtime() = default;
 
+Runtime* GetGlobalRuntime() { return *GetGlobalRuntimeInternal(); }
+
+void SetGlobalRuntime(std::unique_ptr<Runtime> runtime) {
+  Runtime** global_runtime_ptr = GetGlobalRuntimeInternal();
+  if (*global_runtime_ptr) {
+    delete *global_runtime_ptr;
+  }
+  *global_runtime_ptr = runtime.release();
+}
 }  // namespace tfrt_stub
 }  // namespace tensorflow

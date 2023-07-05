@@ -208,10 +208,6 @@ cc_library(
     includes = [
         "third_party/tf_runtime/include",
     ],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt:__subpackages__",
-    ],
     deps = [
         ":kernel_fallback_tensor",
         ":tensor_util",

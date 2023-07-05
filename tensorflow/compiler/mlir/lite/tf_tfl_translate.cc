@@ -290,6 +290,7 @@ int main(int argc, char **argv) {
   pass_config.outline_tf_while = true;
   pass_config.preserve_assert_op = preserve_assert_op;
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
+  pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;
@@ -302,6 +303,9 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   toco_flags.set_post_training_quantize(post_training_quantization);
+  toco_flags.set_use_buffer_offset(use_buffer_offset);
+  toco_flags.set_legalize_custom_tensor_list_ops(
+      legalize_custom_tensor_list_ops);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))

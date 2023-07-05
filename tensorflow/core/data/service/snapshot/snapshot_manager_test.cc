@@ -54,7 +54,8 @@ TEST(SnapshotManagerTest, CreateStreamAssignment) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  SnapshotAssignmentManager snapshot_assignment_manager;
+  SnapshotAssignmentManager snapshot_assignment_manager(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(request, snapshot_assignment_manager,
@@ -78,7 +79,8 @@ TEST(SnapshotManagerTest, GetSnapshotSplit) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  SnapshotAssignmentManager snapshot_assignment_manager;
+  SnapshotAssignmentManager snapshot_assignment_manager(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(request, snapshot_assignment_manager,
@@ -113,7 +115,8 @@ TEST(SnapshotManagerTest, HandleStreamCompletion) {
   request.set_path(snapshot_path);
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
-  SnapshotAssignmentManager snapshot_assignment_manager;
+  SnapshotAssignmentManager snapshot_assignment_manager(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(request, snapshot_assignment_manager,
@@ -166,7 +169,8 @@ TEST(SnapshotManagerTest, Resume) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  SnapshotAssignmentManager snapshot_assignment_manager_1;
+  SnapshotAssignmentManager snapshot_assignment_manager_1(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(request, snapshot_assignment_manager_1,
@@ -180,7 +184,8 @@ TEST(SnapshotManagerTest, Resume) {
 
   // Resumes a snapshot manager.
   heartbeat_response.Clear();
-  SnapshotAssignmentManager snapshot_assignment_manager_2;
+  SnapshotAssignmentManager snapshot_assignment_manager_2(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> resumed_manager,
       SnapshotManager::Resume(snapshot_path, snapshot_assignment_manager_2,
@@ -198,7 +203,8 @@ TEST(SnapshotManagerTest, SnapshotStreamError) {
   *snapshot_request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  SnapshotAssignmentManager snapshot_assignment_manager;
+  SnapshotAssignmentManager snapshot_assignment_manager(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(snapshot_request, snapshot_assignment_manager,
@@ -242,7 +248,8 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  SnapshotAssignmentManager snapshot_assignment_manager_1;
+  SnapshotAssignmentManager snapshot_assignment_manager_1(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(request, snapshot_assignment_manager_1,
@@ -270,7 +277,8 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   // The resumed snapshot manager should be in an error state, which returns an
   // empty response to inform the workers to cancel the ongoing tasks.
   heartbeat_response.Clear();
-  SnapshotAssignmentManager snapshot_assignment_manager_2;
+  SnapshotAssignmentManager snapshot_assignment_manager_2(
+      /*worker_max_concurrent_snapshots=*/2);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> resumed_manager,
       SnapshotManager::Resume(snapshot_path, snapshot_assignment_manager_2,

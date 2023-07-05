@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -49,17 +51,13 @@ using ::tsl::OkStatus;
 using ::tsl::errors::Internal;
 using ::tsl::errors::InvalidArgument;
 
-// To reduce memory usage, restrict workers from processing more than two
-// streams at a time across all ongoing snapshots. Allowing two concurrent
-// streams, rather than one, helps minimize a worker's inactivity between
-// completing a stream and getting assigned a new one.
-constexpr int kMaxConcurrentStreams = 2;
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
 
 StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
     int64_t stream_index) {
-  if (assignments_[worker_address].size() >= kMaxConcurrentStreams) {
+  if (assignments_[worker_address].size() >=
+      worker_max_concurrent_snapshots()) {
     return false;
   }
   Assignment assignment{std::string(snapshot_path), stream_index};
@@ -287,14 +285,14 @@ Status SnapshotManager::ReadOnDiskStream(
     streams_[stream_index].state = Stream::State::kDone;
     return OkStatus();
   }
-
   TF_ASSIGN_OR_RETURN(bool assignment_added,
                       assignment_manager_.TryAddAssignment(
                           path_, worker_address, stream_index));
   if (!assignment_added) {
     return Internal("Failed to recover tf.data snapshot dispatcher: Worker ",
-                    worker_address, " was assigned more than ",
-                    kMaxConcurrentStreams, " streams.");
+                    worker_address, " was assigned too many streams. At most ",
+                    assignment_manager_.worker_max_concurrent_snapshots(),
+                    " streams are allowed.");
   }
   return OkStatus();
 }

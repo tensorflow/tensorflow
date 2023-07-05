@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
@@ -140,7 +141,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     llvm::Triple triple, absl::string_view cpu_name,
-    const HloModuleConfig& hlo_module_config, absl::string_view feature_str) {
+    const DebugOptions& debug_options, absl::string_view feature_str) {
   std::string error;
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget("", triple, error);
@@ -159,7 +160,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   // The selection of codegen optimization level is copied from function
   // GetCodeGenOptLevel in //third_party/llvm/llvm/tools/opt/opt.cpp.
   llvm::CodeGenOpt::Level codegen_opt_level;
-  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
+  switch (debug_options.xla_backend_optimization_level()) {
     case 1:
       codegen_opt_level = llvm::CodeGenOpt::Less;
       break;
@@ -258,38 +259,21 @@ Status LinkWithBitcodeVector(
   return OkStatus();
 }
 
-// Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path) {
-  if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
-  }
-
-  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
-  }
-
-  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  return LinkWithBitcodeVector(module, {libdevice_path});
-}
-
 Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
-                               const HloModuleConfig& hlo_module_config,
+                               const DebugOptions& debug_options,
                                const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  TF_RETURN_IF_ERROR(
+      nvptx::LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
   module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
-                        hlo_module_config.debug_options().xla_gpu_ftz());
+                        debug_options.xla_gpu_ftz());
 
   // If ftz is enabled, set it as an attribute on every function in the module.
-  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+  if (debug_options.xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
       fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
@@ -300,20 +284,19 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
-    const HloModuleConfig& hlo_module_config) {
+    const DebugOptions& debug_options) {
   // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
   // are updated.
   const std::string ptx_ver =
-      hlo_module_config.debug_options().xla_gpu_enable_triton_gemm() ? "+ptx71"
-                                                                     : "+ptx60";
+      debug_options.xla_gpu_enable_triton_gemm() ? "+ptx71" : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          hlo_module_config, ptx_ver);
+                          debug_options, ptx_ver);
 }
 
 using TargetModuleLinker = std::function<Status(
-    llvm::Module*, GpuVersion, const HloModuleConfig&, const std::string&)>;
+    llvm::Module*, GpuVersion, const DebugOptions&, const std::string&)>;
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
   std::error_code ec;
@@ -370,14 +353,14 @@ auto DumpCallbackForModule(std::string module_identifier,
 }
 
 Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
-                             const HloModuleConfig& hlo_module_config,
+                             const DebugOptions& debug_options,
                              const std::string& device_bitcode_path,
                              TargetModuleLinker module_linker,
                              llvm::Triple default_target_triple,
                              llvm::TargetMachine* target_machine,
                              int inline_threshold) {
-  TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
-                                   device_bitcode_path));
+  TF_RETURN_IF_ERROR(
+      module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
@@ -402,10 +385,10 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   pb.registerLoopAnalyses(lam);
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-  if (hlo_module_config.debug_options().xla_gpu_dump_llvmir()) {
+  if (debug_options.xla_gpu_dump_llvmir()) {
     std::string outputs_dir;
     if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_module_config.debug_options().xla_dump_to();
+      outputs_dir = debug_options.xla_dump_to();
     }
     if (!outputs_dir.empty()) {
       pic.registerBeforeNonSkippedPassCallback(
@@ -417,8 +400,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  int32_t opt_level =
-      hlo_module_config.debug_options().xla_backend_optimization_level();
+  int32_t opt_level = debug_options.xla_backend_optimization_level();
 
   if (opt_level < 2) {
     LOG(ERROR) << std::string(80, '*');
@@ -462,7 +444,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
+void NVPTXBackendInit(const DebugOptions& debug_options) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
 
@@ -496,7 +478,7 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   });
 
   llvm_ir::InitializeLLVMCommandLineOptions(
-      hlo_module_config.debug_options().xla_backend_extra_options());
+      debug_options.xla_backend_extra_options());
 
   // Initialize the NVPTX target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
@@ -566,12 +548,30 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
   return tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
 }
 
+// Links libdevice into the given module if the module needs libdevice.
+Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                const std::string& libdevice_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return OkStatus();
+  }
+
+  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
+    LOG(WARNING)
+        << "libdevice is required by this HLO module but was not found at "
+        << libdevice_path;
+    return xla::InternalError("libdevice not found at %s", libdevice_path);
+  }
+
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
+  return LinkWithBitcodeVector(module, {libdevice_path});
+}
+
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
+    const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+  absl::call_once(backend_init_flag, NVPTXBackendInit, debug_options);
 
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -599,7 +599,7 @@ StatusOr<std::string> CompileToPtx(
     llvm::Triple default_target_triple("nvptx64-unknown-unknown");
     // Construct LLVM TargetMachine for NVPTX.
     std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
-        default_target_triple, *compute_capability, hlo_module_config);
+        default_target_triple, *compute_capability, debug_options);
 
     // Apply target machine configuration from call-back if available.
     if (configure_target) {
@@ -610,9 +610,8 @@ StatusOr<std::string> CompileToPtx(
 
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-        module, gpu_version, hlo_module_config,
-        LibDevicePath(
-            hlo_module_config.debug_options().xla_gpu_cuda_data_dir()),
+        module, gpu_version, debug_options,
+        LibDevicePath(debug_options.xla_gpu_cuda_data_dir()),
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
         kDefaultInlineThreshold));
 
@@ -835,7 +834,7 @@ Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
 }
 
 Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
-                                const HloModuleConfig& hlo_module_config,
+                                const DebugOptions& debug_options,
                                 const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
 
@@ -850,7 +849,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
       LinkROCDLIfNecessary(module, gcn_arch_name, device_bitcode_dir_path));
 
   // If ftz is enabled, set it as an attribute on every function in the module.
-  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+  if (debug_options.xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
       fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
@@ -908,19 +907,19 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config) {
+    const DebugOptions& debug_options) {
   auto compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
-  return GetTargetMachine(std::move(target_triple), arch.first,
-                          hlo_module_config, arch.second);
+  return GetTargetMachine(std::move(target_triple), arch.first, debug_options,
+                          arch.second);
 }
 
-void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
+void AMDGPUBackendInit(const DebugOptions& debug_options) {
   llvm_ir::InitializeLLVMCommandLineOptions(
-      hlo_module_config.debug_options().xla_backend_extra_options());
+      debug_options.xla_backend_extra_options());
 
   // Initialize the AMDGPU target; it's the only target we link with, so call
   // its specific initialization functions instead of the catch-all
@@ -942,10 +941,10 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 namespace amdgpu {
 StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
-    const std::string& rocdl_dir_path) {
+    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const std::string& module_config_cache_key) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options);
 
   std::vector<uint8_t> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -962,7 +961,7 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
     auto pos = str.find('\n');
     if (pos != std::string::npos) str = str.substr(pos + 1);
   }
-  str += hlo_module_config.compilation_cache_key();
+  str += module_config_cache_key;
   {
     tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
@@ -998,11 +997,11 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
     // Construct LLVM TargetMachine for AMDGPU.
     std::unique_ptr<llvm::TargetMachine> target_machine =
         AMDGPUGetTargetMachine(default_target_triple, gpu_version,
-                               hlo_module_config);
+                               debug_options);
 
     // Link with ROCm-Device-Libs, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-        module, gpu_version, hlo_module_config, rocdl_dir_path,
+        module, gpu_version, debug_options, rocdl_dir_path,
         AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
         kAMDGPUInlineThreshold));
 

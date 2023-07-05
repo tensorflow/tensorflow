@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -32,36 +33,49 @@ namespace gpu {
 //===----------------------------------------------------------------------===//
 
 ConcurrentRegionStatus::ConcurrentRegionStatus(
-    const ServiceExecutableRunOptions* run_options,
-    const int max_num_borrowed_streams)
-    : max_num_borrowed_streams_(max_num_borrowed_streams),
-      stream_index_(0),
+    const ServiceExecutableRunOptions* run_options, int num_borrowed_streams)
+    : num_borrowed_streams_(num_borrowed_streams),
       run_options_(run_options),
+      stream_index_(0),
       capture_stream_(nullptr) {}
 
 ConcurrentRegionStatus::~ConcurrentRegionStatus() {
   DCHECK(!IsInConcurrentRegion());
 }
 
-absl::StatusOr<se::Stream*> ConcurrentRegionStatus::GetNextStream() {
+se::Stream* ConcurrentRegionStatus::GetNextStream() {
   DCHECK(IsInConcurrentRegion());
-
-  int index = stream_index_ % max_num_borrowed_streams_;
-  if (index == borrowed_streams_.size()) {
-    se::StreamExecutor* executor = run_options_->stream()->parent();
-    TF_ASSIGN_OR_RETURN(StreamPool::Ptr ptr,
-                        run_options_->BorrowStream(executor->device_ordinal()));
-    ptr->ThenWaitFor(capture_stream_);
-    borrowed_streams_.push_back(std::move(ptr));
+  if (borrowed_streams_.empty()) {
+    return nullptr;
   }
-
+  int index = stream_index_ % borrowed_streams_.size();
   stream_index_++;
   return borrowed_streams_[index].get();
 }
 
 absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
-    se::Stream* capture_stream) {
+    se::Stream* capture_stream, int64_t size) {
   DCHECK(!IsInConcurrentRegion());
+  se::StreamExecutor* executor = run_options_->stream()->parent();
+
+  // Stream borrowing should only happen in the first call to this function.
+  if (borrowed_streams_.empty()) {
+    TF_ASSIGN_OR_RETURN(std::vector<StreamPool::Ptr> borrowed_streams,
+                        run_options_->BorrowStreams(executor->device_ordinal(),
+                                                    num_borrowed_streams_));
+    for (StreamPool::Ptr& stream : borrowed_streams) {
+      borrowed_streams_.push_back(std::move(stream));
+    }
+  }
+
+  // Switch borrowed streams into capture mode. If the number of kernel launches
+  // in the region is less than the number of borrowed streams, only synchronize
+  // enough streams to run the kernels.
+  for (int i = 0; i < std::min<size_t>(size, num_borrowed_streams_); ++i) {
+    borrowed_streams_[i]->ThenWaitFor(capture_stream);
+  }
+
+  region_size_ = size;
   capture_stream_ = capture_stream;
   return absl::OkStatus();
 }
@@ -69,12 +83,12 @@ absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
 void ConcurrentRegionStatus::EndConcurrentRegion() {
   DCHECK(IsInConcurrentRegion());
 
-  // Synchronize main capture stream with all borrowed streams.
-  for (StreamPool::Ptr& stream : borrowed_streams_) {
-    capture_stream_->ThenWaitFor(stream.get());
+  // Synchronize main capture stream with all borrowed streams in capture mode.
+  for (int i = 0; i < std::min<size_t>(region_size_, num_borrowed_streams_);
+       ++i) {
+    capture_stream_->ThenWaitFor(borrowed_streams_[i].get());
   }
 
-  borrowed_streams_.clear();
   stream_index_ = 0;
   capture_stream_ = nullptr;
 }
@@ -90,9 +104,10 @@ bool ConcurrentRegionStatus::IsInConcurrentRegion() {
 using xla::runtime::CustomCall;
 
 static absl::Status RegionBegin(const ServiceExecutableRunOptions* run_options,
-                                ConcurrentRegionStatus* region_status) {
+                                ConcurrentRegionStatus* region_status,
+                                int64_t size) {
   se::Stream* capture_stream = run_options->stream();
-  return region_status->StartConcurrentRegion(capture_stream);
+  return region_status->StartConcurrentRegion(capture_stream, size);
 }
 
 static absl::Status RegionEnd(ConcurrentRegionStatus* region_status) {
@@ -106,7 +121,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Begin, FunctionWrapper<RegionBegin>(), checks,
     CustomCall::Bind("xla.gpu.concurrent_region.begin")
         .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<ConcurrentRegionStatus*>());
+        .UserData<ConcurrentRegionStatus*>()
+        .Attr<int64_t>("size"));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(End, FunctionWrapper<RegionEnd>(), checks,
                                CustomCall::Bind("xla.gpu.concurrent_region.end")

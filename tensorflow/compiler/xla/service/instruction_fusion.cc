@@ -20,6 +20,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -835,33 +836,28 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
 
 namespace {
 
-// Extracts instruction from the fusion that satisfies filter. If no or multiple
-// instructions in the fusion satisfy filter, returns nullptr.
-const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
-                                         const HloPredicate& filter) {
+// Extracts instructions from the fusion that satisfy the filter.
+std::vector<const HloInstruction*> ExtractInstructions(
+    const HloInstruction* hlo, const HloPredicate& filter) {
   if (filter(hlo)) {
-    return hlo;
+    return {hlo};
   }
   if (hlo->opcode() != HloOpcode::kFusion) {
-    return nullptr;
+    return {};
   }
-  const HloInstruction* match = nullptr;
+  std::vector<const HloInstruction*> matches;
   for (HloInstruction* inst :
        hlo->fused_instructions_computation()->instructions()) {
     if (filter(inst)) {
-      if (match == nullptr) {
-        match = inst;
-      } else {
-        return nullptr;
-      }
+      matches.push_back(inst);
     }
   }
-  return match;
+  return matches;
 }
 
-const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
-                                         HloOpcode opcode) {
-  return ExtractInstruction(hlo, [opcode](const HloInstruction* inst) {
+std::vector<const HloInstruction*> ExtractInstructions(
+    const HloInstruction* hlo, HloOpcode opcode) {
+  return ExtractInstructions(hlo, [opcode](const HloInstruction* inst) {
     return inst->opcode() == opcode;
   });
 }
@@ -871,12 +867,8 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
 // DUS when fusing will cause another non-elementwise op to share operands with
 // the DUS in-place buffer.
 bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
-                                    const HloInstruction* consumer) {
-  CHECK_EQ(consumer->opcode(), HloOpcode::kFusion);
-  const HloInstruction* dus =
-      ExtractInstruction(consumer, HloOpcode::kDynamicUpdateSlice);
-  CHECK_NE(dus, nullptr);
-
+                                    const HloInstruction* consumer,
+                                    const HloInstruction* dus) {
   // Use a memoization map to avoid exponential runtime.
   absl::flat_hash_map<const HloInstruction*, bool> nonelementwise_memo;
   // Recursively check if the instruction or its users (or their users) are
@@ -936,9 +928,11 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       }
     }
     if (!producer->IsElementwise() &&
-        absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
-            producer->operands().end()) {
-      VLOG(4) << "Found non-elementwise operand that uses the same operand of "
+        (consumer->operand(operand_number) == producer ||
+         absl::c_find(producer->operands(),
+                      consumer->operand(operand_number)) !=
+             producer->operands().end())) {
+      VLOG(4) << "Found non-elementwise producer that uses the same operand of "
                  "an in-place consumer";
       auto get_real_operand = [](const HloInstruction* op,
                                  const HloInstruction* operand) {
@@ -958,19 +952,40 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       };
       // A common special case is a slice or dynamic-slice and a
       // dynamic-update-slice that use the same indices. This pattern is safe.
-      const HloInstruction* dus =
-          ExtractInstruction(consumer, HloOpcode::kDynamicUpdateSlice);
-      const HloInstruction* producer_nonelementwise =
-          ExtractInstruction(producer, [](const HloInstruction* inst) {
+
+      auto producer_nonelementwise_ops =
+          ExtractInstructions(producer, [](const HloInstruction* inst) {
             return inst->opcode() != HloOpcode::kFusion &&
-                   !inst->IsElementwise();
+                   !inst->IsElementwise() &&
+                   inst->opcode() != HloOpcode::kBitcast &&
+                   inst->opcode() != HloOpcode::kParameter;
           });
-      if (dus == nullptr || producer_nonelementwise == nullptr ||
-          producer_nonelementwise->shape() != dus->operand(1)->shape()) {
-        return "Consumer is not a dus or the producer fusion has multiple "
-               "non-elementwise ops, bailing.";
+      if (producer_nonelementwise_ops.size() > 1) {
+        return "Producer fusion has multiple non-elementwise ops, bailing.";
       }
+      // If the producer has only elementwise ops or bitcasts, we can fuse.
+      if (producer_nonelementwise_ops.empty()) {
+        return {};
+      }
+      auto dus_ops =
+          ExtractInstructions(consumer, HloOpcode::kDynamicUpdateSlice);
+      // Check whether we have a DUS, in which case we should not fuse to make
+      // sure we can compute the fusion in place.
+      // TODO(akuegel): Are there other ops than dynamic update slice where we
+      // have a special emitter if it can be done in-place?
+      if (dus_ops.empty()) {
+        return {};
+      }
+      if (dus_ops.size() > 1) {
+        return "multiple dus ops, bailing.";
+      }
+      auto dus = dus_ops[0];
+      auto producer_nonelementwise = producer_nonelementwise_ops[0];
       if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
+        if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
+          return "Slice op has a different shape than the update shape of the "
+                 "dus op, bailing.";
+        }
         for (int i = 0; i < dus->shape().rank(); ++i) {
           const HloInstruction* dus_operand =
               get_real_operand(consumer, dus->operand(2 + i));
@@ -983,13 +998,17 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
         }
         VLOG(4) << "DUS and slice index match";
         if (consumer->opcode() == HloOpcode::kFusion &&
-            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer, dus)) {
           return "Fusing slice into DUS will also fuse another non-elementwise "
                  "op with shared operand as DUS.";
         }
         return {};
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
+        if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
+          return "Dynamic slice op has a different shape than the update shape "
+                 "of the dus op, bailing.";
+        }
         for (int i = 0; i < dus->shape().rank(); ++i) {
           const HloInstruction* ds_operand = get_real_operand(
               producer, producer_nonelementwise->operand(1 + i));
@@ -1004,7 +1023,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
         }
         VLOG(4) << "DUS and DS index match";
         if (consumer->opcode() == HloOpcode::kFusion &&
-            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer, dus)) {
           return "Fusing DS into DUS will also fuse another non-elementwise op "
                  "with shared operand as DUS.";
         }
@@ -1033,11 +1052,7 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                           : "fusion pass cannot duplicate";
   }
 
-  if (NoFusionPossible fusible = !ShouldFuseInPlaceOp(producer, consumer)) {
-    return !fusible;
-  }
-
-  return {};
+  return ShouldFuseInPlaceOp(producer, consumer);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

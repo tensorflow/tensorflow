@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/list_ops_util.h"
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
@@ -32,5 +31,38 @@ IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape) {
   const int* end = begin + rank;
   return BuildTfLiteArray(std::vector<int>(begin, end));
 }
+
+IntArrayUniquePtr MergeShapesOrNull(IntArrayUniquePtr l, IntArrayUniquePtr r) {
+  if (l->size == 0) {
+    return r;
+  }
+  if (r->size == 0) {
+    return l;
+  }
+  if (l->size != r->size) {
+    return nullptr;
+  }
+  for (int i = 0; i < r->size; ++i) {
+    if (l->data[i] == -1 && r->data[i] != -1) {
+      l->data[i] = r->data[i];
+      continue;
+    }
+    if (r->data[i] == -1) continue;
+    if (l->data[i] != r->data[i]) {
+      return nullptr;
+    }
+  }
+  return l;
+}
+
+bool IsShapeFullyDefined(const TfLiteIntArray& shape) {
+  for (int i = 0; i < shape.size; ++i) {
+    if (shape.data[i] < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace variants
 }  // namespace tflite

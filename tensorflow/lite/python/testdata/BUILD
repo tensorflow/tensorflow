@@ -1,5 +1,6 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -128,10 +129,17 @@ tf_gen_op_wrapper_py(
     name = "gen_double_op_wrapper",
     testonly = 1,
     out = "double_op_wrapper.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":double_op_and_kernels"],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "double_op",
     testonly = 1,
     srcs = ["double_op.py"],
@@ -140,7 +148,9 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 

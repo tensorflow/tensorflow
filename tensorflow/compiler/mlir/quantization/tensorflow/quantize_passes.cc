@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 
+#include <optional>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -43,9 +45,19 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
+namespace {
 
-void AddQuantizeQatPasses(mlir::PassManager &pm,
-                          const QuantizationOptions &quantization_options) {
+void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
+}
+}  // namespace
+
+void AddQuantizeQatPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
   // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
@@ -69,7 +81,8 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
-      quantization_options.min_num_elements_for_weights()));
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
@@ -88,13 +101,14 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
 }
 
 void AddQuantizePtqDynamicRangePasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
@@ -110,7 +124,7 @@ void AddQuantizePtqDynamicRangePasses(
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
       quantization_options.min_num_elements_for_weights(),
-      quantization_options.enable_legacy_weight_only()));
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
@@ -138,7 +152,7 @@ void AddQuantizePtqPreCalibrationPasses(
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
@@ -151,7 +165,8 @@ void AddQuantizePtqPreCalibrationPasses(
 }
 
 void AddQuantizePtqPostCalibrationPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -163,7 +178,8 @@ void AddQuantizePtqPostCalibrationPasses(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
-      quantization_options.min_num_elements_for_weights()));
+      quantization_options.min_num_elements_for_weights(),
+      quantization_options.enable_legacy_weight_only(), mlir_dump_file_prefix));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 

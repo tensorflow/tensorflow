@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "tensorflow/compiler/xla/autotuning.proto";
 import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/tsl/protobuf/autotuning.proto";
 
 // Backend configs for XLA:GPU.
 //
@@ -111,7 +111,7 @@ message FusionBackendConfig {
 
   // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
   // present, we use the default Triton config.
-  tensorflow.AutotuneResult.TritonGemmKey triton_gemm_config = 2;
+  AutotuneResult.TritonGemmKey triton_gemm_config = 2;
   // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
   // cudnn.
 }

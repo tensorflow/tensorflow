@@ -14,6 +14,7 @@ package_group(
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/distributed/...",
+        # copybara:uncomment "//learning/pathways/serving/...",
         "//learning/serving/...",
         "//quality/webanswers/...",
         "//smartass/brain/inference/...",
@@ -25,16 +26,6 @@ package_group(
         "//tensorflow/python/...",
         # copybara:uncomment "//tensorflow_serving/...",
         # copybara:uncomment "//third_party/tf_runtime_google/...",
-    ],
-)
-
-cc_library(
-    name = "tfrt_runtime",
-    srcs = ["tfrt_runtime.cc"],
-    hdrs = ["tfrt_runtime.h"],
-    deps = [
-        "//tensorflow/core/tfrt/runtime",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -336,4 +327,9 @@ cc_library(
         ":device_variables_table",
         ":fallback_tensor",
     ],
+)
+
+cc_library(
+    name = "any_ptr",
+    hdrs = ["any_ptr.h"],
 )

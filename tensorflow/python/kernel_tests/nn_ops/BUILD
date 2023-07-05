@@ -555,7 +555,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:util",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:momentum",
         "//third_party/py/numpy",
     ],
 )
@@ -708,7 +708,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//third_party/py/numpy",
     ],
 )

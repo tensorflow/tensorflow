@@ -468,12 +468,10 @@ py_strict_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/types:trace",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python/lib/core:_pywrap_bfloat16",
-        "//tensorflow/python/lib/core:_pywrap_custom_casts",
-        "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "//tensorflow/tsl/python/lib/core:pywrap_ml_dtypes",
         "@ml_dtypes",
     ],
 )
@@ -1986,7 +1984,7 @@ py_strict_library(
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:_pywrap_util_port",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -2350,7 +2348,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:queue_runner_impl",
     ],
 )
 
@@ -2396,6 +2394,13 @@ tf_py_strict_test(
 tf_gen_op_wrapper_py(
     name = "test_ops",
     out = "test_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":test_ops_kernels"],
 )
 
@@ -2416,6 +2421,7 @@ tf_kernel_library(
 tf_gen_op_wrapper_py(
     name = "test_ops_2",
     out = "test_ops_2.py",
+    py_lib_rule = py_strict_library,
     deps = [":test_ops_2_kernels"],
 )
 
@@ -2497,7 +2503,14 @@ tf_py_strict_test(
 tf_gen_op_wrapper_py(
     name = "test_namespace_ops",
     out = "test_namespace_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
     op_allowlist = ["Namespace>TestStringOutput"],
+    py_lib_rule = py_strict_library,
     deps = [
         ":test_ops_kernels",
     ],

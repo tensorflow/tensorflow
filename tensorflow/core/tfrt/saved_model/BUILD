@@ -24,6 +24,7 @@ package_group(
         "//tensorflow/core/tfrt/saved_model/python/...",
         # copybara:uncomment "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
+        "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
     ],
 )
 
@@ -45,7 +46,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
-        "//tensorflow/core/tfrt/utils:tfrt_runtime",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
@@ -117,7 +118,6 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels",
     ]),
 )
 
@@ -179,15 +179,10 @@ cc_library(
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/runtime",
-        "//tensorflow_serving/apis:model_cc_proto",
-        "//tensorflow_serving/apis:predict_cc_proto",
-        "//tensorflow_serving/apis:prediction_log_cc_proto",
         "@tf_runtime//:hostcontext",
     ],
 )

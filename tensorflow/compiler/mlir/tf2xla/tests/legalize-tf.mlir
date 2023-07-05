@@ -637,6 +637,17 @@ func.func @matrix_diag_part(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32
 
 // -----
 
+// CHECK-LABEL: func @matrix_diag_part_zero_dim_complex
+func.func @matrix_diag_part_zero_dim_complex(%arg0: tensor<4x0xcomplex<f32>>) -> tensor<0xcomplex<f32>> {
+  %cst = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  %cst_0 = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+  %0 = "tf.MatrixDiagPartV3"(%arg0, %cst, %cst_0) {align = "RIGHT_LEFT", device = ""} : (tensor<4x0xcomplex<f32>>, tensor<i32>, tensor<complex<f32>>) -> tensor<0xcomplex<f32>>
+  // CHECK: return %{{[0-9]*}} : tensor<0xcomplex<f32>>
+  return %0 : tensor<0xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @matrix_diag_part_single_diagonal
 func.func @matrix_diag_part_single_diagonal(%arg0: tensor<7x140x128xi32>) -> tensor<7x128xi32> {
   %0 = mhlo.constant dense<42> : tensor<i32>  // padding value

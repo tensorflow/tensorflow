@@ -628,32 +628,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return true;
 }
 
-/* static */ bool GpuDriver::GetModuleFunction(GpuContext* context,
-                                               CUmodule module,
-                                               const char* kernel_name,
-                                               CUfunction* function) {
+/* static */ tsl::Status GpuDriver::GetModuleFunction(GpuContext* context,
+                                                      CUmodule module,
+                                                      const char* kernel_name,
+                                                      CUfunction* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
   cudaError_t cuda_error = cudaPeekAtLastError();
   if (cuda_error != cudaSuccess) {
-    // Printing the cuda_error value is useful when cudaGetErrorName doesn't
-    // work.
-    const std::string error =
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrCat("There was an error before calling cuModuleGetFunction (",
                      cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
-                     cudaGetErrorString(cuda_error));
-    LOG(ERROR) << error;
-    return false;
+                     cudaGetErrorString(cuda_error)));
   }
-
-  CUresult res = cuModuleGetFunction(function, module, kernel_name);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to get PTX kernel \"" << kernel_name
-               << "\" from module: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(cuModuleGetFunction(function, module, kernel_name),
+                           "Failed to get module function");
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetModuleSymbol(GpuContext* context,
@@ -1247,26 +1238,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
-  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
-    // cuMemcpyPeerAsync is not supported during graph capture, so we use
-    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
-
-    // Check if UVA is enabled.
-    for (int i = 0; i < GetDeviceCount(); ++i) {
-      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
-      auto result = GetDeviceAttribute(attribute, i);
-      if (!result.ok()) {
-        LOG(ERROR) << "Failed to get device attribute";
-        return false;
-      }
-
-      if (result.value() == 0) {
-        LOG(ERROR) << "Unified addressing is not enabled";
-        return false;
-      }
-    }
-
-    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
     CUcontext dst_context =
@@ -1288,8 +1259,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       }
     }
 
-    result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context, size,
-                               stream);
+    if (dst_context == src_context) {
+      // Since the CUDA context is the same, the src and dst are within the same
+      // GPU. So we can use cuMemcpyDtoD.
+      result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+    } else {
+      result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context,
+                                 size, stream);
+    }
   }
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1539,33 +1516,24 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
   return GetSimpleAttribute<int64_t>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 }
 
-/* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
-                                           CUdevice device) {
+/* static */ tsl::Status GpuDriver::GetGridLimits(int* x, int* y, int* z,
+                                                  CUdevice device) {
   int value;
-  CUresult res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim x: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, device),
+      "Could not get device attribute");
   *x = value;
 
-  res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim y: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, device),
+      "Could not get device attribute");
   *y = value;
 
-  res =
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query max grid dim z: " << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, device),
+      "Could not get device attribute");
   *z = value;
-  return true;
+  return tsl::OkStatus();
 }
 
 /* static */ bool GpuDriver::GetDriverVersion(int* driver_version) {

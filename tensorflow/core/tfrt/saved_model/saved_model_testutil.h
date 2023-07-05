@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
-#include "third_party/tensorflow_serving/apis/predict.pb.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
@@ -111,13 +110,6 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target);
-
-tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
-GetWarmupRequests(absl::string_view saved_model_dir);
-
-void ProcessPredictRequestsAndMaybeProfile(
-    const std::vector<tensorflow::serving::PredictRequest>& requests,
-    SavedModel* saved_model, bool profile = false, int32_t num_steps = 1);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

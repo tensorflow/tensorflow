@@ -174,7 +174,7 @@ py_test(
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//third_party/py/yaml",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 

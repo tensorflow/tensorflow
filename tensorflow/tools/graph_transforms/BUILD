@@ -1,15 +1,15 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
-    "tf_py_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -329,19 +329,18 @@ tf_cc_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:compat",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "transform_graph_py_test",
     size = "small",
     srcs = ["python/transform_graph_test.py"],
@@ -350,9 +349,8 @@ tf_py_test(
     deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

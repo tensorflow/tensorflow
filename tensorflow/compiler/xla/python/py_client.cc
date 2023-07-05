@@ -357,9 +357,10 @@ std::unique_ptr<ifrt::CompileOptions> MakeIfrtCompileOptions(
       std::move(options), std::move(ifrt_loaded_host_callbacks));
 }
 
-// Makes IFRT `DeserializeOptions` from XLA `CompileOptions` and optional host
-// callbacks.
-std::unique_ptr<ifrt::DeserializeOptions> MakeIfrtDeserializeOptions(
+// Makes IFRT `DeserializeExecutableOptions` from XLA `CompileOptions` and
+// optional host callbacks.
+std::unique_ptr<ifrt::DeserializeExecutableOptions>
+MakeIfrtDeserializeExecutableOptions(
     std::optional<CompileOptions> options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
@@ -372,7 +373,7 @@ std::unique_ptr<ifrt::DeserializeOptions> MakeIfrtDeserializeOptions(
     ifrt_loaded_host_callbacks.push_back(
         tsl::FormRef(host_callback.get_pointer<ifrt::LoadedHostCallback>()));
   }
-  return std::make_unique<ifrt::XlaDeserializeOptions>(
+  return std::make_unique<ifrt::XlaDeserializeExecutableOptions>(
       std::move(options), std::move(ifrt_loaded_host_callbacks));
 }
 
@@ -390,9 +391,11 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
-    TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
-                        ifrt_client_->GetDefaultCompiler()->Compile(
-                            module.get(), std::move(ifrt_compile_options)));
+    TF_ASSIGN_OR_RETURN(
+        ifrt_loaded_executable,
+        ifrt_client_->GetDefaultCompiler()->Compile(
+            std::make_unique<xla::ifrt::XlaProgram>(module.get()),
+            std::move(ifrt_compile_options)));
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
@@ -411,8 +414,8 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
-  auto ifrt_deserialize_options =
-      MakeIfrtDeserializeOptions(std::move(options), std::move(host_callbacks));
+  auto ifrt_deserialize_options = MakeIfrtDeserializeExecutableOptions(
+      std::move(options), std::move(host_callbacks));
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(

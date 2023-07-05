@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -235,7 +236,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) {
     auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
-    return ConstantFoldOpIfPossible(mul_op).front();
+    return mul_op.getResult();
   }
   auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
   if (!q_op) return {};
@@ -295,7 +296,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
       q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
   auto dequantize = builder.create<quantfork::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
-  return ConstantFoldOpIfPossible(dequantize).front();
+  return dequantize.getResult();
 }
 
 // Generate an einsum equation from the given DotDimensionNumber.
@@ -545,7 +546,7 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
   if (op_set_ != OpSet::XLA) {
     // Convert Einsum into BatchMatMul for non-XLA opsets.
     // For the uniform opset, it is requested to maintain the BatchMatmul logic.
@@ -555,7 +556,7 @@ void PrepareLiftingPass::runOnOperation() {
   }
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-    func.emitError() << "quant-internal-prepare-lifting failed.";
+    func.emitError() << "quant-prepare-lifting failed.";
     signalPassFailure();
   }
 }

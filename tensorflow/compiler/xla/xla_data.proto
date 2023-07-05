@@ -82,6 +82,23 @@ enum PrimitiveType {
   F8E4M3FN = 20;
   F8E4M3B11FNUZ = 23;
 
+  // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2206.02915
+  //
+  // F8E5M2FNUZ has 5 exponent bits and 2 mantissa bits.
+  // F8E4M3FNUZ has 4 exponent bits and 3 mantissa bits.
+  //
+  // The "FNUZ" means only Finite and NaN values are supported; zero is
+  // unsigned. Unlike IEEE types, infinities are not supported.  NaN is
+  // represented when the exponent and mantissa bits are all 0s with a sign bit
+  // of 1. All other values are finite.
+  //
+  // These differences mean there's an additional exponent value available. To
+  // keep the same dynamic range as an IEEE-like FP8 type, the exponent is
+  // biased one more than would be expected given the number of exponent bits
+  // (8 for Float8E4M3FNUZ and 16 for Float8E5M2FNUZ).
+  F8E5M2FNUZ = 24;
+  F8E4M3FNUZ = 25;
+
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
   C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
@@ -107,7 +124,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 24
+  // Next = 26
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
@@ -522,8 +539,10 @@ message LiteralProto {
   bytes f8e5m2s = 19;
   bytes f8e4m3fns = 20;
   bytes f8e4m3b11fnuzs = 23;
+  bytes f8e5m2fnuzs = 24;
+  bytes f8e4m3fnuzs = 25;
   repeated int64 sparse_indices = 14;
-  // Next = 24
+  // Next = 26
 }
 
 message WindowDimension {
@@ -762,6 +781,7 @@ message OpSharding {
   repeated int64 tile_assignment_dimensions = 3;
   // Flattened list of device IDs. The order of flattening is the same as used
   // by IndexUtil::MultiToLinearIndex(tile_assignment_shape).
+  // Only one of tile_assignment_devices and iota_dimensions shall be non-empty.
   repeated int64 tile_assignment_devices = 4;
   // If type == TUPLE, the sub-shardings, one per leaf node in the tuple shape,
   // in pre-order. The tuple shape could be nested; here we store just a
@@ -788,6 +808,15 @@ message OpSharding {
   // in [2,2,2,2] represents a subgrouping in replicate, manual,
   // unreduced sharding type respectively.
   repeated Type last_tile_dims = 8;
+
+  // Dimensions used to reshape the 1D iota array of device IDs.
+  // Only one of tile_assignment_devices and iota_reshape_dims shall be
+  // non-empty.
+  repeated int64 iota_reshape_dims = 9;
+
+  // Dimension permutations to transposed the iota array reshaped to
+  // iota_reshape_dims. This must have the same size as iota_reshape_dims.
+  repeated int32 iota_transpose_perm = 10;
 }
 // LINT.ThenChange()
 

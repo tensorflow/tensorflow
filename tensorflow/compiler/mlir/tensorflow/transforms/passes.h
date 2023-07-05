@@ -224,7 +224,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
 
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
@@ -391,12 +391,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter = {});
 
 // Creates a pass that outlines regions of tf_device.cluster operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass(
-    bool globally_unique_func_names = true);
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass(
-    bool globally_unique_func_names = true);
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass();
 
 // Creates a pass that converts tf_device::LaunchFuncOp into
 // TF::PartitionedCallOp.
@@ -453,6 +451,7 @@ CreateReplicaIDToDeviceOrdinalPass();
 // while developing full pipelining capabilities.
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.

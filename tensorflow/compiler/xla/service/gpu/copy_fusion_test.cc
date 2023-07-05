@@ -146,6 +146,24 @@ TEST_F(CopyFusionTest, CopyFusionShouldRunWithUncopiedReduce) {
               op::Tuple(op::Multiply(), op::Reduce(), op::Copy()));
 }
 
+TEST_F(CopyFusionTest, CopyFusionShouldNotFuseForSliceMultioutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
+      slice1 = f32[128,100,28,28]{3,2,1,0} slice(mul), slice={[0:128],[0:100],[0:28],[0:28]}
+      slice2 = f32[128,200,28,28]{3,2,1,0} slice(mul), slice={[0:128],[50:250],[0:28],[0:28]}
+      ROOT tuple = (f32[128,100,28,28]{3,2,1,0}, f32[128,200,28,28]{3,2,1,0}) tuple(slice1, slice2)
+    }
+
+    ENTRY entry {
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[128,100,28,28]{3,2,1,0}, f32[128,200,28,28]{3,2,1,0}) fusion(p1), kind=kInput, calls=fused_computation
+    })"))
+                    .value();
+  ASSERT_FALSE(cf_.Run(module.get()).value());
+}
+
 TEST_F(CopyFusionTest, CopyFusionShouldNotRunWithScatter) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {

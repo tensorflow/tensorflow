@@ -3943,6 +3943,7 @@ template <typename T, typename U>
 std::vector<U> GetTensorValues(const Tensor& tensor) {
   std::vector<U> result_vector;
   int item_count = tensor.flat<T>().size();
+  result_vector.reserve(item_count);
   for (int i = 0; i < item_count; i++) {
     result_vector.push_back((U)(tensor.flat<T>()(i)));
   }

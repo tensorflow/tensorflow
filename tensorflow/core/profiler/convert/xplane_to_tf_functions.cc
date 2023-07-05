@@ -32,10 +32,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -78,7 +78,7 @@ double ComputeExpensiveCallPercent(const TfFunction& tf_function) {
 // Each invocation of a tf-function creates an ActivationRecord.
 struct ActivationRecord {
   std::string function_name;               // name of the tf-function.
-  Timespan timespan;                       // timespan of this invocation.
+  tsl::profiler::Timespan timespan;        // timespan of this invocation.
   TfFunctionExecutionMode execution_mode;  // execution mode.
   TfFunctionCompiler compiler;             // compiler used.
   int64_t tracing_count;  // the total tracing count of this function when this
@@ -91,7 +91,8 @@ struct ActivationRecord {
         compiler(INVALID_COMPILER),
         tracing_count(0),
         children_duration_ps(0) {}
-  ActivationRecord(absl::string_view name, const Timespan& timespan,
+  ActivationRecord(absl::string_view name,
+                   const tsl::profiler::Timespan& timespan,
                    TfFunctionExecutionMode exe_mode,
                    TfFunctionCompiler compiler, int64_t tracing_cnt)
       : function_name(std::string(name)),

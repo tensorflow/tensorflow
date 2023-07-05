@@ -25,10 +25,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -38,7 +38,7 @@ void ConvertDeviceTraceXPlaneToKernelReports(
     const std::function<void(const GpuEventStats&, KernelReport*)>&
         on_kernel_fn,
     KernelReportMap* reports) {
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) {
       return;
@@ -58,7 +58,8 @@ void ConvertDeviceTraceXPlaneToKernelReports(
       ParseKernelLaunchParams(stats.kernel_details, &kernel);
 
       if (stats.IsTfOp()) {
-        TfOp tf_op = ParseTfOpFullname(stats.tf_op_fullname);
+        tsl::profiler::TfOp tf_op =
+            tsl::profiler::ParseTfOpFullname(stats.tf_op_fullname);
         kernel.set_op_name(std::string(tf_op.name));
         bool tensor_core_eligible =
             IsEinsumTensorCoreEligible(stats.equation) ||

@@ -42,6 +42,7 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -76,7 +77,10 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":pjrt_client_factory_options",
+        ":pjrt_client_factory_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -116,14 +120,10 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":pjrt_client_factory_options",
-        ":pjrt_client_factory_registry",
-        ":pjrt_util",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        ":global_state",
+        ":pjrt_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:tf_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -139,6 +139,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/tfrt/common:pjrt_cpu_client_registration",
         "@com_google_googletest//:gtest_main",
     ],
 )

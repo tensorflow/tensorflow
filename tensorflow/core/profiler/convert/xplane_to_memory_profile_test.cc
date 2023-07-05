@@ -20,10 +20,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -85,7 +85,7 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
                 {StatType::kRegionType, "temp"},
                 {StatType::kTensorShapes, "[1, 2]"}});
 
-  tensorflow::profiler::GroupTfEvents(&space);
+  tsl::profiler::GroupTfEvents(&space);
   MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().size(), 1);
   EXPECT_EQ(memory_profile.num_hosts(), 1);

@@ -1468,7 +1468,6 @@ check_deps(
             "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
             "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
             "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
             "//tensorflow/compiler/xla/stream_executor:cuda_platform",
         ],
     ),

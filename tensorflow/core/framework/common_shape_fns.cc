@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -24,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/einsum_op_util.h"
+#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -756,6 +764,225 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
 }
 
 }  // namespace
+
+// Shape function for general Convolution operation.
+Status ConvShape(shape_inference::InferenceContext* c) {
+  ShapeHandle input_shape = c->input(0);
+  ShapeHandle filter_shape = c->input(1);
+
+  int input_rank = c->Rank(input_shape);
+  int filter_rank = c->Rank(filter_shape);
+  // We cannot determine the number of spatial dimensions or output shape with
+  // an unknown input or filter rank.
+  if (input_rank == InferenceContext::kUnknownRank ||
+      filter_rank == InferenceContext::kUnknownRank) {
+    c->set_output(0, c->UnknownShape());
+    return OkStatus();
+  }
+
+  int batch_dims;
+  TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+  if (batch_dims < 0) {
+    return absl::InvalidArgumentError("Batch dims must be non-negative.");
+  }
+
+  // Exclude extra batch dimensions for checking dimensions.
+  int standard_input_rank = input_rank - (batch_dims - 1);
+
+  if (standard_input_rank != 4 && standard_input_rank != 5) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input tensor must be rank 4 or 5, excluding extra "
+                     "batch dimensions, but got: ",
+                     standard_input_rank));
+  }
+
+  if (filter_rank != 4 && filter_rank != 5) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Filter tensor must be rank 4 or 5, but got: ", standard_input_rank));
+  }
+
+  if (filter_rank != standard_input_rank) {
+    return absl::InvalidArgumentError(
+        "Input tensor rank must be the same as filter rank.");
+  }
+
+  // Default format is NHWC for 2D and NDHWC for 3D.
+  string data_format_str;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+  bool channels_last_format;
+  if (data_format_str == "CHANNELS_LAST") {
+    channels_last_format = true;
+  } else if (data_format_str == "CHANNELS_FIRST") {
+    channels_last_format = false;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid data format: ", data_format_str));
+  }
+
+  TensorFormat data_format = channels_last_format ? FORMAT_NHWC : FORMAT_NCHW;
+  // Always assume filter format has channels last.
+  FilterTensorFormat filter_format = FORMAT_HWIO;
+
+  // Determine number of spatial dims.
+  int spatial_dims = standard_input_rank - 2;
+
+  std::vector<int32> dilations;
+  TF_RETURN_IF_ERROR(c->GetAttr("dilations", &dilations));
+  // Default case.
+  if (dilations.empty()) {
+    for (int i = 0; i < standard_input_rank; ++i) dilations.push_back(1);
+  }
+
+  if (dilations.size() != standard_input_rank) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Conv requires the dilation attribute to contain ", standard_input_rank,
+        " values, but got: ", dilations.size()));
+  }
+
+  std::vector<int32> strides;
+  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  if (strides.size() != standard_input_rank) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Stride attribute should contain ", standard_input_rank,
+                     " values, but got: ", strides.size()));
+  }
+
+  auto dim_index = [&](char dimension) {
+    if (spatial_dims == 2)
+      return GetTensorDimIndex<2>(data_format, dimension);
+    else
+      return GetTensorDimIndex<3>(data_format, dimension);
+  };
+  std::vector<int32_t> stride_dims(spatial_dims);
+  std::vector<int32_t> dilation_dims(spatial_dims);
+  for (int i = 0; i < spatial_dims; ++i) {
+    stride_dims[i] = strides[dim_index(static_cast<char>('0' + i))];
+    dilation_dims[i] = dilations[dim_index(static_cast<char>('0' + i))];
+  }
+
+  std::vector<DimensionHandle> batch_size_dim(batch_dims);
+  for (int i = 0; i < batch_dims; ++i) {
+    batch_size_dim[i] = c->Dim(input_shape, i);
+  }
+  std::vector<DimensionHandle> in_spatial_dims(spatial_dims);
+  for (int i = 0; i < spatial_dims; ++i) {
+    in_spatial_dims[i] = c->Dim(
+        input_shape, (batch_dims - 1) + dim_index(static_cast<char>('0' + i)));
+  }
+  DimensionHandle input_depth_dim =
+      c->Dim(input_shape, (batch_dims - 1) + dim_index('C'));
+
+  auto filter_dim_index = [&](char dimension) {
+    if (spatial_dims == 2)
+      return GetFilterDimIndex<2>(filter_format, dimension);
+    else
+      return GetFilterDimIndex<3>(filter_format, dimension);
+  };
+  std::vector<DimensionHandle> filter_spatial_dims(spatial_dims);
+  for (int i = 0; i < spatial_dims; ++i) {
+    filter_spatial_dims[i] =
+        c->Dim(filter_shape, filter_dim_index(static_cast<char>('0' + i)));
+  }
+  DimensionHandle output_depth_dim =
+      c->Dim(filter_shape, filter_dim_index('O'));
+  DimensionHandle filter_input_depth_dim;
+  filter_input_depth_dim = c->Dim(filter_shape, filter_dim_index('I'));
+
+  int groups;
+  TF_RETURN_IF_ERROR(c->GetAttr("groups", &groups));
+  if (groups < 1) {
+    return absl::InvalidArgumentError(
+        "Groups attribute should be a positive integer");
+  } else if (c->ValueKnown(input_depth_dim) &&
+             c->Value(input_depth_dim) % groups != 0) {
+    return absl::InvalidArgumentError(
+        "Number of groups should divide input depth");
+  } else if (c->ValueKnown(output_depth_dim) &&
+             c->Value(output_depth_dim) % groups != 0) {
+    return absl::InvalidArgumentError(
+        "Number of groups should divide output depth");
+  }
+
+  // Check that the input tensor and the filter tensor agree on the channel
+  // count.
+  if (c->ValueKnown(input_depth_dim) && c->ValueKnown(filter_input_depth_dim)) {
+    int64_t input_depth_value = c->Value(input_depth_dim),
+            filter_input_depth_value = c->Value(filter_input_depth_dim);
+    if (filter_input_depth_value == 0) {
+      return absl::InvalidArgumentError("Depth of filter must not be 0");
+    }
+    if (input_depth_value % filter_input_depth_value != 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Depth of input (", input_depth_value,
+                       ") is not a multiple of input depth of filter (",
+                       filter_input_depth_value, ")"));
+    }
+    if (input_depth_value / filter_input_depth_value != groups) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input depth divided by filter input depth does not "
+                       "match with groups parameter (",
+                       groups, ")"));
+    }
+  }
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+  // Conv3D does not support explicit padding.
+  if (spatial_dims == 3 && padding == Padding::EXPLICIT) {
+    return absl::InvalidArgumentError(
+        "Explicit padding not supported for 3D Convolution");
+  }
+  std::vector<int64_t> explicit_paddings;
+  Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
+  // Use the default value, which is an empty list, if the attribute is not
+  // found. Otherwise return the error to the caller.
+  if (!s.ok() && !absl::IsNotFound(s)) {
+    return s;
+  }
+  TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
+                                       /*num_dims=*/4, data_format));
+  std::vector<DimensionHandle> output_spatial_dims(spatial_dims);
+  std::vector<int64_t> pad_before(spatial_dims, -1);
+  std::vector<int64_t> pad_after(spatial_dims, -1);
+  if (padding == Padding::EXPLICIT) {
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
+                             &pad_before[0], &pad_after[0]);
+    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
+                             &pad_before[1], &pad_after[1]);
+  }
+
+  for (int i = 0; i < spatial_dims; ++i) {
+    TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+        c, in_spatial_dims[i], filter_spatial_dims[i], dilation_dims[i],
+        stride_dims[i], padding, pad_before[i], pad_after[i],
+        &output_spatial_dims[i]));
+  }
+
+  // Construct output shape.
+  ShapeHandle output_shape;
+  std::vector<DimensionHandle> output_shape_vector(input_rank);
+  // Batch.
+  for (int i = 0; i < batch_dims; ++i) {
+    output_shape_vector[i] = batch_size_dim[i];
+  }
+  // Spatial dims and output depth.
+  if (channels_last_format) {
+    for (int i = 0; i < spatial_dims; ++i) {
+      output_shape_vector[batch_dims + i] = output_spatial_dims[i];
+    }
+    output_shape_vector[batch_dims + spatial_dims] = output_depth_dim;
+  } else {
+    output_shape_vector[batch_dims] = output_depth_dim;
+    for (int i = 0; i < spatial_dims; ++i) {
+      output_shape_vector[batch_dims + 1 + i] = output_spatial_dims[i];
+    }
+  }
+
+  output_shape = c->MakeShape(output_shape_vector);
+
+  c->set_output(0, output_shape);
+  return OkStatus();
+}
 
 // Shape function for Conv2D-like operations that support explicit padding.
 Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c) {

@@ -128,15 +128,20 @@ class Backend {
   StatusOr<StreamPool::Ptr> BorrowStream(
       se::StreamExecutor* executor,
       se::StreamPriority priority = se::StreamPriority::Default);
+  StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
+      int device_ordinal, int num_streams,
+      se::StreamPriority priority = se::StreamPriority::Default);
 
-  // Returns a function to borrow a stream with a given priority,
-  // as `BorrowStream` above does.
+  // Returns a function to borrow streams with a given priority,
+  // as `BorrowStreams` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPool::Ptr>(int, se::StreamPriority)>
+  std::function<StatusOr<std::vector<StreamPool::Ptr>>(int, int,
+                                                       se::StreamPriority)>
   StreamBorrowerWithPriority() {
-    return [this](int device_ordinal, se::StreamPriority priority) {
-      return BorrowStream(device_ordinal, priority);
+    return [this](int device_ordinal, int num_streams,
+                  se::StreamPriority priority) {
+      return BorrowStreams(device_ordinal, num_streams, priority);
     };
   }
 

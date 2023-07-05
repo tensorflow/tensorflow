@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -157,7 +157,7 @@ class JsonEventWriter {
         event.has_name_ref() ? trace_.name_table().at(event.name_ref())
                              : event.name();
     output_->Append(R"(,"name":)", JsonEscape(event_name));
-    Timespan span = EventSpan(event);
+    tsl::profiler::Timespan span = EventSpan(event);
     // "%.17g" is the default double format in proto2::util::JsonFormat.
     absl::Format(output_, R"(,"ts":%.17g)", PicosToMicros(span.begin_ps()));
     JsonEventCounter::EventType event_type = JsonEventCounter::kCounterEvent;

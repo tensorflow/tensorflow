@@ -204,6 +204,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "arena_planner_subgraph_test",
+    size = "small",
+    srcs = ["arena_planner_subgraph_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
+    deps = [
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "simple_planner",
     srcs = ["simple_planner.cc"],
@@ -1157,6 +1171,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":array",
+        ":test_util",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library_with_tflite(
     name = "create_op_resolver_header",
     hdrs = ["create_op_resolver.h"],
@@ -1336,6 +1364,9 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:test_util",
     ],
     deps = [
+        ":array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )

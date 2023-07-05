@@ -798,7 +798,7 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "engine"              : 15,
             "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
             "cudnn_version_start" : 8900,
-            "cudnn_version_end"   : -1,
+            "cudnn_version_end"   : 8902,
             "comment"             : "b/281585171"
           },
           { "rule_id"             : "ConvFwd_Add_Add_eng15_k5=1_k6=0_k7=1_k10=1",
@@ -806,7 +806,7 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "engine"              : 15,
             "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
             "cudnn_version_start" : 8900,
-            "cudnn_version_end"   : -1,
+            "cudnn_version_end"   : 8902,
             "comment"             : "b/281887114"
           }
       ]})";
@@ -1983,6 +1983,23 @@ tsl::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
 
 }  // namespace
 
+// Populates the profile result if not empty.
+static tsl::Status PopulateProfileFromTimer(
+    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    dnn::ProfileResult* profile_result,
+    std::optional<uint64_t> scratch_size = std::nullopt) {
+  if (profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    profile_result->set_algorithm(algorithm);
+    profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(duration));
+    if (scratch_size.has_value()) {
+      profile_result->set_scratch_size(*scratch_size);
+    }
+  }
+  return tsl::OkStatus();
+}
+
 template <class T>
 tsl::Status CudnnSupport::DoRnnForwardImpl(
     Stream* stream, const CudnnRnnDescriptor& rnn_desc,
@@ -2044,9 +2061,10 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
                                              reserve_space_size_in_bytes));
     }
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNForward(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2066,11 +2084,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
         /*reserveSpace=*/reserve_space.opaque()));
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-      output_profile_result->set_algorithm(algo_desc);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer, *rnn_desc.algorithm_config().algorithm(),
+          output_profile_result));
     }
     return tsl::OkStatus();
   }
@@ -2096,8 +2112,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   const bool is_profiling = output_profile_result != nullptr;
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   if (!is_training) {
     if (input_desc.is_var_seq_lengths()) {
@@ -2166,11 +2183,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(timer->Stop());
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
   return ::tsl::OkStatus();
@@ -2231,9 +2246,10 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                                          workspace_size_in_bytes));
     }
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData_v8(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2279,11 +2295,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
     }
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-      output_profile_result->set_algorithm(algo_desc);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer, *rnn_desc.algorithm_config().algorithm(),
+          output_profile_result));
     }
     return tsl::OkStatus();
   }
@@ -2292,9 +2306,10 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
   const bool is_profiling = output_profile_result != nullptr;
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardDataEx(
@@ -2378,11 +2393,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(timer->Stop());
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
   return ::tsl::OkStatus();
@@ -4885,9 +4898,9 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      : static_cast<void*>(&fbeta);
 
     const bool is_profiling = profile_result != nullptr;
-
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     const auto get_fwd_bugs = [&]() -> tsl::Status {
 #if CUDNN_VERSION < 8000
@@ -4966,10 +4979,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     }
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      profile_result->set_algorithm(algo);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
+                                                  scratch_memory.size()));
     }
 
     return ::tsl::OkStatus();
@@ -5251,25 +5262,23 @@ class CudnnExecutionPlanRunner<void(Args...)>
             << "\nVariantPack: " << variantPack.describe();
 
     const bool is_profiling = profile_result != nullptr;
-
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     cudnnStatus_t status = cudnnBackendExecute(
         cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
     RETURN_IF_CUDNN_ERROR(status);
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
       TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      profile_result->set_algorithm(desc);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, desc, profile_result,
+                                                  scratch_memory.size()));
 
       VLOG(4) << "cudnn op with plan " << plan_.getTag()
               << ", workspace_size=" << workspace_size << " -> "
               << CudnnStatusToString(status) << " in "
-              << timer->GetElapsedMilliseconds() << "ms";
+              << profile_result->elapsed_time_in_ms() << "ms";
     }
 
     return tsl::OkStatus();
@@ -5663,8 +5672,9 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     auto algo = MakeAlgorithmDesc();
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                                                 profile_result != nullptr));
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();
@@ -5719,15 +5729,13 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     RETURN_IF_CUDNN_ERROR(status);
 
     if (profile_result) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      profile_result->set_algorithm(algo);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
+                                                  scratch_memory.size()));
       VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
               << ", tensor_ops_enabled=" << tensor_ops_enabled_
               << ", workspace_size=" << scratch_memory.size() << " -> "
               << CudnnStatusToString(status) << " in "
-              << timer->GetElapsedMilliseconds() << "ms";
+              << profile_result->elapsed_time_in_ms() << "ms";
     }
 
     return ::tsl::OkStatus();

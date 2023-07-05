@@ -40,7 +40,7 @@ struct XlaClusterFormationPass
   void runOnOperation() override;
 };
 
-void EncapsulatePartitionedCall(Operation *call_op) {
+void EncapsulatePartitionedCall(Operation *call_op, StringAttr callee_name) {
   OpBuilder builder(call_op);
 
   auto cluster = builder.create<tf_device::ClusterOp>(
@@ -59,15 +59,18 @@ void EncapsulatePartitionedCall(Operation *call_op) {
   // Propagate necessary attributes to the cluster so that when it's outlined,
   // the function will have correct attributes.
   TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
+  // Save the function name for the outlined cluster function.
+  cluster->setAttr(TF::kClusterOutlinedFunctionNameAttr, callee_name);
 }
 
 void XlaClusterFormationPass::runOnOperation() {
   auto has_no_compile_device_type = [](SymbolUserOpInterface op) {
-    return !op->hasAttr(tensorflow::kCompileDeviceTypeAttr);
+    return !op->hasAttr(TF::kCompileDeviceTypeAttr);
   };
 
   ModuleOp module = getOperation();
-  SymbolTable symtab(module);
+  SymbolTableCollection symbol_table_collection;
+  SymbolTable symtab = symbol_table_collection.getSymbolTable(module);
   mlir::OpBuilder builder(module.getContext());
   auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
   llvm::SmallVector<func::FuncOp> entry_funcs = GetEntryFunctions(module);
@@ -84,14 +87,18 @@ void XlaClusterFormationPass::runOnOperation() {
     // Cluster outermost partitioned calls with _xla_compile_device_type
     // attribute.
     for (auto &pcall_op : outermost_pcall_ops) {
-      EncapsulatePartitionedCall(pcall_op);
+      auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
+      CallInterfaceCallable callable = call.getCallableForCallee();
+      auto sym = callable.get<SymbolRefAttr>();
+      EncapsulatePartitionedCall(pcall_op, sym.getRootReference());
     }
     // Partitioned calls are executed asynchronous. The calls outside of device
     // clusters therefore should not be inlined to perserve run-time
     // performance.
     for (auto &pcall_op : noinline_pcall_ops) {
-      SymbolRefAttr sym = pcall_op->getAttr("f").template cast<SymbolRefAttr>();
-      auto callee = symtab.lookup<func::FuncOp>(sym.getRootReference());
+      auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
+      auto callee = llvm::cast<func::FuncOp>(
+          call.resolveCallable(&symbol_table_collection));
       callee->setAttr(noinline_attr_name, builder.getBoolAttr(true));
     }
   }

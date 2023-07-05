@@ -23,14 +23,13 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import distributed_save_op
+from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
-
-_MAX_STREAMS_PER_WORKER = 2
 
 # Enum value for `SnapshotStreamInfo` states.
 _ORPHAN = 2
@@ -76,11 +75,13 @@ def get_stream_assignments(
 
 
 def snapshot_is_done(path):
-  return os.path.exists(os.path.join(path, "DONE"))
+  return os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotDoneFilePath(path))
 
 
 def snapshot_has_error(path):
-  return os.path.exists(os.path.join(path, "ERROR"))
+  return os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotErrorFilePath(path))
 
 
 def snapshots_are_done(paths):
@@ -264,18 +265,25 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       streams = get_streams()
     self.assertCountEqual([stream.index for stream in streams], range(n))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testWorkersDontExceedMaxStreamAssignments(self):
-    num_workers = 3
-    num_snapshots = 12
-    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              worker_max_concurrent_snapshots=[1, 2])))
+  def testWorkersDontExceedMaxStreamAssignments(
+      self, worker_max_concurrent_snapshots):
+    num_workers = 2
+    num_snapshots = 10
+    cluster = data_service_test_base.TestCluster(
+        num_workers=num_workers,
+        worker_max_concurrent_snapshots=worker_max_concurrent_snapshots)
 
     paths = []
     for i in range(num_snapshots):
       paths.append(f"{self._path}_{i}")
       self.evaluate(
           distributed_save_op.distributed_save(
-              dataset_ops.Dataset.range(2**i),
+              dataset_ops.Dataset.range(5000),
               paths[i],
               cluster.dispatcher_address()))
 
@@ -295,7 +303,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       assignments = get_assignments_and_update_max_assignments()
       all_workers_have_assignments = len(assignments) == num_workers
       each_worker_has_enough_assignments = all([
-          len(per_worker_assignments) >= _MAX_STREAMS_PER_WORKER
+          len(per_worker_assignments) >= worker_max_concurrent_snapshots
           for per_worker_assignments in assignments.values()])
       if all_workers_have_assignments and each_worker_has_enough_assignments:
         break
@@ -304,7 +312,25 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster.restart_dispatcher()
     wait_for_snapshots(paths, get_assignments_and_update_max_assignments)
     self.assertValuesEqual(list(max_assignments.values()),
-                           [_MAX_STREAMS_PER_WORKER] * num_workers)
+                           [worker_max_concurrent_snapshots] * num_workers)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(1000)
+    self.evaluate(distributed_save_op.distributed_save(
+        ds, self._path, cluster.dispatcher_address(), compression=None))
+
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [self._path])
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+
+    dataset = dataset_ops.Dataset.load(self._path)
+    self.assertDatasetProduces(dataset, range(1000), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
@@ -376,9 +402,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster = data_service_test_base.TestCluster(num_workers=3)
     dataset1 = dataset_ops.Dataset.range(1000)
     datasets = [
-        dataset_ops.Dataset.from_tensors("a").repeat(100),
-        dataset_ops.Dataset.from_tensors("b").repeat(100),
-        dataset_ops.Dataset.from_tensors("c").repeat(100),
+        dataset_ops.Dataset.from_tensors("a").repeat(50),
+        dataset_ops.Dataset.from_tensors("b").repeat(50),
+        dataset_ops.Dataset.from_tensors("c").repeat(50),
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
     dataset2 = dataset_ops.Dataset.choose_from_datasets(

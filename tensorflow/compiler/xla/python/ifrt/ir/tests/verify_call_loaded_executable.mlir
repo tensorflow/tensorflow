@@ -19,7 +19,7 @@ func.func @good_with_control_dep(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>
 
@@ -34,7 +34,7 @@ func.func @requires_in_ifrt_function(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>
 
@@ -72,7 +72,7 @@ func.func @requires_matching_signature(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>
 
@@ -89,7 +89,7 @@ func.func @io_aliases_should_be_pairs(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>
 
@@ -106,7 +106,7 @@ func.func @io_aliases_should_have_valid_input_index(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>
 
@@ -124,7 +124,7 @@ func.func @io_aliases_should_only_alias_input_once(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>
 
@@ -141,7 +141,7 @@ func.func @io_aliases_should_have_valid_output_index(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>
 
@@ -159,7 +159,7 @@ func.func @io_aliases_should_only_alias_output_once(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>
 
@@ -176,6 +176,6 @@ func.func @io_aliases_should_have_same_type(
   return
 }
 
-ifrt.LoadedExecutable @callee {devices=array<i32: 0, 1>}
+ifrt.LoadedExecutable @callee on devices [0,1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>

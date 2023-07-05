@@ -55,7 +55,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/190842754): Enable test in OSS.
-        "no_pip",  # TODO(b/187847053): Enable test in pip.
     ],
     deps = [
         ":interpreter",
@@ -152,7 +151,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
         "no_windows",
     ],
     deps = [
@@ -477,12 +475,11 @@ py_test(
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/client:session",
         "//tensorflow/python/layers",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model",
     ],
 )

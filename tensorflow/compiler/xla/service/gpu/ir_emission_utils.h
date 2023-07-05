@@ -59,6 +59,11 @@ inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
+// SoftmaxRewriterTriton sets backend_config of Triton Softmax custom fusions to
+// this string.
+inline constexpr absl::string_view kTritonSoftmaxFusionKind =
+    "__triton_softmax";
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
@@ -254,6 +259,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
 
 std::optional<TransposeDescription> FindAnyTiledTranspose(
     const HloInstruction& instr);
+
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);

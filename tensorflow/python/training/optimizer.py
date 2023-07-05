@@ -961,9 +961,9 @@ class Optimizer(
     )
     return current_graph_non_slot_variables
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """From Trackable. Find a non-slot variable in the current graph."""
-    unconditional = super()._lookup_dependency(name)
+    unconditional = super()._lookup_dependency(name, cached_dependencies)
     if unconditional is not None:
       return unconditional
     graph = None if context.executing_eagerly() else ops.get_default_graph()

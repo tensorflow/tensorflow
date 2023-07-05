@@ -629,6 +629,8 @@ cuda_py_strict_test(
     shard_count = 2,
     tags = [
         "no_oss",  # TODO(b/282985589)
+        "noasan",
+        "notsan",
         "optonly",
     ],
     deps = [

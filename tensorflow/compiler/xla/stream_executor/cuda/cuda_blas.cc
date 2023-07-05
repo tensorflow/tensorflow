@@ -762,14 +762,14 @@ static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
 }
 
 static tsl::Status PopulateProfileFromTimer(
-    GpuTimer &timer, blas::AlgorithmType algorithm,
+    std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
-  TF_RETURN_IF_ERROR(timer.Stop());
   if (output_profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
     output_profile_result->set_elapsed_time_in_ms(
-        timer.GetElapsedMilliseconds());
+        absl::ToDoubleMilliseconds(duration));
   }
   return ::tsl::OkStatus();
 }
@@ -786,9 +786,10 @@ tsl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
 
-  CHECK(stream);
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                               output_profile_result != nullptr));
 
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
   // we do the following compile-time check on the default value:
@@ -802,7 +803,7 @@ tsl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       ldc, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
   return ::tsl::OkStatus();
 }
 
@@ -818,8 +819,10 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
   TF_ASSIGN_OR_RETURN(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                               output_profile_result != nullptr));
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
 #if CUDA_VERSION >= 11000
@@ -832,18 +835,36 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
           static_cast<const Eigen::bfloat16 *>(a.opaque()) + batch * stride_a);
       const auto *b_matrix = reinterpret_cast<const __nv_bfloat16 *>(
           static_cast<const Eigen::bfloat16 *>(b.opaque()) + batch * stride_b);
-      auto *c_matrix = reinterpret_cast<__nv_bfloat16 *>(
-          static_cast<Eigen::bfloat16 *>(c->opaque()) + batch * stride_c);
-      TF_RETURN_IF_ERROR(DoBlasInternalImpl(
-          AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true,
-          math_type, AsCublasOperation(transa), AsCublasOperation(transb), m, n,
-          k, static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
-          b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
-          c_matrix, CUDA_R_16BF, ldc, AsCublasComputeType(computation_type),
-          static_cast<cublasGemmAlgo_t>(algorithm)));
+
+      if (AsCudaDataType(type_c) == CUDA_R_16BF) {
+        auto *c_matrix = reinterpret_cast<__nv_bfloat16 *>(
+            static_cast<Eigen::bfloat16 *>(c->opaque()) + batch * stride_c);
+        TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+            AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true,
+            math_type, AsCublasOperation(transa), AsCublasOperation(transb), m,
+            n, k, static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
+            b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
+            c_matrix, AsCudaDataType(type_c), ldc,
+            AsCublasComputeType(computation_type),
+            static_cast<cublasGemmAlgo_t>(algorithm)));
+      } else if (AsCudaDataType(type_c) == CUDA_R_32F) {
+        auto *c_matrix = static_cast<float *>(c->opaque()) + batch * stride_c;
+        TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+            AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true,
+            math_type, AsCublasOperation(transa), AsCublasOperation(transb), m,
+            n, k, static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
+            b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
+            c_matrix, AsCudaDataType(type_c), ldc,
+            AsCublasComputeType(computation_type),
+            static_cast<cublasGemmAlgo_t>(algorithm)));
+      } else {
+        return tsl::errors::Internal(
+            "Unsupported type combination for GEMM: %s and %s",
+            blas::DataTypeString(type_a), blas::DataTypeString(type_c));
+      }
     }
     TF_RETURN_IF_ERROR(
-        PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+        PopulateProfileFromTimer(timer, algorithm, output_profile_result));
     return tsl::OkStatus();
   }
 #endif
@@ -856,7 +877,7 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       batch_count, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
   return ::tsl::OkStatus();
 }
 

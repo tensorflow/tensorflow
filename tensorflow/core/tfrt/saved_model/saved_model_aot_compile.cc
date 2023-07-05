@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
-#include "tensorflow/core/tfrt/utils/tfrt_runtime.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system_helper.h"
@@ -33,9 +33,7 @@ limitations under the License.
 
 namespace tensorflow::tfrt_stub {
 
-AotOptions::AotOptions()
-    : graph_execution_options(
-          TfrtRuntime::GetGlobalTfrtRuntime().GetRuntime()) {}
+AotOptions::AotOptions() : graph_execution_options(GetGlobalRuntime()) {}
 
 Status AotCompileSavedModel(absl::string_view input_model_dir,
                             const AotOptions& aot_options,

@@ -784,7 +784,7 @@ LogicalResult Rewrite(
   // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
   // structured lowering.
   old_parallel_execute.walk(
-      [&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
+      [&](TF::_XlaCompileMlirPlaceholderProgramKeyOp key_op) {
         key_op.replaceAllUsesWith(compile_op->getResult(1));
         key_op.erase();
       });

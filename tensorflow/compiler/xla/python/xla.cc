@@ -51,10 +51,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
@@ -157,7 +157,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("F16", F16)
       .value("F8E4M3FN", F8E4M3FN)
       .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
+      .value("F8E4M3FNUZ", F8E4M3FNUZ)
       .value("F8E5M2", F8E5M2)
+      .value("F8E5M2FNUZ", F8E5M2FNUZ)
       .value("BF16", BF16)
       .value("F32", F32)
       .value("F64", F64)
@@ -485,7 +487,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
-         const absl::flat_hash_map<std::string, PjRtValueType>& options)
+         const absl::flat_hash_map<std::string, PjRtValueType>& options,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
 #ifdef XLA_PYTHON_ENABLE_TPU
@@ -498,13 +501,28 @@ PYBIND11_MODULE(xla_extension, m) {
         }
 #endif
 #endif  // XLA_PYTHON_ENABLE_TPU
-        std::unique_ptr<PjRtClient> c_api_client =
-            xla::ValueOrThrow(GetCApiClient(platform_name, options));
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        if (distributed_client != nullptr) {
+          kv_get = [distributed_client, platform_name](const std::string& k,
+                                                       absl::Duration timeout) {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(platform_name, ":", k), timeout);
+          };
+          kv_put = [distributed_client, platform_name](const std::string& k,
+                                                       const std::string& v) {
+            return distributed_client->KeyValueSet(
+                absl::StrCat(platform_name, ":", k), v);
+          };
+        }
+        std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
+            GetCApiClient(platform_name, options, kv_get, kv_put));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(c_api_client)));
       },
       py::arg("platform_name"),
-      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>());
+      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
+      py::arg("distributed_client") = nullptr);
   // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
@@ -597,6 +615,8 @@ PYBIND11_MODULE(xla_extension, m) {
            [](const PyLoadedExecutable& self) {
              return ValueOrThrow(self.pjrt_executable()->GetCompileOptions());
            })
+      .def("cost_analysis",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {

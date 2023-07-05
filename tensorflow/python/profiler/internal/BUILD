@@ -52,7 +52,7 @@ py_strict_library(
         "//tensorflow/python/ops:tensor_array_grad",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/profiler:model_analyzer",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:compat",
     ],

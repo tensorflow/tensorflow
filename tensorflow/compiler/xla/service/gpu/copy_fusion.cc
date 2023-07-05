@@ -39,7 +39,11 @@ StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     HloComputation* fused_computation = hlo->fused_instructions_computation();
     HloInstruction* root = fused_computation->root_instruction();
     if (IsReductionFromOrToContiguousDimensions(*root) ||
-        root->opcode() == HloOpcode::kScatter) {
+        root->opcode() == HloOpcode::kScatter ||
+        (hlo->IsMultiOutputFusion() &&
+         absl::c_all_of(root->operands(), [](const HloInstruction* slice) {
+           return slice->opcode() == HloOpcode::kSlice;
+         }))) {
       continue;
     }
     for (auto user : hlo->users()) {

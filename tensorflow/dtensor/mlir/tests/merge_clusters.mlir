@@ -16,7 +16,7 @@ func.func @main(%arg0: tensor<i32>) -> (tensor<1xi32>,  tensor<i64>, tensor<1xi3
   // CHECK:        tf_device.return
   // CHECK-NEXT: _mesh = "TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
   // CHECK:      %[[CLUSTER_OUT:.*]]:4 = "tf_device.cluster"
-  // CHECK:        "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK:        "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[CONST_OUT1:.*]] = "tf.Const"
   // CHECK-NEXT:   "tf.Const"
   // CHECK-NEXT:   "tf._XlaSendFromHostV2"
@@ -26,7 +26,7 @@ func.func @main(%arg0: tensor<i32>) -> (tensor<1xi32>,  tensor<i64>, tensor<1xi3
   // CHECK-NEXT:   "tf._XlaSendFromHostV2"
   // CHECK-NEXT:   %[[CONST_OUT2:.*]] = "tf.Const"
   // CHECK-NEXT:   "tf._XlaSendFromHostV2"
-  // CHECK-NEXT:   "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK-NEXT:   "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[CAST_OUT:.*]] = "tf.Cast"
   // CHECK-NEXT:   "tf.Const"
   // CHECK-NEXT:   "tf.FloorMod"
@@ -35,7 +35,7 @@ func.func @main(%arg0: tensor<i32>) -> (tensor<1xi32>,  tensor<i64>, tensor<1xi3
   // CHECK-NEXT: _mesh = "CPU|x=1|0|0|/job:localhost/task:0/device:CPU:0
   // CHECK-NEXT: return %[[CLUSTER_OUT]]#0, %[[CLUSTER_OUT]]#1, %[[CLUSTER_OUT]]#2, %[[CLUSTER_OUT]]#3
   %7, %8 = "tf_device.cluster"() ({
-    %0 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %0 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %1 = "tf.Const"() {_layout = ["sharding_specs:unsharded, mesh:CPU|x=1|0|0|/job:localhost/task:0/device:CPU:0"], value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
     %2 = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
     "tf._XlaSendFromHostV2"(%1, %0, %2) {key = "communication_key_sharding_specs:, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3_0"} : (tensor<1xi32>, tensor<2x!tf_type.string>, tensor<i64>) -> ()
@@ -63,7 +63,7 @@ func.func @main(%arg0: tensor<i32>) -> (tensor<1xi32>,  tensor<i64>, tensor<1xi3
     tf_device.return {_layout = []}
   }) {_mesh = "TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"} : () -> ()
   %9, %10 = "tf_device.cluster"() ({
-    %0 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %0 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %1 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %2 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
     %3 = "tf.FloorMod"(%1, %2) : (tensor<i64>, tensor<i64>) -> tensor<i64>

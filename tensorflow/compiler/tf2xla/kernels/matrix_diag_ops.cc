@@ -457,7 +457,7 @@ REGISTER_XLA_OP(Name("MatrixDiagPartV2")
 REGISTER_XLA_OP(Name("MatrixDiagPartV3")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("padding_value"),
-                MatrixDiagPartOp);
+                MlirXlaOpKernel);
 
 class MatrixSetDiagOp : public XlaOpKernel {
  public:

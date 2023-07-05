@@ -199,19 +199,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_rng_header",
-    hdrs = if_gpu_is_configured(["gpu_rng.h"]),
-    deps = [
-        ":gpu_types_header",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "gpu_stream_header",
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
@@ -329,6 +316,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tsl_copts(),
     visibility = set_external_visibility([
+        "//third_party/py/jax/jaxlib:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",

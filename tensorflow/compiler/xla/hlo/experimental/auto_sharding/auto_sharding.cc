@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
@@ -48,22 +49,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "ortools/linear_solver/linear_solver.h"
-#include "ortools/linear_solver/linear_solver.pb.h"
-#ifdef PLATFORM_GOOGLE
-#include "file/base/helpers.h"
-#include "util/task/status.pb.h"
-#endif
-
-using MPConstraint = operations_research::MPConstraint;
-using MPSolver = operations_research::MPSolver;
-using MPSolverParameters = operations_research::MPSolverParameters;
-using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
@@ -76,9 +65,12 @@ std::vector<double> ReshardingCostVector(
   CHECK(!strategies->is_tuple) << "Only works with strategy vector.";
   std::vector<double> ret;
   ret.reserve(strategies->leaf_vector.size());
+  auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
+                                              ? HloSharding::Replicate()
+                                              : required_sharding;
   for (const auto& x : strategies->leaf_vector) {
     ret.push_back(cluster_env.ReshardingCost(operand_shape, x.output_sharding,
-                                             required_sharding));
+                                             required_sharding_for_resharding));
   }
   return ret;
 }
@@ -424,46 +416,6 @@ ReshardingCostsForTupleOperand(const HloInstruction* operand,
                             operand->shape(), tuple_element_shardings)}));
 }
 
-// Add "Replicate()" strategy
-void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
-                           const ClusterEnvironment& cluster_env,
-                           const StrategyMap& strategy_map,
-                           std::unique_ptr<StrategyVector>& strategies,
-                           double replicated_penalty) {
-  HloSharding output_spec = HloSharding::Replicate();
-
-  std::vector<std::vector<double>> resharding_costs;
-  std::vector<HloSharding> input_shardings;
-  if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
-    CHECK_EQ(ins->operand_count(), 1)
-        << "Do not support instructions with more than one tuple "
-           "operand. If this CHECK fails, we will need to fix "
-           "b/233412625.";
-    std::tie(resharding_costs, input_shardings) =
-        ReshardingCostsForTupleOperand(ins->operand(0),
-                                       strategy_map.at(ins->operand(0)).get());
-    LOG(INFO) << absl::StrJoin(resharding_costs.back(), ",");
-  } else {
-    for (int64_t k = 0; k < ins->operand_count(); ++k) {
-      auto operand = ins->operand(k);
-      if (ins->opcode() == HloOpcode::kConditional) {
-        resharding_costs.push_back(std::vector<double>(
-            strategy_map.at(operand)->leaf_vector.size(), 0));
-        input_shardings.push_back(output_spec);
-      } else {
-        resharding_costs.push_back(ReshardingCostVector(
-            strategy_map.at(operand).get(), ins->operand(k)->shape(),
-            output_spec, cluster_env));
-        input_shardings.push_back(output_spec);
-      }
-    }
-  }
-  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-  strategies->leaf_vector.push_back(ShardingStrategy(
-      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
-       std::move(resharding_costs), input_shardings}));
-}
-
 std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     const HloInstruction* ins, const StrategyMap& strategy_map) {
   std::vector<std::vector<double>> resharding_costs;
@@ -471,7 +423,8 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     auto operand = ins->operand(i);
     const auto& operand_strategies = strategy_map.at(operand);
     if (operand->shape().IsTuple()) {
-      if (ins->opcode() == HloOpcode::kConditional) {
+      if (ins->opcode() == HloOpcode::kConditional ||
+          ins->opcode() == HloOpcode::kOutfeed) {
         resharding_costs.push_back(std::vector<double>(1, 0));
       } else {
         CHECK_EQ(ins->operand_count(), 0)
@@ -492,6 +445,98 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     }
   }
   return resharding_costs;
+}
+
+void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
+                             const ClusterEnvironment& cluster_env,
+                             const StrategyMap& strategy_map,
+                             std::unique_ptr<StrategyVector>& strategies,
+                             double replicated_penalty) {
+  HloSharding output_spec = HloSharding::Replicate();
+  std::vector<std::vector<double>> resharding_costs;
+  std::vector<HloSharding> input_shardings;
+  if (ins->has_sharding()) {
+    std::vector<Shape> operand_shapes(ins->operand_count());
+    for (int i = 0; i < ins->operand_count(); ++i) {
+      operand_shapes[i] = ins->operand(i)->shape();
+    }
+    auto all_operands_tuple_shape = ShapeUtil::MakeTupleShape(operand_shapes);
+    auto get_input_sharding = [&](int index) {
+      auto sharding = ins->sharding();
+      if (sharding.IsTuple()) {
+        return (index >= 0)
+                   ? sharding.GetSubSharding(all_operands_tuple_shape,
+                                             {0, static_cast<int64_t>(index)})
+                   : sharding.GetSubSharding(all_operands_tuple_shape, {1});
+      } else {
+        return sharding;
+      }
+    };
+
+    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
+    for (size_t i = 0; i < tuple_size; ++i) {
+      auto input_sharding = get_input_sharding(i);
+      input_shardings.push_back(input_sharding);
+      resharding_costs.push_back(ReshardingCostVector(
+          strategy_map.at(ins->operand(0))->childs[i].get(),
+          ins->operand(0)->shape().tuple_shapes(i), input_sharding,
+          cluster_env));
+    }
+    auto input_sharding = get_input_sharding(-1);
+    input_shardings.push_back(input_sharding);
+  } else {
+    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
+    for (size_t i = 0; i < tuple_size; ++i) {
+      resharding_costs.push_back(std::vector<double>(
+          strategy_map.at(ins->operand(0))->childs[i].get()->leaf_vector.size(),
+          0));
+    }
+  }
+  resharding_costs.push_back({});
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
+  strategies->leaf_vector.push_back(ShardingStrategy(
+      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
+       std::move(resharding_costs), input_shardings}));
+}
+
+// Add "Replicate()" strategy
+void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
+                           const ClusterEnvironment& cluster_env,
+                           const StrategyMap& strategy_map,
+                           std::unique_ptr<StrategyVector>& strategies,
+                           double replicated_penalty) {
+  HloSharding output_spec = HloSharding::Replicate();
+
+  std::vector<std::vector<double>> resharding_costs;
+  std::vector<HloSharding> input_shardings;
+
+  if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
+    CHECK_EQ(ins->operand_count(), 1)
+        << "Do not support instructions with more than one tuple "
+           "operand. If this CHECK fails, we will need to fix "
+           "b/233412625.";
+    std::tie(resharding_costs, input_shardings) =
+        ReshardingCostsForTupleOperand(ins->operand(0),
+                                       strategy_map.at(ins->operand(0)).get());
+  } else {
+    for (int64_t k = 0; k < ins->operand_count(); ++k) {
+      auto operand = ins->operand(k);
+      if (ins->opcode() == HloOpcode::kConditional) {
+        resharding_costs.push_back(std::vector<double>(
+            strategy_map.at(operand)->leaf_vector.size(), 0));
+        input_shardings.push_back(output_spec);
+      } else {
+        resharding_costs.push_back(ReshardingCostVector(
+            strategy_map.at(operand).get(), ins->operand(k)->shape(),
+            output_spec, cluster_env));
+        input_shardings.push_back(output_spec);
+      }
+    }
+  }
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
+  strategies->leaf_vector.push_back(ShardingStrategy(
+      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
+       std::move(resharding_costs), input_shardings}));
 }
 
 // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
@@ -790,24 +835,18 @@ int64_t MaxNumTiles(const StrategyMap& strategy_map,
   return max_num_tiles;
 }
 
-// Choose an operand to follow.
-// We choose to follow the operand with the highest priority.
-// The priority is defined as a two element tuple as below, where we compare
-// the first key first, and if the first key is the same, we compare the second
-// key:
+// Choose an operand to follow.  We choose to follow the operand with the
+// highest priority.  The priority is defined as a function of two entities as
+// below:
 //
-// priority(operand) = (
-//   max(x.output_spec.num_tiles for x in operand.strategies),
-//   depth(operand),
-// )
+// priority(operand) =
+//   max(x.output_spec.num_tiles for x in operand.strategies) +
+//   depth(operand) * depth_normalizer
 //
-// For example, When one operand has a sharding strategy that splits into
-// N slices, while another operand only has replicated strategy, we will choose
-// the first operand to follow since it can be split into more slices. When
-// both operands can be sliced into the same number of slices, we follow the
-// deeper one in the computational graph. When the depth is also similar,
-// we set these operators to be "tied" and let the ILP solver to pick which one
-// to follow.
+// For example, We therefore prefer one operand with strategies with a high
+// number of tiles and operands that have a higher depth in the graph. When the
+// priorities are similar (within range_delta), we set these operators to be
+// "tied" and let the ILP solver to pick which one to follow.
 //
 // The function returns (follow_idx, tie), where the follow_idx is the id of
 // the operand to follow and tie is a boolean variable that indicates whether
@@ -817,7 +856,6 @@ int64_t MaxNumTiles(const StrategyMap& strategy_map,
 std::pair<int64_t, bool> ChooseOperandToFollow(
     const StrategyMap& strategy_map, const InstructionDepthMap& depth_map,
     const AliasMap& alias_map,
-    const absl::flat_hash_set<const HloInstruction*>& undefined_set,
     int64_t max_depth, const HloInstruction* ins) {
   // If an alias constraint is set, always follow its alias source.
   auto it = alias_map.find(ins);
@@ -838,7 +876,6 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
 
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
     const HloInstruction* operand = ins->operand(i);
-    if (!undefined_set.count(operand)) {
       double priority = MaxNumTiles(strategy_map, operand) +
                         depth_map.at(operand) * depth_normalizer;
       if (priority > max_priority + range_delta) {
@@ -848,7 +885,6 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
       } else if (priority >= max_priority - range_delta) {
         tie = true;
       }
-    }
   }
   CHECK(follow_idx.has_value());
 
@@ -1090,19 +1126,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               operand_strategies = strategy_map.at(operand).get();
               operand_shape = operand->shape();
             }
-            std::vector<double> in_resharding_costs =
+            resharding_costs.push_back(
                 ReshardingCostVector(operand_strategies, operand_shape,
-                                     existing_sharding, cluster_env);
-            // If there is only one option for resharding, and the cost
-            // computed for that option is kInfinityCost, set the cost to
-            // zero. This is okay because there is only one option anyway, and
-            // having the costs set to kInfinityCost is problematic for the
-            // solver.
-            if (in_resharding_costs.size() == 1 &&
-                in_resharding_costs[0] == kInfinityCost) {
-              in_resharding_costs[0] = 0;
-            }
-            resharding_costs.push_back(in_resharding_costs);
+                                     existing_sharding, cluster_env));
           }
         }
         double memory_cost =
@@ -1114,6 +1140,21 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         strategies->leaf_vector.push_back(
             ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
                               resharding_costs, input_shardings}));
+      }
+      CHECK_EQ(strategies->leaf_vector.size(), 1);
+      {
+        // If there is only one option for resharding, and the cost
+        // computed for that option is kInfinityCost, set the cost to
+        // zero. This is okay because there is only one option anyway, and
+        // having the costs set to kInfinityCost is problematic for the
+        // solver.
+        for (auto& operand_resharding_costs :
+             strategies->leaf_vector[0].resharding_costs) {
+          if (operand_resharding_costs.size() == 1 &&
+              operand_resharding_costs[0] >= kInfinityCost) {
+            operand_resharding_costs[0] = 0;
+          }
+        }
       }
     } else if (!strategies->following) {
       // If existing sharding is a partial sharding from previous iteration,
@@ -1255,12 +1296,34 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
   return true;
 }
 
+void ScaleCostsWithExecutionCounts(StrategyVector* strategies,
+                                   int64_t execution_count) {
+  if (strategies->is_tuple) {
+    for (size_t i = 0; i < strategies->childs.size(); ++i) {
+      ScaleCostsWithExecutionCounts(strategies->childs[i].get(),
+                                    execution_count);
+    }
+  } else {
+    for (auto& strategy : strategies->leaf_vector) {
+      strategy.compute_cost *= execution_count;
+      strategy.communication_cost *= execution_count;
+      for (auto i = 0; i < strategy.resharding_costs.size(); ++i) {
+        for (auto j = 0; j < strategy.resharding_costs[i].size(); ++j) {
+          strategy.resharding_costs[i][j] *= execution_count;
+        }
+      }
+    }
+  }
+}
+
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
 // Build possible sharding strategies and their costs for all instructions.
 StatusOr<std::tuple<StrategyMap, LeafStrategies, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
+                     const absl::flat_hash_map<const HloInstruction*, int64_t>&
+                         instruction_execution_counts,
                      const InstructionDepthMap& depth_map,
                      const InstructionBatchDimMap& batch_dim_map,
                      const AliasMap& alias_map,
@@ -1279,7 +1342,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   StableHashMap<int64_t, std::vector<ShardingStrategy>> pretrimmed_strategy_map;
   LeafStrategies leaf_strategies;
   AssociativeDotPairs associative_dot_pairs;
-  absl::flat_hash_set<const HloInstruction*> undefined_set;
 
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
@@ -1388,9 +1450,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         const Shape& shape = ins->shape();
         const StrategyVector* src_strategies = strategy_map.at(indices).get();
         CHECK(!src_strategies->is_tuple);
-        if (undefined_set.contains(indices)) {
-          break;
-        }
         strategies->following = src_strategies;
         for (int32_t index_dim = 0; index_dim < indices->shape().rank();
              index_dim++) {
@@ -1403,7 +1462,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
             // Split only when the tensor shape is divisable by device
             // mesh.
-            // TODO(b/220942808) Shard non-divisible dimensions.
             if (device_mesh.dim(j) == 1 ||
                 (only_allow_divisible &&
                  !IsDivisible(shape.dimensions(index_dim),
@@ -1449,9 +1507,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                               leaf_strategies);
 
         const HloInstruction* operand = ins->operand(0);
-        if (undefined_set.contains(operand)) {
-          break;
-        }
 
         const StrategyVector* operand_strategies =
             strategy_map.at(operand).get();
@@ -1481,8 +1536,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                               leaf_strategies);
         const HloInstruction* operand = ins->operand(0);
-        if (!undefined_set.count(operand) &&
-            !(mesh_nn_dims >= 2 && solver_option.allow_mixed_mesh_shape)) {
+        if (!(mesh_nn_dims >= 2 && solver_option.allow_mixed_mesh_shape)) {
           // Create follow strategies
           const StrategyVector* src_strategies = strategy_map.at(operand).get();
           CHECK(!src_strategies->is_tuple);
@@ -1561,9 +1615,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                               leaf_strategies);
 
         const HloInstruction* operand = ins->operand(0);
-        if (undefined_set.contains(operand)) {
-          break;
-        }
 
         // Create follow strategies
         const StrategyVector* src_strategies = strategy_map.at(operand).get();
@@ -1615,10 +1666,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           case HloOpcode::kSelectAndScatter:
           case HloOpcode::kConcatenate:
             // Follow the operand according to the follow heuristics
-            follow_idx =
-                ChooseOperandToFollow(strategy_map, depth_map, alias_map,
-                                      undefined_set, max_depth, ins)
-                    .first;
+            follow_idx = ChooseOperandToFollow(strategy_map, depth_map,
+                                               alias_map, max_depth, ins)
+                             .first;
             break;
           // The following types are better to follow the first operand.
           case HloOpcode::kSlice:
@@ -1762,7 +1812,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         int64_t follow_idx;
         bool tie;
         std::tie(follow_idx, tie) = ChooseOperandToFollow(
-            strategy_map, depth_map, alias_map, undefined_set, max_depth, ins);
+            strategy_map, depth_map, alias_map, max_depth, ins);
 
         if (!tie || AllowTieFollowing(ins)) {
           strategies->following =
@@ -1991,6 +2041,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                 .value();
         break;
       }
+      case HloOpcode::kOutfeed: {
+        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                              leaf_strategies);
+        GenerateOutfeedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, replicated_penalty);
+        break;
+      }
       case HloOpcode::kAfterAll: {
         strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                               leaf_strategies);
@@ -2002,11 +2059,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         LOG(FATAL) << "Unhandled instruction: " + ins->ToString();
     }
     RemoveDuplicatedStrategy(strategies);
-    if (ins->has_sharding()) {
+    if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
-      // TODO(b/208668853) If needed, we can make auto sharding faster by using
-      // this sharding spec when merging node using strategies->following.
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
           ins->sharding(), cluster_env, pretrimmed_strategy_map, call_graph,
@@ -2035,6 +2090,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       }
     }
     RemoveInvalidShardingsWithShapes(ins->shape(), strategies.get());
+
+    if (instruction_execution_counts.contains(ins)) {
+      ScaleCostsWithExecutionCounts(strategies.get(),
+                                    instruction_execution_counts.at(ins));
+    }
     XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
 
     // Debug options: forcibly set the strategy of some instructions.
@@ -2101,477 +2161,24 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                          std::move(associative_dot_pairs));
 }
 
-void PrintLargestInstructions(
-    const std::vector<int64_t>& chosen_strategy,
-    const std::vector<std::vector<double>>& memory_cost,
-    const std::vector<std::vector<int>>& liveness,
-    const std::vector<std::string>& instruction_names) {
-  // This memory consumption computation is different from
-  // that in PrintAutoShardingSolution() because how L and m are created to be
-  // different from liveness_set and strategy.memory_cost.
-
-  std::vector<int64_t> instruction_ids;
-  std::vector<std::pair<size_t, double>> time_memory_usage;
-  for (size_t t = 0; t < liveness.size(); ++t) {
-    double mem = 0.0;
-    for (auto i : liveness[t]) {
-      mem += memory_cost[i][chosen_strategy[i]];
-    }
-    time_memory_usage.push_back(std::make_pair(t, mem));
-  }
-  struct {
-    bool operator()(std::pair<size_t, double> a,
-                    std::pair<size_t, double> b) const {
-      return a.second > b.second;
-    }
-  } MemLarger;
-  std::sort(time_memory_usage.begin(), time_memory_usage.end(), MemLarger);
-
-  LOG(INFO) << "using m[] and L[], max memory usage: "
-            << time_memory_usage.front().second / (1024 * 1024 * 1024)
-            << " GB at time " << time_memory_usage.front().first;
-  // Gets largest tensors in top k time steps.
-  size_t k = 3;
-  k = std::min(k, time_memory_usage.size());
-  std::vector<std::pair<size_t, double>> instruction_mem;
-  absl::flat_hash_set<size_t> instruction_set;
-  for (size_t t = 0; t < k; t++) {
-    for (auto i : liveness[time_memory_usage.at(t).first]) {
-      double mem = memory_cost[i][chosen_strategy[i]];
-      if (mem > 100 * 1024 * 1024 &&
-          instruction_set.find(i) == instruction_set.end()) {
-        instruction_mem.push_back(std::make_pair(i, mem));
-        instruction_set.insert(i);
-      }
-    }
-  }
-  std::sort(instruction_mem.begin(), instruction_mem.end(), MemLarger);
-
-  size_t top_tensors = 10;
-  top_tensors = std::min(top_tensors, instruction_mem.size());
-  VLOG(1) << "Top " << top_tensors << " largest tensors:";
-  for (size_t i = 0; i < top_tensors; i++) {
-    VLOG(1) << "instruction name: "
-            << instruction_names.at(instruction_mem.at(i).first)
-            << " memory usage: "
-            << instruction_mem.at(i).second / (1024 * 1024 * 1024) << "GB";
-  }
-}
-
-struct ORToolsSolverResult {
- public:
-  ORToolsSolverResult(
-      StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
-          status,
-      bool skip_auto_sharding)
-      : status(status), skip_auto_sharding(skip_auto_sharding) {}
-  StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
-      status;
-  bool skip_auto_sharding;
-};
-
 // NOLINTEND
 
-// We formulate the auto sharding process as the following ILP problem:
-// Variables:
-//   s[i]: Sharding strategy one-hot vector.
-//         dim(s[i]) == # sharding strategies of the i-th XLA op
-//         s_len[i] := dim(s[i]) in the arguments
-//   e[i, j]: Strategy one-hot vector of edge i -> j.
-//            dim(e[i, j]) == dim(s[i]) * dim(s[j])
-// Constants:
-//   N: Number of total XLA ops
-//   M: Memory budget
-//   E: Edge set {(i, j)}
-//   L[t]: Index of live instructions at time t
-//   c[i]: Computation cost vector of instruction i
-//   d[i]: Communication cost vector of instruction i
-//   m[i]: Memory cost vector of instruction i
-//         dim(c[i]) == dim(d[i]) == dim(m[i]) == dim(s[i])
-//   r[i, j]: The resharding cost vector of edge i -> j
-//            dim(e[i, j]) == dim(r[i, j])
-//   A: Alias set {(i, j)}
-//   v[i, j]: v[i, j](p, q) == 1 if strategy p is different than q, otherwise
-//            v[i, j](p, q) == 0
-//            dim(e[i, j]) == dim(v[i, j])
-// Problem:
-//   Minimize sum_{0 <= i < N} s[i]^T * (c[i] + d[i])
-//            + sum_{(i, j) in E} e[i, j]^T * r[i, j]
-//   s.t.
-//       Make sure s is one-hot:
-//     0. Do not choose solutions with infinity cost (b/238210866).
-//     a. For 0 <= i < N, s[i] in {0, 1} ^ dim(s[i])
-//     b. For 0 <= i < N, s[i]^T * 1 == 1
-//       Memory constraint:
-//     c. For all t: sum_{i in L[t]} s[i]^T * m[i] <= M
-//       Make sure e is one-hot:
-//     d. For all (i, j) in E, e[i, j] in {0, 1} ^ dim(e[i, j])
-//     e. For all (i, j) in E, e[i, j]^T * 1 == 1
-//       Make sure s[i] and s[j] align with e[i, j]:
-//     f. For all (i, j) in E, 0 <= p < dim(s[i]),
-//        sum_{0 <= q < dim(s[j])} e[i, j](p * dim(s[j]) + q) <= s[i](p)
-//     g. For all (i, j) in E, 0 <= q < dim(s[j]),
-//        sum_{0 <= p < dim(s[i])} e[i, j](p * dim(s[j]) + q) <= s[j](q)
-//     h. For all (i, j) in A and all (p, q),
-//        s[i][p] + s[j][q] <= 1 if v[p, q] == 1.0
-// Serialize parameters of the ILP problem as numpy arrays and call the python
-// solver.
-ORToolsSolverResult CallORToolsSolver(
-    int64_t N, int64_t M, const std::vector<int>& s_len,
-    const std::vector<int>& s_follow, const std::vector<std::pair<int, int>>& E,
-    const std::vector<std::vector<int>>& L,
-    const std::vector<std::vector<double>>& c,
-    const std::vector<std::vector<double>>& d,
-    const std::vector<std::vector<double>>& m,
-    const std::vector<std::vector<double>>& r,
-    const std::vector<std::pair<int, int>>& A,
-    const std::vector<std::vector<double>>& v,
-    const std::vector<std::string>& instruction_names,
-    int64_t solver_timeout_in_seconds, bool crash_at_infinity_costs_check) {
-  size_t num_edges = E.size();
-
-  int32_t num_workers = 32;
-  // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(std::make_unique<MPSolver>("", MPSolver::SAT_INTEGER_PROGRAMMING));
-  CHECK(solver);
-  solver->MutableObjective()->SetMinimization();
-  std::string solver_parameter_str;
-#ifdef PLATFORM_GOOGLE
-  if (solver->ProblemType() ==
-      operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set random_seed, interleave_search and share_binary_clauses for
-    // determinism, and num_workers for parallelism.
-    solver_parameter_str = absl::StrCat(
-        "share_binary_clauses:false,random_seed:1,interleave_"
-        "search:true,num_workers:",
-        num_workers);
-    solver->SetSolverSpecificParametersAsString(solver_parameter_str);
-  }
-#endif
-  // Create variables
-  std::vector<std::vector<MPVariable*>> s(N);
-  std::vector<std::vector<MPVariable*>> e(num_edges);
-
-  size_t var_vector_cnt = 0;
-  for (size_t i = 0; i < N; ++i) {
-    if (s_follow[i] < 0) {
-      var_vector_cnt += 1;
-      // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(s_len[i], absl::StrCat("s[", i, "]"), &s[i]);
-    }
-  }
-
-  for (size_t i = 0; i < N; ++i) {
-    if (s_follow[i] >= 0) {
-      // Copies the variable of followed instruction to the following
-      // instruction.
-      s[i] = s[s_follow[i]];
-    }
-  }
-
-  for (size_t i = 0; i < num_edges; ++i) {
-    std::pair<int, int> edge = E[i];
-    solver->MakeBoolVarArray(
-        s_len[edge.first] * s_len[edge.second],
-        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
-  }
-
-  // Objective
-  // Node costs
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = 0; j < s[i].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(s[i][j]);
-      solver->MutableObjective()->SetCoefficient(
-          s[i][j], accumulated_coefficient + c[i][j] + d[i][j]);
-    }
-  }
-  // Edge costs
-  for (size_t i = 0; i < num_edges; ++i) {
-    for (size_t j = 0; j < e[i].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(e[i][j]);
-      solver->MutableObjective()->SetCoefficient(
-          e[i][j], accumulated_coefficient + r[i][j]);
-    }
-  }
-
-  // Constraints
-  // 0. Do not choose solutions with infinity costs, as it will make the
-  // objective value so large that other solution choices do not matter anymore.
-  // Remove these constraints once b/238210866 is done.
-  for (size_t i = 0; i < N; ++i) {
-    if (s[i].empty()) {
-      continue;
-    }
-    bool all_infinity = true;
-    for (size_t j = 0; j < s[i].size(); ++j) {
-      if (solver->MutableObjective()->GetCoefficient(s[i][j]) >=
-          kInfinityCost) {
-        MPConstraint* constraint = solver->MakeRowConstraint(
-            0.0, 0.0, absl::StrCat("infinitycost: s[", i, "][", j, "] = 0"));
-        constraint->SetCoefficient(s[i][j], 1.0);
-      } else {
-        all_infinity = false;
-      }
-    }
-    if (all_infinity) {
-      LOG(FATAL) << "All of s[" << i << "][*] have infinity costs";
-    }
-  }
-
-  for (size_t i = 0; i < num_edges; ++i) {
-    if (e[i].empty()) {
-      continue;
-    }
-    bool all_infinity = true;
-    for (size_t j = 0; j < e[i].size(); ++j) {
-      std::pair<int, int> edge = E[i];
-      solver->MutableObjective()->SetCoefficient(e[i][j], r[i][j]);
-      if (r[i][j] >= kInfinityCost) {
-        MPConstraint* constraint = solver->MakeRowConstraint(
-            0.0, 0.0,
-            absl::StrCat("infinitycost: e[", edge.first, "][", edge.second,
-                         "][", j, "] = 0"));
-        constraint->SetCoefficient(e[i][j], 1.0);
-      } else {
-        all_infinity = false;
-      }
-    }
-    if (all_infinity) {
-      auto err_msg = absl::StrCat("All of e[", E[i].first, "][", E[i].second,
-                                  "][*] have infinity costs");
-      if (crash_at_infinity_costs_check) {
-        LOG(FATAL) << err_msg;
-      } else {
-        LOG(WARNING) << err_msg;
-        return ORToolsSolverResult(absl::InternalError(err_msg), false);
-      }
-    }
-  }
-
-  // a. specified via "BoolVarArray"
-  // b.
-  for (size_t i = 0; i < N; ++i) {
-    MPConstraint* constraint = solver->MakeRowConstraint(
-        1.0, 1.0,
-        absl::StrCat("sum(s[", i, "][j] for j = [0 .. ", s[i].size(),
-                     ")) = 1"));
-    for (size_t j = 0; j < s[i].size(); ++j) {
-      constraint->SetCoefficient(s[i][j], 1.0);
-    }
-  }
-  // c.
-  if (M > 0) {
-    for (size_t t = 0; t < L.size(); ++t) {
-      std::string str = "[";
-      for (auto i : L[t]) {
-        absl::StrAppend(&str, i, ", ");
-      }
-      str += "]";
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), M, absl::StrCat("mem[", t, "] = ", str));
-      for (auto i : L[t]) {
-        for (size_t j = 0; j < s[i].size(); ++j) {
-          double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
-          constraint->SetCoefficient(s[i][j],
-                                     accumulated_coefficient + m[i][j]);
-        }
-      }
-    }
-  }
-
-  // d. specified via "BoolVarArray"
-  // e.
-  for (size_t i = 0; i < num_edges; ++i) {
-    std::pair<int, int> edge = E[i];
-    MPConstraint* constraint = solver->MakeRowConstraint(
-        1.0, 1.0,
-        absl::StrCat("sum(e[", edge.first, "][", edge.second, "][*]) = 1"));
-    for (size_t j = 0; j < e[i].size(); ++j) {
-      constraint->SetCoefficient(e[i][j], 1.0);
-    }
-  }
-  // f.
-  for (size_t i = 0; i < num_edges; ++i) {
-    std::pair<int, int> edge = E[i];
-    for (size_t p = 0; p < s[edge.first].size(); ++p) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0, absl::StrCat("f for i = ", i, ", p = ", p));
-      constraint->SetCoefficient(s[edge.first][p], -1.0);
-      for (size_t q = 0; q < s[edge.second].size(); ++q) {
-        constraint->SetCoefficient(e[i][p * s[edge.second].size() + q], 1.0);
-      }
-    }
-  }
-  // g.
-  for (size_t i = 0; i < num_edges; ++i) {
-    std::pair<int, int> edge = E[i];
-    for (size_t q = 0; q < s[edge.second].size(); ++q) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), 0, absl::StrCat("g for i = ", i, ", q = ", q));
-      constraint->SetCoefficient(s[edge.second][q], -1.0);
-      for (size_t p = 0; p < s[edge.first].size(); ++p) {
-        constraint->SetCoefficient(e[i][p * s[edge.second].size() + q], 1.0);
-      }
-    }
-  }
-  // h.
-  for (size_t i = 0; i < A.size(); ++i) {
-    std::pair<int, int> alias = A[i];
-    for (size_t p = 0; p < s[alias.first].size(); ++p) {
-      for (size_t q = 0; q < s[alias.second].size(); ++q) {
-        // if lhs == 1
-        if (v[i][p * s[alias.second].size() + q] > 0.5) {
-          MPConstraint* constraint = solver->MakeRowConstraint(
-              -MPSolver::infinity(), 1,
-              absl::StrCat("s[", alias.first, "][", p, "] + s[", alias.second,
-                           "][", q, "] <= 1"));
-          constraint->SetCoefficient(s[alias.first][p], 1.0);
-          constraint->SetCoefficient(s[alias.second][q], 1.0);
-        }
-      }
-    }
-  }
-
-#ifdef PLATFORM_GOOGLE
-  // Exports the model for debugging.
-  bool dump_model = false;
-  if (dump_model) {
-    operations_research::MPModelProto model_proto;
-    solver->ExportModelToProto(&model_proto);
-    auto write_status = file::SetTextProto(
-        // Modify this file path if needed.
-        absl::StrCat("/tmp/model_", solver->NumVariables(), ".proto"),
-        model_proto, file::Defaults());
-    if (!write_status.ok()) {
-      LOG(ERROR) << write_status.message();
-    }
-  }
-#endif
-  solver->SetTimeLimit(absl::Seconds(solver_timeout_in_seconds));
-  VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
-          << "Solver parameter string: " << solver_parameter_str << "\n"
-          << "Number of workers: " << num_workers << "\n"
-          << "Number of threads: " << solver->GetNumThreads() << "\n"
-          << "Time limit: " << solver->time_limit() << "\n"
-          << "Number variables for ILP: " << solver->NumVariables() << "\n"
-          << "Total vector of variables: " << var_vector_cnt << "\n"
-          << "Total instructions: " << N << "\n"
-          << "Memory budget: " << M / (1024 * 1024 * 1024) << "GB\n"
-          << "Number of ILP constraints: " << solver->NumConstraints();
-  auto status = solver->Solve();
-
-  if (status == operations_research::MPSolver::INFEASIBLE) {
-    LOG(ERROR) << "MPSolver could not find any feasible solution.";
-#ifdef PLATFORM_GOOGLE
-    operations_research::MPModelRequest model_request;
-    solver->ExportModelToProto(model_request.mutable_model());
-    if (solver->ProblemType() ==
-        operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-    } else if (solver->ProblemType() ==
-               operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
-    }
-    model_request.set_solver_time_limit_seconds(100);
-    auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
-    LOG(INFO) << iis.status().DebugString();
-    LOG(INFO) << "Infeasible constraints: ";
-    for (int index : iis.constraint_index()) {
-      LOG(INFO) << " - " << model_request.model().constraint(index).name();
-    }
-    for (int index : iis.general_constraint_index()) {
-      LOG(INFO)
-          << " - "
-          << model_request.model().general_constraint(index).DebugString();
-    }
-#endif
-
-    return ORToolsSolverResult(
-        absl::InternalError("MPSolver could not find any feasible solution."),
-        false);
-  } else if (status != operations_research::MPSolver::OPTIMAL) {
-    auto err_msg = "Solver timed out. Will proceed without auto sharding.";
-    LOG(WARNING) << err_msg;
-
-    // The solver timed out. We now rely on heuristic-based sharding propagation
-    // to degrade gracefully.
-    return ORToolsSolverResult(absl::InternalError(err_msg), true);
-  }
-
-  LOG(INFO) << "Solver Status: " << status
-            << " Objective value: " << solver->Objective().Value();
-  if (solver->Objective().Value() >= kInfinityCost) {
-    LOG(WARNING) << "Objective (" << solver->Objective().Value()
-                 << ") is larger than kInfinityCost. It means the solver "
-                    "chooses a solution with kInfinityCost and there may be "
-                    "numerical issues when the solver considering other costs.";
-  }
-  if (VLOG_IS_ON(10)) {
-    // Print solver information for debugging. This hasn't been useful so far,
-    // so leave it at VLOG level 10.
-    operations_research::MPModelProto model_proto;
-    solver->ExportModelToProto(&model_proto);
-    VLOG(10) << "MODEL:";
-    XLA_VLOG_LINES(10, model_proto.DebugString());
-    VLOG(10) << "RESPONSE:";
-    operations_research::MPSolutionResponse response;
-    solver->FillSolutionResponseProto(&response);
-    XLA_VLOG_LINES(10, response.DebugString());
-  }
-
-  // Return value
-  std::vector<int64_t> chosen_strategy(N, -1), e_val(num_edges, -1);
-  for (int i = 0; i < N; ++i) {
-    for (int j = 0; j < s[i].size(); ++j) {
-      // if lhs == 1
-      if (s[i][j]->solution_value() > 0.5) {
-        chosen_strategy[i] = j;
-        break;
-      }
-    }
-  }
-  for (int i = 0; i < num_edges; ++i) {
-    for (int j = 0; j < e[i].size(); ++j) {
-      // if lhs == 1
-      if (e[i][j]->solution_value() > 0.5) {
-        e_val[i] = j;
-        break;
-      }
-    }
-  }
-
-  LOG(INFO) << "N = " << N;
-  if (M < 0) {
-    LOG(INFO) << "memory budget: -1";
-  } else {
-    LOG(INFO) << "memory budget: " << M / (1024 * 1024 * 1024) << " GB";
-  }
-  PrintLargestInstructions(chosen_strategy, m, L, instruction_names);
-  return ORToolsSolverResult(
-      std::make_tuple(std::move(chosen_strategy), std::move(e_val),
-                      solver->Objective().Value()),
-      false);
-}
-
-ORToolsSolverResult CallSolver(
+AutoShardingSolverResult CallSolver(
     const HloInstructionSequence& sequence, const LivenessSet& liveness_set,
     const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
     const CostGraph& cost_graph, const AliasSet& alias_set,
     int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     int64_t solver_timeout_in_seconds) {
   // Serialize edges and edge costs to 1d numpy arrays
-  int64_t N = leaf_strategies.size();
-  int64_t M = memory_budget_per_device;
-  std::vector<int> s_len = cost_graph.node_lens_;
-  const std::vector<int>& s_follow = cost_graph.follow_idx_;
-  std::vector<std::pair<int, int>> E;
-  std::vector<std::vector<double>> r;
+  AutoShardingSolverRequest request;
+  request.num_nodes = leaf_strategies.size();
+  request.memory_budget = memory_budget_per_device;
+  request.s_len = cost_graph.node_lens_;
+  request.s_follow = cost_graph.follow_idx_;
+  request.solver_timeout_in_seconds = solver_timeout_in_seconds;
+  request.crash_at_infinity_costs_check = crash_at_infinity_costs_check;
   for (const auto& iter : cost_graph.edge_costs_) {
-    E.push_back(iter.first);
+    request.e.push_back(iter.first);
     std::vector<double> rij;
     Matrix edge_cost = iter.second;
     for (size_t i = 0; i < edge_cost.n_; i++) {
@@ -2579,17 +2186,15 @@ ORToolsSolverResult CallSolver(
         rij.push_back(edge_cost(i, j));
       }
     }
-    r.push_back(std::move(rij));
+    request.r.push_back(std::move(rij));
   }
 
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
-  std::vector<std::string> instruction_names;
 
   // Serialize node costs
-  std::vector<std::vector<double>> c, d, m;
-  for (size_t i = 0; i < N; ++i) {
+  for (size_t i = 0; i < request.num_nodes; ++i) {
     const StrategyVector* strategies = leaf_strategies[i];
-    instruction_names.push_back(absl::StrCat(
+    request.instruction_names.push_back(absl::StrCat(
         instructions.at(strategies->instruction_id)->name(), " (id: ", i, ")"));
     std::vector<double> ci, di, mi;
     for (size_t j = 0; j < strategies->leaf_vector.size(); ++j) {
@@ -2598,15 +2203,13 @@ ORToolsSolverResult CallSolver(
                    cost_graph.extra_node_costs_[i][j]);
       mi.push_back(strategies->leaf_vector[j].memory_cost);
     }
-    c.push_back(ci);
-    d.push_back(di);
-    m.push_back(mi);
+    request.c.push_back(ci);
+    request.d.push_back(di);
+    request.m.push_back(mi);
   }
 
   // Serialize special edges that forces a alias pair have the same sharding
   // spec
-  std::vector<std::pair<int, int>> A;
-  std::vector<std::vector<double>> v;
   for (const auto& pair : alias_set) {
     const StrategyVector* src_strategies = leaf_strategies[pair.first];
     const StrategyVector* dst_strategies = leaf_strategies[pair.second];
@@ -2627,39 +2230,39 @@ ORToolsSolverResult CallSolver(
     std::vector<int> row_indices;
     std::vector<int> col_indices;
 
-    if (s_follow[idx_a] >= 0) {
+    if (request.s_follow[idx_a] >= 0) {
       row_indices = cost_graph.reindexing_vector_.at(idx_a);
-      idx_a = s_follow[idx_a];
+      idx_a = request.s_follow[idx_a];
     } else {
-      row_indices.assign(s_len[idx_a], 0);
+      row_indices.assign(request.s_len[idx_a], 0);
       std::iota(row_indices.begin(), row_indices.end(), 0);
     }
 
-    if (s_follow[idx_b] >= 0) {
+    if (request.s_follow[idx_b] >= 0) {
       col_indices = cost_graph.reindexing_vector_.at(idx_b);
-      idx_b = s_follow[idx_b];
+      idx_b = request.s_follow[idx_b];
     } else {
-      col_indices.assign(s_len[idx_b], 0);
+      col_indices.assign(request.s_len[idx_b], 0);
       std::iota(col_indices.begin(), col_indices.end(), 0);
     }
 
-    CHECK_EQ(s_len[idx_a], row_indices.size());
-    CHECK_EQ(s_len[idx_b], col_indices.size());
+    CHECK_EQ(request.s_len[idx_a], row_indices.size());
+    CHECK_EQ(request.s_len[idx_b], col_indices.size());
 
-    A.push_back(std::make_pair(idx_a, idx_b));
+    request.a.push_back(std::make_pair(idx_a, idx_b));
     std::vector<double> vij;
     for (int i : row_indices) {
       for (int j : col_indices) {
         vij.push_back(raw_cost(i, j));
       }
     }
-    v.push_back(vij);
+    request.v.push_back(vij);
   }
 
   // Serialize liveness_set
-  std::vector<std::vector<int>> L(liveness_set.size());
+  request.live.resize(liveness_set.size());
   for (size_t t = 0; t < liveness_set.size(); ++t) {
-    std::vector<int>& current_liveness_set_indices = L[t];
+    std::vector<int>& current_liveness_set_indices = request.live[t];
     std::function<void(const StrategyVector*, const ShapeIndex&)>
         traverse_live_instructions;
     traverse_live_instructions = [&](const StrategyVector* strategies,
@@ -2679,9 +2282,14 @@ ORToolsSolverResult CallSolver(
                                  value->index());
     }
   }
-  return CallORToolsSolver(N, M, s_len, s_follow, E, L, c, d, m, r, A, v,
-                           instruction_names, solver_timeout_in_seconds,
-                           crash_at_infinity_costs_check);
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+  LOG(INFO) << "Total Communication Cost: "
+            << evaluation.total_communication_cost;
+  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost;
+  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost;
+  LOG(INFO) << "Total Cost: " << evaluation.total_cost;
+  return result;
 }
 
 void CheckHloSharding(const HloInstructionSequence& sequence,
@@ -2770,6 +2378,9 @@ void SetHloSharding(const HloInstructionSequence& sequence,
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   for (HloInstruction* inst : instructions) {
+    if (inst->opcode() == HloOpcode::kOutfeed) {
+      continue;
+    }
     auto iter = strategy_map.find(inst);
     if (iter == strategy_map.end()) {
       continue;
@@ -2818,11 +2429,12 @@ void SetHloSharding(const HloInstructionSequence& sequence,
   }
 }
 
-void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
-                                  const StrategyMap& strategy_map,
-                                  const CostGraph& cost_graph,
-                                  absl::Span<const int64_t> s_val,
-                                  const ClusterEnvironment& cluster_env) {
+void SetHloShardingPostProcessing(
+    const HloInstructionSequence& sequence, const StrategyMap& strategy_map,
+    const CostGraph& cost_graph, absl::Span<const int64_t> s_val,
+    const ClusterEnvironment& cluster_env,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   // Post process: fix some corner cases.
@@ -2904,6 +2516,10 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
         FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
                                     device_mesh, resharding_cache);
       }
+    } else if (inst->opcode() == HloOpcode::kOutfeed) {
+      // Outfeed operand shardings are handled in downstream passes and so we
+      // ignore outfeed ops here.
+      continue;
     } else {
       // TODO(pratikf): We currently skip over tuple shaped instructions here as
       // GetShardingStrategy, which is invoked below does not currently support
@@ -2950,8 +2566,8 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
           continue;
         }
         if (inst->opcode() == HloOpcode::kGetTupleElement) {
-          FixMixedMeshShapeReshardingGetTupleElement(inst, inst->sharding(),
-                                                     device_mesh);
+          FixMixedMeshShapeReshardingGetTupleElement(
+              inst, inst->sharding(), device_mesh, preserve_shardings);
         } else {
           for (size_t i = 0; i < inst->operand_count(); ++i) {
             if (stra.input_shardings.size() > i) {
@@ -3311,6 +2927,20 @@ void RecoverShardingsFromPartialMesh(
     if (preserve_shardings.find(ins->name()) != preserve_shardings.end()) {
       if (ins->shape().IsTuple()) {
         ShapeTree<HloSharding> output_tuple_sharding(ins->shape(), Undefined());
+        size_t i = 0;
+        for (auto& leaf : output_tuple_sharding.leaves()) {
+          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+        }
+        ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+      } else if (ins->opcode() == HloOpcode::kOutfeed &&
+                 ins->sharding().IsTuple()) {
+        std::vector<Shape> tuple_elements_shape(
+            ins->operand(0)->shape().tuple_shapes().begin(),
+            ins->operand(0)->shape().tuple_shapes().end());
+        tuple_elements_shape.push_back(ins->operand(1)->shape());
+        Shape sharding_shape = ShapeUtil::MakeTupleShape(tuple_elements_shape);
+        ShapeTree<HloSharding> output_tuple_sharding(sharding_shape,
+                                                     Undefined());
         size_t i = 0;
         for (auto& leaf : output_tuple_sharding.leaves()) {
           leaf.second = preserve_shardings.at(ins->name()).at(i++);
@@ -3937,8 +3567,8 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
       return Undefined();
     }
 
-    Array<int64_t> tile_assignment = strategy.output_sharding.tile_assignment();
-    tile_assignment.Reshape({cluster_env.total_devices_});
+    auto tile_assignment = strategy.output_sharding.tile_assignment().Reshape(
+        {cluster_env.total_devices_});
     return HloSharding::Tile(std::move(tile_assignment));
 
   } else {
@@ -4102,15 +3732,14 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.only_allow_divisible_intermediate = false;
   solver_option.nd_sharding_iteratively_strict_search_space = false;
 
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
+          module, option_.loop_iteration_count_estimate);
+
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
-  // TODO(b/208668853): Keep shardings in custom-calls. After auto
-  // sharding pass, instead of fixing the shardings, mark all the replicated
-  // dims as "unspecified" instead of replicated. (this would require using
-  // custom-call annotations ops instead of in-place attributes). Then run the
-  // sharding propagation pass after that before spmd partitioner.
   auto status_or_changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
       &unspecified_dims, /*saved_root_shardings=*/nullptr,
@@ -4284,8 +3913,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
     TF_ASSIGN_OR_RETURN(
         std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
-        BuildStrategyAndCost(sequence, module, ins_depth_map, batch_dim_map,
-                             alias_map, cluster_env, solver_option, *call_graph,
+        BuildStrategyAndCost(sequence, module, instruction_execution_counts,
+                             ins_depth_map, batch_dim_map, alias_map,
+                             cluster_env, solver_option, *call_graph,
                              option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
     CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
@@ -4335,7 +3965,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                    (mesh_idx == partial_mesh_shapes.size() - 1));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       SetHloShardingPostProcessing(sequence, strategy_map, cost_graph, s_val,
-                                   cluster_env);
+                                   cluster_env, &preserve_shardings);
     } else {
       spmd::RecoverShardingsFromPartialMesh(sequence, preserve_shardings);
     }
@@ -4380,6 +4010,12 @@ bool ModuleHasUserShardings(const HloModule* module) {
 AutoSharding::AutoSharding(const AutoShardingOption& option)
     : option_(option) {}
 
+bool IsSmallTensor(const HloInstruction* ins,
+                   const AutoShardingOption& option) {
+  return !ins->shape().IsTuple() &&
+         ShapeUtil::ByteSizeOf(ins->shape()) <= option.small_tensor_byte_size;
+}
+
 StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -4400,6 +4036,19 @@ StatusOr<bool> AutoSharding::Run(
 
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
+
+  if (option_.small_tensor_byte_size > 0) {
+    for (auto computation : module->computations()) {
+      for (auto instruction : computation->instructions()) {
+        if (!instruction->has_sharding() && !instruction->shape().IsTuple() &&
+            IsSmallTensor(instruction, option_)) {
+          VLOG(1) << "Replicated small tensor: " << instruction->name()
+                  << "                     " << module->name();
+          instruction->set_sharding(HloSharding::Replicate());
+        }
+      }
+    }
+  }
 
   bool asymmetrical_mesh_dims = false;
   for (size_t i = 0; i < option_.device_mesh_shape.size(); ++i) {

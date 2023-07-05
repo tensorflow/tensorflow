@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -307,25 +308,14 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     }
     loads.push_back(load);
   }
-  mlir::Operation* op = nullptr;
-  if (instr->opcode() == xla::HloOpcode::kReduce) {
-    TF_RET_CHECK(loads.size() % 2 == 0);
-    std::vector<int64_t> dimensions(instr->dimensions().begin(),
-                                    instr->dimensions().end());
-    auto reduce_op = b.create<mhlo::ReduceOp>(
-        loc, llvm::ArrayRef(loads).take_front(loads.size() / 2),
-        llvm::ArrayRef(loads).drop_front(loads.size() / 2),
-        GetI64DenseElementsAttr(dimensions));
-
-    TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
-        &builder_, /*flatten_region_arg_tuple=*/true));
-    op = reduce_op;
-  } else {
-    TF_ASSIGN_OR_RETURN(op,
-                        xla::HloFunctionImporter::ImportInstruction(
-                            instr, loads, symbol_table_, &b,
-                            xla::DynamicShapeHandlingMode::kConvertToStatic));
+  TF_ASSIGN_OR_RETURN(mlir::Operation * op,
+                      xla::HloFunctionImporter::ImportInstruction(
+                          instr, loads, symbol_table_, &b,
+                          xla::DynamicShapeHandlingMode::kConvertToStatic));
+  if (llvm::isa<mlir::mhlo::TupleOp>(op)) {
+    auto underlyingOp = op->getPrevNode();
+    op->erase();
+    op = underlyingOp;
   }
   TF_RET_CHECK(op->getNumResults() == num_results);
   for (int i = 0; i < results.size(); i++) {
@@ -1449,9 +1439,9 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
 tsl::StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
-  auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
-  if (cached_value) {
-    return dyn_cast<mlir::memref::GetGlobalOp>(cached_value.getDefiningOp());
+  auto& instr_slice = instr_slices_[std::make_pair(instr, xla::ShapeIndex())];
+  if (instr_slice) {
+    return dyn_cast<mlir::memref::GetGlobalOp>(instr_slice.getDefiningOp());
   }
 
   // Insert a global_memref in the module.
@@ -1503,7 +1493,7 @@ tsl::StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
       builder_.create<memref::GetGlobalOp>(loc, memref_type, constant_name);
 
   // Update the cache to remember this value.
-  cached_value = get_global_memref;
+  instr_slice = get_global_memref;
   return get_global_memref;
 }
 
@@ -2012,29 +2002,47 @@ tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
   // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
   // shape_index).
-  auto& cached_value = slices_[std::make_pair(instr, shape_index)];
-  if (cached_value) {
-    return cached_value;
+  auto& instr_slice = instr_slices_[std::make_pair(instr, shape_index)];
+  if (instr_slice) {
+    return instr_slice;
   }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      assignment_.GetUniqueSlice(instr, shape_index));
 
   // If the shape happens to have dynamic dimensions, create the memref using
   // the underlying static shape.
   // TODO(jurahul): Revisit this when we can model memrefs with dynamic shape
   // but static bounds in MLIR.
-  const Shape static_shape = xla::ShapeUtil::MakeStaticShape(current_shape);
+  xla::Shape static_shape = xla::ShapeUtil::MakeStaticShape(current_shape);
 
-  TF_ASSIGN_OR_RETURN(Type out_type, xla::ConvertShapeToType<MemRefType>(
-                                         static_shape, builder_));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueSlice(instr, shape_index));
-  Value alloc = allocations_[slice.allocation()];
+  // Check if we already have a memref.view for a given slice and shape.
+  auto& allocation_slice =
+      allocation_slices_[std::make_pair(slice, static_shape)];
+  if (allocation_slice) {
+    return instr_slice = allocation_slice;
+  }
+
+  // Because first use of the slice can be inside a block nested in a control
+  // flow operation, we have to find an insertion point at the top level block.
+  OpBuilder::InsertionGuard guard(builder_);
+  Operation* parent = builder_.getInsertionBlock()->getParentOp();
+  while (!isa<func::FuncOp>(parent)) {
+    builder_.setInsertionPoint(parent);
+    if ((parent = parent->getParentOp()) == nullptr)
+      return absl::InternalError(
+          "Can't find an insertion point for memref.view operation");
+  }
 
   // TODO(timshen): revisit location handling.
   Location loc = builder_.getUnknownLoc();
 
+  Value alloc = allocations_[slice.allocation()];
   Value byte_shift =
       builder_.create<arith::ConstantIndexOp>(alloc.getLoc(), slice.offset());
 
+  TF_ASSIGN_OR_RETURN(Type out_type, xla::ConvertShapeToType<MemRefType>(
+                                         static_shape, builder_));
   xla::Shape physical_shape =
       xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
           static_shape);
@@ -2064,7 +2072,8 @@ tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
         out_strides);
   }
-  return cached_value = result;
+
+  return instr_slice = allocation_slice = result;
 }
 
 tsl::Status LhloDialectEmitter::GetOrCreateViewImpl(

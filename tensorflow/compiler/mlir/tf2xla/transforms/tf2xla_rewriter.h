@@ -44,14 +44,13 @@ class Tf2XlaRewriter {
  public:
   static mlir::LogicalResult RewriteOp(mlir::Operation* op,
                                        mlir::PatternRewriter& rewriter,
-                                       const std::string& device_type,
-                                       bool use_tf2xla_hlo_importer);
+                                       const std::string& device_type);
 
  private:
   friend class Tf2XlaRewriterTestPeer;
 
   Tf2XlaRewriter(mlir::Operation* op, mlir::PatternRewriter& rewriter,
-                 const std::string& device_type, bool use_tf2xla_hlo_importer);
+                 const std::string& device_type);
 
   ~Tf2XlaRewriter();
 
@@ -118,7 +117,6 @@ class Tf2XlaRewriter {
   std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr_;
   tensorflow::OpKernelContext::Params params_;
 
-  bool use_tf2xla_hlo_importer_;
   xla::XlaBuilder xla_builder_;
 };
 

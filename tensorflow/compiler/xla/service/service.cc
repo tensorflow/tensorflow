@@ -1114,7 +1114,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   HloEvaluator evaluator;
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
   evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call,
+      [](const HloInstruction* custom_call,
          absl::Span<const Literal*> operands) -> StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();

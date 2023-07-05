@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -307,6 +308,18 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
   }
 }
 
+StatusOr<std::vector<std::vector<int64_t>>> GetAllTensorShapes(
+    const std::vector<TensorHandlePtr>& tensors) {
+  std::vector<std::vector<int64_t>> local_shapes;
+  local_shapes.reserve(tensors.size());
+  for (size_t i = 0; i < tensors.size(); i++) {
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> local_shape,
+                        GetTensorShapeAsVector(tensors[i].get()));
+    local_shapes.push_back(std::move(local_shape));
+  }
+  return local_shapes;
+}
+
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
@@ -365,9 +378,21 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  std::unique_ptr<TensorWithLayoutTf> result(
-      new TensorWithLayoutTf(std::move(tensors), std::move(layout), *shape,
-                             /*dtype=*/std::nullopt, std::move(const_value)));
+  // For dynamic shape, get local shapes for all local tensors.
+  std::vector<std::vector<int64_t>> local_shapes;
+  if (IsDynamicShape(*shape)) {
+    StatusOr<std::vector<std::vector<int64_t>>> local_shapes_or =
+        GetAllTensorShapes(tensors);
+    if (!local_shapes_or.ok()) {
+      Set_TF_Status_from_Status(status, local_shapes_or.status());
+      return nullptr;
+    }
+    local_shapes = std::move(local_shapes_or.value());
+  }
+
+  std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
+      std::move(tensors), std::move(layout), *shape, local_shapes,
+      /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
@@ -377,8 +402,14 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
   if (!shape.has_value()) {
     TF_ASSIGN_OR_RETURN(shape, GetTensorShapeAsVector(tensors[0].get()));
   }
+
+  // For dynamic shape, get local shapes for all local tensors.
+  std::vector<std::vector<int64_t>> local_shapes;
+  if (IsDynamicShape(*shape)) {
+    TF_ASSIGN_OR_RETURN(local_shapes, GetAllTensorShapes(tensors));
+  }
   return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(tensors), layout, *shape));
+      new TensorWithLayoutTf(std::move(tensors), layout, *shape, local_shapes));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
@@ -403,8 +434,8 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
     const Layout& layout) {
-  return absl::WrapUnique(new TensorWithLayoutTf(std::vector<TensorHandlePtr>(),
-                                                 layout, local_shape, dtype));
+  return absl::WrapUnique(new TensorWithLayoutTf(
+      std::vector<TensorHandlePtr>(), layout, local_shape, {}, dtype));
 }
 
 namespace {

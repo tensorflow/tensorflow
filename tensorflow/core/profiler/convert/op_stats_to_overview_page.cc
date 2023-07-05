@@ -34,21 +34,23 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/format_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 // If the use of low-precision ops is less than this percentage threshold, a
 // statement of suggestion will be made.
@@ -242,11 +244,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   // {metrics.provenance(), metrics.name()} from
   // device_tf_op_metrics_db.metrics_db(), because metrics.provenance() there is
   // not set and metrics.name() can be either HLO-Op name or TF-Op name, which
-  // will confuse IsOutsideCompilationOp().
+  // will confuse tsl::profiler::IsOutsideCompilationOp().
   uint64 outside_compilation_device_op_time_ps = 0;
   for (const OpMetrics& metrics :
        op_stats.device_op_metrics_db().metrics_db()) {
-    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+    if (!tsl::profiler::IsOutsideCompilationOp(metrics.provenance(),
+                                               metrics.long_name()))
       continue;
     outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }

@@ -20,15 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
-#include <variant>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
 
 namespace xla {
 
-using PjRtValueType =
-    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
 using PjRtDeviceAttribute = PjRtValueType;
 
 class PjRtDeviceDescription {

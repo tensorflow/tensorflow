@@ -69,10 +69,9 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:autotuner_util",
         "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
-        "//tensorflow/compiler/xla/service/gpu:gpu_serializable_autotuner",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
@@ -81,7 +80,9 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
+    ]),
 )
 
 cc_library(
@@ -315,6 +316,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor:blas",
@@ -345,6 +347,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

@@ -108,6 +108,52 @@ void AddFlexNode(Subgraph* subgraph, int input_tensor, int output_tensor) {
       kTfLiteOk);
 }
 
+void AddReshapeNode(Subgraph* subgraph, int input0, int input1, int output) {
+  int node_index;
+  TfLiteReshapeParams* reshape_params = reinterpret_cast<TfLiteReshapeParams*>(
+      calloc(1, sizeof(TfLiteReshapeParams)));
+  auto* reshape_reg = ops::builtin::Register_RESHAPE();
+  reshape_reg->builtin_code = kTfLiteBuiltinReshape;
+  ASSERT_EQ(subgraph->AddNodeWithParameters({input0, input1}, {output}, {},
+                                            nullptr, 0, reshape_params,
+                                            reshape_reg, &node_index),
+            kTfLiteOk);
+}
+
+void AddOffsetAddNode(Subgraph* subgraph, int input0, int input1, int output) {
+  auto prepare = [](TfLiteContext* context, TfLiteNode* node) {
+    const TfLiteTensor& input0 = context->tensors[node->inputs->data[0]];
+    TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+    TfLiteIntArray* shape = TfLiteIntArrayCopy(input0.dims);
+    return context->ResizeTensor(context, &output, shape);
+  };
+
+  auto invoke = [](TfLiteContext* context, TfLiteNode* node) {
+    const TfLiteTensor& input0 = context->tensors[node->inputs->data[0]];
+    const TfLiteTensor& input1 = context->tensors[node->inputs->data[1]];
+    TfLiteTensor& output = context->tensors[node->outputs->data[0]];
+    int num_elements = input0.dims->data[0];
+    const int kOffset = 1;
+    const int* i0 = static_cast<int*>(input0.data.data);
+    const int* i1 = static_cast<int*>(input1.data.data);
+    int* o = static_cast<int*>(output.data.data);
+    for (int i = 0; i < num_elements; ++i) {
+      int input0_pos = (i + kOffset) % num_elements;
+      o[i] = i0[input0_pos] + i1[i];
+    }
+    return kTfLiteOk;
+  };
+
+  int node_index;
+  TfLiteRegistration offset_add_reg = {/*Init=*/nullptr, /*Free=*/nullptr,
+                                       prepare, invoke};
+  offset_add_reg.builtin_code = BuiltinOperator_CUSTOM;
+  offset_add_reg.custom_name = "OffsetAdd";
+  offset_add_reg.inplace_operator = kTfLiteInplaceOpInput1Shared;
+  subgraph->AddNodeWithParameters({input0, input1}, {output}, {}, nullptr, 0,
+                                  nullptr, &offset_add_reg, &node_index);
+}
+
 void AddAddNode(Subgraph* subgraph, int input0, int input1, int output) {
   int node_index;
   TfLiteAddParams* add_params =
@@ -627,6 +673,104 @@ void SubgraphBuilder::BuildLargeLessEqualCondSubgraph(Subgraph* subgraph,
   int node_index;
   subgraph->AddNodeWithParameters({kInput0, kConstRhs}, {kOutput}, {}, nullptr,
                                   0, nullptr, le_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildOffsetAddSharing(Subgraph* subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kIntermediateTensor0,
+    kIntermediateTensor1,
+    kIntermediateTensor2,
+    kOutput,
+    kConstRhs,
+    kTensorCount,
+  };
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput0, kInput1}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(subgraph, i, kTfLiteInt32);
+  }
+  CreateConstantTensor<int>(subgraph, kConstRhs, {1}, {1});
+  // Consume input so that following ops can share tensor memory.
+  AddAddNode(subgraph, kInput0, kInput1, kIntermediateTensor0);
+  AddAddNode(subgraph, kInput0, kInput1, kIntermediateTensor1);
+  // Input1 may be shared but not input0.
+  AddOffsetAddNode(subgraph, kIntermediateTensor0, kIntermediateTensor1,
+                   kIntermediateTensor2);
+  AddAddNode(subgraph, kIntermediateTensor2, kConstRhs, kOutput);
+}
+
+void SubgraphBuilder::BuildBroadcastingSubgraph(Subgraph* subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kIntermediateTensor0,
+    kIntermediateTensor1,
+    kIntermediateTensor2,
+    kIntermediateTensor3,
+    kOutput,
+    kConstRhs,
+    kTensorCount,
+  };
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput0, kInput1}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(subgraph, i, kTfLiteInt32);
+  }
+  CreateConstantTensor<int>(subgraph, kConstRhs, {1}, {1});
+  // Consume input so that following ops can share tensor memory.
+  AddAddNode(subgraph, kInput0, kInput1, kIntermediateTensor0);
+  // Sharing is not possible as there is more than one consumer of
+  // kIntermediateTensor0.
+  AddAddNode(subgraph, kIntermediateTensor0, kIntermediateTensor0,
+             kIntermediateTensor1);
+  // Broadcasting ADD with sharing input1. kIntermediateTensor2 will share the
+  // same memory as kIntermediateTensor0 and kIntermediateTensor1.
+  AddAddNode(subgraph, kConstRhs, kIntermediateTensor1, kIntermediateTensor2);
+  AddAddNode(subgraph, kIntermediateTensor2, kConstRhs, kIntermediateTensor3);
+  // Consume this output to allow sharing.
+  AddAddNode(subgraph, kIntermediateTensor3, kConstRhs, kOutput);
+}
+
+void SubgraphBuilder::BuildInplaceOpSubgraph(Subgraph* subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kIntermediateTensor0,
+    kIntermediateTensor1,
+    kOutput,
+    kConstRhs,
+    kTensorCount,
+  };
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kInput0, kInput1}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(subgraph, i, kTfLiteInt32);
+  }
+  CreateConstantTensor<int>(subgraph, kConstRhs, {1}, {2});
+  // Consume input as Reshape cannot share subgraph input.
+  AddAddNode(subgraph, kInput0, kInput1, kIntermediateTensor0);
+  // Shape tensor is constant so that output is arena allocated.
+  AddReshapeNode(subgraph, kIntermediateTensor0, kConstRhs,
+                 kIntermediateTensor1);
+  // Consume output of Reshape as subgraph outputs cannot be shared.
+  AddAddNode(subgraph, kIntermediateTensor1, kInput1, kOutput);
 }
 
 void SubgraphBuilder::BuildFloatLessCondSubgraph(Subgraph* subgraph,

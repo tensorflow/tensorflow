@@ -37,6 +37,8 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #ifdef TF_GPU_USE_PJRT
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // TF_GPU_USE_PJRT
@@ -58,6 +60,9 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#ifdef TF_GPU_USE_PJRT
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#endif  // TF_GPU_USE_PJRT
 #include "tensorflow/tsl/framework/device_id.h"
 
 namespace Eigen {
@@ -187,6 +192,9 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
+  // PJRT AsyncValueTensor allocator.
+  std::unique_ptr<Allocator> pjrt_allocator_ = nullptr;
+
   se::StreamExecutor* executor_;  // not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
@@ -194,6 +202,7 @@ class BaseGPUDevice : public LocalDevice {
   friend class GPUDeviceTestHelper;
   class StreamGroupFactory;
 
+  core::RefCountPtr<DeviceContext> pjrt_device_context_;
   StreamGroup* stream_;
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;

@@ -39,6 +39,20 @@ class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
 
+  // Build a subgraph with ops which support memory sharing.
+  // An ADD node consumes a subgraph input so cannot be shared. RESHAPE consumes
+  // the output of ADD and may share. The second ADD can't share as it produces
+  // a subgraph output.
+  void BuildInplaceOpSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with broadcasting elementwise ops, some of which support
+  // sharing and some not.
+  void BuildBroadcastingSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with fictional op OFFSET_ADD which supports sharing of
+  // the second input but not the first.
+  void BuildOffsetAddSharing(Subgraph* subgraph);
+
   // Build a subgraph with a dynamic update slice op which operates on
   // a subgraph input tensor. The input buffer cannot be shared with the output.
   void BuildInputDynamicUpdateSliceSubgraph(Subgraph& subgraph);

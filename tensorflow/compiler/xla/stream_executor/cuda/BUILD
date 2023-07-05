@@ -414,41 +414,6 @@ cc_library(
 )
 
 alias(
-    name = "curand_stub",
-    actual = "//tensorflow/tsl/cuda:curand_stub",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "curand_lib",
-    actual = "//tensorflow/tsl/cuda:curand_lib",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "curand_plugin",
-    srcs = if_cuda_is_configured(["cuda_rng.cc"]),
-    hdrs = if_cuda_is_configured(["cuda_rng.h"]),
-    deps = if_cuda_is_configured([
-        ":cuda_activation",
-        ":cuda_gpu_executor",
-        ":cuda_platform_id",
-        ":cuda_stream",
-        ":cuda_helpers",
-        ":curand_lib",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_helpers_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_rng_header",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-    ]),
-    alwayslink = True,
-)
-
-alias(
     name = "cupti_stub",
     actual = "//tensorflow/tsl/cuda:cupti_stub",
     visibility = ["//visibility:public"],
@@ -475,6 +440,12 @@ alias(
 alias(
     name = "cusparse_lib",
     actual = "//tensorflow/tsl/cuda:cusparse_lib",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "tensorrt_rpath_stub",
+    actual = "//tensorflow/tsl/cuda:tensorrt_rpath_stub",
     visibility = ["//visibility:public"],
 )
 
@@ -599,7 +570,9 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
-        ":curand_plugin",
+        ":cusolver_lib",
+        ":cusparse_lib",
+        ":tensorrt_rpath_stub",
     ],
     alwayslink = 1,
 )

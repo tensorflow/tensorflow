@@ -160,6 +160,15 @@ class WeakTensor(extension_type.ExtensionType):
     del memo
     return self
 
+  def to_tensor(self):
+    """Converts this 'WeakTensor' into a 'tf.Tensor'."""
+    return self.tensor
+
+  @classmethod
+  def from_tensor(cls, tensor):
+    """Converts a 'tf.Tensor' into a 'WeakTensor'."""
+    return WeakTensor(tensor)
+
   # Redefine `shape` and `dtype` rather than relying on `getattr` because the
   # class derives from core.Tensor which returns None in the two methods.
   @property

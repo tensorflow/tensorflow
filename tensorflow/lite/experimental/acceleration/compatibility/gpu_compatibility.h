@@ -109,6 +109,10 @@ class GPUCompatibilityList {
   // Checks if the provided byte array represents a valid compatibility list
   static bool IsValidFlatbuffer(const unsigned char* data, int len);
 
+  std::map<std::string, std::string> InfosToMap(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
+
  protected:
   const DeviceDatabase* database_;
 
@@ -121,10 +125,6 @@ class GPUCompatibilityList {
       const unsigned char* compatibility_list_flatbuffer);
 
   explicit GPUCompatibilityList(std::string compatibility_list_flatbuffer);
-
-  std::map<std::string, std::string> InfosToMap(
-      const AndroidInfo& android_info,
-      const ::tflite::gpu::GpuInfo& gpu_info) const;
 };
 
 }  // namespace acceleration
