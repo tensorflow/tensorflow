@@ -193,6 +193,15 @@ class Device : public DeviceBase {
   // Informs if this Device can be used as a caller in RemoteCall operation.
   virtual bool IsRemoteCallAllowed() const;
 
+  // Sets the real device of a stream device.
+  virtual void SetRealDevice(Device* device) {
+    LOG(FATAL) << "Device does not implement SetRealDevice()";
+  }
+
+  // Gets the real device of a stream device, or itself if it's not a stream
+  // device.
+  virtual const Device* GetRealDevice() const { return this; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
