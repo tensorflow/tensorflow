@@ -37,7 +37,7 @@ import zipfile
 import numpy as np
 
 from tensorflow.python.framework import ops
-from six.moves.urllib.request import urlopen
+from six.moves.urllib.request import URLopener as urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
@@ -48,7 +48,7 @@ if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):
     """Replacement for `urlretrieve` for Python 2.
-
+    
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
 
@@ -61,7 +61,8 @@ if sys.version_info[0] == 2:
           far, a block size in bytes, and the total size of the file.
         data: `data` argument passed to `urlopen`.
     """
-
+    urlopener = urllib.request.URLopener()
+    urlopener.addheader('User-Agent', 'whatever')
     def chunk_read(response, chunk_size=8192, reporthook=None):
       content_type = response.info().get('Content-Length')
       total_size = -1
@@ -83,8 +84,9 @@ if sys.version_info[0] == 2:
       for chunk in chunk_read(response, reporthook=reporthook):
         fd.write(chunk)
 else:
-  from urllib.request import urlretrieve  # pylint: disable=g-importing-member
-
+  from urllib.request import URLopener as urlretrieve  # pylint: disable=g-importing-member
+  opener = urllib.request.URLopener()
+  opener.addheader('User-Agent', 'whatever')
 
 def is_generator_or_sequence(x):
   """Check if `x` is a Keras generator type."""
