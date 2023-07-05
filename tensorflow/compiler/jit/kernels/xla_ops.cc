@@ -397,9 +397,14 @@ Status CompileToLocalExecutable(
     return absl::InternalError("No resource manager.");
   }
 
+  // Create multiple compilers for multiple stream groups, thus multiple clients
+  // and multiple backends. (Is this necessary? Can the clients share the same
+  // compiler?)
   XlaDeviceCompiler* xla_device_compiler;
+  int stream_id = ctx->device()->GetStreamId();
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
-      rm->default_container(), "xla_device_compiler", &xla_device_compiler,
+      rm->default_container(),
+      strings::StrCat("xla_device_compiler_", stream_id), &xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
                                       platform_info, xla_device_compiler);
