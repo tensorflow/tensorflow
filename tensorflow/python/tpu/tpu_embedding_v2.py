@@ -1253,7 +1253,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
             "ensure build() was called with output shapes to initialize "
             "the TPU for embeddings.")
     else:
-      input_shapes = self._get_input_shapes(features, in_tpu_context)
+      per_replica = device is None
+      input_shapes = self._get_input_shapes(
+          features, per_replica, in_tpu_context
+      )
 
       self._maybe_build(input_shapes)
       # If is already built, we still need to check if the output shapes matches
@@ -1373,8 +1376,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-  def _get_input_shapes(self, tensors,
-                        in_tpu_context: bool) -> List[TensorShape]:
+  def _get_input_shapes(
+      self, tensors, per_replica: bool, in_tpu_context: bool
+  ) -> List[TensorShape]:
     """Get the input shapes from the input tensor."""
     input_shapes = []
     for (path, maybe_tensor), feature in zip(
@@ -1387,16 +1391,25 @@ class TPUEmbedding(autotrackable.AutoTrackable):
 
       if isinstance(tensor, ops.Tensor):
         input_shapes.append(
-            self._get_input_shape_for_tensor(tensor, feature, path))
+            self._get_input_shape_for_tensor(tensor, feature, per_replica, path)
+        )
       elif isinstance(tensor, sparse_tensor.SparseTensor):
         input_shapes.append(
-            self._get_input_shape_for_sparse_tensor(tensor, feature, path))
+            self._get_input_shape_for_sparse_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
       elif isinstance(tensor, ragged_tensor.RaggedTensor):
         input_shapes.append(
-            self._get_input_shape_for_ragged_tensor(tensor, feature, path))
+            self._get_input_shape_for_ragged_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
     return input_shapes
 
-  def _get_input_shape_for_tensor(self, tensor, feature, path) -> TensorShape:
+  def _get_input_shape_for_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the dense tensor."""
     shape = tensor.shape.as_list()
     if len(shape) < 1:
@@ -1409,13 +1422,14 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "as the last dimension will always be reduced. "
           "Instead got dense tensor as shape {}".format(shape))
 
-    if self._num_cores_per_replica:
+    if self._num_cores_per_replica and per_replica:
       shape[0] = shape[0] // self._num_cores_per_replica
 
     return TensorShape(shape)
 
-  def _get_input_shape_for_sparse_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_sparse_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the sparse tensor."""
     shape = tensor.shape.as_list()
     # Only 2 and above rank sparse tensor is supported.
@@ -1432,14 +1446,16 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # we need to add one dimension to the input feature.
         shape.insert(len(shape) - 1, feature.max_sequence_length)
 
-    if self._num_cores_per_replica and shape[0]:
+    if self._num_cores_per_replica and per_replica and shape[0]:
       shape[0] = shape[0] // self._num_cores_per_replica
 
     return TensorShape(shape)
 
-  def _get_input_shape_for_ragged_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_ragged_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the ragged tensor."""
+    del per_replica  # unused.
     shape = tensor.shape.as_list()
     # Only rank 2 ragged tensor is supported.
     if len(shape) != 2:
