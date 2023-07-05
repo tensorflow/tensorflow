@@ -3147,3 +3147,14 @@ py_strict_library(
         "//tensorflow/python/platform:gfile",
     ],
 )
+
+cc_library(
+    name = "tensor_shape_casters",
+    hdrs = ["tensor_shape_casters.h"],
+    features = ["-parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@pybind11",
+    ],
+)
