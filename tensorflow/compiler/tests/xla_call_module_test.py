@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
+import os
 from typing import Tuple
 import unittest
 
@@ -363,10 +364,17 @@ module @jit_f.0 {
         'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
+    platform_check_disabled_by_flags = (
+        '--tf_xla_call_module_disabled_checks=platform'
+        in os.getenv('TF_XLA_FLAGS', ''))
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
-    with self.assertRaisesRegex(
-        errors.NotFoundError,
-        'The current platform .* is not among the platforms'):
+    if not platform_check_disabled_by_flags:
+      with self.assertRaisesRegex(
+          errors.NotFoundError,
+          'The current platform .* is not among the platforms'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    else:
+      # No error
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # Disable the check but have two platforms
@@ -390,12 +398,14 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     platforms = ['CPU', 'CUDA', 'ROCM']
-    if self.testing_platform() not in platforms:
+    if (self.testing_platform() not in platforms
+        and not platform_check_disabled_by_flags):
       with self.assertRaisesRegex(
           errors.NotFoundError,
           'The current platform .* is not among the platforms'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
     else:
+      # No error
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # The module cannot have i64 %arg_platform_idx

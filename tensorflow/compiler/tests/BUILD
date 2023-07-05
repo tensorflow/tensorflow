@@ -2773,9 +2773,12 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "xla_call_module_no_platform_check_test",
     size = "small",
-    srcs = ["xla_call_module_no_platform_check_test.py"],
+    srcs = ["xla_call_module_test.py"],
+    # cpu_ondemand overrides the TF_XLA_FLAGS
+    disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
     env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=platform"},
+    main = "xla_call_module_test.py",
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
