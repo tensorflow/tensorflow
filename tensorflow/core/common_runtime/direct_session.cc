@@ -2065,4 +2065,96 @@ DirectSession::Callable::~Callable() {
   function_info.reset();
 }
 
+StreamGroupMgr::StreamGroupMgr(const size_t total_num) : total_num_(total_num) {
+  stream_group_heap_.resize(total_num);
+  for (int i = 0; i < total_num; ++i) {
+    stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
+    id2heap_map_.insert(std::make_pair(i, i));
+  }
+}
+
+void StreamGroupMgr::swap(const size_t idx1, const size_t idx2) {
+  id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
+  id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
+  std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
+}
+
+void StreamGroupMgr::reset_accumulators() {
+  VLOG(2) << "One of the Stream Group Node reaches access limit"
+          << ", reset...";
+  for (auto& node : stream_group_heap_) {
+    node->accumulator_ = 0;
+  }
+}
+
+int StreamGroupMgr::RequireStreamGroup() {
+  mutex_lock l(mu_);
+  int ret(stream_group_heap_[0]->id_);
+  ++stream_group_heap_[0]->workload_;
+  if (++stream_group_heap_[0]->accumulator_ == 0xFFFFFFFFFFFFFFFFull) {
+    reset_accumulators();
+  }
+  size_t ptr(0);
+  while (true) {
+    if (2 * ptr + 2 >= total_num_) {
+      if (2 * ptr + 2 == total_num_ &&
+          stream_group_heap_[ptr]->workload_ >
+              stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+      }
+      break;
+    }
+    if (stream_group_heap_[2 * ptr + 1]->workload_ <
+        stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+        ptr = 2 * ptr + 1;
+      } else {
+        break;
+      }
+    } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
+               stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 2]->workload_) {
+        swap(ptr, 2 * ptr + 2);
+        ptr = 2 * ptr + 2;
+      } else {
+        break;
+      }
+    } else {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        if (stream_group_heap_[2 * ptr + 1]->accumulator_ <
+            stream_group_heap_[2 * ptr + 2]->accumulator_) {
+          swap(ptr, 2 * ptr + 1);
+          ptr = 2 * ptr + 1;
+        } else {
+          swap(ptr, 2 * ptr + 2);
+          ptr = 2 * ptr + 2;
+        }
+      } else {
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
+void StreamGroupMgr::ReleaseStreamGroup(const int stream_id) {
+  mutex_lock l(mu_);
+  size_t ptr = id2heap_map_[stream_id];
+  --stream_group_heap_[ptr]->workload_;
+  while (ptr != 0) {
+    size_t parent = (ptr + 1) / 2 - 1;
+    if (stream_group_heap_[ptr]->workload_ <
+        stream_group_heap_[parent]->workload_) {
+      swap(ptr, parent);
+      ptr = parent;
+    } else {
+      break;
+    }
+  }
+}
+
 }  // namespace tensorflow
