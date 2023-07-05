@@ -219,6 +219,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   static auto* all_pools_ = new std::vector<CUmemoryPool*>();
   static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   DCHECK(all_pools_->size() == all_ids_->size());
+  if (std::find(all_pools_->begin(), all_pools_->end(), &pool_) !=
+      all_pools_->end()) {
+    return;
+  }
   for (int i = 0; i < all_pools_->size(); ++i) {
     // Set the current pool access to the previous GPUs.
     CUmemAccessDesc map;
@@ -250,10 +254,11 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     // Set the previous pools access to the current GPU.
     map.location.id = platform_device_id.value();
 
-    VLOG(2) << "Set access to the pool id: " << i
+    VLOG(2) << "Set access to the pool id: " << (*all_ids_)[i].value()
             << " location id: " << map.location.id;
-    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i,
-                                            platform_device_id.value())) {
+    if (auto status =
+            cuDeviceCanAccessPeer(&canAccessPeer, (*all_ids_)[i].value(),
+                                  platform_device_id.value())) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
           << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
@@ -262,8 +267,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
       if (auto status = cuMemPoolSetAccess(*(*all_pools_)[i], &map, 1)) {
         pool_ = nullptr;
         LOG(FATAL)  // Crash OK.
-            << "Error when setting access to the pool id: " << i
-            << " location id: " << map.location.id
+            << "Error when setting access to the pool id: "
+            << (*all_ids_)[i].value() << " location id: " << map.location.id
             << " error: " << GetCudaErrorMessage(status);
       }
     }
