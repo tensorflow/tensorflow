@@ -72,6 +72,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32_t batch_timeout_micros_;
   int32_t max_enqueued_batches_;
   std::vector<int32_t> allowed_batch_sizes_;
+  int32 low_priority_max_batch_size_;
+  int32 low_priority_batch_timeout_micros_;
+  int32 low_priority_max_enqueued_batches_;
+  std::vector<int32> low_priority_allowed_batch_sizes_;
   bool enable_large_batch_splitting_;
   bool disable_padding_;
 

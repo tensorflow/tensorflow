@@ -1268,6 +1268,22 @@ mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
                         value { i: 0 }
                       }
                       attr {
+                        key: "low_priority_max_batch_size"
+                        value { i: 1 }
+                      }
+                      attr {
+                        key: "low_priority_batch_timeout_micros"
+                        value { i: 0 }
+                      }
+                      attr {
+                        key: "low_priority_allowed_batch_sizes"
+                        value { list { i: 1 } }
+                      }
+                      attr {
+                        key: "low_priority_max_enqueued_batches"
+                        value { i: 1 }
+                      }
+                      attr {
                         key: "container"
                         value { s: "container" }
                       }
