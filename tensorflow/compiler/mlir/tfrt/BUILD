@@ -539,6 +539,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//tensorflow/core/tfrt/saved_model/utils:__pkg__",
     ],
     deps = [
         ":backend_compiler",
