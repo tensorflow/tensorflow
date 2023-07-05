@@ -37,7 +37,7 @@ import zipfile
 import numpy as np
 
 from tensorflow.python.framework import ops
-from six.moves.urllib.request import URLopener as urlopen
+from six.moves.urllib.request import urlopen as
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
@@ -84,7 +84,7 @@ if sys.version_info[0] == 2:
       for chunk in chunk_read(response, reporthook=reporthook):
         fd.write(chunk)
 else:
-  from urllib.request import URLopener as urlretrieve  # pylint: disable=g-importing-member
+  from urllib.request import urlretrieve  # pylint: disable=g-importing-member
   opener = urllib.request.URLopener()
   opener.addheader('User-Agent', 'whatever')
 
