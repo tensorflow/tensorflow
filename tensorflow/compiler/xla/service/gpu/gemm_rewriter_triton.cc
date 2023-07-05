@@ -41,6 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -481,7 +483,18 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   // and replaces the original dot() with a call to the computation.
   Status HandleDot(HloInstruction* dot) override {
     VLOG(5) << dot->ToString();
-    if (!IsTritonHandledGEMM(*dot, gpu_version_)) {
+
+    if (!CanTritonHandleGEMM(*dot, gpu_version_)) {
+      return OkStatus();
+    }
+
+    // If a GEMM requiring padding for cuBLAS is encountered here this
+    // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
+    // was skipped. Do not check ShouldTritonHandleGEMM() again then.
+    if (!CublasRequiresPadding(
+            *xla::Cast<HloDotInstruction>(dot),
+            std::get<se::CudaComputeCapability>(gpu_version_)) &&
+        !ShouldTritonHandleGEMM(*dot, gpu_version_)) {
       return OkStatus();
     }
 
@@ -923,7 +936,7 @@ const DotFusionAnalysis::DimIterationSpec* DotFusionAnalysis::IterSpec(
   return nullptr;
 }
 
-bool IsTritonHandledGEMM(const HloInstruction& dot,
+bool CanTritonHandleGEMM(const HloInstruction& dot,
                          const GpuVersion gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
       absl::c_any_of(dot.precision_config().operand_precision(),
@@ -975,6 +988,11 @@ bool IsTritonHandledGEMM(const HloInstruction& dot,
     return false;
   }
 
+  return true;
+}
+
+bool ShouldTritonHandleGEMM(const HloInstruction& dot,
+                            const GpuVersion gpu_version) {
   if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return true;
   }
