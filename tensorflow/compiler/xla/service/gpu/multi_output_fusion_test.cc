@@ -16,8 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include <optional>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
