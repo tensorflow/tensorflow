@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,8 +24,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -49,11 +52,8 @@ using GroupIdToBranchIdMap = absl::flat_hash_map<std::string, std::string>;
 // Maps an op to parallel execution IDs.
 using OpToParallelIdsMap =
     absl::flat_hash_map<Operation*, GroupIdToBranchIdMap>;
-// Maps an op to a set of ops.
 using OpToOpsMap =
     absl::flat_hash_map<Operation*, absl::flat_hash_set<Operation*>>;
-// Represents a set of ops in reverse program order.
-using OpsInReverseProgramOrder = absl::btree_set<Operation*, IsAfterInBlock>;
 
 #define GEN_PASS_DEF_EXECUTORUPDATECONTROLDEPENDENCIESPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
@@ -178,7 +178,7 @@ UpdateControlDependenciesForOp(
     int& num_control_inputs_removed,
     int& num_control_inputs_added,
     int& num_invalid_dependencies) {
-  OpsInReverseProgramOrder potential_preds;
+  absl::flat_hash_set<Operation*> pred_set;
   active_transitive_preds[op].insert(op);
   for (Operation* pred : analysis_for_func.DirectControlPredecessors(op)) {
     // Propagate inactive transitive dependencies from `pred` to `op`.
@@ -188,21 +188,25 @@ UpdateControlDependenciesForOp(
     // Inactive transitive predecessors of `pred` are potential direct
     // predecessors of `op` (they are not tracked by `pred`).
     for (Operation* transitive_pred : inactive_transitive_preds[pred]) {
-      potential_preds.insert(transitive_pred);
+      pred_set.insert(transitive_pred);
     }
     if (IsValidDependency(pred, op, op_to_parallel_ids_map)) {
       // We know that any active transitive predecessors will still be covered
       // by (pred, op), so we don't have to add them to `potential_preds`.
-      potential_preds.insert(pred);
+      pred_set.insert(pred);
     } else {
       // Active transitive predecessors will not be covered by (pred, op)
       // anymore, so add them all as candidates.
       for (Operation* transitive_pred : active_transitive_preds[pred]) {
-        potential_preds.insert(transitive_pred);
+        pred_set.insert(transitive_pred);
       }
       ++num_invalid_dependencies;
     }
   }
+
+  std::vector<Operation*> potential_preds(pred_set.begin(), pred_set.end());
+  std::sort(potential_preds.begin(), potential_preds.end(), IsAfterInBlock());
+
   llvm::SmallVector<Operation*, 8> preds_in_reverse_program_order;
   for (Operation* potential_pred : potential_preds) {
     bool is_valid =
