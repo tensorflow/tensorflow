@@ -558,7 +558,7 @@ def build_conversion_flags(
     select_user_tf_ops=None,
     allow_all_select_tf_ops=False,
     enable_tflite_resource_variables=True,
-    unfold_batchmatmul=True,
+    unfold_batchmatmul=False,
     legalize_custom_tensor_list_ops=False,
     lower_tensor_list_ops=True,
     default_to_single_batch_in_tensor_list_ops=False,
