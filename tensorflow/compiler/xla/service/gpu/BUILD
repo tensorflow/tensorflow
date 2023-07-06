@@ -558,6 +558,7 @@ cc_library(
     srcs = if_cuda_is_configured(["triton_autotuner.cc"]),
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
+        ":backend_configs_cc",
         ":buffer_comparator",
         ":compile_module_to_llvm_ir",
         ":gemm_algorithm_picker",
@@ -566,6 +567,7 @@ cc_library(
         ":gpu_asm_opts_util",
         ":gpu_device_info",
         ":gpu_executable",
+        ":gpu_executable_run_options",
         ":gpu_float_support",
         ":gpu_fusible",
         ":autotuner_util",

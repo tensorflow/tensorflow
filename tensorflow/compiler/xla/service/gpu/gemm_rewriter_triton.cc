@@ -620,6 +620,12 @@ void CopyIncrementingAboveThreshold(
   }
 }
 
+Status UncompilableMatmul(absl::string_view explanation) {
+  Status s = absl::CancelledError(explanation);
+  s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
+  return s;
+}
+
 StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const DotFusionAnalysis& analysis,
     const AutotuneResult::TritonGemmKey& tiling,
@@ -629,7 +635,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
 
   // TODO(b/274775195): implement split-K with padding.
   if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
-    return Cancelled("Too small total contracting dimension size.");
+    return UncompilableMatmul("Too small total contracting dimension size.");
   }
   DotFusionAnalysis::Scope scope = (operand_number == 0)
                                        ? DotFusionAnalysis::Scope::LHS
@@ -645,16 +651,16 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     int64_t size_to_split = tiling.split_k();
     while (size_to_split > *fragment) {
       if (size_to_split % *fragment) {
-        return Cancelled("Contracting dimension is too fragmented.");
+        return UncompilableMatmul("Contracting dimension is too fragmented.");
       }
       size_to_split /= *fragment;
       ++fragment;
     }
     if (*fragment % size_to_split) {
-      return Cancelled("Contracting dimension is too fragmented.");
+      return UncompilableMatmul("Contracting dimension is too fragmented.");
     }
     if (tiling.split_k() > ceil(1.0 * spec->at(0).count / tiling.block_k())) {
-      return Cancelled(
+      return UncompilableMatmul(
           "Too small divisible part of the contracting dimension.");
     }
   }
