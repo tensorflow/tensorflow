@@ -398,20 +398,40 @@ struct SparseUnaryChloCallRewriter {
 
 struct SparseUnpackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getResults().size() + 1 == op.getInputs().size());
-    // Both jax.BCSR and jax.BCOO has three memref fields.
-    SmallVector<Type, 6> unpack_ret_tp(op.getResults().getTypes());
+    // TODO(peiming): Canonicalizes these two cases. The old bridge that uses
+    // jax.BCOO/BCSR does not require buffer lengths.
+    unsigned unpack_bufs_num = op.getInputs().size() - 1;
+    assert(op.getResults().size() == unpack_bufs_num ||
+           op.getResults().size() == unpack_bufs_num * 2);
+    SmallVector<Type> unpack_ret_tp(
+        op.getResults().take_front(unpack_bufs_num).getTypes());
     // Extra lengths for each buffer returned.
-    unpack_ret_tp.append(op.getResults().size(), rewriter.getIndexType());
+    unpack_ret_tp.append(unpack_bufs_num, rewriter.getIndexType());
     Value tensor = op.getInputs()[0];
     Value out_vals = op.getInputs()[1];
     ValueRange out_lvls = op.getInputs().drop_front(2);
     // Constructs the UnpackOp.
     auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
         op.getLoc(), unpack_ret_tp, tensor, out_vals, out_lvls);
-    ValueRange bufs = unpack_op.getResults().drop_back(op.getResults().size());
-    // TODO(peiming): return length as well.
-    rewriter.replaceOp(op, bufs);
+    assert(unpack_op.getResults().size() == unpack_bufs_num * 2);
+    ValueRange bufs = unpack_op.getResults().take_front(unpack_bufs_num);
+    ValueRange lens = unpack_op.getResults().take_back(unpack_bufs_num);
+
+    // Wraps the scalar value into a "scalar tensor", i.e., tensor<i64>
+    SmallVector<Value> rets(bufs.begin(), bufs.end());
+    if (op.getResults().size() == unpack_bufs_num * 2) {
+      ValueRange ret_lens = op.getResults().take_back(unpack_bufs_num);
+      for (auto [len, tensor_len] : llvm::zip(lens, ret_lens)) {
+        auto ret_t_len = rewriter.create<tensor::EmptyOp>(
+            op.getLoc(), tensor_len.getType(), ValueRange{});
+        auto int_len = rewriter.create<arith::IndexCastUIOp>(
+            op.getLoc(), ret_t_len.getType().getElementType(), len);
+        auto ret_len = rewriter.create<tensor::InsertOp>(
+            op.getLoc(), ret_t_len.getType(), int_len, ret_t_len, ValueRange{});
+        rets.push_back(ret_len);
+      }
+    }
+    rewriter.replaceOp(op, rets);
     return success();
   }
 };
