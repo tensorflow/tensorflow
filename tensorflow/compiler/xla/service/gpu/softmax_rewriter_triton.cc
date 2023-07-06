@@ -197,7 +197,7 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
   // array.
   std::optional<HloInstruction*> match_failure = std::nullopt;
 
-  if (!instr->IsElementwiseBinary()) {
+  if (!instr->IsElementwiseBinary() || !IsTritonSupportedInstruction(instr)) {
     return match_failure;
   }
 
