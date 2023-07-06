@@ -918,7 +918,7 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
     const std::vector<HloInstruction*>& instructions, int num_devices,
     AutoShardingSolverOption& solver_option) {
   int64_t batch_size = INT_MAX;
-  for (auto iter : batch_dim_map) {
+  for (const auto& iter : batch_dim_map) {
     batch_size = std::min(batch_size, FindInstruction(instructions, iter.first)
                                           ->shape()
                                           .dimensions(iter.second));
