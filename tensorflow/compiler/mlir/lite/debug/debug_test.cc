@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 
+#include <stdint.h>
+
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -24,11 +26,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -49,6 +55,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -57,6 +64,16 @@ class NopPass : public mlir::PassWrapper<NopPass, mlir::OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(NopPass)
 
   void runOnOperation() override {}
+};
+
+class MutatePass : public mlir::PassWrapper<MutatePass, mlir::OperationPass<>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MutatePass)
+
+  void runOnOperation() override {
+    mlir::OpBuilder builder(&getContext());
+    getOperation()->setAttr("tfl.random_attr", builder.getUnitAttr());
+  }
 };
 
 class AlwaysFailPass
@@ -74,6 +91,7 @@ class InitPassManagerTest : public testing::Test {
           mlir::registerPassManagerCLOptions();
           mlir::DialectRegistry registry;
           registry.insert<mlir::BuiltinDialect>();
+          registry.insert<mlir::arith::ArithDialect>();
           registry.insert<mlir::func::FuncDialect>();
           registry.insert<mlir::TFL::TensorFlowLiteDialect>();
           return registry;
@@ -87,8 +105,13 @@ class InitPassManagerTest : public testing::Test {
     auto func = builder.create<mlir::func::FuncOp>(  //
         builder.getUnknownLoc(), "main", builder.getFunctionType({}, {}));
     func->setAttr("tfl.func", builder.getUnitAttr());
-
     builder.setInsertionPointToStart(func.addEntryBlock());
+    llvm::SmallVector<int> shape{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    builder.create<mlir::arith::ConstantOp>(
+        builder.getUnknownLoc(),
+        mlir::DenseIntElementsAttr::get(
+            mlir::RankedTensorType::get(shape.size(), builder.getI32Type()),
+            shape));
     builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
   }
 
@@ -139,7 +162,7 @@ TEST_F(InitPassManagerTest, CrashReproducer) {
   EXPECT_THAT(mlir_dump, Not(IsEmpty()));
 }
 
-TEST_F(InitPassManagerTest, Dump) {
+TEST_F(InitPassManagerTest, DumpToDir) {
   converter::DebugOptions debug_options;
   *debug_options.mutable_mlir_dump_dir() = path_;
   *debug_options.mutable_mlir_dump_pass_regex() = R"(.*NopPass)";
@@ -171,6 +194,97 @@ TEST_F(InitPassManagerTest, Dump) {
         &mlir_dump));
     EXPECT_THAT(mlir_dump, Not(IsEmpty()));
   }
+}
+
+TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
+  converter::DebugOptions debug_options;
+  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  std::string captured_out;
+  llvm::raw_string_ostream out(captured_out);
+
+  mlir::PassManager pm(&context_);
+  InitPassManager(pm, debug_options, out);
+  pm.addPass(std::make_unique<NopPass>());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
+
+  EXPECT_THAT(
+      captured_out,
+      HasSubstr("IR Dump Before tensorflow::(anonymous namespace)::NopPass"));
+  EXPECT_THAT(captured_out,
+              Not(HasSubstr(
+                  "IR Dump After tensorflow::(anonymous namespace)::NopPass")));
+}
+
+TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
+  converter::DebugOptions debug_options;
+  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  std::string captured_out;
+  llvm::raw_string_ostream out(captured_out);
+
+  mlir::PassManager pm(&context_);
+  InitPassManager(pm, debug_options, out);
+  pm.addPass(std::make_unique<MutatePass>());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
+
+  EXPECT_THAT(
+      captured_out,
+      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
+  EXPECT_THAT(
+      captured_out,
+      Not(HasSubstr(
+          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass")));
+}
+
+TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
+  converter::DebugOptions debug_options;
+  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  std::string captured_out;
+  llvm::raw_string_ostream out(captured_out);
+
+  mlir::PassManager pm(&context_);
+  InitPassManager(pm, debug_options, out);
+  pm.addPass(std::make_unique<MutatePass>());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
+
+  EXPECT_THAT(
+      captured_out,
+      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
+  EXPECT_THAT(
+      captured_out,
+      HasSubstr(
+          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass"));
+}
+
+TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
+  converter::DebugOptions debug_options;
+  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  debug_options.set_mlir_elide_elementsattrs_if_larger(5);
+  std::string captured_out;
+  llvm::raw_string_ostream out(captured_out);
+
+  mlir::PassManager pm(&context_);
+  InitPassManager(pm, debug_options, out);
+  pm.addPass(std::make_unique<MutatePass>());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
+
+  EXPECT_THAT(captured_out, HasSubstr("dense_resource<__elided__>"));
+}
+
+TEST_F(InitPassManagerTest, DontElideSmallerElementAttrs) {
+  converter::DebugOptions debug_options;
+  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  debug_options.set_mlir_elide_elementsattrs_if_larger(11);
+  std::string captured_out;
+  llvm::raw_string_ostream out(captured_out);
+
+  mlir::PassManager pm(&context_);
+  InitPassManager(pm, debug_options, out);
+  pm.addPass(std::make_unique<MutatePass>());
+  ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
+
+  EXPECT_THAT(captured_out,
+              HasSubstr("dense<[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]>"));
 }
 
 }  // namespace
