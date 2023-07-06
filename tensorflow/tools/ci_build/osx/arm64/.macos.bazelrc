@@ -38,8 +38,8 @@ test --build_tests_only --keep_going
 # Pass --config=nonpip_filters to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip_filters; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:nonpip_filters --test_lang_filters=cc,py
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xla/service/gpu/... -//tensorflow/compiler/xla/tools/multihost_hlo_runner/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test
 
@@ -57,8 +57,8 @@ test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/compiler/t
 # test for investigation, you'll need --config=pip_base instead, and then you
 # can specify whichever target you want.
 test:pip_base --define=no_tensorflow_py_deps=true
-test:pip_filters --build_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:pip_filters --test_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:pip_filters --build_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:pip_filters --test_tag_filters=-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py39,-no_oss_py310,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:pip_filters --test_lang_filters=py
 test:pip --config=pip_base --config=pip_filters -- //bazel_pip/tensorflow/python/...
 
@@ -74,7 +74,7 @@ build:libtensorflow_build --config=libtensorflow_filters  -- //tensorflow/tools/
 test:continuous_filters --nodistinct_host_configuration --keep_going
 test:continuous_filters --build_tests_only --test_output=errors --flaky_test_attempts=3
 test:continuous_filters --test_size_filters=small,medium --test_timeout=300,450,1200,3600
-test:continuous_filters --test_tag_filters=-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:continuous_filters --build_tag_filters=-no_oss,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:continuous_filters --test_tag_filters=-no_oss,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:continuous_filters --build_tag_filters=-no_oss,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 
 test:continuous --config=continuous_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test

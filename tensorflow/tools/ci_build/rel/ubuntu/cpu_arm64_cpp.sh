@@ -74,7 +74,7 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_lang_filters=cc --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
-export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py38,-no_oss_py39,-no_oss_py310"
+export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py39,-no_oss_py310"
 
 if [ ${IS_NIGHTLY} == 1 ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly

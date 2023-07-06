@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [python3.8, python3.9, python3.10, python3.11]
+        python-version: [python3.9, python3.10, python3.11]
     steps:
       -
         name: Checkout
@@ -79,7 +79,6 @@ jobs:
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.11`
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.10`
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.9`
-            - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.8`
             
             Re-apply the `build and push to gcr.io for staging` label to rebuild and push again. This comment will only be posted once.
       -
