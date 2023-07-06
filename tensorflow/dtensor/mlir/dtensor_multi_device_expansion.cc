@@ -60,6 +60,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 constexpr char kEntryFuncAttr[] = "tf.entry_function";
 constexpr char kMainFuncName[] = "main";
+constexpr char kIsStatelessAttr[] = "is_stateless";
 constexpr int kDeviceIDArgumentNumber = 0;
 
 // This is a map from argument numbers and meshes to per-device values.
@@ -280,6 +281,10 @@ mlir::LogicalResult ExpandOperation(mlir::func::FuncOp target_func,
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
 
+    // Set the "is_stateless" attribute to ensure that side-effect analysis
+    // does not set the per-device call ops to depend on one another (see
+    // `CanHaveSideEffects`), which would cause collectives to hang.
+    new_op->setAttr(kIsStatelessAttr, builder.getBoolAttr(true));
     new_op->setAttr(kDeviceAttr, builder.getStringAttr(devices[i]));
 
     replications.emplace_back(new_op);

@@ -1109,9 +1109,12 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
 
   // Explicitly place function outputs on the default function device to avoid
   // redundant host <-> device copies (Placer may place outputs on the host
-  // CPU).
+  // CPU). This option is only applicable outside of multi-device mode. Since
+  // the function is explicitly distributed across multiple devices there,
+  // setting this option would result in misplaced resources and tensors.
   AttrValue outputs_on_op_device;
-  outputs_on_op_device.set_b(true);
+  const bool multi_device_mode = dtensor::EnableMultiDeviceMode();
+  outputs_on_op_device.set_b(!multi_device_mode);
   function_def.mutable_attr()->insert(
       {"_OutputsOnOpDevice", outputs_on_op_device});
 }
