@@ -502,7 +502,12 @@ bool AutoShardingEvaluation::operator==(
          total_communication_cost == other.total_communication_cost &&
          total_computation_cost == other.total_computation_cost &&
          total_resharding_cost == other.total_resharding_cost &&
-         total_cost == other.total_cost;
+         total_cost == other.total_cost &&
+         lower_bound_communication_cost ==
+             other.lower_bound_communication_cost &&
+         lower_bound_computation_cost == other.lower_bound_computation_cost &&
+         lower_bound_resharding_cost == other.lower_bound_resharding_cost &&
+         lower_bound_cost == other.lower_bound_cost;
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
@@ -544,19 +549,26 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
       }
     }
   }
-  // Compute metrics.
+  // Compute metrics & lower bounds.
   for (size_t i = 0; i < request.num_nodes; ++i) {
-    const int64_t j = s_val[i];
-    evaluation.total_communication_cost += request.d[i][j];
-    evaluation.total_computation_cost += request.c[i][j];
+    evaluation.total_communication_cost += request.d[i][s_val[i]];
+    evaluation.total_computation_cost += request.c[i][s_val[i]];
+    evaluation.lower_bound_communication_cost +=
+        *std::min_element(request.d[i].begin(), request.d[i].end());
+    evaluation.lower_bound_computation_cost +=
+        *std::min_element(request.c[i].begin(), request.c[i].end());
   }
   for (size_t i = 0; i < request.e.size(); ++i) {
-    const int64_t j = e_val[i];
-    evaluation.total_resharding_cost += request.r[i][j];
+    evaluation.total_resharding_cost += request.r[i][e_val[i]];
+    evaluation.lower_bound_resharding_cost +=
+        *std::min_element(request.r[i].begin(), request.r[i].end());
   }
   evaluation.total_cost += evaluation.total_communication_cost;
   evaluation.total_cost += evaluation.total_computation_cost;
   evaluation.total_cost += evaluation.total_resharding_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_communication_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_computation_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_resharding_cost;
   return evaluation;
 }
 

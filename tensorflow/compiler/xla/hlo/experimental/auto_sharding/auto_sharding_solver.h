@@ -69,7 +69,8 @@ enum AutoShardingViolationCode {
   kMemoryViolationCode,        // The solution eclipses the memory budget
 };
 
-// Captures the metrics and constraint violations for the sharding result.
+// Captures the metrics, lower bounds, and constraint violations for the
+// sharding result.
 struct AutoShardingEvaluation {
   // A set of constraint violations; should be empty for any viable solution.
   absl::flat_hash_set<AutoShardingViolationCode> violation_codes;
@@ -81,6 +82,14 @@ struct AutoShardingEvaluation {
 
   // The total (global) objective cost.
   double total_cost = 0.0;
+
+  // A lower bound for each individual cost component.
+  double lower_bound_communication_cost = 0.0;
+  double lower_bound_computation_cost = 0.0;
+  double lower_bound_resharding_cost = 0.0;
+
+  // A lower bound on the total (global) objective cost.
+  double lower_bound_cost = 0.0;
 
   bool operator==(const AutoShardingEvaluation& other) const;
 };

@@ -2285,10 +2285,17 @@ AutoShardingSolverResult CallSolver(
   const AutoShardingSolverResult result = CallORToolsSolver(request);
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
   LOG(INFO) << "Total Communication Cost: "
-            << evaluation.total_communication_cost;
-  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost;
-  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost;
-  LOG(INFO) << "Total Cost: " << evaluation.total_cost;
+            << evaluation.total_communication_cost
+            << " (lower bound: " << evaluation.lower_bound_communication_cost
+            << ")";
+  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
+            << " (lower bound: " << evaluation.lower_bound_computation_cost
+            << ")";
+  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
+            << " (lower bound: " << evaluation.lower_bound_resharding_cost
+            << ")";
+  LOG(INFO) << "Total Cost: " << evaluation.total_cost
+            << " (lower bound: " << evaluation.lower_bound_cost << ")";
   return result;
 }
 
