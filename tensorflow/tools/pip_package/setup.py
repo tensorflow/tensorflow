@@ -85,8 +85,7 @@ REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
     'flatbuffers >= 23.5.26',
-    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
-    'gast >= 0.2.1, <= 0.4.0',
+    'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
