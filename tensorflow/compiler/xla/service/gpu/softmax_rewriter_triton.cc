@@ -117,7 +117,7 @@ bool IsTriviallyFusible(HloInstruction* instr, int num_allowed_users = 1) {
   }
 
   if (instr->opcode() == HloOpcode::kBitcast && BitcastIsTilingNoop(instr)) {
-    return instr;
+    return true;
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
@@ -152,6 +152,12 @@ bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
     if (found_producer == producer) {
       return true;
     }
+
+    if (!IsTriviallyFusible(found_producer)) {
+      return false;
+    }
+
+    consumer = found_producer->mutable_operand(0);
   }
 
   return false;
