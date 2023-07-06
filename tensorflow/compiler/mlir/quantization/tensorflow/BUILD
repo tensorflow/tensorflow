@@ -1,17 +1,9 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-
-# TODO(b/249181641): Restructure source codes for TF quantization.
-package_group(
-    name = "internal_visibility_allowlist_package",
-    packages = [
-        "//tensorflow/compiler/mlir/lite/...",
-        "//tensorflow/compiler/mlir/quantization/...",
-    ] + internal_visibility_allowlist(),
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,7 +14,16 @@ package(
     licenses = ["notice"],
 )
 
-py_binary(
+# TODO(b/249181641): Restructure source codes for TF quantization.
+package_group(
+    name = "internal_visibility_allowlist_package",
+    packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/compiler/mlir/quantization/...",
+    ] + internal_visibility_allowlist(),
+)
+
+py_strict_binary(
     name = "gen_quantized_function_library",
     srcs = ["gen_quantized_function_library.py"],
     deps = [
