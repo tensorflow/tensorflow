@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -44,6 +46,59 @@ namespace {
 bool IsProfitableOperand(HloInstruction* instr) {
   // Effective scalars are not a profitable shared operand. Skip them.
   return !ShapeUtil::IsEffectiveScalar(instr->shape());
+}
+
+// Finds and returns the unique `slice` op where `parent` is used in `instr`.
+// Returns `nullptr` if no such `slice` exists.
+const HloSliceInstruction* FindUniqueSlice(const HloInstruction* parent,
+                                           const HloInstruction* instr) {
+  if (const auto* slice = DynCast<HloSliceInstruction>(instr)) {
+    return slice;
+  } else if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
+    const HloSliceInstruction* result = nullptr;
+    for (size_t i = 0; i < fusion->operand_count(); ++i) {
+      if (fusion->operand(i) == parent) {
+        // Parameter used more than once -> there's no unique slice.
+        if (result) return nullptr;
+
+        auto* called_param = fusion->fused_parameter(i);
+        if (called_param->user_count() != 1) return nullptr;
+
+        result = FindUniqueSlice(called_param, called_param->users()[0]);
+        if (!result) return nullptr;
+      }
+    }
+    return result;
+  } else {
+    return nullptr;
+  }
+}
+
+FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
+                                                const HloInstruction& instr2,
+                                                const HloInstruction* parent) {
+  if (parent->shape().IsTuple()) return {};
+  // Allow MOF if the parameter is small, even if there's no overlap. 1024 bytes
+  // were arbitrarily chosen as the threshold.
+  if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) return {};
+
+  const HloSliceInstruction* slice1 = FindUniqueSlice(parent, &instr1);
+  const HloSliceInstruction* slice2 = FindUniqueSlice(parent, &instr2);
+  if (!slice1 || !slice2) return {};
+
+  // TODO(jreiffers): Check strides as well.
+  auto& starts1 = slice1->slice_starts();
+  auto& starts2 = slice2->slice_starts();
+  auto& limits1 = slice1->slice_limits();
+  auto& limits2 = slice2->slice_limits();
+
+  for (int64_t dim = 0; dim < parent->shape().rank(); ++dim) {
+    bool overlap = starts1[dim] < limits2[dim] && starts2[dim] < limits1[dim];
+    if (!overlap) {
+      return "slices are non-overlapping";
+    }
+  }
+  return {};
 }
 
 FusionDecision LegalToFuse(const HloInstruction& instr1,
@@ -249,6 +304,13 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
             absl::StrCat(i.name(), " and ", j.name(), " are connected")};
       },
       &ShapesCompatibleForMultiOutputFusion,
+      // Technically, this check is order-dependent (e.g. siblings A, B, C where
+      // {A, B} and {B, C} overlap, but {A, C} do not. If the priority order is
+      // [C, A, B], only {C, B} will be fused, and A will only be fused in the
+      // next iteration of the fusion pipeline, potentially requiring several
+      // iterations to converge. We assume this case to be very rare in
+      // practice.
+      std::bind(ParameterSlicesAreNonOverlapping, _1, _2, parent),
       // This check should be last, as it may be expensive.
       std::bind(LegalToFuse, _1, _2, std::cref(device_info_),
                 fusion_info_cache)};
