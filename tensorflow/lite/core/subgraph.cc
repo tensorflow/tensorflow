@@ -474,7 +474,7 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
 // being null, that contains the actual logic that the registration represents.
 // See also the comment inside
 // 'TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels'.
-const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
+const char* GetDelegateKernelName(const TfLiteRegistration& registration) {
   if (registration.custom_name) {
     return registration.custom_name;
   }
