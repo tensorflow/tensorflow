@@ -8153,6 +8153,23 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
             HloOpcode::kMultiply);
 }
 
+TEST_F(AlgebraicSimplifierTest, MultiplyNegateNegate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      neg0 = f32[] negate(p0)
+      neg1 = f32[] negate(p1)
+      ROOT mul = f32[] multiply(neg0, neg1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
   const char* kModuleStr = R"(
     HloModule m

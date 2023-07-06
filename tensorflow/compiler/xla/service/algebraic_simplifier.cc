@@ -3256,6 +3256,18 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   }
 
   {
+    // Mul(Negate(A), Negate(B)) => Mul(A, B)
+    HloInstruction *a, *b;
+    if (Match(multiply,
+              m::Multiply(m::Negate(m::Op(&a)), m::Negate(m::Op(&b))))) {
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(0, a));
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(1, b));
+      MarkAsChanged();
+      return OkStatus();
+    }
+  }
+
+  {
     HloInstruction* abs_operand;
     if (lhs == rhs && Match(lhs, m::Abs(m::Op(&abs_operand))) &&
         !ShapeUtil::ElementIsComplex(abs_operand->shape())) {
