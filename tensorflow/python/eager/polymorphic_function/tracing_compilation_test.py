@@ -204,6 +204,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(function_cache, 4)
 
+  @test_util.run_v2_only
   def testGraphEagerIsolation(self):
     def f_py():
       self.v = variables.Variable(1.0)
@@ -217,6 +218,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       self.assertEqual(f().shape, ())
 
+  @test_util.run_v2_only
   def testCompilationNumpyArraysConvertedToTensors(self):
     def f(x):
       self.assertIsInstance(x, ops.Tensor)
@@ -263,6 +265,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     # We should not have triggered any re-tracing of the python function.
     self.assertLen(function_cache, 2)
 
+  @test_util.run_v2_only
   def testNumpyDtypeInputSupported(self):
     @compiled_fn
     def f(x, dtype):
@@ -273,6 +276,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(f(1, numpy.int32).numpy(), numpy.int32(1))
     self.assertEqual(f(2, numpy.int32).numpy(), numpy.int32(2))
 
+  @test_util.run_v2_only
   def testCompilationNumpyArraysConvertedToTensorsInKwargs(self):
     def f(**kwargs):
       x = kwargs.pop('x')
@@ -297,6 +301,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1.0, defined(x=array_ops.ones([])).numpy())
     self.assertEqual(0.0, defined(x=array_ops.zeros([])).numpy())
 
+  @test_util.run_v2_only
   def testFuncListAttr(self):
     @compiled_fn
     def test_function(val):
@@ -392,6 +397,9 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     context.context().function_call_options = None
     model(constant_op.constant(2.0))
 
+  # TODO(b/286583977): We add the run_v2_only here to shield from the automatic
+  # both modes since we use the other decorator already to invoke them.
+  @test_util.run_v2_only
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInCompilation(self):
     conv = convolutional.Conv2D(
@@ -552,6 +560,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defined(1, baz=3, bar=2)
     self.assertLen(function_cache, 3)
 
+  @test_util.run_v2_only
   def testFunctoolsPartialUnwrappedCorrectly(self):
     def full_function(a, b, c=3):
       return a, b, c
@@ -638,6 +647,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       func([['wrong dtype']])
 
+  @test_util.run_v2_only
   def testNestedInputSignatures(self):
     def expected_foo(a, b):
       return [a, b]
@@ -690,6 +700,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out[0][1], b)
     self.assertAllEqual(out[1], c)
 
+  @test_util.run_v2_only
   def testNestedInputSignaturesWithDict(self):
     def expected_bar(a):
       return a
@@ -757,6 +768,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
+  @test_util.run_v2_only
   def testUnderspecifiedInputSignature(self):
     @compiled_fn(
         input_signature=[
@@ -775,6 +787,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
+  @test_util.run_v2_only
   def testInputSignatureWithPartialFunction(self):
     def full_function(a, b, c=3.0):
       return a, b, c
@@ -789,6 +802,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func_b.numpy(), b)
     self.assertEqual(func_c.numpy(), c)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordPositionalArgs(self):
     function_cache = function_cache_lib.FunctionCache()
 
@@ -825,6 +839,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordArgs(self):
     def foo(a, b, **kwargs):
       del kwargs
@@ -881,6 +896,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       defined(rt5)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordOnlyArgs(self):
     def f(a, b, c=3, *, d=4):
       self.assertIsInstance(a, ops.Tensor)
@@ -1078,6 +1094,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
               functions[i].cached_definition.signature.name,
           )
 
+  @test_util.run_v2_only
   def testRegisterConcreteFunction(self):
     @compiled_fn(
         name='py_add', function_cache=function_cache_lib.FunctionCache()
@@ -1219,6 +1236,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertLen(graph._functions, 3)
 
+  @test_util.run_v2_only
   def testCallingFunctionWithDifferentVariables(self):
     @compiled_fn
     def foo(v):
@@ -1283,6 +1301,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
           ),
       ),
   ])
+  @test_util.run_v2_only
   def testSwapImplementationWithGrapplerPlugin(
       self, cpu_decorator, gpu_decorator
   ):
@@ -1539,6 +1558,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defined(z, y, y)
     self.assertLen(function_cache, 3)
 
+  @test_util.run_v2_only
   def testDeepcopyVariableNoRetracing(self):
     function_cache = function_cache_lib.FunctionCache()
 
@@ -1557,6 +1577,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertLen(function_cache, 1)
 
   @test_util.disable_tfrt('b/173429686')
+  @test_util.run_v2_only
   def testExecutorType(self):
     @compiled_fn
     def add_five(x):
@@ -1983,6 +2004,7 @@ class MultiDeviceCompilationTest(test.TestCase, parameterized.TestCase):
 class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
+  @test_util.run_v2_only
   def testBasic(self):
     @compiled_fn
     def fn(a, b):
