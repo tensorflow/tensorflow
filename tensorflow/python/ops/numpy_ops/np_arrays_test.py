@@ -209,6 +209,6 @@ if __name__ == '__main__':
   # for setting _USE_EQUALITY points to V2 behavior not being on).
   ops.enable_eager_execution()
   ops.Tensor._USE_EQUALITY = True
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

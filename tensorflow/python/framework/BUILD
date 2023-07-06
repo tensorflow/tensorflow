@@ -3111,6 +3111,7 @@ py_strict_test(
         ":ops",
         ":weak_tensor",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops:weak_tensor_test_util",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
