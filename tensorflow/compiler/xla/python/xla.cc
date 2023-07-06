@@ -911,7 +911,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("is_tsan", IsTsan);
   m.def("is_sanitized", IsSanitized);
 
-  m.attr("batched_device_put") = py::cpp_function(
+  m.def(
+      "batched_device_put",
       [](py::object aval, py::object sharding, std::vector<py::object> xs,
          std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
          bool force_copy,
