@@ -1318,7 +1318,7 @@ bool DTensorDevice::IsSparseDTensor(TFE_Context* context,
 std::unordered_map<std::string, int> DTensorDevice::GetStats(
     TFE_Context* context, TF_Status* status) const {
   const auto fm_stats = function_manager_->GetStats();
-
+  mutex_lock lock(mu_);
   const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
   std::unordered_map<std::string, int> result{
       {"function_manager.hit", fm_stats.hits},
@@ -2486,6 +2486,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
 
   if (ShouldFastExecuteEagerPureOperation(dtensor_operation, mesh.value(),
                                           typed_inputs, attributes)) {
+    mutex_lock lock(mu_);
     stats_.eager_pure_optimization_hits++;
     FastExecuteEagerPureOperation(context, dtensor_operation, mesh.value(),
                                   num_inputs, *num_outputs, typed_inputs,
