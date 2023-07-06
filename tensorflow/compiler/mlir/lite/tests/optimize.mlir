@@ -3453,3 +3453,42 @@ func.func @fuseLeakyReluNotSplat(%arg0: tensor<10xf32>) -> tensor<10xf32> attrib
   %2 = "tfl.select"(%0, %arg0, %1) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   return %2 : tensor<10xf32>
 }
+
+// CHECK-LABEL:   func @fuse_2d_upscaling
+func.func @fuse_2d_upscaling(%arg0: tensor<8x1x8x1280xf32>) -> tensor<1x16x16x1280xf32> {
+  // CHECK: "tfl.resize_nearest_neighbor"
+  %cst = "tfl.pseudo_const"() {value = dense<[[0], [0], [1], [1], [2], [2], [3], [3], [4], [4], [5], [5], [6], [6], [7], [7]]> : tensor<16x1xi32>} : () -> tensor<16x1xi32>
+  %gather_nd_first = "tfl.gather_nd"(%arg0, %cst) : (tensor<8x1x8x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x8x1280xf32>
+  %transpose_first_perm = "tfl.pseudo_const"() {value = dense<[2, 1, 0, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_first = "tfl.transpose"(%gather_nd_first, %transpose_first_perm) : (tensor<16x1x8x1280xf32>, tensor<4xi32>) -> tensor<8x1x16x1280xf32>
+  %gather_nd_second = "tfl.gather_nd"(%transpose_first, %cst) : (tensor<8x1x16x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x16x1280xf32>
+  %transpose_second_perm = "tfl.pseudo_const"() {value = dense<[1, 2, 0, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_second = "tfl.transpose"(%gather_nd_second, %transpose_second_perm) : (tensor<16x1x16x1280xf32>, tensor<4xi32>) -> tensor<1x16x16x1280xf32>
+  return %transpose_second : tensor<1x16x16x1280xf32>
+}
+
+// CHECK-LABEL:   func @dont_fuse_non_2d_upscaling_wrong_indices
+func.func @dont_fuse_non_2d_upscaling_wrong_indices(%arg0: tensor<8x1x8x1280xf32>) -> tensor<1x16x16x1280xf32> {
+  // CHECK-NOT: "tfl.resize_nearest_neighbor"
+  %cst = "tfl.pseudo_const"() {value = dense<[[1], [1], [1], [1], [2], [2], [2], [2], [4], [4], [4], [4], [5], [5], [5], [5]]> : tensor<16x1xi32>} : () -> tensor<16x1xi32>
+  %gather_nd_first = "tfl.gather_nd"(%arg0, %cst) : (tensor<8x1x8x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x8x1280xf32>
+  %transpose_first_perm = "tfl.pseudo_const"() {value = dense<[2, 1, 0, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_first = "tfl.transpose"(%gather_nd_first, %transpose_first_perm) : (tensor<16x1x8x1280xf32>, tensor<4xi32>) -> tensor<8x1x16x1280xf32>
+  %gather_nd_second = "tfl.gather_nd"(%transpose_first, %cst) : (tensor<8x1x16x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x16x1280xf32>
+  %transpose_second_perm = "tfl.pseudo_const"() {value = dense<[1, 2, 0, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_second = "tfl.transpose"(%gather_nd_second, %transpose_second_perm) : (tensor<16x1x16x1280xf32>, tensor<4xi32>) -> tensor<1x16x16x1280xf32>
+  return %transpose_second : tensor<1x16x16x1280xf32>
+}
+
+// CHECK-LABEL:   func @dont_fuse_non_2d_upscaling_wrong_perm
+func.func @dont_fuse_non_2d_upscaling_wrong_perm(%arg0: tensor<8x1x8x1280xf32>) -> tensor<1x16x16x1280xf32> {
+  // CHECK-NOT: "tfl.resize_nearest_neighbor"
+  %cst = "tfl.pseudo_const"() {value = dense<[[0], [0], [1], [1], [2], [2], [3], [3], [4], [4], [5], [5], [6], [6], [7], [7]]> : tensor<16x1xi32>} : () -> tensor<16x1xi32>
+  %gather_nd_first = "tfl.gather_nd"(%arg0, %cst) : (tensor<8x1x8x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x8x1280xf32>
+  %transpose_first_perm = "tfl.pseudo_const"() {value = dense<[2, 1, 0, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_first = "tfl.transpose"(%gather_nd_first, %transpose_first_perm) : (tensor<16x1x8x1280xf32>, tensor<4xi32>) -> tensor<8x1x16x1280xf32>
+  %gather_nd_second = "tfl.gather_nd"(%transpose_first, %cst) : (tensor<8x1x16x1280xf32>, tensor<16x1xi32>) -> tensor<16x1x16x1280xf32>
+  %transpose_second_perm = "tfl.pseudo_const"() {value = dense<[1, 0, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %transpose_second = "tfl.transpose"(%gather_nd_second, %transpose_second_perm) : (tensor<16x1x16x1280xf32>, tensor<4xi32>) -> tensor<1x16x16x1280xf32>
+  return %transpose_second : tensor<1x16x16x1280xf32>
+}
