@@ -5766,6 +5766,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
+  optional<bool> preserve_layout;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -5774,6 +5775,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
                                 &deduplicated_name};
+  attrs["preserve_layout"] = {/*required=*/false, AttrTy::kBool,
+                              &preserve_layout};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5799,6 +5802,11 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (deduplicated_name) {
     metadata->set_deduplicated_name(*deduplicated_name);
+  }
+  if (preserve_layout) {
+    metadata->set_preserve_layout(*preserve_layout);
+  } else {
+    metadata->set_preserve_layout(false);
   }
   return true;
 }

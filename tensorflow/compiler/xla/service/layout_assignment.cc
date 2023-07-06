@@ -752,6 +752,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
           get_channel_constraints(instruction)
               ->LayoutShapeForChannel(buffer_shape, channel_id);
       TF_RETURN_IF_ERROR(SetInstructionLayout(new_buffer_shape, instruction));
+    } else if (instruction->preserve_layout()) {
+      TF_RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction,
+                                              /*mandatory=*/true, /*dfs=*/true,
+                                              /*allow_alias=*/true));
     }
   }
 
@@ -2323,7 +2327,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
-        !IsLayoutConstrainedCollective(instruction)) {
+        !IsLayoutConstrainedCollective(instruction) &&
+        !instruction->preserve_layout()) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
