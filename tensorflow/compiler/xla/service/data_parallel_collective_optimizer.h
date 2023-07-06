@@ -60,7 +60,7 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
     kBackward,
     kForward,
   };
-  struct DataParallelCollectiveConfig {
+  struct Config {
     int64_t level_to_operate_on = 0;
     // Maximum number of HLOs to pipeline per loop. (Meant to help controlling
     // memory pressure manually).
@@ -71,34 +71,15 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
     HloPredicate should_process;
   };
   static const char* const kInsertedByPreviousStep;
-  explicit DataParallelCollectiveOptimizer(
-      int64_t level_to_operate_on = 0, bool last_run = true,
-      bool process_different_sized_ops = false,
-      PipeliningDirection pipelining_direction = kForward,
-      HloPredicate should_process = nullptr)
-      : next_channel_id_(0),
-        level_to_operate_on_(level_to_operate_on),
-        max_pipelining_per_loop_(INT64_MAX),
-        last_run_(last_run),
-        process_different_sized_ops_(process_different_sized_ops),
-        pipelining_direction_(pipelining_direction),
-        should_process_(should_process) {}
-  explicit DataParallelCollectiveOptimizer(
-      const DataParallelCollectiveConfig& config)
-      : next_channel_id_(0),
-        level_to_operate_on_(config.level_to_operate_on),
-        max_pipelining_per_loop_(config.max_pipelining_per_loop),
-        last_run_(config.last_run),
-        process_different_sized_ops_(config.process_different_sized_ops),
-        pipelining_direction_(config.pipelining_direction),
-        should_process_(config.should_process) {}
+  explicit DataParallelCollectiveOptimizer(const Config& config)
+      : config_(config) {}
   DataParallelCollectiveOptimizer(DataParallelCollectiveOptimizer&& other) =
       default;
   DataParallelCollectiveOptimizer& operator=(
       DataParallelCollectiveOptimizer&& other) = default;
 
   absl::string_view name() const override {
-    if (pipelining_direction_ == kForward) {
+    if (config_.pipelining_direction == kForward) {
       return "data-parallel-collective-optimizer-forward";
     } else {
       return "data-parallel-collective-optimizer-backward";
@@ -111,13 +92,7 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  int64_t next_channel_id_;
-  int64_t level_to_operate_on_;
-  int64_t max_pipelining_per_loop_;
-  bool last_run_;
-  bool process_different_sized_ops_;
-  PipeliningDirection pipelining_direction_;
-  HloPredicate should_process_;
+  const Config config_;
 };
 
 }  // namespace xla

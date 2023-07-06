@@ -618,7 +618,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
     if (debug_options.xla_gpu_enable_pipelined_all_reduce()) {
-      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+      DataParallelCollectiveOptimizer::Config config{
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -629,7 +629,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
     }
     if (debug_options.xla_gpu_enable_pipelined_all_gather()) {
-      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+      DataParallelCollectiveOptimizer::Config config{
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
