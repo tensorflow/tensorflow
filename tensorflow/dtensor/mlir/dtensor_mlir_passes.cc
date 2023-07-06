@@ -217,6 +217,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   AddDTensorAllReduceCombineOptimization(pm);
 
+  // Lowers complex and other unsupported types to supported types.
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorCollectiveTypeLoweringPass());
+
   // DTensorReduceScatter lowering should come before DTensorAllReduce
   // and DTensorAllScatter lowerings since for some devices DTensorReduceScatter
   // will be decomposed into an DTensorAllReduce+DTensorScatter.

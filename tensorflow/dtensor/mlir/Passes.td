@@ -42,6 +42,14 @@ def DTensorConstantFolding
   ];
 }
 
+def DTensorCollectiveTypeLoweringPass
+    : Pass<"dtensor-collective-type-lowering", "mlir::func::FuncOp"> {
+  let summary = "Lowers collectives from unsupported types (e.g. complex) to supported types.";
+  let constructor = "CreateDTensorCollectiveTypeLoweringPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorAllReduceSumOptimization
     : Pass<"dtensor-allreduce-sum-optimization", "mlir::func::FuncOp"> {
   let summary = "Changes order of add/allreduce to minimize all reduce operations.";

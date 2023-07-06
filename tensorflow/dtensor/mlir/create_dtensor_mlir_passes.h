@@ -165,6 +165,9 @@ CreateDTensorRemoveDTensorLayoutPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorReplaceRelayoutWithIdentityPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorCollectiveTypeLoweringPass();
+
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"

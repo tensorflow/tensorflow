@@ -185,6 +185,7 @@ cc_library(
         "dtensor_allreduce_combine_optimization.cc",
         "dtensor_allreduce_scatter_optimization.cc",
         "dtensor_allreduce_sum_optimization.cc",
+        "dtensor_collective_type_lowering.cc",
         "dtensor_layout_to_xla_sharding_op.cc",
         "dtensor_mixed_precision_reduce.cc",
         "dtensor_mlir_passes.cc",
