@@ -2588,7 +2588,7 @@ void Model::RecordIteratorGapTime(uint64_t duration_usec) {
 
 double Model::ComputeTargetTimeNsec() {
   tf_shared_lock l(gap_mu_);
-  if (gap_times_usec_.empty()) {
+  if (gap_times_usec_.size() < kGapTimeWindow) {
     return 0.0;
   }
   double target_time_sigmas = 0.0;

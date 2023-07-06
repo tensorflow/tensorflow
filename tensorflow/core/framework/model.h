@@ -860,7 +860,8 @@ class Model {
   void RecordIteratorGapTime(uint64_t duration_usec);
 
   // Computes the target time in nsecs to use for `STAGE_BASED` autotune
-  // algorithm.
+  // algorithm. Returns 0 if there if there are not sufficient recorded iterator
+  // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
 
  private:

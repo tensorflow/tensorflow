@@ -3070,14 +3070,18 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3086,14 +3090,18 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
   model_ = std::make_unique<Model>();
   model_->AddExperiment("stage_based_autotune_v2");
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3101,16 +3109,14 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 50; ++i) {
+    model_->RecordIteratorGapTime(10);
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
