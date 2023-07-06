@@ -1319,7 +1319,7 @@ py_strict_library(
         ":errors",
         ":indexed_slices",
         ":ops",
-        ":tensor_spec",
+        ":tensor",
         ":type_spec",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/trace_type",
