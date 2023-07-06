@@ -5285,19 +5285,12 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
       // Limit register presure for MOF, but still use a minimum of 2.
       int64_t fan_out = fusion.getFusionRoots().size();
       num_partial_results /= fan_out;
+      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
+      // the unroll factor, we should have set this reduction as unvectorized.
       num_partial_results = std::max(num_partial_results, 2);
     } else {
       num_partial_results = 2;
     }
-
-    // Take into account MaxBeneficialColumnReductionUnrollBasedOnBlockSize.
-    // (We can't go below 2 for the unroll factor -- if we wanted to use 1 as
-    // the unroll factor, we should have set this reduction as unvectorized.)
-    num_partial_results = std::clamp<int>(
-        2,  //
-        num_partial_results,
-        MaxBeneficialColumnReductionUnrollBasedOnBlockSize(
-            ir_emitter_context_->gpu_device_info(), fused_computation));
   }
 
   // TODO(b/283542954): Autotune num_partial_results?  This can make a big
