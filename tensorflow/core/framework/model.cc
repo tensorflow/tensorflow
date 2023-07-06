@@ -2601,6 +2601,22 @@ double Model::ComputeTargetTimeNsec() {
          1.0e3;
 }
 
+double Model::ComputeProcessingTimeNsec() const {
+  const std::shared_ptr<Node> root = output();
+  if (root == nullptr) {
+    return 0.0;
+  }
+
+  ModelTiming model_timing(root);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  StatusOr<std::pair<double, Node*>> critical_root_status =
+      priority_queue.PopSlowestStageRoot();
+  if (!critical_root_status.ok()) {
+    return 0.0;
+  }
+  return critical_root_status->first;
+}
+
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager) {

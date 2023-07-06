@@ -864,6 +864,10 @@ class Model {
   // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
 
+  // Returns the time in nanoseconds it takes the pipeline to produce an
+  // element. Returns 0 if the model is empty.
+  double ComputeProcessingTimeNsec() const;
+
  private:
   // Determines whether optimization should stop given total processing time,
   // estimated output time, and estimated number of buffers bytes.
