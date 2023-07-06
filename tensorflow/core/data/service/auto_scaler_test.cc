@@ -18,6 +18,8 @@ limitations under the License.
 #include <optional>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 
@@ -26,6 +28,41 @@ namespace data {
 namespace {
 
 using ::tsl::testing::StatusIs;
+
+TEST(AutoScalerTest, UpdateOptimalNumberOfWorkersMetricNoReportedTimes) {
+  AutoScaler auto_scaler;
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(AutoScalerTest, UpdateOptimalNumberOfWorkersMetricNoReportedPTs) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(5)));
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(AutoScalerTest, UpdateOptimalNumberOfWorkersMetricNoReportedTPTs) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(AutoScalerTest, UpdateOptimalNumberOfWorkersMetricWithReportedTimes) {
+  AutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(5)));
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric());
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_GT(cell_reader.Read(), 0);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
+}
 
 TEST(AutoScalerTest, GetOptimalNumberOfWorkersInitialState) {
   AutoScaler auto_scaler;
