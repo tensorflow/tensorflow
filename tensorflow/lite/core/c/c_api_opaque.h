@@ -418,6 +418,30 @@ TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
     TfLiteOpaqueContext* opaque_context, int subgraph_index);
 
+// Loads metadata of a TF Lite node's custom initialization data.  Specifically:
+// * Loads into the supplied 'fd' the file descriptor of the file that stores
+//   the 'node's custom  initialization data.  This output parameter will be
+//   loaded if the TF Lite runtime has access to the file descriptor, though
+//   this is not always the case, e.g. if a client provides a tflite::Model
+//   directly to the TF Lite runtime.  If 'fd' can be loaded then 'kTfLiteOk'
+//   will be returned, otherwise 'kTfLiteError' is returned.
+// * Loads into the supplied 'custom_initial_data_offset_in_file' pointer the
+//   offset of the 'node's custom init data in the file associated with 'fd'.
+//   This output parameter will be set to -1 if the 'node' does not have custom
+//   init data set.
+// * Loads into the supplied 'custom_initial_data_size' the size of the
+//   custom initialization data.  This output parameter will be set to -1 if the
+//   'node' does not have custom init data set.
+//
+// Returns 'kTfLiteOk' when 'fd' has been loaded successfully and 'kTfLiteError'
+// otherwise.  Note that this means that 'kTfLiteOk' can be returned, even if
+// the 'node' does not have custom init data set.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+    const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size);
+
 /// Reports an error message formed by using the provided 'format' string in
 /// combination with the data provided via the unnamed arguments following
 /// the 'format' parameter ('...').  The intended usage and behavior is the same

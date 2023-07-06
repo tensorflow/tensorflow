@@ -706,6 +706,46 @@ TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::GetNodeInitDataMmapInfo(
+    const TfLiteNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size) const {
+  if (!allocation_) {
+    return kTfLiteError;
+  }
+
+  if (allocation_->type() != tflite::Allocation::Type::kMMap) {
+    return kTfLiteError;
+  }
+
+  const MMAPAllocation* mmap_alloc =
+      static_cast<const MMAPAllocation*>(allocation_);
+  *fd = mmap_alloc->fd();
+  if (node->custom_initial_data == nullptr) {
+    *custom_initial_data_offset_in_file = -1;
+    *custom_initial_data_size = -1;
+    // The node does not have custom init data.  Deliberately return 'kTfLiteOk'
+    // so that clients can distinguish the following scenarios:
+    // - The TF Lite runtime does not have 'MMAPAllocation' available and
+    //   therefore can not possibly load the FD/offset/size tuple associcated
+    //   with a node's custom init data, return 'kTfLiteError' in this case.
+    // - The TF Lite runtime does have 'MMAPAllocation' available, but the
+    //   specific 'node' that has been supplied happens to have 'null' set as
+    //   its custom init data address.  Return 'kTfLiteOk' but set offset and
+    //   size to -1.
+    return kTfLiteOk;
+  }
+
+  const size_t custom_initial_data_offset =
+      reinterpret_cast<const uint8_t*>(node->custom_initial_data) -
+      reinterpret_cast<const uint8_t*>(mmap_alloc->mmapped_buffer());
+
+  *custom_initial_data_offset_in_file =
+      custom_initial_data_offset + mmap_alloc->mmapped_buffer_offset_in_file();
+  *custom_initial_data_size = node->custom_initial_data_size;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {

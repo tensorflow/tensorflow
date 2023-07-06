@@ -839,6 +839,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
         (*interpreter)->subgraph(subgraph_index);
+    modified_subgraph->allocation_ = allocation_;
     auto* subgraph_info =
         telemetry_registered
             ? &telemetry_settings->subgraph_infos[subgraph_index]
