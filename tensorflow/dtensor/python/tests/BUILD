@@ -302,6 +302,7 @@ pytype_library(
         "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
+        "@pypi_portpicker//:pkg",
     ],
 )
 

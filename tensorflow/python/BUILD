@@ -529,6 +529,7 @@ py_strict_library(
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
+        "@pypi_scipy//:pkg",
         "@six_archive//:six",
     ],
 )
@@ -650,6 +651,12 @@ pywrap_tensorflow_macro(
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
         "@local_config_python//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",

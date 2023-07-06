@@ -37,7 +37,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
@@ -290,12 +290,21 @@ function build_wheel() {
   if [[ -e tools/python_bin_path.sh ]]; then
     source tools/python_bin_path.sh
   fi
-
+  if is_windows; then
+	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/ -maxdepth 1 -type d -name "python_*")
+	  FULL_DIR="$(real_path "$PY_DIR")/python"
+	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/pypi_wheel/site-packages/"
+  else
+	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/ -maxdepth 1 -type d -name "python_*")
+	  FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
+	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
+  fi
+  
   pushd ${TMPDIR} > /dev/null
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+  $FULL_DIR setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null

@@ -3235,6 +3235,12 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [

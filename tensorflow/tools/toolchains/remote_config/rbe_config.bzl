@@ -120,7 +120,6 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
         version = python_version if len(python_versions) > 1 else ""
         remote_python_configure(
             name = "%s_config_python%s" % (name, version),
-            environ = env,
             exec_properties = exec_properties,
             platform_constraint = "@%s_config_platform//:platform_constraint" % name,
         )
@@ -144,7 +143,6 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
 
     remote_python_configure(
         name = "%s_config_python" % name,
-        environ = env,
         exec_properties = exec_properties,
         platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
@@ -201,7 +199,6 @@ def sigbuild_tf_configs(name_container_map, env):
 
         remote_python_configure(
             name = "%s_config_python" % name,
-            environ = env,
             exec_properties = exec_properties,
             platform_constraint = "@%s_config_platform//:platform_constraint" % name,
         )

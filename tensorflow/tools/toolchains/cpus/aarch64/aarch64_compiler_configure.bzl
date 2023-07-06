@@ -25,7 +25,6 @@ def ml2014_tf_aarch64_configs(name_container_map, env):
 
         remote_python_configure(
             name = "%s_config_python" % name,
-            environ = env,
             exec_properties = exec_properties,
             platform_constraint = "@%s_config_aarch64_platform//:platform_constraint" % name,
         )
