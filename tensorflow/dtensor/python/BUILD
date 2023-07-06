@@ -1,5 +1,6 @@
 # DTensor Python API and libraries.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
@@ -17,7 +18,7 @@ package(
 # -----------------------------------------------------------------------------
 # A list of all modules linked into TensorFlow.
 
-py_library(
+py_strict_library(
     name = "dtensor",
     srcs = ["__init__.py"],
     visibility = [
@@ -72,6 +73,13 @@ pytype_strict_library(
 tf_gen_op_wrapper_py(
     name = "gen_dtensor_ops",
     out = "gen_dtensor_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         "//tensorflow/dtensor/cc:dtensor_ops",
         "//tensorflow/dtensor/cc:dtensor_tpu_ops",
