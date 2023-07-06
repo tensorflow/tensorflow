@@ -76,10 +76,9 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   }
   auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
       ifrt::Shape(shape),
-      ifrt::OpaqueSharding::Create(
-          ifrt::DeviceList(std::move(devices)),
-          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-              std::move(shapes))),
+      ifrt::ConcreteSharding::Create(ifrt::DeviceList(std::move(devices)),
+                                     /*shape=*/ifrt::Shape(shape),
+                                     /*shard_shapes=*/std::move(shapes)),
       absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
   if (!ifrt_array.ok()) {
     // TODO(hyeontaek): Return a Status.
@@ -455,10 +454,9 @@ Status PyArray::set_arrays(py::object obj) {
       auto array,
       py_client()->ifrt_client()->AssembleArrayFromSingleDeviceArrays(
           ifrt::Shape(shape()),
-          ifrt::OpaqueSharding::Create(
-              ifrt::DeviceList(std::move(devices)),
-              xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-                  std::move(shapes))),
+          ifrt::ConcreteSharding::Create(ifrt::DeviceList(std::move(devices)),
+                                         /*shape=*/ifrt::Shape(shape()),
+                                         /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput));
   SetIfrtArray(std::move(array));
   return OkStatus();
@@ -633,26 +631,34 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     GlobalPyRefManager()->CollectGarbage();
     py::gil_scoped_release gil_release;
 
+    std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
     if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
-      TF_ASSIGN_OR_RETURN(out_array,
-                          ifrt_array_ptr->Reshard(
-                              ifrt::SingleDeviceSharding::Create(devices[0]),
-                              ifrt::ArrayCopySemantics::kReuseInput));
+      ifrt_sharding = ifrt::SingleDeviceSharding::Create(devices[0]);
     } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::OpaqueSharding>(
                    &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
-      std::shared_ptr<const ifrt::Sharding> opaque_sharding =
-          ifrt::OpaqueSharding::Create(std::move(devices),
-                                       in_sharding->disassemble_func());
-      TF_ASSIGN_OR_RETURN(
-          out_array,
-          ifrt_array_ptr->Reshard(opaque_sharding,
-                                  ifrt::ArrayCopySemantics::kReuseInput));
+      ifrt_sharding = ifrt::OpaqueSharding::Create(std::move(devices));
+    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::ConcreteSharding>(
+                   &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      ifrt_sharding = ifrt::ConcreteSharding::Create(
+          std::move(devices), in_sharding->shape(),
+          in_sharding->shard_shapes());
+    } else if (const auto* in_sharding =
+                   llvm::dyn_cast<ifrt::ConcreteEvenSharding>(
+                       &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
+          std::move(devices), in_sharding->shape(), in_sharding->shard_shape());
     } else {
       return InvalidArgument(
-          "resharding only supported for ifrt::SingleDeviceSharding and "
-          "ifrt::OpaqueSharding");
+          "resharding only supported for ifrt::SingleDeviceSharding, "
+          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, and "
+          "ifrt::ConcreteEvenSharding");
     }
+    TF_ASSIGN_OR_RETURN(out_array, ifrt_array_ptr->Reshard(
+                                       std::move(ifrt_sharding),
+                                       ifrt::ArrayCopySemantics::kReuseInput));
   }
   auto traceback = Traceback::Get();
   absl::Span<const int64_t> shape_span = shape();
@@ -729,10 +735,10 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
       auto ifrt_array,
       ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
           ifrt::Shape(shape),
-          xla::ifrt::OpaqueSharding::Create(
+          xla::ifrt::ConcreteSharding::Create(
               xla::ifrt::DeviceList(std::move(devices)),
-              xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-                  std::move(shapes))),
+              /*shape=*/ifrt::Shape(shape),
+              /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays),
           xla::ifrt::ArrayCopySemantics::kReuseInput));
 

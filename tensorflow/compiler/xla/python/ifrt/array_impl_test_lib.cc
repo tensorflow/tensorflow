@@ -367,9 +367,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
       ShardingParamSharding::Create(std::move(sharding_param),
                                     ifrt_device_list));
   std::shared_ptr<const Sharding> assembled_shardings[] = {
-      OpaqueSharding::Create(
-          ifrt_device_list,
-          OpaqueSharding::MakeDisassembleFuncFromShapes(single_device_shapes)),
+      ConcreteEvenSharding::Create(ifrt_device_list, assembled_shape, shape),
       sharding_param_sharding};
   for (auto& assembled_sharding : assembled_shardings) {
     TF_ASSERT_OK_AND_ASSIGN(

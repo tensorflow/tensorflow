@@ -61,42 +61,131 @@ TEST(SingleDeviceShardingTest, Disassemble) {
       SingleDeviceSharding::Create(device);
 
   Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto exploded, sharding->Disassemble(shape));
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
 
-  ASSERT_THAT(exploded, SizeIs(1));
-  const auto& [result_shape, result_sharding] = exploded[0];
+  ASSERT_THAT(disassembled, SizeIs(1));
+  const auto& [result_shape, result_sharding] = disassembled[0];
   ASSERT_EQ(shape, result_shape);
   ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
   EXPECT_THAT(result_sharding->devices().devices(), ElementsAre(device));
 }
 
-TEST(OpaqueShardingTest, Disassemble) {
+TEST(OpaqueShardingTest, FailedToDisassemble) {
   DeviceList device_list = CreateDummyDevices(2);
+  std::shared_ptr<const Sharding> sharding =
+      OpaqueSharding::Create(device_list);
 
-  std::vector<Shape> shapes;
-  shapes.reserve(2);
-  shapes.push_back(Shape({10}));
-  shapes.push_back(Shape({20}));
-  OpaqueSharding::DisassembleFunc disassemble_func =
-      OpaqueSharding::MakeDisassembleFuncFromShapes(shapes);
+  EXPECT_THAT(
+      sharding->Disassemble(Shape({30})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("OpaqueSharding does not have shard shape information")));
+}
 
-  std::shared_ptr<const Sharding> opaque_sharding =
-      OpaqueSharding::Create(device_list, std::move(disassemble_func));
+TEST(OpaqueShardingTest, IndexDomainsFails) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::shared_ptr<const Sharding> sharding =
+      OpaqueSharding::Create(device_list);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto exploded,
-                          opaque_sharding->Disassemble(Shape({30})));
+  EXPECT_THAT(
+      sharding->IndexDomains(Shape({30})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("OpaqueSharding does not have index domain information")));
+}
 
-  ASSERT_THAT(exploded, SizeIs(2));
+TEST(ConcreteShardingTest, Disassemble) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                          sharding->Disassemble(Shape({30})));
+  ASSERT_THAT(disassembled, SizeIs(2));
   for (int i = 0; i < 2; ++i) {
-    const auto& [shape, sharding] = exploded[i];
-    EXPECT_EQ(shape, shapes[i]);
+    const auto& [shape, sharding] = disassembled[i];
+    EXPECT_EQ(shape, shard_shapes[i]);
     EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
     EXPECT_THAT(sharding->devices().devices(),
                 ElementsAre(device_list.devices()[i]));
   }
 }
 
-TEST(ShardingParamShardingTest, FailToCreateWhenDeviceCountNotMatch) {
+TEST(ConcreteShardingTest, DisassembleFailsForUnexpectedShape) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+
+  EXPECT_THAT(sharding->Disassemble(Shape({40})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("ConcreteSharding can only disassemble")));
+}
+
+TEST(ConcreteShardingTest, IndexDomainsFails) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::vector<Shape> shard_shapes;
+  shard_shapes.reserve(2);
+  shard_shapes.push_back(Shape({10}));
+  shard_shapes.push_back(Shape({20}));
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+
+  EXPECT_THAT(sharding->IndexDomains(Shape({30})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("ConcreteSharding does not have index "
+                                 "domain information")));
+}
+
+TEST(ConcreteEvenShardingTest, Disassemble) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                          sharding->Disassemble(Shape({30})));
+  ASSERT_THAT(disassembled, SizeIs(2));
+  for (int i = 0; i < 2; ++i) {
+    const auto& [shape, sharding] = disassembled[i];
+    EXPECT_EQ(shape, Shape({15}));
+    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
+    EXPECT_THAT(sharding->devices().devices(),
+                ElementsAre(device_list.devices()[i]));
+  }
+}
+
+TEST(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+
+  EXPECT_THAT(sharding->Disassemble(Shape({40})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("ConcreteEvenSharding can only disassemble")));
+}
+
+TEST(ConcreteEvenShardingTest, IndexDomainsFails) {
+  DeviceList device_list = CreateDummyDevices(2);
+  std::vector<Shape> shard_shapes;
+  std::shared_ptr<const Sharding> sharding =
+      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+
+  EXPECT_THAT(
+      sharding->IndexDomains(Shape({30})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr(
+              "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
   DeviceList device_list = CreateDummyDevices(2);
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
@@ -115,11 +204,11 @@ TEST(ShardingParamShardingTest, Disassemble) {
       std::shared_ptr<const Sharding> param_sharding,
       ShardingParamSharding::Create(param, CreateDummyDevices(6)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto exploded,
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           param_sharding->Disassemble(Shape({6, 6})));
-  ASSERT_THAT(exploded, SizeIs(6));
+  ASSERT_THAT(disassembled, SizeIs(6));
   for (int i = 0; i < 6; ++i) {
-    const auto& [shape, sharding] = exploded[i];
+    const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({3, 2}));
     EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
     EXPECT_THAT(sharding->devices().devices(),
