@@ -255,38 +255,6 @@ def DTensorUpdateTPUMetadata
   ];
 }
 
-def DTensorEmbedding
-    : Pass<"dtensor-embedding", "mlir::ModuleOp"> {
-  let summary = "Extracts the ApplyEmbeddingOptimizer and checks if the attached optimizer is usable for TPU embeddings.";
-  let constructor = "CreateDTensorEmbeddingPass()";
-  let dependentDialects = [
-    "::mlir::chlo::ChloDialect",
-    "::mlir::memref::MemRefDialect",
-    "::mlir::mhlo::MhloDialect",
-    "::mlir::shape::ShapeDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::tensor::TensorDialect",
-    "::mlir::sparse_tensor::SparseTensorDialect",
-    "::mlir::quant::QuantizationDialect",
-  ];
-}
-
-def DTensorEmbeddingV2
-    : Pass<"dtensor-embedding-v2", "mlir::ModuleOp"> {
-  let summary = "Embedding Pass";
-  let constructor = "CreateDTensorEmbeddingPassV2()";
-  let dependentDialects = [
-  ];
-}
-
-def DTensorEmbeddingCheckpoint
-    : Pass<"dtensor-embedding-checkpoint", "mlir::ModuleOp"> {
-  let summary = "Checkpoint pass to save or load TPU embeddings variables.";
-  let constructor = "CreateDTensorEmbeddingCheckpointPass()";
-  let dependentDialects = [
-  ];
-}
-
 def DTensorFunctionRenaming
     : Pass<"dtensor-function-renaming", "mlir::ModuleOp"> {
   let summary = "Renames private functions by appending an id to each name. This is used to make private function names unique across modules.";

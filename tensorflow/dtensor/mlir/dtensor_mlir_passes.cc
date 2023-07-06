@@ -112,8 +112,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // of a SparseTensor.
   pm->addPass(CreateDTensorSparseTensorToDenseTensor());
 
-  AddDTensorEmbeddingPass(pm);
-
   // After shape inference, there may be unused constants ops added when
   // propagating caller-callee constants. As DTensor mesh/layout propgation
   // passes assumes that there are no unreachable ops, removes trivial unused
@@ -165,8 +163,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // expansion.
   pm->addPass(CreateDTensorAnnotateGlobalShape());
 
-  AddDTensorEmbeddingPassV2(pm);
-
   ////////
   // Propagate layout to all ops in graph.
 
@@ -181,9 +177,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Expand graph to SPMD form given layouts are annotated to all ops.
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
-
-  // Insert functions to save or load embeddings when using tpu device.
-  AddDTensorEmbeddingCheckpointPass(pm);
 
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
