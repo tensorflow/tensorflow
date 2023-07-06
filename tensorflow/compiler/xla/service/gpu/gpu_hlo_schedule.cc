@@ -398,12 +398,14 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     // Attempt to parse it as a binary proto.
     if (tsl::ParseProtoUnlimited(&profile, fdo_profile.data(),
                                  fdo_profile.size())) {
+      LOG(INFO) << "Using PGLE profile for module from fdo_profile (binary)";
       return profile;
     }
     // If not a binary proto, attempt to parse it as a text proto.
     profile.Clear();
     if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
                                                    &profile)) {
+      LOG(INFO) << "Using PGLE profile for module from fdo_profile (text)";
       return profile;
     }
     LOG(ERROR) << "Unable to prase FDO profile: not a valid text or binary "
@@ -429,7 +431,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
       // Unable to read PGLE using fingerprint.
       return std::nullopt;
     }
-    LOG(INFO) << "Found profile for module using fingerprint";
+    LOG(INFO) << "Using PGLE profile from " << pgle_profile_path;
     return profile;
   }
 
@@ -438,10 +440,37 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
   // be present in the HLO module)
   Status s = tsl::ReadTextProto(tsl::Env::Default(),
                                 pgle_profile_file_or_dir_path, &profile);
-  if (!s.ok()) {
-    return std::nullopt;
+  if (s.ok()) {
+    LOG(INFO) << "Using PGLE profile from " << pgle_profile_file_or_dir_path;
+    return profile;
   }
-  return profile;
+  return std::nullopt;
+}
+
+// Return true if the profile is applicable to the module. That is true if every
+// instruction in the profile is present in the module.
+bool IsProfileApplicable(
+    const HloModule* module,
+    const tensorflow::profiler::ProfiledInstructionsProto& profile) {
+  absl::flat_hash_set<absl::string_view> instruction_names;
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      instruction_names.insert(instr->name());
+    }
+  }
+
+  for (const auto& cost : profile.costs()) {
+    if (!instruction_names.contains(cost.name())) {
+      return false;
+    }
+  }
+  for (const auto& latency : profile.latencies()) {
+    if (!instruction_names.contains(latency.source()) ||
+        !instruction_names.contains(latency.target())) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // end namespace
@@ -463,8 +492,8 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
-  // Tag the module with its 128 bit fingeprint. The fingerprint should include
-  // instruction name with ids
+  // Tag the module with its 128 bit fingerprint. The fingerprint should include
+  // instruction name with ids.
   std::string fingerprint = module->GetFingerprint128(
       HloPrintOptions::Canonical().set_print_backend_config(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -493,6 +522,9 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
     LOG(INFO) << "Found profile, using profile guided latency estimator";
+    if (!IsProfileApplicable(module, profile.value())) {
+      LOG(ERROR) << "!!! PGLE profile likely not applicable to the module";
+    }
   } else {
     latency_estimator = std::move(gpu_latency_estimator);
   }
