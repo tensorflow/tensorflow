@@ -37,6 +37,18 @@ from tensorflow.python import data
 # Distribute
 from tensorflow.python import distribute
 
+# Eager
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import monitoring as _monitoring
+from tensorflow.python.eager import remote
+
+# Check whether TF2_BEHAVIOR is turned on.
+from tensorflow.python import tf2 as _tf2
+_tf2_gauge = _monitoring.BoolGauge(
+    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge.get_cell().set(_tf2.enabled())
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *

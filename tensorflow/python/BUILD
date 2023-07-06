@@ -342,6 +342,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        ":tf2",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute",
@@ -351,6 +352,10 @@ py_library(
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:composite_tensor",

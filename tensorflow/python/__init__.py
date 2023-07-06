@@ -34,7 +34,6 @@ import traceback
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
@@ -72,18 +71,6 @@ from tensorflow.python.compat import v2_compat
 
 from tensorflow.python.util.all_util import make_all
 from tensorflow.python.util.tf_export import tf_export
-
-# Eager execution
-from tensorflow.python.eager.context import executing_eagerly
-from tensorflow.python.eager.remote import connect_to_remote_host
-from tensorflow.python.eager.def_function import function
-
-# Check whether TF2_BEHAVIOR is turned on.
-from tensorflow.python.eager import monitoring as _monitoring
-from tensorflow.python import tf2 as _tf2
-_tf2_gauge = _monitoring.BoolGauge(
-    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
-_tf2_gauge.get_cell().set(_tf2.enabled())
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
