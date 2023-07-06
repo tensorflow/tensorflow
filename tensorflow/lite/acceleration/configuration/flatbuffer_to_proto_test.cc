@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -501,6 +502,52 @@ TEST_F(ConversionTest, MaxDelegatedPartitions) {
   settings_.tflite_settings->max_delegated_partitions = 2;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(compute.tflite_settings().max_delegated_partitions(), 2);
+}
+
+TEST_F(ConversionTest, GoogleEdgeTpuSettings) {
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->google_edgetpu_settings =
+      std::make_unique<GoogleEdgeTpuSettingsT>();
+  GoogleEdgeTpuSettingsT* input_settings =
+      settings_.tflite_settings->google_edgetpu_settings.get();
+
+  input_settings->priority = GoogleEdgeTpuSettings_::Priority_PRIORITY_HIGH;
+  input_settings->allow_fp16_precision_for_fp32 = true;
+  std::vector<uint8_t> extension_data{1, 2, 3};
+  input_settings->extension_data = extension_data;
+  input_settings->model_identifier = "model";
+  input_settings->prefer_cache_coherency_for_inputs =
+      GoogleEdgeTpuSettings_::TriState_TRISTATE_TRUE;
+
+  proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  proto::GoogleEdgeTpuSettings output_settings =
+      compute.tflite_settings().google_edgetpu_settings();
+
+  EXPECT_EQ(output_settings.priority(),
+            proto::GoogleEdgeTpuSettings::PRIORITY_HIGH);
+  EXPECT_TRUE(output_settings.allow_fp16_precision_for_fp32());
+  EXPECT_EQ(output_settings.extension_data().size(), 3);
+  EXPECT_EQ(output_settings.model_identifier(), "model");
+  EXPECT_EQ(output_settings.prefer_cache_coherency_for_inputs(),
+            proto::GoogleEdgeTpuSettings::TRISTATE_TRUE);
+}
+
+TEST_F(ConversionTest, CompilationCachingSettings) {
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->compilation_caching_settings =
+      std::make_unique<CompilationCachingSettingsT>();
+  CompilationCachingSettingsT* input_settings =
+      settings_.tflite_settings->compilation_caching_settings.get();
+
+  input_settings->cache_dir = "/tmp";
+  input_settings->model_token = "model";
+
+  proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  proto::CompilationCachingSettings output_settings =
+      compute.tflite_settings().compilation_caching_settings();
+
+  EXPECT_EQ(output_settings.cache_dir(), "/tmp");
+  EXPECT_EQ(output_settings.model_token(), "model");
 }
 
 TEST_F(ConversionTest, MiniBenchmarkSettings) {
