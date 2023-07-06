@@ -96,6 +96,10 @@
     TensorFlow. This may be needed when linking TensorFlow into RTTI-enabled
     programs since mixing RTTI and non-RTTI code can cause ABI issues.
 
+    * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now
+      take an additional Layout argument that controls the output layout of
+      their results.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

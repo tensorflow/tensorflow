@@ -1326,7 +1326,7 @@ tf_module {
   }
   member_method {
     name: "fill"
-    argspec: "args=[\'dims\', \'value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dims\', \'value\', \'name\', \'layout\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fingerprint"
@@ -1778,7 +1778,7 @@ tf_module {
   }
   member_method {
     name: "ones"
-    argspec: "args=[\'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'shape\', \'dtype\', \'name\', \'layout\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "ones_like"
@@ -2570,7 +2570,7 @@ tf_module {
   }
   member_method {
     name: "zeros"
-    argspec: "args=[\'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'shape\', \'dtype\', \'name\', \'layout\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "zeros_like"

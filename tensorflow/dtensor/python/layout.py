@@ -63,6 +63,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   as a 1-D array for data parallelism or a `2x4` grid for (2-way) data
   parallelism and (4-way) model parallelism.
 
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
+
   Note: the utilities `dtensor.create_mesh` and
   `dtensor.create_distributed_mesh` provide a simpler API to create meshes for
   single- or multi-client use cases.
@@ -348,6 +351,9 @@ class Layout(_pywrap_dtensor_device.Layout):
   sharding spec indicates which dimension of the mesh it is sharded over. A
   special sharding spec `UNSHARDED` indicates that axis is replicated on
   all the devices of that mesh.
+
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
 
   For example, let's consider a 1-D mesh:
 

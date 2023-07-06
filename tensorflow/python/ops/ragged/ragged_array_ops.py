@@ -1226,29 +1226,56 @@ def broadcast_dynamic_shape(
 
 
 @dispatch.dispatch_for_api(array_ops.ones)
-def ones(shape: dynamic_ragged_shape.DynamicRaggedShape,
-         dtype=dtypes.float32,
-         name=None) -> ragged_tensor.RaggedOrDense:
+def ones(
+    shape: dynamic_ragged_shape.DynamicRaggedShape,
+    dtype=dtypes.float32,
+    name=None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""
-  flat_values = array_ops.ones(shape.inner_shape, dtype=dtype, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.ones(
+      shape.inner_shape, dtype=dtype, name=name, layout=layout
+  )
   return shape._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_api(array_ops.zeros)
-def zeros(shape: dynamic_ragged_shape.DynamicRaggedShape,
-          dtype=dtypes.float32,
-          name=None) -> ragged_tensor.RaggedOrDense:
+def zeros(
+    shape: dynamic_ragged_shape.DynamicRaggedShape,
+    dtype=dtypes.float32,
+    name=None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""
-  flat_values = array_ops.zeros(shape.inner_shape, dtype=dtype, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.zeros(
+      shape.inner_shape, dtype=dtype, name=name, layout=layout
+  )
   return shape._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_api(array_ops.fill)
-def fill(dims: dynamic_ragged_shape.DynamicRaggedShape,
-         value: core_types.TensorLike,
-         name: Optional[str] = None) -> ragged_tensor.RaggedOrDense:
+def fill(
+    dims: dynamic_ragged_shape.DynamicRaggedShape,
+    value: core_types.TensorLike,
+    name: Optional[str] = None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Creates a tensor with shape `dims` and fills it with `value`."""
-  flat_values = array_ops.fill(dims.inner_shape, value, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.fill(
+      dims.inner_shape, value, name=name, layout=layout
+  )
   return dims._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
