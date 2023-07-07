@@ -47,11 +47,21 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
   XlaCompilationResult compilation_result;
 
-  // TODO: b/288215766 - Fix passes so that enable_op_fallback can be set true.
-  EXPECT_OK(CompileSerializedMlirToXlaHlo(
+  Status status = CompileSerializedMlirToXlaHlo(
       legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
-      /*shape_determination_fns=*/{}, &compilation_result));
+      /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
+      /*shape_determination_fns=*/{}, &compilation_result);
+
+  // TODO(b/288215766): Remove a temporary error. Currently, it contains one
+  // temporary error since the type change from tf_type.qint8 to tf.int8 happen
+  // independently without operator replacements and that behavior triggered the
+  // above transient error because tf.UniformQuantizeOp does not accept tf.int8
+  // in the result's element type.
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("error: 'tf.UniformQuantize' op result #0 must be "
+                        "tensor of 32-bit quantized integer or 8-bit quantized "
+                        "integer values, but got 'tensor<1xi8>'"));
 
   const xla::HloModuleProto& hlo_module =
       compilation_result.computation->proto();
@@ -71,9 +81,6 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
         case xla::HloOpcode::kMaximum:
         case xla::HloOpcode::kMinimum:
         case xla::HloOpcode::kSubtract:
-        case xla::HloOpcode::kParameter:
-        case xla::HloOpcode::kTuple:
-        case xla::HloOpcode::kGetTupleElement:
           break;
         default:
           ADD_FAILURE() << "Failed to compile TF uniform quantized ops "
