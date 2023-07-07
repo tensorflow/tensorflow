@@ -119,6 +119,9 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                                        user->name(), "| inside FusionMerger"),
                           *consumer);
     }
+
+    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_,
+                                                gpu_device_info_);
     changed_ = true;
   }
 
@@ -283,7 +286,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       producer, &*cost_analysis_, gpu_device_info_, use_experimental_block_size,
-      compute_capability_, producer->users(), /*multi_output=*/false);
+      compute_capability_, producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

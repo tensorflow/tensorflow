@@ -456,6 +456,8 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
                        consumer_for_fusion->name(),
                        "| inside GPU multi-output fusion"));
       RecomputeReachability();
+      GpuPerformanceModel::RecordEstimatedRunTime(consumer_for_fusion,
+                                                  &cost_analysis, device_info_);
       continue;
     }
     HloInstruction* input_fusion =
@@ -486,6 +488,8 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
                      input_fusion->name(), "| inside GPU multi-output fusion"));
     RecomputeReachability();
+    GpuPerformanceModel::RecordEstimatedRunTime(input_fusion, &cost_analysis,
+                                                device_info_);
   }
   return changed;
 }

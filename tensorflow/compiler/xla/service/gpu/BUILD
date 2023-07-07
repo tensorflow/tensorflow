@@ -2997,10 +2997,12 @@ cc_library(
     srcs = ["gpu_performance_model.cc"],
     hdrs = ["gpu_performance_model.h"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_device_info",
         ":gpu_hlo_cost_analysis",
         ":hlo_fusion_analysis",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
     ],
 )
@@ -3009,6 +3011,7 @@ xla_cc_test(
     name = "gpu_performance_model_test",
     srcs = ["gpu_performance_model_test.cc"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_device_info_for_tests",
         ":gpu_performance_model",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

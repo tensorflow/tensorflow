@@ -46,7 +46,7 @@ class GpuPriorityFusion : public InstructionFusion {
       const GpuHloCostAnalysis::Options& cost_analysis_options)
       : InstructionFusion(GpuPriorityFusion::IsExpensive),
         device_info_(d),
-        cost_analysis_options_(cost_analysis_options) {}
+        cost_analysis_(cost_analysis_options) {}
 
   static bool IsExpensive(const HloInstruction& instruction);
 
@@ -77,8 +77,8 @@ class GpuPriorityFusion : public InstructionFusion {
 
   const GpuDeviceInfo device_info_;
 
-  // Options for priority queue cost analysis.
-  GpuHloCostAnalysis::Options cost_analysis_options_;
+  // Cost model that defines priorities in the queue.
+  GpuHloCostAnalysis cost_analysis_;
 };
 
 }  // namespace gpu

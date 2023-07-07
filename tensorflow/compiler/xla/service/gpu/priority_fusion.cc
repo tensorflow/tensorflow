@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -70,14 +71,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
  public:
   GpuPriorityFusionQueue(
       HloComputation* computation, const GpuDeviceInfo& d,
-      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      GpuHloCostAnalysis* cost_analysis,
       const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
       : computation_(computation),
         gpu_device_info_(d),
-        cost_analysis_(cost_analysis_options),
+        cost_analysis_(cost_analysis),
         can_fuse_(can_fuse) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+    TF_CHECK_OK(computation_->Accept(cost_analysis_));
 
     // Initializes the priority queue.
     for (auto instruction : computation->MakeInstructionPostOrder()) {
@@ -183,7 +184,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       // Revisit costs of all updated ops. It's important to update cost
       // analysis before recalculating priorities.
       for (auto instruction : to_update_priority_) {
-        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+        TF_CHECK_OK(cost_analysis_->RevisitInstruction(instruction));
       }
 
       for (auto instruction : to_update_priority_) {
@@ -241,12 +242,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
       return std::numeric_limits<Priority>::min();
     }
 
-    GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-        producer, &cost_analysis_, gpu_device_info_,
-        use_experimental_block_size, std::nullopt, fusible_users,
-        /*multi_output=*/false);
-
-    return absl::ToInt64Nanoseconds(t.time_unfused - t.time_fused);
+    GpuPerformanceModel::RunTimes run_times =
+        GpuPerformanceModel::EstimateRunTimes(
+            producer, cost_analysis_, gpu_device_info_,
+            use_experimental_block_size, std::nullopt, fusible_users);
+    return absl::ToInt64Nanoseconds(run_times.time_unfused -
+                                    run_times.time_fused);
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
@@ -275,8 +276,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Data that describes the execution target.
   const GpuDeviceInfo gpu_device_info_;
 
-  // Cost model that defines priorities in the queue.
-  GpuHloCostAnalysis cost_analysis_;
+  // Reference to cost model that defines priorities in the queue.
+  GpuHloCostAnalysis* cost_analysis_;
 
   // The priority queue of producers, implemented as an ordered map, where a
   // key is a pair: the first element is the priority and the second element is
@@ -400,17 +401,21 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
 
 HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
+  HloInstruction* result = fusion_instruction;
   if (producer->opcode() == HloOpcode::kFusion) {
     fusion_instruction->MergeFusionInstruction(producer);
-    return fusion_instruction;
+  } else {
+    result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
-  return InstructionFusion::FuseInstruction(fusion_instruction, producer);
+  GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
+                                              &cost_analysis_, device_info_);
+  return result;
 }
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, device_info_, cost_analysis_options_,
+      computation, device_info_, &cost_analysis_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));
