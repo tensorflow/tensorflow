@@ -5635,6 +5635,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   }
 
   if (!can_eliminate_copy) {
+    VLOG(3) << "Can't eliminate copy.";
     return Result::kFailPrevAllocationNotInAlternateMem;
   }
 
@@ -5644,8 +5645,8 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   // duration checks.
   if (!request.prefer_no_copy_alternate_mem_allocation &&
       !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-          defining_position.shape(), request.start_time + 1,
-          request.end_time)) {
+          defining_position.shape(), request.start_time, request.end_time)) {
+    VLOG(3) << "Live range is too long.";
     return Result::kFailLiveRangeTooLong;
   }
 
