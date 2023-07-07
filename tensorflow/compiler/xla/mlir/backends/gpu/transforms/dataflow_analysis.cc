@@ -167,7 +167,8 @@ bool HasDependency(llvm::ArrayRef<BufferUse> buffer_uses_a,
 
 }  // namespace
 
-DataflowGraph GetDataflowGraph(FuncOp graph_capture_function) {
+DataflowAnalysis::DataflowGraph DataflowAnalysis::GetDataflowGraph(
+    FuncOp graph_capture_function) {
   std::vector<Node> graph;
   for (auto [index, op] : llvm::enumerate(graph_capture_function.getOps())) {
     graph.push_back(Node{&op, index, {}});

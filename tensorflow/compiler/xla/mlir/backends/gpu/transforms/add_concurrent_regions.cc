@@ -61,9 +61,9 @@ bool IsNoOp(Operation* op) {
   return isa<memref::ViewOp, memref::ReinterpretCastOp, arith::ConstantOp>(op);
 }
 
-int GetKernelCount(llvm::ArrayRef<Node> region) {
+int GetKernelCount(llvm::ArrayRef<DataflowAnalysis::Node> region) {
   int kernel_count = 0;
-  for (const Node& node : region) {
+  for (const DataflowAnalysis::Node& node : region) {
     Operation* op = node.operation;
     if (!IsNoOp(op)) {
       kernel_count++;
@@ -87,11 +87,13 @@ int GetKernelCount(llvm::ArrayRef<Node> region) {
 //     else
 //       region.add(operation)
 //
-llvm::SmallVector<RegionInfo> GetRegionInfos(FuncOp capture_func) {
+llvm::SmallVector<RegionInfo> GetRegionInfos(
+    FuncOp capture_func, DataflowAnalysis& dataflow_analysis) {
   llvm::SmallVector<RegionInfo> region_infos;
-  DataflowGraph dataflow_graph = GetDataflowGraph(capture_func);
+  DataflowAnalysis::DataflowGraph dataflow_graph =
+      dataflow_analysis.GetDataflowGraph(capture_func);
 
-  llvm::SmallVector<Node> region;
+  llvm::SmallVector<DataflowAnalysis::Node> region;
 
   auto store_region_and_start_new_region = [&]() {
     int kernel_count = GetKernelCount(region);
@@ -103,13 +105,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(FuncOp capture_func) {
     region.clear();
   };
 
-  for (const Node& node : dataflow_graph) {
+  for (const DataflowAnalysis::Node& node : dataflow_graph) {
     if (isa<func::ReturnOp>(node.operation)) {
       break;
     }
 
     bool has_dependency = false;
-    for (const Node& node_in_region : region) {
+    for (const DataflowAnalysis::Node& node_in_region : region) {
       std::vector<size_t> children = node_in_region.children;
       if (std::find(children.begin(), children.end(), node.index) !=
           children.end()) {
@@ -135,8 +137,10 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(FuncOp capture_func) {
 }
 
 void InsertConcurrentRegions(FuncOp capture_func,
-                             CustomCallDeclarations& custom_calls) {
-  llvm::SmallVector<RegionInfo> region_infos = GetRegionInfos(capture_func);
+                             CustomCallDeclarations& custom_calls,
+                             DataflowAnalysis& dataflow_analysis) {
+  llvm::SmallVector<RegionInfo> region_infos =
+      GetRegionInfos(capture_func, dataflow_analysis);
   auto sym_table = custom_calls.sym_table();
 
   for (RegionInfo region_info : region_infos) {
@@ -171,7 +175,8 @@ void AddConcurrentRegionsPass::runOnOperation() {
     // Find the cuda graph capture function.
     if (absl::StrContains(func_op.getSymNameAttr().str(),
                           "xla.gpu.cuda.graph.capture")) {
-      InsertConcurrentRegions(func_op, custom_calls);
+      InsertConcurrentRegions(func_op, custom_calls,
+                              getAnalysis<DataflowAnalysis>());
     }
   }
 }

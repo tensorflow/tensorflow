@@ -23,25 +23,29 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct Node {
-  mlir::Operation* operation;
-  size_t index;
-  std::vector<size_t> children;
+class DataflowAnalysis {
+ public:
+  explicit DataflowAnalysis(mlir::Operation* op) {}
+
+  struct Node {
+    mlir::Operation* operation;
+    size_t index;
+    std::vector<size_t> children;
+  };
+
+  using DataflowGraph = std::vector<Node>;
+
+  // This function creates a dataflow graph that represent data dependencies in
+  // the graph capture function. The analysis relies on some properties of the
+  // IR in XLA:
+  //   (1) Buffer arguments do not alias. It is guaranteed that two buffer
+  //       arguments to the graph capture function do not overlap.
+  //   (2) XLA operations do not have any side effects beyond writing to its
+  //       buffer arguments. So it is safe to reorder operations if they do not
+  //       have write-conflicts.
+  //   (3) We have information about read-only and read-write buffer arguments.
+  DataflowGraph GetDataflowGraph(mlir::func::FuncOp graph_capture_function);
 };
-
-using DataflowGraph = std::vector<Node>;
-
-// This function creates a dataflow graph that represent data dependencies in
-// the graph capture function. The analysis relies on some properties of the IR
-// in XLA:
-//   (1) Buffer arguments do not alias. It is guaranteed that two buffer
-//       arguments to the graph capture function do not overlap.
-//   (2) XLA operations do not have any side effects beyond writing to its
-//       buffer arguments. So it is safe to reorder operations if they do not
-//       have write-conflicts.
-//   (3) We have information about read-only and read-write buffer arguments.
-// TODO(b/288594057): Convert this pass to use mlir::AnalysisManager.
-DataflowGraph GetDataflowGraph(mlir::func::FuncOp graph_capture_function);
 
 }  // namespace gpu
 }  // namespace xla
