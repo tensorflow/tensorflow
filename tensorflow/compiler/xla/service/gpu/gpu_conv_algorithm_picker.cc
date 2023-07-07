@@ -662,8 +662,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
     BufferComparator comparator(runtime_arguments.result_shape,
                                 runtime_arguments.hlo_module_config);
-    StatusOr<bool> compare_result = comparator.CompareEqual(
-        stream, (*reference_result)->buffer, result_buffer);
+    StatusOr<bool> compare_result =
+        comparator.CompareEqual(stream, /*current=*/result_buffer,
+                                /*expected=*/(*reference_result)->buffer);
     if (!compare_result.ok()) {
       LOG(ERROR) << "Unable to compare "
                  << (*reference_result)->algorithm.ToString() << " against "

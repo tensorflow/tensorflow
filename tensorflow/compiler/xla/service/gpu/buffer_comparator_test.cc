@@ -39,26 +39,29 @@ class BufferComparatorTest : public testing::Test {
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
-  bool CompareEqualBuffers(const std::vector<ElementType>& lhs,
-                           const std::vector<ElementType>& rhs) {
+  bool CompareEqualBuffers(const std::vector<ElementType>& current,
+                           const std::vector<ElementType>& expected) {
     se::Stream stream(stream_exec_);
     stream.Init();
 
-    se::ScopedDeviceMemory<ElementType> lhs_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
-    se::ScopedDeviceMemory<ElementType> rhs_buffer =
-        stream_exec_->AllocateOwnedArray<ElementType>(rhs.size());
+    se::ScopedDeviceMemory<ElementType> current_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(current.size());
+    se::ScopedDeviceMemory<ElementType> expected_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(expected.size());
 
-    stream.ThenMemcpy(lhs_buffer.ptr(), lhs.data(), lhs_buffer->size());
-    stream.ThenMemcpy(rhs_buffer.ptr(), rhs.data(), rhs_buffer->size());
+    stream.ThenMemcpy(current_buffer.ptr(), current.data(),
+                      current_buffer->size());
+    stream.ThenMemcpy(expected_buffer.ptr(), expected.data(),
+                      expected_buffer->size());
     TF_CHECK_OK(stream.BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
-            {static_cast<int64_t>(lhs_buffer->ElementCount())}),
+            {static_cast<int64_t>(current_buffer->ElementCount())}),
         HloModuleConfig());
-    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer).value();
+    return comparator.CompareEqual(&stream, *current_buffer, *expected_buffer)
+        .value();
   }
 
   // Take floats only for convenience. Still uses ElementType internally.

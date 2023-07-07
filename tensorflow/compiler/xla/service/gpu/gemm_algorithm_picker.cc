@@ -148,7 +148,8 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       // Perform the comparison.
       TF_ASSIGN_OR_RETURN(
           bool outputs_match,
-          comparator.CompareEqual(stream, output_buffer, reference_buffer));
+          comparator.CompareEqual(stream, /*current=*/output_buffer,
+                                  /*expected=*/reference_buffer));
       if (!outputs_match) {
         LOG(ERROR) << "Results mismatch between different GEMM algorithms. "
                    << "This is likely a bug/unexpected loss of precision.";

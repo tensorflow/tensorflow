@@ -294,7 +294,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
         TF_ASSIGN_OR_RETURN(
             bool outputs_match,
-            comparator.CompareEqual(stream, output_buffer, reference_buffer));
+            comparator.CompareEqual(stream, /*current=*/output_buffer,
+                                    /*expected=*/reference_buffer));
         if (!outputs_match) {
           LOG(ERROR) << "Results do not match the reference. "
                      << "This is likely a bug/unexpected loss of precision.";
