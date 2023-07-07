@@ -474,7 +474,7 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
 // being null, that contains the actual logic that the registration represents.
 // See also the comment inside
 // 'TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels'.
-const char* GetDelegateKernalName(const TfLiteRegistration& registration) {
+const char* GetDelegateKernelName(const TfLiteRegistration& registration) {
   if (registration.custom_name) {
     return registration.custom_name;
   }
@@ -533,7 +533,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
                   "yielding %zu partitions "
                   "for the whole graph.",
                   nodes_to_replace->size, execution_plan_.size(),
-                  GetDelegateKernalName(registration), node_subsets.size());
+                  GetDelegateKernelName(registration), node_subsets.size());
 
   execution_plan_.clear();
 
