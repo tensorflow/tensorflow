@@ -2387,12 +2387,15 @@ class AlternateMemoryBestFitHeap
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloPosition& position,
                              MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
