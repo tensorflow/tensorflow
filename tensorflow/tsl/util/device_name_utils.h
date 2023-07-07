@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -284,6 +285,34 @@ class DeviceNameUtils {
     if (!a_status) return a < b;
     return parsed_a < parsed_b;
   }
+
+  // Returns true iff the device_name is in the format of
+  // ".*STREAM_(C|G)PU_\d+:\d+$".
+  static bool IsStreamDeviceName(const std::string& device_name);
+
+  // Returns name of the device from the stream-encoded name if the
+  // multi-stream is enabled. Otherwise returns the input name. For
+  // example, if the input device_name is "STREAM_GPU_0:2", returns "GPU:0".
+  static tsl::StatusOr<std::string> GetDeviceNameFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns device ordinal of the device from the stream-encoded name if the
+  // multi-stream is enabled. For example, if the input device_name is
+  // "STREAM_GPU_0:2", returns 0.
+  static tsl::StatusOr<int> DecodeDeviceFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns stream that is used from the stream-encoded name if the
+  // multi-stream is enabled. For example, if the input device_name is
+  // "STREAM_GPU_0:2", returns 2.
+  static tsl::StatusOr<int> DecodeStreamFromStreamDeviceName(
+      const std::string& device_name);
+
+  // Returns true iff device_name1 and device_name2 have the same name, or
+  // one or both of them are stream device names and they represent the same
+  // device.
+  static bool HaveSameDeviceName(const std::string& device_name1,
+                                 const std::string& device_name2);
 };
 
 std::ostream& operator<<(std::ostream& os,
