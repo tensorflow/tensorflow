@@ -27,7 +27,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
+DynamicDeviceMgr::DynamicDeviceMgr()
+    : cpu_device_(nullptr), stream_group_count_(0) {}
 
 DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>>&& devices)
