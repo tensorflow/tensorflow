@@ -590,6 +590,7 @@ cc_library_with_tflite(
     copts = tflite_copts() + tflite_copts_warnings(),
     generate_opaque_delegate_target = True,
     visibility = [
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
