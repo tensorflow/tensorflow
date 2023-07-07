@@ -23,17 +23,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/autotuning.pb.h"
@@ -53,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_float_support.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -154,9 +148,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     const DebugOptions& debug_opts = fusion.parent()->config().debug_options();
 
-    // This allocator is used for input and reference buffers that are
-    // common for all configurations.
-    se::RedzoneAllocator rz_allocator_common(
+    se::RedzoneAllocator rz_allocator(
         stream, allocator, PtxOptsFromDebugOptions(debug_opts),
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
         /*redzone_size=*/config_.should_check_correctness()
@@ -165,9 +157,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     se::DeviceMemoryBase reference_buffer;
     if (config_.should_check_correctness()) {
-      TF_ASSIGN_OR_RETURN(reference_buffer,
-                          rz_allocator_common.AllocateBytes(
-                              ShapeUtil::ByteSizeOf(root->shape())));
+      TF_ASSIGN_OR_RETURN(
+          reference_buffer,
+          rz_allocator.AllocateBytes(ShapeUtil::ByteSizeOf(root->shape())));
     }
 
     BufferComparator comparator(root->shape(), fusion.parent()->config());
@@ -206,70 +198,30 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     for (const HloInstruction* param : fusion.parameter_instructions()) {
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryBase param_buffer,
-          AutotunerUtil::CreateBuffer(rz_allocator_common, param->shape(),
-                                      config_, rng_state));
+          AutotunerUtil::CreateBuffer(rz_allocator, param->shape(), config_,
+                                      rng_state));
       inputs.push_back(param_buffer);
     }
-
-    const bool disable_reduced_precision_reduction =
-        instr->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
-
-    PrimitiveType output_type = root->shape().element_type();
-    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
-                                         ? PrimitiveType::F64
-                                         : PrimitiveType::F32;
 
     if (config_.should_check_correctness()) {
       TF_RETURN_IF_ERROR(RunMatmulWithCublas(fusion, stream, allocator, inputs,
                                              reference_buffer, cache_key));
     }
 
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase output_buffer,
+        rz_allocator.AllocateBytes(ShapeUtil::ByteSizeOf(root->shape())));
+
     std::vector<AutotuneResult> results;
     for (const AutotuneResult::TritonGemmKey& conf : configurations) {
       VLOG(1) << "Trying triton tiling: " << conf.ShortDebugString();
 
-      // This allocator is used for intermediate buffers and output that are
-      // unique for each configuration.
-      se::RedzoneAllocator rz_allocator(
-          stream, allocator, PtxOptsFromDebugOptions(debug_opts),
-          /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-          /*redzone_size=*/config_.should_check_correctness()
-              ? debug_opts.xla_gpu_redzone_padding_bytes()
-              : 0);
-
       AutotuneResult res;
       *res.mutable_triton() = conf;
 
-      // Failing on allocating an intermediate buffer is OK because other
-      // less memory-hungry configurations do not need it at all.
-      se::DeviceMemoryBase intermediate_buffer;
-      if (conf.split_k() > 1) {
-        // The intermediate one does not need to be initialized.
-        StatusOr<se::DeviceMemoryBase> result = rz_allocator.AllocateBytes(
-            ShapeUtil::ElementsIn(root->shape()) *
-            ShapeUtil::ByteSizeOfPrimitiveType(
-                disable_reduced_precision_reduction ? accumulator_type
-                                                    : output_type) *
-            conf.split_k());
-        if (!result.ok()) {
-          // The allocator will log a warning.
-          // Proceed to trying next configuration.
-          continue;
-        }
-        intermediate_buffer = *result;
-      }
-
-      TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
-                          AutotunerUtil::CreateBuffer(
-                              rz_allocator, root->shape(), config_, rng_state));
-
-      TF_ASSIGN_OR_RETURN(
-          std::optional<absl::Duration> duration,
-          RunMatmulWithConfig(fusion, conf, stream, inputs, intermediate_buffer,
-                              output_buffer, cache_key));
+      TF_ASSIGN_OR_RETURN(std::optional<absl::Duration> duration,
+                          RunMatmulWithConfig(fusion, conf, stream, inputs,
+                                              output_buffer, cache_key));
 
       if (!duration) {
         VLOG(1) << "Skipping this tiling.";
@@ -324,16 +276,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       const HloComputation& hlo_computation,
       const AutotuneResult::TritonGemmKey& autotune_config, se::Stream* stream,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
-      se::DeviceMemoryBase intermediate_buffer,
       se::DeviceMemoryBase output_buffer, const AutotuneCacheKey& cache_key) {
     AutotuneResult config;
     *config.mutable_triton() = autotune_config;
 
     std::vector<se::DeviceMemoryBase> used_buffers;
     absl::c_copy(input_buffers, std::back_inserter(used_buffers));
-    if (autotune_config.split_k() > 1) {
-      used_buffers.push_back(intermediate_buffer);
-    }
     return autotuner_compile_util_->GenerateAndProfileExecutable(
         hlo_computation, config, cache_key, stream, used_buffers, output_buffer,
         [&] {

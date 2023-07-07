@@ -89,8 +89,9 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
     Executable* executable, absl::Span<se::DeviceMemoryBase const> buffers) {
   const HloInstruction::InstructionVector& params =
       executable->module().entry_computation()->parameter_instructions();
+  CHECK_EQ(params.size(), buffers.size());
   std::vector<ExecutionInput> inputs;
-  for (int i = 0; i < params.size(); i++) {
+  for (int i = 0; i < params.size(); ++i) {
     inputs.emplace_back(params.at(i)->shape());
     // Our executable doesn't have input-output aliasing, so we can pass
     // unowned input buffers.
