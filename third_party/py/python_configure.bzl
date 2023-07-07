@@ -1,6 +1,13 @@
 """Repository rule for Python autoconfiguration.
 """
 
+load(
+    "//third_party/remote_config:common.bzl",
+    "BAZEL_SH",
+    "PYTHON_BIN_PATH",
+    "PYTHON_LIB_PATH",
+)
+
 def _create_local_python_repository(repository_ctx):
     """Creates the repository containing files set up to build with Python."""
 
@@ -17,6 +24,12 @@ def _python_autoconf_impl(repository_ctx):
     """Implementation of the python_autoconf repository rule."""
     _create_local_python_repository(repository_ctx)
 
+_ENVIRONS = [
+    BAZEL_SH,
+    PYTHON_BIN_PATH,
+    PYTHON_LIB_PATH,
+]
+
 local_python_configure = repository_rule(
     implementation = _create_local_python_repository,
     attrs = {
@@ -27,8 +40,10 @@ local_python_configure = repository_rule(
 
 remote_python_configure = repository_rule(
     implementation = _create_local_python_repository,
+    environ = _ENVIRONS,
     remotable = True,
     attrs = {
+        "environ": attr.string_dict(),
         "platform_constraint": attr.string(),
     },
 )
