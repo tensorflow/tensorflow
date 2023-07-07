@@ -85,14 +85,21 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
 
 void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
                              int32_t xla_cpu_sparse_cuda_threads) {
-  // Sparse GPU acceleration enables parallel loops.
+  // Sparse GPU acceleration for sparsified code.
+  // Setting 0 threads means no acceleration (default).
+  // Setting 1 thread means cuSPARSE libgen.
+  // Otherwise direct CUDA codegen.
   const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
   mlir::SparsificationOptions sparsification_options;
   sparsification_options.enableRuntimeLibrary = false;
   sparsification_options.enableIndexReduction = true;
   if (gpu_codegen) {
-    sparsification_options.parallelizationStrategy =
-        mlir::SparseParallelizationStrategy::kDenseOuterLoop;
+    if (xla_cpu_sparse_cuda_threads == 1) {
+      sparsification_options.enableGPULibgen = true;
+    } else {
+      sparsification_options.parallelizationStrategy =
+          mlir::SparseParallelizationStrategy::kDenseOuterLoop;
+    }
   }
   // Sparsification set up.
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
