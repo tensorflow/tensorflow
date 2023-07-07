@@ -103,11 +103,17 @@ class GpuPriorityFusionQueue : public FusionQueue {
         return {};
       }
       auto next_it = std::prev(producer_priority_queue_.end());
+      auto priority = next_it->first.first;
 
       current_producer_ = next_it->second;
       producer_priority_queue_.erase(next_it);
       reverse_map_.erase(current_producer_);
 
+      // If the priority is negative, it's not helpful to perform fusion on this
+      // instruction.
+      if (priority < 0) {
+        continue;
+      }
       current_consumers_ = GetFusibleUsers(current_producer_);
     }
 
@@ -318,6 +324,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
         return false;
       }
       break;
+    // Loop fusions are cheap.
+    case HloOpcode::kFusion:
+      return false;
     default:
       break;
   }
