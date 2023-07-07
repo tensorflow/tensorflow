@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,8 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -78,6 +84,8 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
             return ReplaceWithConstant(hlo);
           case ReplaceType::kReplaceParam:
             return ReplaceWithParameter(hlo);
+          case ReplaceType::kReplaceZeroBroadcast:
+            return ReplaceWithZeroBroadcast(hlo);
           default:
             QCHECK(false) << "Unsupported replacement type";
         }
@@ -97,17 +105,12 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
 
   Status FinishVisit(const HloInstruction* /*root*/) override {
     module_->AddEntryComputation(builder_.Build());
-    // Rename HLOs so that their name matches the original. By default,
-    // HLOs get new unique names when adding a new entry computation to
-    // a module.
-    for (auto computation : old_module_.MakeComputationPostOrder()) {
-      for (auto old_instruction : computation->MakeInstructionPostOrder()) {
-        if (auto new_instruction =
-                clone_context_.FindInstruction(old_instruction)) {
-          new_instruction->SetAndSanitizeName(old_instruction->name());
-        }
+    for (auto computation : module_->MakeComputationPostOrder()) {
+      for (auto instruction : computation->MakeInstructionPostOrder()) {
+        module_->SetAndUniquifyInstrName(instruction, instruction->name());
       }
     }
+
     return OkStatus();
   }
 
@@ -134,6 +137,47 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     parameter_number_++;
     clone_context_.MapInstruction(hlo, new_parameter.get());
     builder_.AddInstruction(std::move(new_parameter));
+    return OkStatus();
+  }
+
+  // Helper to create zero instruction (that return a zeros tensor) of the given
+  // shape. If the shape is of tuple type, we recursively reuse/create zero
+  // instruction for each of its sub-type. If it is not tuple type, we just
+  // create a zero constant and broadcast it to the desired shape.
+  HloInstruction* ReplaceWithZeroBroadcastHelper(
+      const Shape& shape, HloComputation::Builder& builder) {
+    if (shape.IsTuple()) {
+      // If it is a tuple, recursively create a zero instruction.
+      std::vector<HloInstruction*> tuple_operands;
+      for (const auto& subshape : shape.tuple_shapes()) {
+        tuple_operands.push_back(
+            ReplaceWithZeroBroadcastHelper(subshape, builder));
+      }
+      auto zero_tuple =
+          builder.AddInstruction(HloInstruction::CreateTuple(tuple_operands));
+      return zero_tuple;
+    } else {
+      // If not a tuple, we need to create a zero constant of
+      // `shape.element_type()`, and then broadcast it into the shape we want.
+
+      // Create a zero constant of `shape.element_type()`.
+      HloInstruction* element_zero;
+      Shape element_zero_shape = ShapeUtil::MakeShape(shape.element_type(), {});
+      element_zero = builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(element_zero_shape.element_type())));
+
+      // Broadcast the element_zero to create an hlo of the desired shape.
+      auto zero_broadcast = builder.AddInstruction(
+          HloInstruction::CreateBroadcast(shape, element_zero, {}));
+      return zero_broadcast;
+    }
+  }
+
+  // Replace with `hlo` with a broadcasted Zero of the same shape.
+  Status ReplaceWithZeroBroadcast(const HloInstruction* hlo) {
+    HloInstruction* zero_broadcast =
+        ReplaceWithZeroBroadcastHelper(hlo->shape(), builder_);
+    clone_context_.MapInstruction(hlo, zero_broadcast);
     return OkStatus();
   }
 

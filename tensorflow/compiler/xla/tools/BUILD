@@ -248,6 +248,8 @@ cc_library(
     srcs = ["hlo_extractor.cc"],
     hdrs = ["hlo_extractor.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:compilation_environments",
