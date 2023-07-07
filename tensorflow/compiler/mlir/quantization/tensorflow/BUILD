@@ -372,7 +372,6 @@ cc_library(
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
-        "passes/convert_tf_quant_ops_to_mhlo.cc",
         "passes/convert_tpu_model_to_cpu.cc",
         "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",

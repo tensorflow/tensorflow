@@ -260,6 +260,7 @@ cc_library(
         ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",

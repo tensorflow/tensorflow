@@ -196,7 +196,7 @@ cc_library(
         ":smuggle_disallowed_ops",
         ":tf_stablehlo",
         ":unfuse_batch_norm_pass",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
