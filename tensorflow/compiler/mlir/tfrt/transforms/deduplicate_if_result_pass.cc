@@ -158,12 +158,17 @@ void DeduplicateIfOps(mlir::ModuleOp module) {
       auto new_else_func = get_or_create(else_branch, else_mapping);
 
       mlir::OpBuilder::InsertionGuard guard(builder);
-
       builder.setInsertionPoint(op);
+
+      llvm::SmallVector<mlir::Type> new_result_types;
+      for (int i : then_mapping.new_to_old) {
+        new_result_types.push_back(op->getResult(i).getType());
+      }
+
       auto new_if_op = builder.create<mlir::TF::IfOp>(
-          op.getLoc(), new_then_func.getFunctionType().getResults(),
-          op.getCond(), op.getInput(), new_then_func.getSymName(),
-          new_else_func.getSymName(), op.getIsStateless());
+          op.getLoc(), new_result_types, op.getCond(), op.getInput(),
+          new_then_func.getSymName(), new_else_func.getSymName(),
+          op.getIsStateless());
 
       DCHECK_EQ(then_mapping.old_to_new.size(), op.getNumResults());
       for (int i = 0; i < then_mapping.old_to_new.size(); ++i) {

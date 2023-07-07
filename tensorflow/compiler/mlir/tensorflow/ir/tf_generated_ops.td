@@ -1132,6 +1132,10 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$container,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$batching_queue,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_batch_size,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_batch_timeout_micros,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 

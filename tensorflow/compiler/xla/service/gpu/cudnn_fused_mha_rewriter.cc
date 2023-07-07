@@ -38,17 +38,20 @@ namespace m = match;
 
 template <typename Pattern>
 auto OptionalReshape(Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Reshape(pattern), std::move(pattern));
+  auto shared = m::SharedSubpattern(pattern);
+  return m::AnyOf<HloInstruction>(m::Reshape(shared), shared);
 }
 
 template <typename Pattern>
 auto OptionalConvert(Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Convert(pattern), std::move(pattern));
+  auto shared = m::SharedSubpattern(pattern);
+  return m::AnyOf<HloInstruction>(m::Convert(shared), shared);
 }
 
 template <typename Pattern>
 auto OptionalBroadcast(Pattern pattern) {
-  return m::AnyOf<HloInstruction>(m::Broadcast(pattern), std::move(pattern));
+  auto shared = m::SharedSubpattern(pattern);
+  return m::AnyOf<HloInstruction>(m::Broadcast(shared), shared);
 }
 
 bool IsBatchedMatmul(const HloInstruction* instr) {
@@ -97,14 +100,15 @@ bool IsScaledMaskedFusedSoftmaxCall(const HloInstruction* instr) {
 auto GetUnfusedReduceMaxSumSoftmaxPattern(
     HloInstruction** softmax_input = nullptr) {
   // The reduce-max part of the softmax
-  auto unfused_softmax_max_subpattern = m::Subtract(
+  auto unfused_softmax_max_subpattern = m::SharedSubpattern(m::Subtract(
       m::Op(),
       m::Broadcast(OptionalConvert(OptionalConvert(
           m::Op()
               .WithPredicate(IsReduceMax)
-              .WithOperand(0, OptionalConvert(m::Op(softmax_input)))))));
+              .WithOperand(0, OptionalConvert(m::Op(softmax_input))))))));
+
   // The reduce-add part of the softmax
-  auto unfused_softmax_sum_subpattern = m::Divide(
+  auto unfused_softmax_sum_subpattern = m::SharedSubpattern(m::Divide(
       m::Exp(unfused_softmax_max_subpattern),
       m::Broadcast(OptionalConvert(OptionalConvert(
                        m::Op()
@@ -112,18 +116,8 @@ auto GetUnfusedReduceMaxSumSoftmaxPattern(
                                                unfused_softmax_max_subpattern)))
                            .WithPredicate(IsReduceSum)
                            .WithOneUse())))
-          .WithOneUse());
+          .WithOneUse()));
   return unfused_softmax_sum_subpattern;
-}
-
-// This function matches strictly reducemax-reducesum softmax patterns.
-bool IsReduceMaxSumSoftmaxFusion(const HloInstruction* instr) {
-  if (instr->called_computations().size() > 1) {
-    // Fused softmax can only have 1 called computation.
-    return false;
-  }
-  return Match(instr->called_computations()[0]->root_instruction(),
-               GetUnfusedReduceMaxSumSoftmaxPattern());
 }
 
 std::optional<double> GetConstantValue(const HloInstruction* inst) {
@@ -434,18 +428,18 @@ bool MatchBmm1UnfusedBiasSoftmaxBmm2(HloInstruction* softmax_input,
                                      HloInstruction* dropout,
                                      double& dropout_rate,
                                      std::string& custom_call_name) {
-  auto first_bmm_pattern =
-      m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse();
+  auto first_bmm_pattern = m::SharedSubpattern(
+      m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse());
   auto unfused_scaled_bmm_subpattern = m::MultiplyAnyOrder(
       OptionalConvert(first_bmm_pattern),
       OptionalConvert(
           m::Broadcast(m::Constant(scale).WithPredicate(IsScalar))));
+  auto pattern =
+      m::AddAnyOrder(OptionalConvert(m::AnyOf<HloInstruction>(
+                         unfused_scaled_bmm_subpattern, first_bmm_pattern)),
+                     m::Op(bias));
 
-  if (Match(
-          softmax_input,
-          m::AddAnyOrder(OptionalConvert(m::AnyOf<HloInstruction>(
-                             unfused_scaled_bmm_subpattern, first_bmm_pattern)),
-                         m::Op(bias)))) {
+  if (Match(softmax_input, pattern)) {
     custom_call_name = has_dropout ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
                                    : kCudnnfMHAScaleBiasSoftmaxCallTarget;
     if (has_dropout) {
@@ -463,32 +457,30 @@ bool MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
     std::string& custom_call_name) {
   // This is the subpattern for unfused scaled gemm since cublas
   // doesn't always fuse the scale into alpha.
-  auto unfused_scaled_bmm_subpattern = m::MultiplyAnyOrder(
+  auto unfused_scaled_bmm_subpattern = m::SharedSubpattern(m::MultiplyAnyOrder(
       OptionalConvert(m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse()),
-      m::Broadcast(m::Constant(scale).WithPredicate(IsScalar)));
+      m::Broadcast(m::Constant(scale).WithPredicate(IsScalar))));
+  auto pattern = OptionalConvert(m::Select(
+      m::Op(mask).WithPredicate([](const HloInstruction* instr) {
+        return instr->shape().element_type() == PRED;
+      }),
+      // Match bmm1-scale-bias-mask
+      m::AnyOf<HloInstruction>(
+          // Scale and bias might or might not be fused with gemm
+          m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
+          OptionalConvert(m::AnyOf<HloInstruction>(
+              // Try to match unfused bias
+              m::AddAnyOrder(
+                  m::Op(bias),
+                  m::AnyOf<HloInstruction>(
+                      OptionalConvert(m::Op(bmm_1)
+                                          .WithPredicate(IsBatchedMatmul)
+                                          .WithOneUse()),
+                      unfused_scaled_bmm_subpattern)),
+              unfused_scaled_bmm_subpattern))),
+      m::Op()));
 
-  if (Match(
-          softmax_input,
-          OptionalConvert(m::Select(
-              m::Op(mask).WithPredicate([](const HloInstruction* instr) {
-                return instr->shape().element_type() == PRED;
-              }),
-              // Match bmm1-scale-bias-mask
-              m::AnyOf<HloInstruction>(
-                  // Scale and bias might or might not be fused
-                  // with gemm
-                  m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
-                  OptionalConvert(m::AnyOf<HloInstruction>(
-                      // Try to match unfused bias
-                      m::AddAnyOrder(m::Op(bias),
-                                     m::AnyOf<HloInstruction>(
-                                         OptionalConvert(
-                                             m::Op(bmm_1)
-                                                 .WithPredicate(IsBatchedMatmul)
-                                                 .WithOneUse()),
-                                         unfused_scaled_bmm_subpattern)),
-                      unfused_scaled_bmm_subpattern))),
-              m::Op())))) {
+  if (Match(softmax_input, pattern)) {
     if (!IsSupportedPrimitiveType((*bmm_1))) {
       return false;
     }

@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/group_events.h"
 #include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -176,7 +176,7 @@ void ProcessIteratorEvent(const tsl::profiler::EventNode& iterator_event,
   iterator_stat.set_duration_ps(iterator_stat.duration_ps() +
                                 visitor.DurationPs());
   int64_t self_time_ps = visitor.DurationPs();
-  Timespan self_time_span = visitor.GetTimespan();
+  tsl::profiler::Timespan self_time_span = visitor.GetTimespan();
   for (const tsl::profiler::EventNode* child : iterator_event.GetChildren()) {
     const XEventVisitor& child_visitor = child->GetEventVisitor();
     if (tsl::profiler::ParseTfOpFullname(child_visitor.Name()).category ==
@@ -498,7 +498,7 @@ void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
       (*combined_tf_data_stats_
             ->mutable_tf_data_stats())[std::string(host_name)];
   tsl::profiler::EventForest event_forest;
-  event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
+  event_forest.AddPlanes(tsl::profiler::CreateTfXPlaneVisitor, {host_plane});
   event_forest.ConnectEvents();
   event_forest.ConnectTfDataEvents();
   absl::flat_hash_set<int64_t> device_input_pipeline_ids;

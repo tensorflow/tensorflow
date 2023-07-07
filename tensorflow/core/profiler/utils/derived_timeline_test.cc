@@ -21,13 +21,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -56,7 +56,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
                {{StatType::kHloModule, kHloModuleName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
-  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // Only the hlo module line is added and other empty lines are removed at the
   // end.
   EXPECT_EQ(plane_visitor.NumLines(), 2);
@@ -86,7 +86,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
                {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
-  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // Only the tf op line is added and other empty lines are removed at the end.
   EXPECT_EQ(plane_visitor.NumLines(), 2);
   plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
@@ -124,7 +124,7 @@ TEST(DerivedTimelineTest, DependencyTest) {
                 {StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
-  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // The step line and the TF op line are added.
   EXPECT_EQ(plane_visitor.NumLines(), 3);
   plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
@@ -151,7 +151,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
                {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
-  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // The TF name scope line and the TF op line are added.
   EXPECT_EQ(plane_visitor.NumLines(), 3);
   plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
@@ -191,7 +191,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
         &plane_builder, &line_builder, "op2", 20000, 30000,
         {{StatType::kTfOp, "a/d/Mul:Mul"}, {StatType::kKernelDetails, "blah"}});
     GenerateDerivedTimeLines(group_metadata_map, &space);
-    XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+    XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
     // The TF name scope line and the TF op line are added.
     EXPECT_EQ(plane_visitor.NumLines(), 3);
     plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
@@ -228,7 +228,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
         &plane_builder, &line_builder, "op3", 20000, 30000,
         {{StatType::kTfOp, "a/g/Mul:Mul"}, {StatType::kKernelDetails, "blah"}});
     GenerateDerivedTimeLines(group_metadata_map, &space);
-    XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+    XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
     // The TF name scope line and the TF op line are added.
     EXPECT_EQ(plane_visitor.NumLines(), 3);
     plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {

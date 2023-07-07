@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -157,7 +157,7 @@ ENTRY entry {
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
-  tensorflow::AutotuneResult::TritonGemmKey config;
+  AutotuneResult::TritonGemmKey config;
   config.set_block_m(16);
   config.set_block_n(32);
   config.set_block_k(512);
@@ -585,7 +585,7 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   // Fails if the tiling is too complex.
-  tensorflow::AutotuneResult::TritonGemmKey config;
+  AutotuneResult::TritonGemmKey config;
   config.set_block_m(512);
   config.set_block_n(512);
   config.set_block_k(32);
@@ -611,6 +611,33 @@ ENTRY entry {
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &MatMul, mlir_context)
           .status());
+}
+
+// This test should be updated when fixes for
+// https://github.com/openai/triton/issues/1864 are applied.
+TEST_F(TritonGemmTest, TritonCompilerCanFailOnConstants) {
+  EXPECT_THAT(GetOptimizedModule(R"(
+HloModule m, is_scheduled=true
+
+triton_gemm___computation {
+  parameter_0 = f32[92,11]{1,0} parameter(0)
+  c = f32[] constant(0)
+  b = f32[11,63] broadcast(c)
+  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[92,11]{1,0} parameter(0)
+  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_gemm___computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"16","block_n":"64",
+                                          "block_k":"16","split_k":"1",
+                                          "num_stages":"3","num_warps":"2"}}
+})"),
+              tsl::testing::StatusIs(tsl::error::INTERNAL,
+                                     "Failed to compile Triton kernel."));
 }
 
 class TritonGemmTestAny : public TritonGemmTest {
@@ -1367,45 +1394,6 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CompareTest, TritonDotFusionCanHaveOnlyLHSParameter) {
-  const std::string kHloTextTest = R"(
-HloModule m, is_scheduled=true
-
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  c = f32[] constant(123)
-  b = f32[11,63] broadcast(c)
-  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, b),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f32[92,11]{1,0} parameter(0)
-  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0), kind=kCustom,
-    calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
-                    "triton_gemm_config":{"block_m":"16","block_n":"64",
-                                          "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
-})";
-
-  const std::string kHloTextRef = R"(
-HloModule m, is_scheduled=true
-
-ENTRY triton_gemm___computation {
-  constant = f32[] constant(123)
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
-  ROOT custom-call = f32[92,63]{1,0} custom-call(parameter_0, broadcast),
-    custom_call_target="__cublas$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
-})";
-
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
-                                      /*run_hlo_passes=*/false));
-}
-
 TEST_F(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
   const std::string kHloTextTest = R"(
 HloModule m, is_scheduled=true
@@ -1445,6 +1433,66 @@ ENTRY triton_gemm___computation {
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
 }
+
+TEST_F(CompareTest, PredToBF16ConversionWorks) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloTextTest = R"(
+HloModule m, is_scheduled=true
+
+triton_gemm_computation {
+  parameter_0 = bf16[92,11]{1,0} parameter(0)
+  parameter_1 = s32[11,63]{1,0} parameter(1)
+  parameter_2 = s32[11,63]{1,0} parameter(2)
+  f1.1 = pred[11,63]{1,0} compare(parameter_1, parameter_2), direction=GE
+  c.1 = bf16[11,63]{1,0} convert(f1.1)
+  ROOT _.1 = bf16[92,63]{1,0} dot(parameter_0, c.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = bf16[92,11]{1,0} parameter(0)
+  p1 = s32[11,63]{1,0} parameter(1)
+  p2 = s32[11,63]{1,0} parameter(2)
+  ROOT triton_gemm__ = bf16[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
+    calls=triton_gemm_computation,
+    backend_config={"kind":"__triton_gemm",
+                    "triton_gemm_config":{"block_m":"32","block_n":"16",
+                                          "block_k":"32","split_k":"1",
+                                          "num_stages":"1","num_warps":"4"}}
+})";
+
+  const std::string kHloTextRef = R"(
+HloModule m, is_scheduled=true
+
+fused_computation {
+  p0 = s32[11,63]{1,0} parameter(0)
+  p1 = s32[11,63]{1,0} parameter(1)
+  f.1 = pred[11,63]{1,0} compare(p0, p1), direction=GE
+  ROOT convert.1 = bf16[11,63]{1,0} convert(f.1)
+}
+
+ENTRY e {
+  p2 = s32[11,63]{1,0} parameter(2)
+  p1 = s32[11,63]{1,0} parameter(1)
+  p0 = bf16[92,11]{1,0} parameter(0)
+  fusion = bf16[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
+  ROOT custom-call = bf16[92,63]{1,0} custom-call(p0, fusion),
+    custom_call_target="__cublas$gemm",
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+      {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
+      "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
+      "alpha_imag":0,"precision_config":
+      {"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+})";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      /*run_hlo_passes=*/false));
+}
+
 class TritonSoftmaxTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {

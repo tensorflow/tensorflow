@@ -193,7 +193,9 @@ tf_cuda_library(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
         # Clean up so that PJRT can run on ARM.
         if_linux_x86_64([
+            "//tensorflow/compiler/tf2xla:layout_util",
             "//tensorflow/compiler/jit:flags",
+            "//tensorflow/compiler/jit:pjrt_device_context",
             "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
             "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",

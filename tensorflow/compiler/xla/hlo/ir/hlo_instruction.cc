@@ -2844,10 +2844,17 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return OkStatus();
 }
 
-Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                          absl::string_view trigger) {
+  auto print_options = HloPrintOptions::ShortParsable()
+                           .set_print_operand_shape(true)
+                           .set_print_extra_attributes(false);
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
-      << shape() << " is not compatible with " << new_producer->shape();
+      << "The shape doesn't match when replacing '" << ToString(print_options)
+      << "' with '" << new_producer->ToString(print_options) << "'. " << shape()
+      << " is not compatible with " << new_producer->shape() << "\n '"
+      << trigger << "' triggered this wrong replacement.";
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 

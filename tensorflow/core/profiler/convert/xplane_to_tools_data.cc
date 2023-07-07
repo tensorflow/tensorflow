@@ -118,7 +118,8 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
     TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,
                         GetTraceViewOption(options));
     auto visibility_filter = std::make_unique<TraceVisibilityFilter>(
-        MilliSpan(trace_option.start_time_ms, trace_option.end_time_ms),
+        tsl::profiler::MilliSpan(trace_option.start_time_ms,
+                                 trace_option.end_time_ms),
         trace_option.resolution);
     TraceEventsContainer trace_container;
     // Trace smaller than threshold will be disabled from streaming.

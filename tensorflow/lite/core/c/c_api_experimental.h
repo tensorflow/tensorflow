@@ -159,6 +159,21 @@ void TfLiteInterpreterOptionsSetOpResolver(
 ///
 /// WARNING: This function is deprecated / not an official part of the API, is
 /// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV3(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V3* (*find_builtin_op_v3)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V3* (*find_custom_op_v3)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// Backward-compat version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
 void TfLiteInterpreterOptionsSetOpResolverV2(
     TfLiteInterpreterOptions* options,
     const TfLiteRegistration_V2* (*find_builtin_op_v2)(void* user_data,

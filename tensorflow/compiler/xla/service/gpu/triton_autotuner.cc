@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -84,15 +85,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-using tensorflow::AutotuneResult;
 
 // Constructs an autotuning key for a gemm performed in Triton.
 static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
@@ -108,14 +106,6 @@ static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
   key.set_num_warps(num_warps);
   return key;
 }
-
-// Maximum number of independent thread blocks along K dimension.
-// The actual value is split_k in the tiling configuration
-// and has to be <= kMaxSplitK.
-// Requires a separate temporary output buffer for each block, so should
-// be limited reasonably. The current maximum value was chosen based on
-// some matmul configurations benchmarked so far and can be increased further.
-constexpr int kMaxSplitK = 16;
 
 struct TritonTilingWrapper {
   const AutotuneResult::TritonGemmKey key;
@@ -300,7 +290,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     const DebugOptions debug_opts = fusion.parent()->config().debug_options();
 
     std::vector<AutotuneResult> results;
-    se::RedzoneAllocator rz_allocator(
+    // This allocator is used for input and reference buffers that are
+    // common for all configurations.
+    se::RedzoneAllocator rz_allocator_common(
         stream, allocator, PtxOptsFromDebugOptions(debug_opts),
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
         /*redzone_size=*/config_.should_check_correctness()
@@ -309,9 +301,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     se::DeviceMemoryBase reference_buffer;
     if (config_.should_check_correctness()) {
-      TF_ASSIGN_OR_RETURN(
-          reference_buffer,
-          rz_allocator.AllocateBytes(ShapeUtil::ByteSizeOf(root->shape())));
+      TF_ASSIGN_OR_RETURN(reference_buffer,
+                          rz_allocator_common.AllocateBytes(
+                              ShapeUtil::ByteSizeOf(root->shape())));
     }
 
     BufferComparator comparator(root->shape(), fusion.parent()->config());
@@ -341,19 +333,21 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     for (const HloInstruction* param : fusion.parameter_instructions()) {
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryBase param_buffer,
-          AutotunerUtil::CreateBuffer(rz_allocator, param->shape(), config_,
-                                      rng_state));
+          AutotunerUtil::CreateBuffer(rz_allocator_common, param->shape(),
+                                      config_, rng_state));
       inputs.push_back(param_buffer);
     }
 
-    // The intermediate one does not need to be initialized.
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase intermediate_buffer,
-                        rz_allocator.AllocateBytes(
-                            ShapeUtil::ByteSizeOf(root->shape()) * kMaxSplitK));
+    const bool disable_reduced_precision_reduction =
+        instr->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
 
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
-                        AutotunerUtil::CreateBuffer(rz_allocator, root->shape(),
-                                                    config_, rng_state));
+    PrimitiveType output_type = root->shape().element_type();
+    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
+                                         ? PrimitiveType::F64
+                                         : PrimitiveType::F32;
 
     if (config_.should_check_correctness()) {
       TF_RETURN_IF_ERROR(RunMatmulWithCublas(fusion, stream, allocator, inputs,
@@ -363,8 +357,40 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     for (const AutotuneResult::TritonGemmKey& conf : configurations) {
       VLOG(1) << "Trying triton tiling: " << conf.ShortDebugString();
 
+      // This allocator is used for intermediate buffers and output that are
+      // unique for each configuration.
+      se::RedzoneAllocator rz_allocator(
+          stream, allocator, PtxOptsFromDebugOptions(debug_opts),
+          /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+          /*redzone_size=*/config_.should_check_correctness()
+              ? se::RedzoneAllocator::kDefaultRedzoneSize
+              : 0);
+
       AutotuneResult res;
       *res.mutable_triton() = conf;
+
+      // Failing on allocating an intermediate buffer is OK because other
+      // less memory-hungry configurations do not need it at all.
+      se::DeviceMemoryBase intermediate_buffer;
+      if (conf.split_k() > 1) {
+        // The intermediate one does not need to be initialized.
+        StatusOr<se::DeviceMemoryBase> result = rz_allocator.AllocateBytes(
+            ShapeUtil::ElementsIn(root->shape()) *
+            ShapeUtil::ByteSizeOfPrimitiveType(
+                disable_reduced_precision_reduction ? accumulator_type
+                                                    : output_type) *
+            conf.split_k());
+        if (!result.ok()) {
+          // The allocator will log a warning.
+          // Proceed to trying next configuration.
+          continue;
+        }
+        intermediate_buffer = *result;
+      }
+
+      TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                          AutotunerUtil::CreateBuffer(
+                              rz_allocator, root->shape(), config_, rng_state));
 
       TF_ASSIGN_OR_RETURN(
           std::optional<absl::Duration> duration,
@@ -405,11 +431,6 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         }
       }
       results.push_back(res);
-
-      if (config_.should_reinit_output_buffer()) {
-        InitializeBuffer(stream, root->shape().element_type(), &rng_state,
-                         output_buffer);
-      }
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -498,6 +519,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         original_computation.parent()->config().debug_options();
     // Use cuBLAS gemm.
     options.set_xla_gpu_enable_triton_gemm(false);
+    // Avoid any autotuning: the result is only used to check numerics,
+    // use default algorithms to save compilation time and memory.
+    options.set_xla_gpu_autotune_level(0);
     // Avoid dumping compilation steps.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_autotune_results_to("");
@@ -705,10 +729,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         device_description.rocm_compute_capability(),
         DummyCanShareBufferFunction,
         /*pointer_size=*/8, &compile_module_results);
-    if (!compilation_status.ok()) {
+    if (compilation_status.code() == absl::StatusCode::kResourceExhausted) {
       VLOG(2) << "Compilation of autotuning variant failed: "
               << compilation_status;
       return {std::nullopt};
+    } else if (!compilation_status.ok()) {
+      return compilation_status;
     }
 
     std::vector<std::string> kernel_names;
@@ -731,7 +757,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         std::string ptx,
         nvptx::CompileToPtx(compile_module_results.llvm_module.get(),
                             device_description.cuda_compute_capability(),
-                            new_hlo_module->config()));
+                            new_hlo_module->config().debug_options()));
 
     se::GpuAsmOpts ptxas_config =
         PtxOptsFromDebugOptions(new_hlo_module->config().debug_options());
@@ -754,10 +780,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 };
 
 // Search space for exhaustive matmul autotuning.
-constexpr std::array<int, 5> BLOCK_SIZES = {16, 32, 64, 128, 256};
+constexpr std::array<int, 6> BLOCK_SIZES = {16, 32, 64, 128, 256, 512};
 constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
-constexpr std::array<int, 4> SPLIT_K = {1, 2, 4, 8};
+constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
 std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability) {

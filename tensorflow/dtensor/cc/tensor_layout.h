@@ -48,6 +48,10 @@ namespace dtensor {
 // standards.
 bool IsDynamicSize(int64_t size);
 
+// Returns true if `shape` is a dynamic shape based on either MLIR and TF
+// standards.
+bool IsDynamicShape(const std::vector<int64_t>& shape);
+
 // The location of a device in a mesh.
 //
 // Each device has a unique location in the mesh, which is indicated by the
@@ -375,8 +379,11 @@ class Layout {
   bool IsEmpty() const;
 
   // Compute global shape using the layout and provided local_shape.
+  // Optionally take a second parameter `local_shapes` that represents the shape
+  // of all local tensors.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      absl::Span<const int64_t> local_shape) const;
+      absl::Span<const int64_t> local_shape,
+      const std::vector<std::vector<int64_t>>* local_shapes = nullptr) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;

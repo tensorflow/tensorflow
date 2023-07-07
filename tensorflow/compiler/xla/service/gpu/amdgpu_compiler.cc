@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
@@ -125,6 +128,82 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return OkStatus();
 }
 
+bool AMDGPUCompiler::EnableCollectiveScheduleLinearizerForSpmd(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec) {
+  return hlo_module->config().use_spmd_partitioning() &&
+         stream_exec != nullptr &&
+         GpuConvAlgorithmPicker::IsEnabled(hlo_module);
+}
+
+bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
+    const HloModule* module) {
+  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+        return true;
+      }
+    }
+  }
+  // No convolution auto-tuning candidates found in the module.
+  return false;
+}
+
+Status AMDGPUCompiler::AddAutotuningPasses(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
+  AutotuneConfig autotune_config =
+      stream_exec
+          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                           debug_options}
+          : AutotuneConfig{
+                DevicelessConfig{gpu_target_config.device_description_str},
+                debug_options};
+  if (autotune_config.IsDeviceless()) {
+    AutotunerUtil::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
+  }
+  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+  }
+  // TODO:
+  // pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  // pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
+  return OkStatus();
+}
+
+Status AMDGPUCompiler::LoadAutotuneResultsFromFile(
+    const DebugOptions& debug_options) {
+  // We are doing this before the timer is started.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_load_autotune_results_from();
+      !file_path.empty()) {
+    static absl::once_flag once;
+    Status status = OkStatus();
+    absl::call_once(once, [&file_path, &status] {
+      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
+    });
+    TF_RETURN_IF_ERROR(status);
+  }
+  return OkStatus();
+}
+
+Status AMDGPUCompiler::SerializeAutotuneResultsToFile(
+    const DebugOptions& debug_options) {
+  // We are doing this after the timer is finished.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_dump_autotune_results_to();
+      !file_path.empty()) {
+    // Warning: This writes the autotune results at every compilation, possibly
+    // multiple times per process.
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
+  }
+  return OkStatus();
+}
+
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
@@ -152,8 +231,9 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
     TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version, module_config,
-                                      rocdl_dir_));
+        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
+                                      module_config.debug_options(), rocdl_dir_,
+                                      module_config.compilation_cache_key()));
   }
 
   return std::pair<std::string, std::vector<uint8_t>>("", std::move(hsaco));

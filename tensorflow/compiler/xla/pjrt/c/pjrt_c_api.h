@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 3
+#define PJRT_API_MINOR 7
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -125,7 +125,7 @@ struct PJRT_Error_GetCode_Args {
   const PJRT_Error* error;
   PJRT_Error_Code code;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, error);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
@@ -547,6 +547,8 @@ typedef enum {
   PJRT_Buffer_Type_F8E5M2,
   PJRT_Buffer_Type_F8E4M3FN,
   PJRT_Buffer_Type_F8E4M3B11FNUZ,
+  PJRT_Buffer_Type_F8E5M2FNUZ,
+  PJRT_Buffer_Type_F8E4M3FNUZ,
 
   // 4-bit integer types
   PJRT_Buffer_Type_S4,
@@ -575,6 +577,55 @@ typedef enum {
   PJRT_HostBufferSemantics_kZeroCopy,
 } PJRT_HostBufferSemantics;
 
+typedef enum {
+  PJRT_Buffer_MemoryLayout_Type_Tiled = 0,
+  PJRT_Buffer_MemoryLayout_Type_Strides,
+} PJRT_Buffer_MemoryLayout_Type;
+
+struct PJRT_Buffer_MemoryLayout_Tiled {
+  size_t struct_size;
+  void* priv;
+  // A map from physical dimension numbers to logical dimension numbers.
+  // The first element is the most minor physical dimension (fastest varying
+  // index) and the last the most major (slowest varying index). The contents of
+  // the vector are the indices of the *logical* dimensions in the shape. Must
+  // be the same size as the number of dimensions of the buffer.
+  const int64_t* minor_to_major;
+  size_t minor_to_major_size;
+  // A concatenated list of tile dimensions.
+  const int64_t* tile_dims;
+  // The list of tile dimension sizes. The size of this list is `num_tiles`.
+  const size_t* tile_dim_sizes;
+  size_t num_tiles;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout_Tiled, num_tiles);
+
+struct PJRT_Buffer_MemoryLayout_Strides {
+  size_t struct_size;
+  void* priv;
+  // Number of bytes to traverse per dimension. Must be the same size as
+  // the number of dimensions of the data. Caution: `byte_strides` are allowed
+  // to be negative, in which case data may need to point to the interior of
+  // the buffer, not necessarily its start.
+  const int64_t* byte_strides;
+  size_t num_byte_strides;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout_Strides, num_byte_strides);
+
+// Describe the memory layout. It can be (1) a list of minor-to-major order and
+// optional tilings (each tile is a list of dimensions), or (2) a list of
+// strides.
+struct PJRT_Buffer_MemoryLayout {
+  size_t struct_size;
+  void* priv;
+  union {
+    PJRT_Buffer_MemoryLayout_Tiled tiled;
+    PJRT_Buffer_MemoryLayout_Strides strides;
+  };
+  PJRT_Buffer_MemoryLayout_Type type;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout, type);
+
 struct PJRT_Client_BufferFromHostBuffer_Args {
   size_t struct_size;
   void* priv;
@@ -586,9 +637,10 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
   // The array dimensions of `data`.
   const int64_t* dims;
   size_t num_dims;
-  // Number of bytes to traverse per dimension. Must be the same size as `dims`,
-  // or empty. If empty, the array is assumed to have a dense layout with
-  // dimensions in major-to-minor order
+
+  // Number of bytes to traverse per dimension of the input data. Must be the
+  // same size as `dims`, or empty. If empty, the array is assumed to have a
+  // dense layout with dimensions in major-to-minor order
   // Caution: `byte_strides` are allowed to be negative, in which case `data`
   // may need to point to the interior of the buffer, not necessarily its start.
   const int64_t* byte_strides;
@@ -598,6 +650,11 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
 
   // Device to copy host data to.
   PJRT_Device* device;
+
+  // The caller is responsible to keep the data (tiled or strides) in the
+  // device_layout alive during the call. If nullptr, the device layout is
+  // assumed to be a dense layout with dimensions in major-to-minor order.
+  PJRT_Buffer_MemoryLayout* device_layout;
 
   // Event indicating when it's safe to free `data`. The caller is responsible
   // for calling PJRT_Event_Destroy.
@@ -1172,6 +1229,50 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Destroy_Args, buffer);
 // called and frees `buffer`. `buffer` can be nullptr.
 typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 
+struct PJRT_Buffer_ElementType_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Buffer_Type type;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_ElementType_Args, type);
+
+// Returns the type of the array elements of a buffer.
+typedef PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
+
+struct PJRT_Buffer_Dimensions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dims`.
+  const int64_t* dims;  // out
+  size_t num_dims;      // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Dimensions_Args, num_dims);
+
+// Returns the array shape of `buffer`, i.e. the size of each dimension.
+typedef PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
+
+struct PJRT_Buffer_UnpaddedDimensions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dims`.
+  const int64_t* unpadded_dims;  // out
+  size_t num_dims;               // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
+
+// Returns the unpadded array shape of `buffer`. This usually is equivalent to
+// PJRT_Buffer_Dimensions, but for implementations that support
+// dynamically-sized dimensions via padding to a fixed size, any dynamic
+// dimensions may have a smaller unpadded size than the padded size reported by
+// PJRT_Buffer_Dimensions. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args);
+
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
 
@@ -1386,7 +1487,8 @@ struct PJRT_CopyToDeviceStream_AddChunk_Args {
   PJRT_Chunk* chunk;
   PJRT_Event* transfer_complete;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args, chunk);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args,
+                          transfer_complete);
 
 // Emplaces a new chunk of data to copy to the device. The transfer is started
 // immediately, and the returned event is triggered when the transfer completes
@@ -1611,6 +1713,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_SerializedExecutable_Data);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);

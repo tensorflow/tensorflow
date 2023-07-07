@@ -315,6 +315,12 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
   }
 
   if (auto* registration =
+          BuildBuiltinOpFromLegacyRegistration<TfLiteRegistration_V3>(
+              op, version, op_resolver_callbacks_.find_builtin_op_v3);
+      registration) {
+    return registration;
+  }
+  if (auto* registration =
           BuildBuiltinOpFromLegacyRegistration<TfLiteRegistration_V2>(
               op, version, op_resolver_callbacks_.find_builtin_op_v2);
       registration) {
@@ -361,6 +367,12 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(const char* op,
     }
   }
 
+  if (auto* registration =
+          BuildCustomOpFromLegacyRegistration<TfLiteRegistration_V3>(
+              op, version, op_resolver_callbacks_.find_custom_op_v3);
+      registration) {
+    return registration;
+  }
   if (auto* registration =
           BuildCustomOpFromLegacyRegistration<TfLiteRegistration_V2>(
               op, version, op_resolver_callbacks_.find_custom_op_v2);

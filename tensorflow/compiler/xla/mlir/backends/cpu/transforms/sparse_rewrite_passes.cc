@@ -109,9 +109,8 @@ struct SparseBroadcastInDimCallRewriter {
            "Need argument and broadcast dimensions");
     assert(op.getResults().size() == 1 && "Need one output tensor");
     // Broadcast dimensions are passed in as a constant of dense int elements.
-    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
-    auto broadcast_dimensions =
-        dims_constant.getValue().cast<DenseIntElementsAttr>();
+    auto dims_constant = op.getInputs()[1];
+    auto broadcast_dimensions = getDenseIntAttrFromConstant(dims_constant);
     // Reconstruct the broadcast_in_dim operation.
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
@@ -309,6 +308,17 @@ struct SparseReshapeCallRewriter {
     // expand pair where the sparsity encoding is dropped in between.
     rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, ret_sp_tensor.getType(),
                                                  op.getInputs()[0]);
+    return success();
+  }
+};
+
+struct SparseSelectRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 3 && "Need three input tensors");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the operation.
+    rewriter.replaceOpWithNewOp<mhlo::SelectOp>(op, op.getResults().getTypes(),
+                                                op.getInputs());
     return success();
   }
 };
@@ -543,6 +553,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_reduce_xor",
                      SparseReduceCallRewriter<mhlo::XorOp>()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_select_n", SparseSelectRewriter()),
       std::make_pair("sparse_tensor_sinh",
                      SparseUnaryChloCallRewriter<chlo::SinhOp>()),
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),

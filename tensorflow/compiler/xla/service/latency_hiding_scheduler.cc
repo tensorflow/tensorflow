@@ -91,10 +91,6 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
-  // These values are empirically derived to obtain an overlap of one output
-  // fusion/convolution with 1 async op or 5 loop fusions with an async op.
-  static constexpr TimeCost kLowLatency = 1.0;
-  static constexpr TimeCost kHighLatency = 5000.0;
   if (IsAsyncPair(from, target)) {
     return kHighLatency;
   }

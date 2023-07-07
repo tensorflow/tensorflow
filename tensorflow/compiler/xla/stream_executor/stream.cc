@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
@@ -1751,106 +1750,6 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
               k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
               numeric_options, scratch_allocator);
-}
-
-Stream &Stream::ThenSetRngSeed(const uint8 *seed, uint64_t seed_bytes) {
-  VLOG_CALL(PARAM(seed), PARAM(seed_bytes));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->SetSeed(this, seed, seed_bytes));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers() << " unable to initialize RNG";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandUniform(DeviceMemory<float> *values) {
-  VLOG_CALL(PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandUniform(this, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandGaussian(float mean, float sd,
-                                         DeviceMemory<float> *values) {
-  VLOG_CALL(PARAM(mean), PARAM(sd), PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandGaussian(this, mean, sd, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandGaussian(double mean, double sd,
-                                         DeviceMemory<double> *values) {
-  VLOG_CALL(PARAM(mean), PARAM(sd), PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandGaussian(this, mean, sd, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandUniform(DeviceMemory<double> *values) {
-  VLOG_CALL(PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandUniform(this, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandUniform(
-    DeviceMemory<std::complex<float>> *values) {
-  VLOG_CALL(PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandUniform(this, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
-}
-
-Stream &Stream::ThenPopulateRandUniform(
-    DeviceMemory<std::complex<double>> *values) {
-  VLOG_CALL(PARAM(values));
-
-  if (rng::RngSupport *rng = parent_->AsRng()) {
-    CheckError(rng->DoPopulateRandUniform(this, values));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers()
-              << " attempting to perform RNG operation using StreamExecutor"
-                 " without RNG support.";
-  }
-  return *this;
 }
 
 Stream &Stream::ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,

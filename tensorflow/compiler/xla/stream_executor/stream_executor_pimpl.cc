@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -262,10 +261,6 @@ bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
 
-bool StreamExecutor::SupportsRng() const {
-  return implementation_->SupportsRng();
-}
-
 bool StreamExecutor::SupportsDnn() const {
   return implementation_->SupportsDnn();
 }
@@ -459,16 +454,6 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
   fft_.reset(implementation_->CreateFft());
   return fft_.get();
-}
-
-rng::RngSupport* StreamExecutor::AsRng() {
-  absl::MutexLock lock(&mu_);
-  if (rng_ != nullptr) {
-    return rng_.get();
-  }
-
-  rng_.reset(implementation_->CreateRng());
-  return rng_.get();
 }
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,

@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/auto_scaler.h"
 
+#include <algorithm>
+#include <cmath>
+#include <numeric>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -24,6 +30,101 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+constexpr double kAutoScalerOutlierSigmas = 1.0;
+
+template <typename T>
+double GetMedian(const absl::flat_hash_map<T, double>& rates) {
+  std::vector<double> sorted_rates;
+  for (const auto& [id, rate] : rates) {
+    sorted_rates.push_back(rate);
+  }
+  std::sort(sorted_rates.begin(), sorted_rates.end());
+
+  return sorted_rates[sorted_rates.size() / 2];
+}
+
+template <typename T>
+double GetMean(const absl::flat_hash_map<T, double>& rates) {
+  double rates_sum = 0.0;
+  for (const auto& [id, rate] : rates) {
+    rates_sum += rate;
+  }
+  if (rates_sum == 0.0) return 0.0;
+
+  return rates_sum / static_cast<double>(rates.size());
+}
+
+template <typename T>
+double GetStandardDeviation(const absl::flat_hash_map<T, double>& rates,
+                            double mean) {
+  double squared_distances_sum = 0.0;
+  for (const auto& [id, rate] : rates) {
+    squared_distances_sum += (rate - mean) * (rate - mean);
+  }
+  if (squared_distances_sum == 0.0 || rates.size() <= 1) return 0.0;
+
+  return std::sqrt(squared_distances_sum /
+                   static_cast<double>(rates.size() - 1));
+}
+
+// Discards rates that are more than (std_dev * outlier_sigmas) far from the
+// mean, and replaces them with the median. Puts the result in
+// `rates_without_outliers`.
+template <typename T>
+void ReplaceOutliers(const absl::flat_hash_map<T, double>& rates,
+                     std::vector<double>& rates_without_outliers,
+                     double outlier_sigmas) {
+  if (rates.empty()) return;
+  double mean = GetMean(rates);
+  double median = GetMedian(rates);
+  double standard_deviation = GetStandardDeviation(rates, mean);
+
+  double lower_threshold = mean - standard_deviation * outlier_sigmas;
+  double upper_threshold = mean + standard_deviation * outlier_sigmas;
+
+  for (const auto& [id, rate] : rates) {
+    if (rate >= lower_threshold && rate <= upper_threshold) {
+      rates_without_outliers.push_back(rate);
+    } else {
+      rates_without_outliers.push_back(median);
+    }
+  }
+}
+
+std::optional<int64_t> AutoScaler::GetOptimalNumberOfWorkers()
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+
+  if (worker_throughputs_.empty() || consumption_rates_.empty())
+    return std::nullopt;
+
+  std::vector<double> consumption_rates_without_outliers;
+  // TODO(armandouv): Discard outlier replacement when we ensure reported time
+  // values are correct.
+  // Outliers can make the estimate have an unfeasible value (very high or very
+  // low).
+  ReplaceOutliers(consumption_rates_, consumption_rates_without_outliers,
+                  kAutoScalerOutlierSigmas);
+  double consumption_rates_sum_ =
+      std::accumulate(consumption_rates_without_outliers.begin(),
+                      consumption_rates_without_outliers.end(), 0.0);
+
+  std::vector<double> worker_throughputs_without_outliers;
+  ReplaceOutliers(worker_throughputs_, worker_throughputs_without_outliers,
+                  kAutoScalerOutlierSigmas);
+  double worker_throughputs_sum_ =
+      std::accumulate(worker_throughputs_without_outliers.begin(),
+                      worker_throughputs_without_outliers.end(), 0.0);
+
+  double average_worker_throughput =
+      worker_throughputs_sum_ / static_cast<double>(worker_throughputs_.size());
+
+  int64_t optimal_number_of_workers =
+      ceil(consumption_rates_sum_ / average_worker_throughput);
+
+  return std::max(static_cast<int64_t>(1), optimal_number_of_workers);
+}
 
 tsl::Status AutoScaler::ReportProcessingTime(const std::string& worker_address,
                                              absl::Duration processing_time)

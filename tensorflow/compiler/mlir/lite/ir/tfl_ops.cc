@@ -1046,6 +1046,86 @@ void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+// Verifier to check if following is true. Will perform the verification only if
+// the BatchMatMulOp inputs and output are RankedTensors
+// 1. The operands of a BatchMatMulOp are broadcast compatible
+// 2. The result dimensions are correct
+LogicalResult BatchMatMulOp::verify() {
+  BatchMatMulOp op = *this;
+  // batch size in lhs and rhs must be broadcastable
+  RankedTensorType x_ty = op.getX().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType y_ty = op.getY().getType().dyn_cast<RankedTensorType>();
+
+  if (!x_ty || !y_ty) return success();
+  ArrayRef<int64_t> x_shape = x_ty.getShape();
+  ArrayRef<int64_t> y_shape = y_ty.getShape();
+
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  llvm::ArrayRef<int64_t> x_batches = x_shape.drop_back(2);
+  llvm::ArrayRef<int64_t> y_batches = y_shape.drop_back(2);
+
+  if (!OpTrait::util::getBroadcastedShape(x_batches, y_batches,
+                                          result_batch_shape)) {
+    return op.emitOpError()
+           << "found incompatible broadcast batch dimensions for lhs shape "
+           << x_ty << " and rhs shape " << y_ty;
+  }
+
+  RankedTensorType output_ty =
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
+  if (!output_ty) return success();
+
+  int64_t expected_output_rank = std::max(x_ty.getRank(), y_ty.getRank());
+  if (output_ty.getRank() != expected_output_rank) {
+    return op.emitOpError()
+           << "found invalid output rank, expected " << expected_output_rank
+           << " but got " << output_ty.getRank();
+  }
+
+  // Check output batch dim with potential broadcasting.
+  ArrayRef<int64_t> output_shape = output_ty.getShape();
+  for (int i = 0; i < result_batch_shape.size(); ++i) {
+    if (output_shape[i] != ShapedType::kDynamic &&
+        result_batch_shape[i] != ShapedType::kDynamic &&
+        output_shape[i] != result_batch_shape[i])
+      return op.emitOpError()
+             << "has mismatching input batch dimension "
+             << result_batch_shape[i] << " and output batch dimension "
+             << output_shape[i];
+  }
+
+  // Check output shape for non-batch dimension, following documentation below.
+  // https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul
+  int64_t x_row_dim = x_shape[x_shape.size() - 2];
+  int64_t x_col_dim = x_shape[x_shape.size() - 1];
+  int64_t y_row_dim = y_shape[y_shape.size() - 2];
+  int64_t y_col_dim = y_shape[y_shape.size() - 1];
+  int64_t out_row_dim = output_shape[output_shape.size() - 2];
+  int64_t out_col_dim = output_shape[output_shape.size() - 1];
+
+  int64_t expected_out_row_dim = op.getAdjX() ? x_col_dim : x_row_dim;
+  int64_t expected_out_col_dim = op.getAdjY() ? y_row_dim : y_col_dim;
+
+  if (expected_out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != expected_out_row_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on row, expected "
+           << expected_out_row_dim << " but got " << out_row_dim;
+  if (expected_out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != expected_out_col_dim)
+    return op.emitOpError()
+           << "found invalid output dimension on col, expected "
+           << expected_out_col_dim << " but got " << out_col_dim;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 

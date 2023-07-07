@@ -98,7 +98,11 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
       DataParallelCollectiveOptimizer&& other) = default;
 
   absl::string_view name() const override {
-    return "data-parallel-collective-optimizer";
+    if (pipelining_direction_ == kForward) {
+      return "data-parallel-collective-optimizer-forward";
+    } else {
+      return "data-parallel-collective-optimizer-backward";
+    }
   }
 
   using HloPassInterface::Run;

@@ -463,28 +463,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test",
-    testonly = True,
-    srcs = ["test.cc"],
-    hdrs = ["//tensorflow/tsl/platform:test.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:net",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "tracing",
     srcs = [
         "tracing.cc",

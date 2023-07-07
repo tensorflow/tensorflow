@@ -1,5 +1,5 @@
-// RUN: tf-quant-opt %s -quant-convert-tpu-model-to-cpu -split-input-file \
-// RUN:     | FileCheck %s
+// RUN: tf-quant-opt %s -quant-convert-tpu-model-to-cpu -inline -quant-cast-bf16-ops-to-f32 -split-input-file | \
+// RUN: FileCheck %s
 
 // Remove TPU related ops.
 func.func @tpu_conv(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2x2xf32> {

@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Determines whether an event will be visible in trace viewer within a visible
-// Timespan at a certain resolution.
+// tsl::profiler::Timespan at a certain resolution.
 // Events must be evaluated in order by timestamp, because when an event is
 // determined to be visible, the internal state of this class is updated.
 class TraceViewerVisibility {
@@ -40,7 +40,7 @@ class TraceViewerVisibility {
   // Create with visible timespan and resolution (in picoseconds).
   // The visible timespan must have non-zero duration.
   // If resolution is zero, no events are downsampled.
-  explicit TraceViewerVisibility(Timespan visible_span,
+  explicit TraceViewerVisibility(tsl::profiler::Timespan visible_span,
                                  uint64_t resolution_ps = 0);
 
   // Returns true if the event overlaps the visible span and is distinguishable
@@ -53,7 +53,7 @@ class TraceViewerVisibility {
   // Records that event is distinguishable at resolution_ps.
   void SetVisibleAtResolution(const TraceEvent& event);
 
-  Timespan VisibleSpan() const { return visible_span_; }
+  tsl::profiler::Timespan VisibleSpan() const { return visible_span_; }
   uint64_t ResolutionPs() const { return resolution_ps_; }
 
  private:
@@ -103,7 +103,7 @@ class TraceViewerVisibility {
   };
 
   // Constructor arguments.
-  Timespan visible_span_;
+  tsl::profiler::Timespan visible_span_;
   uint64_t resolution_ps_;
 
   // Visibility data for all rows.
@@ -120,21 +120,23 @@ class TraceVisibilityFilter : public TraceEventsFilterInterface {
  public:
   // If visible_span.Instant(), all events are visible.
   // If resolution is 0.0, events aren't downsampled.
-  TraceVisibilityFilter(Timespan visible_span, double resolution)
+  TraceVisibilityFilter(tsl::profiler::Timespan visible_span, double resolution)
       : resolution_(resolution),
         visibility_(visible_span, ResolutionPs(visible_span.duration_ps())) {}
 
-  Timespan VisibleSpan() const { return visibility_.VisibleSpan(); }
+  tsl::profiler::Timespan VisibleSpan() const {
+    return visibility_.VisibleSpan();
+  }
   uint64_t ResolutionPs() const { return visibility_.ResolutionPs(); }
 
   void SetUp(const Trace& trace) override {
     // If the visible_span was not set at construction time, use the trace
     // bounds and recompute the resolution in picoseconds.
-    Timespan visible_span = VisibleSpan();
+    tsl::profiler::Timespan visible_span = VisibleSpan();
     if (visible_span.Instant() && trace.has_min_timestamp_ps() &&
         trace.has_max_timestamp_ps()) {
-      visible_span = Timespan::FromEndPoints(trace.min_timestamp_ps(),
-                                             trace.max_timestamp_ps());
+      visible_span = tsl::profiler::Timespan::FromEndPoints(
+          trace.min_timestamp_ps(), trace.max_timestamp_ps());
       visibility_ = TraceViewerVisibility(
           visible_span, ResolutionPs(visible_span.duration_ps()));
     }

@@ -28,15 +28,14 @@ Status TryDlopenCUDALibraries() {
   auto cublas_status = CachedLoader::GetCublasDsoHandle();
   auto cublaslt_status = CachedLoader::GetCublasLtDsoHandle();
   auto cufft_status = CachedLoader::GetCufftDsoHandle();
-  auto curand_status = CachedLoader::GetCurandDsoHandle();
   auto cusolver_status = CachedLoader::GetCusolverDsoHandle();
   auto cusparse_status = CachedLoader::GetCusparseDsoHandle();
   auto cudnn_status = CachedLoader::GetCudnnDsoHandle();
 
   if (!cudart_status.status().ok() || !cublas_status.status().ok() ||
-      !cufft_status.status().ok() || !curand_status.status().ok() ||
-      !cusolver_status.status().ok() || !cusparse_status.status().ok() ||
-      !cudnn_status.status().ok() || !cublaslt_status.status().ok()) {
+      !cufft_status.status().ok() || !cusolver_status.status().ok() ||
+      !cusparse_status.status().ok() || !cudnn_status.status().ok() ||
+      !cublaslt_status.status().ok()) {
     return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {

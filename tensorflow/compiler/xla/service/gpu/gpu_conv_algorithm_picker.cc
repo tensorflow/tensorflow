@@ -60,7 +60,6 @@ namespace {
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
 using std::optional;
-using tensorflow::AutotuneResult;
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
@@ -221,8 +220,8 @@ std::string NumBytesToString(int64_t bytes) {
                       "B)");
 }
 
-tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
-  tensorflow::CudnnVersion cudnn_version;
+CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
+  CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
     StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
@@ -235,9 +234,8 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   return cudnn_version;
 }
 
-tensorflow::ComputeCapability GetComputeCapability(
-    se::StreamExecutor* stream_executor) {
-  tensorflow::ComputeCapability cc;
+ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
+  ComputeCapability cc;
   se::CudaComputeCapability se_cc =
       stream_executor->GetDeviceDescription().cuda_compute_capability();
   cc.set_major(se_cc.major);
@@ -463,8 +461,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 // failure code other than DISQUALIFIED means autotuning fails if
 // crash_on_checking_failure is set; and returning a DISQUALIFIED AutotuneResult
 // simply skips the engine/algorithm while recording a reason for skipping it.
-StatusOr<tensorflow::AutotuneResult>
-GpuConvAlgorithmPicker::AutotuneOneConvRunner(
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     se::DeviceMemoryAllocator* allocator, se::Stream* stream,
     MaybeFusedConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
@@ -481,7 +478,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   auto make_failure = [&alg](AutotuneResult::FailureKind kind,
                              absl::string_view msg) {
-    tensorflow::AutotuneResult result;
+    AutotuneResult result;
     *result.mutable_algorithm() = alg.ToProto();
     result.mutable_failure()->set_kind(kind);
     result.mutable_failure()->set_msg(/* *sigh* */ msg.data(), msg.size());
@@ -604,7 +601,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   int64_t scratch_bytes_used =
       scratch_allocator.TotalAllocatedBytesExcludingRedzones();
 
-  tensorflow::AutotuneResult result;
+  AutotuneResult result;
   *result.mutable_algorithm() = alg.ToProto();
   result.set_scratch_bytes(scratch_bytes_used);
   *result.mutable_run_time() =
@@ -708,8 +705,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   return result;
 }
 
-StatusOr<tensorflow::AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream, std::optional<AutotuneCacheKey> instruction_info,
     const AutotuneRuntimeArguments& runtime_arguments) {
@@ -800,7 +796,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   // Log the autotuning result.
   if (instr) {
-    tensorflow::AutotuningLog log;
+    AutotuningLog log;
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
@@ -844,7 +840,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 }
 #endif
 
-StatusOr<tensorflow::AutotuneResult>
+StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
     const GpuConvConfig conv_config,
     const ServiceExecutableRunOptions* run_options,
@@ -875,8 +871,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
 #endif
 }
 
-StatusOr<tensorflow::AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(

@@ -196,10 +196,11 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     std::vector<xla::PjRtBuffer*> executable_args;
     executable_args.reserve(result->input_mapping.size());
     absl::flat_hash_set<int> non_donatable_input_indices;
-    PreparePjRtExecutableArguments(
+    TF_EXPECT_OK(PreparePjRtExecutableArguments(
         /*num_missing_prefix_ctx_inputs=*/0, result->input_mapping, inputs,
-        GetVariableSnapshots(variables), &executable_args,
-        &non_donatable_input_indices);
+        GetVariableSnapshots(variables), /*pjrt_client=*/nullptr,
+        /*pjrt_device=*/nullptr, /*use_pjrt_tensor_buffer=*/false,
+        &executable_args, /*owned_args=*/{}, &non_donatable_input_indices));
 
     xla::ExecuteOptions exe_options;
     exe_options.arguments_are_tupled = false;
@@ -269,9 +270,12 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArguments) {
   std::vector<xla::PjRtBuffer*> exec_args;
   exec_args.reserve(input_mapping.size());
   absl::flat_hash_set<int> non_donatable_input_indices;
-  PreparePjRtExecutableArguments(num_missing_prefix_ctx_inputs, input_mapping,
-                                 inputs, GetVariableSnapshots(variables),
-                                 &exec_args, &non_donatable_input_indices);
+  TF_EXPECT_OK(PreparePjRtExecutableArguments(
+      num_missing_prefix_ctx_inputs, input_mapping, inputs,
+      GetVariableSnapshots(variables),
+      /*pjrt_client=*/nullptr, /*pjrt_device=*/nullptr,
+      /*use_pjrt_tensor_buffer=*/false, &exec_args,
+      /*owned_args=*/{}, &non_donatable_input_indices));
 
   EXPECT_EQ(exec_args.size(), 2);
 
@@ -299,9 +303,12 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArgumentsVariableInputs) {
   std::vector<xla::PjRtBuffer*> exec_args;
   exec_args.reserve(input_mapping.size());
   absl::flat_hash_set<int> non_donatable_input_indices;
-  PreparePjRtExecutableArguments(num_missing_prefix_ctx_inputs, input_mapping,
-                                 inputs, GetVariableSnapshots(variables),
-                                 &exec_args, &non_donatable_input_indices);
+  TF_EXPECT_OK(PreparePjRtExecutableArguments(
+      num_missing_prefix_ctx_inputs, input_mapping, inputs,
+      GetVariableSnapshots(variables),
+      /*pjrt_client=*/nullptr, /*pjrt_device=*/nullptr,
+      /*use_pjrt_tensor_buffer=*/false, &exec_args,
+      /*owned_args=*/{}, &non_donatable_input_indices));
 
   EXPECT_EQ(exec_args.size(), 2);
 
@@ -351,8 +358,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputs) {
                           RunExecutable(inputs, {}, result, executable));
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result, execute_outputs,
-      context_.get()));
+      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 3}), {5, 7, 9});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
@@ -389,8 +396,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsDynamicShape) {
                           RunExecutable(inputs, {}, result, executable));
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result, execute_outputs,
-      context_.get()));
+      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
   // The expected output is indices of non-zero inputs.
   Tensor* expected = CreateHostTensor<int64>(TensorShape({2, 2}), {0, 1, 0, 2});
   test::ExpectTensorEqual<int64>(*expected, *GetOutput(0));
@@ -437,7 +444,7 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
                           RunExecutable(inputs, variables, result, executable));
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
       /*num_missing_prefix_ctx_inputs=*/0, inputs, variables, *result,
-      execute_outputs, context_.get()));
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
@@ -484,7 +491,7 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 
   TF_EXPECT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
       /*num_missing_prefix_ctx_inputs=*/0, inputs, variables, *result,
-      execute_outputs, context_.get()));
+      /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
   // Verify that there are no outputs.
   EXPECT_EQ(context_->num_outputs(), 0);
@@ -550,7 +557,7 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutable) {
   TF_ASSERT_OK(GetVariableInfosFromInputs(context_->resource_manager(),
                                           context_->device(), inputs,
                                           variables_indices, &variables));
-  TF_ASSERT_OK(RunPjRtExecutable(*pjrt_client_, inputs, variables, *result,
+  TF_ASSERT_OK(RunPjRtExecutable(inputs, variables, *result, pjrt_client_,
                                  executable, context_.get()));
 
   Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
@@ -613,10 +620,9 @@ TEST_F(PjRtExecutionUtilTest,
                             GatherVariableInfo(context_.get(), *result,
                                                constant_input_indices.size()));
     TF_ASSERT_OK(LockVariables(absl::MakeSpan(updated_variables)));
-    TF_ASSERT_OK(RunPjRtExecutable(*pjrt_client_, constant_input_indices.size(),
-                                   inputs, variable_snapshots,
-                                   updated_variables, *result, executable,
-                                   context_.get()));
+    TF_ASSERT_OK(RunPjRtExecutable(
+        constant_input_indices.size(), inputs, variable_snapshots,
+        updated_variables, *result, pjrt_client_, executable, context_.get()));
   }
   Tensor* expected = CreateHostTensor<int32>(TensorShape({2}), {1, 1});
   test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));

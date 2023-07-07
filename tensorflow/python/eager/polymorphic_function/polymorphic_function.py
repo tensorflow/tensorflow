@@ -649,7 +649,6 @@ class Function(core.GenericFunction, trackable.Trackable):
         scope_type=scope_type,
         attributes=attributes,
         autograph=self._autograph,
-        jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
         autograph_options=self._experimental_autograph_options,
         function_cache=self._function_cache,

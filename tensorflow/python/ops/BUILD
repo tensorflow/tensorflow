@@ -133,6 +133,10 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/customization:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/pad:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -434,6 +438,8 @@ tf_gen_op_strict_wrapper_private_py(
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/mnist:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -447,6 +453,7 @@ tf_gen_op_strict_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/mlir/tfr/examples/mnist:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -513,6 +520,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
+        "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
@@ -531,6 +539,11 @@ tf_gen_op_strict_wrapper_private_py(
 
 tf_gen_op_strict_wrapper_private_py(
     name = "stateless_random_ops_v2_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
+)
+
+tf_gen_op_strict_wrapper_private_py(
+    name = "stochastic_cast_op_gen",
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
@@ -2355,6 +2368,20 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "stochastic_cast_op",
+    srcs = ["stochastic_cast_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":random_ops_util",
+        ":stochastic_cast_op_gen",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
     name = "rnn",
     srcs = ["rnn.py"],
     srcs_version = "PY3",
@@ -3167,7 +3194,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:momentum",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],

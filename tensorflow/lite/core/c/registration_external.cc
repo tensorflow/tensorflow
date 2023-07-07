@@ -67,6 +67,11 @@ void TfLiteRegistrationExternalSetAsyncKernel(
   registration->async_kernel = async_kernel;
 }
 
+void TfLiteRegistrationExternalSetInplaceOperator(
+    TfLiteRegistrationExternal* registration, uint64_t inplace_operator) {
+  registration->inplace_operator = inplace_operator;
+}
+
 TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
     const TfLiteRegistrationExternal* registration) {
   return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);

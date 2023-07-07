@@ -402,9 +402,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster = data_service_test_base.TestCluster(num_workers=3)
     dataset1 = dataset_ops.Dataset.range(1000)
     datasets = [
-        dataset_ops.Dataset.from_tensors("a").repeat(100),
-        dataset_ops.Dataset.from_tensors("b").repeat(100),
-        dataset_ops.Dataset.from_tensors("c").repeat(100),
+        dataset_ops.Dataset.from_tensors("a").repeat(50),
+        dataset_ops.Dataset.from_tensors("b").repeat(50),
+        dataset_ops.Dataset.from_tensors("c").repeat(50),
     ]
     choice_dataset = dataset_ops.Dataset.range(3).repeat()
     dataset2 = dataset_ops.Dataset.choose_from_datasets(

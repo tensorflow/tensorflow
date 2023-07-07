@@ -194,6 +194,7 @@ tf_py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training",
         "//tensorflow/python/training:saver",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -72,7 +72,8 @@ constexpr StringRef kAttrMapAttribute = "attr_map";
 constexpr StringRef kQuantizedOpsAttribute = "tf_quant.quantized_ops";
 constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kQuantizedFuncPrefix = "quantized_";
-constexpr StringRef kFloatOutputFuncPrefix = "_float_output_fn";
+constexpr StringRef kFloatOutputFuncSuffix = "_float_output_fn";
+constexpr StringRef kHybridFuncSuffix = "_hybrid_fn";
 
 class QuantizeCompositeFunctionsPass
     : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
@@ -564,6 +565,7 @@ LogicalResult TransferAttributes(func::FuncOp float_func,
 
 // Get the corresponding quantized function name from the given function name.
 std::string GetQuantizedFunctionName(StringRef func_name,
+                                     const bool merged_with_dequantize,
                                      const bool is_hybrid) {
   if (func_name.startswith(kQuantizedFuncPrefix)) return func_name.str();
   if (!func_name.startswith(kCompositeFuncPrefix)) return "";
@@ -574,14 +576,20 @@ std::string GetQuantizedFunctionName(StringRef func_name,
                                   .rsplit("_fn")
                                   .first));
 
-  return is_hybrid
-             ? base_function_name.concat("_float_output").concat("_fn").str()
-             : base_function_name.concat("_fn").str();
+  if (merged_with_dequantize) {
+    return base_function_name.concat("_float_output_fn").str();
+  }
+
+  if (is_hybrid) {
+    return base_function_name.concat("_hybrid_fn").str();
+  }
+
+  return base_function_name.concat("_fn").str();
 }
 
-bool ContainsQuantizedReusltType(ArrayRef<Type> result_types) {
+bool ContainsFloatResultType(ArrayRef<Type> result_types) {
   for (auto current_type : result_types) {
-    if (!current_type.dyn_cast<TensorType>().getElementType().isF32())
+    if (current_type.dyn_cast<TensorType>().getElementType().isF32())
       return true;
   }
   return false;
@@ -765,19 +773,22 @@ class QuantizeFunctionPattern
 
     // Applies only for hybrid ops in SRQ.
     const bool is_hybrid =
-        !ContainsQuantizedReusltType(result_types) &&
+        ContainsFloatResultType(result_types) &&
         (quantization_method_ ==
          tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
-    const std::string quantized_function_name =
-        GetQuantizedFunctionName(f_attr.getValue(), is_hybrid);
+    const std::string quantized_function_name = GetQuantizedFunctionName(
+        f_attr.getValue(), /*merged_with_dequantize=*/false,
+        /*is_hybrid=*/is_hybrid);
 
-    const mlir::func::FuncOp quantized_func =
-        dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_function_name));
-    mlir::func::FuncOp new_quantized_func =
-        dyn_cast<func::FuncOp>(quantized_func->clone());
-    if (new_quantized_func == nullptr) {
+    const mlir::func::FuncOp quantized_func = dyn_cast_or_null<func::FuncOp>(
+        symbol_table.lookup(quantized_function_name));
+    if (quantized_func == nullptr) {
+      call_op->emitError("Failed to find the quantized function: " +
+                         quantized_function_name);
       return failure();
     }
+    mlir::func::FuncOp new_quantized_func =
+        dyn_cast<func::FuncOp>(quantized_func->clone());
 
     new_quantized_func.setType(
         FunctionType::get(getContext(), TypeRange{ValueRange{args}},
@@ -852,19 +863,17 @@ class QuantizeFunctionPattern
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
     rewriter.setInsertionPointAfter(float_func);
 
-    // the length of the "_fn" suffix.
-    const size_t fn_suffix_length = 3;
-    std::string quantized_function_name =
-        GetQuantizedFunctionName(f_attr.getValue(), /*is_hybrid=*/false);
-    quantized_function_name.replace(
-        quantized_function_name.size() - fn_suffix_length, fn_suffix_length,
-        kFloatOutputFuncPrefix);
-    const auto quantized_func =
-        dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_function_name));
-    auto new_quantized_func = dyn_cast<func::FuncOp>(quantized_func->clone());
-    if (new_quantized_func == nullptr) {
+    const std::string quantized_function_name = GetQuantizedFunctionName(
+        f_attr.getValue(), /*merged_with_dequantize=*/true,
+        /*is_hybrid=*/false);
+    const auto quantized_func = dyn_cast_or_null<func::FuncOp>(
+        symbol_table.lookup(quantized_function_name));
+    if (quantized_func == nullptr) {
+      call_op->emitError("Failed to find the quantized function: " +
+                         quantized_function_name);
       return failure();
     }
+    auto new_quantized_func = dyn_cast<func::FuncOp>(quantized_func->clone());
     new_quantized_func.setType(
         FunctionType::get(getContext(), TypeRange{ValueRange{args}},
                           new_quantized_func.getResultTypes()));
@@ -1069,7 +1078,8 @@ class QuantizationSummary {
 
           func_count_map[representative_name.value()].num_quant++;
           total_quantized_func_count++;
-          if (func_name.contains(kFloatOutputFuncPrefix)) {
+          if (func_name.contains(kFloatOutputFuncSuffix) ||
+              func_name.contains(kHybridFuncSuffix)) {
             float_output_func_count++;
           }
         } else if (func_name.startswith(kCompositeFuncPrefix)) {
@@ -1160,8 +1170,8 @@ class QuantizationSummary {
 
   // Get the representative name attribute value of a composite function.
   FailureOr<StringRef> GetRepresentativeName(StringRef func_name) {
-    std::string quantized_func_name =
-        GetQuantizedFunctionName(func_name, /*is_hybrid=*/false);
+    std::string quantized_func_name = GetQuantizedFunctionName(
+        func_name, /*merged_with_dequantize=*/false, /*is_hybrid=*/false);
     auto quantized_func = dyn_cast_or_null<func::FuncOp>(
         symbol_table_.lookup(quantized_func_name));
     // Quantized function does not exist for weight-only case.

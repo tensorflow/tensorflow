@@ -543,6 +543,7 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",

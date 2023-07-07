@@ -45,6 +45,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
+namespace {
+
+void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
+}
+}  // namespace
 
 void AddQuantizeQatPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
@@ -99,7 +108,7 @@ void AddQuantizePtqDynamicRangePasses(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
@@ -143,7 +152,7 @@ void AddQuantizePtqPreCalibrationPasses(
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));

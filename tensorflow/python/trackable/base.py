@@ -420,18 +420,22 @@ class Trackable(object):
     """
     return self._self_unconditional_deferred_dependencies
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """Look up a dependency by name.
 
     May be overridden to include conditional dependencies.
 
     Args:
       name: The local name of the dependency.
+      cached_dependencies: Optional dict containing all computed dependencies
+        returned by `self._trackable_children()`.
 
     Returns:
       A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
+    if cached_dependencies:
+      return cached_dependencies.get(name, None)
     return self._self_unconditional_dependency_names.get(name, None)
 
   def _add_variable_with_custom_getter(self,

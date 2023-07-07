@@ -169,9 +169,11 @@ class GraphExecutor {
     std::string name_;
     SymbolUids symbol_uids_;
     GraphExecutor* graph_executor_ = nullptr;
+    // `mlir_context_` is declared here because the resources declared later may
+    // hold references to the MLIR objects.
+    std::unique_ptr<mlir::MLIRContext> mlir_context_;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;
-    std::unique_ptr<mlir::MLIRContext> mlir_context_;
     // Thread-safety resulted from `create_cost_recorder_once_`.
     // These OwningOpRefs are temporary storage for recompilation.
     mlir::OwningOpRef<mlir::ModuleOp>

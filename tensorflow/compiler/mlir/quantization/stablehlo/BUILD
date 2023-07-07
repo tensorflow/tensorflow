@@ -111,6 +111,32 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "convert_tf_quant_to_mhlo_int_test",
+    srcs = [
+        "passes/bridge/convert_tf_quant_to_mhlo_int_test.cc",
+    ],
+    deps = [
+        ":bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@stablehlo//:chlo_ops",
+    ],
+)
+
 cc_library(
     name = "quantize_passes",
     srcs = [

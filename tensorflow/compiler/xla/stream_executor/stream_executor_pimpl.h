@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -360,10 +359,6 @@ class StreamExecutor {
   // that underlies this interface.
   bool SupportsFft() const;
 
-  // Returns whether the StreamExecutor supports RNG routines for the platform
-  // that underlies this interface.
-  bool SupportsRng() const;
-
   // Returns whether the StreamExecutor support neural net routines for the
   // platform that underlies this interface.
   bool SupportsDnn() const;
@@ -574,15 +569,6 @@ class StreamExecutor {
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
 
-  // Gets-or-creates (creates with memoization) an RngSupport datatype that can
-  // be used for random-number-generation routines on the current platform.
-  //
-  // Ownership and user-facing is the same as AsBlas() above.
-  //
-  // Returns null if there was an error initializing the RNG support for the
-  // underlying platform.
-  rng::RngSupport* AsRng();
-
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
@@ -703,10 +689,6 @@ class StreamExecutor {
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
   std::unique_ptr<fft::FftSupport> fft_;
-
-  // Memoized RNG support object -- we only want to create this once when asked
-  // for an RNG interface.
-  std::unique_ptr<rng::RngSupport> rng_ ABSL_GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().

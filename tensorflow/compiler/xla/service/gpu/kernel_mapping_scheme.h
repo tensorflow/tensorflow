@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -167,13 +168,16 @@ class TilingScheme {
 
 class ReductionCodegenInfo {
  public:
+  using IndexGroups = std::vector<std::vector<HloInstruction*>>;
+
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,
-                                bool is_race_free)
+                                bool is_race_free, IndexGroups index_groups)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
-        is_race_free_(is_race_free) {
+        is_race_free_(is_race_free),
+        index_groups_(std::move(index_groups)) {
     if (num_partial_results > 1) {
       CHECK_EQ(num_partial_results,
                mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
@@ -181,6 +185,7 @@ class ReductionCodegenInfo {
   }
 
   const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
+  const IndexGroups& GetIndexGroups() const { return index_groups_; }
 
   int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRaceFree() const { return is_race_free_; }
@@ -192,6 +197,7 @@ class ReductionCodegenInfo {
   int num_partial_results_;
   bool is_row_reduction_;
   bool is_race_free_;
+  IndexGroups index_groups_;
 };
 
 class ReductionCodegenState {

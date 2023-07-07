@@ -34,11 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/stderr_reporter.h"
-#ifdef __ANDROID__
-#include <dlfcn.h>
-
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_entrypoint.h"
-#endif  // __ANDROID__
 
 namespace tflite {
 namespace acceleration {
@@ -53,11 +48,12 @@ class ValidatorRunnerImplTest : public ::testing::Test {
   static constexpr char kDelegateName[] = "test_xnnpack_delegate";
   static constexpr char kDelegateVersion[] = "1.0.0";
   static constexpr char kDelegateBinaryPath[] =
-      "third_party/tensorflow/lite/delegates/utils/experimental/"
+      "tensorflow/lite/delegates/utils/experimental/"
       "stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so";
 
   void SetUp() override {
-    MiniBenchmarkTestHelper helper;
+    MiniBenchmarkTestHelper helper(
+        /*should_load_entrypoint_dynamically=*/false);
     should_perform_test_ = helper.should_perform_test();
 
     options_.data_directory_path = ::testing::TempDir();

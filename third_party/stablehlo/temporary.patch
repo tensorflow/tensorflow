@@ -26,7 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "reference_axes",
      srcs = [
          "stablehlo/reference/Axes.cpp",
-@@ -662,6 +680,7 @@
+@@ -701,6 +719,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -37,7 +37,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,110 +13,20 @@
+@@ -13,135 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -79,18 +79,39 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -#-------------------------------------------------------------------------------
 -# Project setup and globals
 -#-------------------------------------------------------------------------------
--set(STABLEHLO_STANDALONE_BUILD OFF)
+-set(STABLEHLO_EXTERNAL_PROJECT_BUILD OFF)
 -
--if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
--  set(STABLEHLO_STANDALONE_BUILD ON)
+-if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
+-  # Building as part of LLVM via the external project mechanism.
+-  set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
+-else()
+-  # Building standalone.
 -  project(stablehlo LANGUAGES CXX C)
 -  set(CMAKE_C_STANDARD 11)
 -  set(CMAKE_CXX_STANDARD 17)
 -endif()
 -
--if(NOT STABLEHLO_STANDALONE_BUILD AND NOT MLIR_BINARY_DIR)
--  # Building as part of LLVM via the external project mechanism.
--  set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
+-# Build with ccache if the package is present
+-set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
+-if(LLVM_CCACHE_BUILD)
+-  find_program(CCACHE_PROGRAM ccache)
+-  if(CCACHE_PROGRAM)
+-      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
+-      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
+-      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
+-          CACHE STRING "Parameters to pass through to ccache")
+-
+-      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
+-      if (LLVM_CCACHE_MAXSIZE)
+-        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
+-      endif()
+-      if (LLVM_CCACHE_DIR)
+-        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
+-      endif()
+-      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
+-  else()
+-    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
+-  endif()
 -endif()
 -
 -#-------------------------------------------------------------------------------
@@ -129,6 +150,10 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  message(STATUS "Building StableHLO embedded in another project")
 -endif()
 -
+-if(LLVM_ENABLE_ZLIB)
+-  find_package(ZLIB)
+-endif()
+-
 -include(TableGen)
 -include(AddLLVM)
 -include(AddMLIR)
@@ -145,8 +170,8 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -#-------------------------------------------------------------------------------
 -
 -if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
--  if(STABLEHLO_STANDALONE_BUILD)
--    message(WARNING "StableHLO Python bindings are not supported in standalone mode. See build_tools/README.md for instructions.")
+-  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
+-    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
 -  endif()
 -
 -  include(MLIRDetectPythonEnv)
@@ -216,6 +241,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
  )
  
  add_mlir_dialect_library(StablehloRegister
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -156,7 +156,7 @@
+ 
+ def CHLO_BroadcastMaxOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_maximum",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Maximum operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -169,7 +169,7 @@
+ 
+ def CHLO_BroadcastMinOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_minimum",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Minimum operator (with optional broadcasting)";
+ 
+   string description = [{
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
@@ -786,6 +832,64 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -13,6 +13,54 @@
+   // expected-error @+1{{'chlo.broadcast_add' op requires compatible element types for all operands and results}}
+   %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
+   func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++// CHECK-LABEL: func @broadcast_max_quantized
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_maximum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_max_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f16, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_maximum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f16, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++// CHECK-LABEL: func @broadcast_min_quantized
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_minimum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_min_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f16, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_minimum' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f16, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
@@ -1056,28 +1160,6 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
  }
  
  // -----
-diff --ruN a/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp b/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
---- stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
-+++ stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
-@@ -1,3 +1,18 @@
-+/* Copyright 2023 The StableHLO Authors.
-+
-+Licensed under the Apache License, Version 2.0 (the "License");
-+you may not use this file except in compliance with the License.
-+You may obtain a copy of the License at
-+
-+    http://www.apache.org/licenses/LICENSE-2.0
-+
-+Unless required by applicable law or agreed to in writing, software
-+distributed under the License is distributed on an "AS IS" BASIS,
-+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+See the License for the specific language governing permissions and
-+limitations under the License.
-+==============================================================================*/
-+
- #include "mlir/InitAllDialects.h"
- #include "mlir/InitAllExtensions.h"
- #include "mlir/InitAllPasses.h"
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp

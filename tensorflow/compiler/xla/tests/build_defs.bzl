@@ -125,7 +125,8 @@ def xla_test(
             this_backend_args += plugins[backend]["args"]
             this_backend_data += plugins[backend]["data"]
         else:
-            fail("Unknown backend %s" % backend)
+            # Ignore unknown backends. TODO(b/289028518): Change back to fail.
+            continue
 
         if xla_test_library_deps:
             for lib_dep in xla_test_library_deps:

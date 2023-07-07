@@ -245,6 +245,15 @@ class SingleOpModel {
   int AddIntermediate(TensorType type, const std::vector<float>& scale,
                       const std::vector<int64_t>& zero_point);
 
+  // Returns the input tensor at position `index`.
+  TfLiteTensor* GetInputTensor(int index) {
+    return interpreter_->input_tensor(index);
+  }
+
+  // Returns the output tensor at position `index`.
+  TfLiteTensor* GetOutputTensor(int index) {
+    return interpreter_->output_tensor(index);
+  }
   // Templated version of AddConstInput() taking pointer and size.
   template <typename T>
   int AddConstInput(const TensorData& t, const T* data, size_t size) {
@@ -1235,6 +1244,10 @@ class DimsAreMatcher {
 
   bool MatchAndExplain(const TfLiteTensor* arg,
                        testing::MatchResultListener* result_listener) const {
+    if (arg == nullptr) {
+      *result_listener << "tensor is null";
+      return false;
+    }
     return MatchAndExplain(arg->dims, result_listener);
   }
 

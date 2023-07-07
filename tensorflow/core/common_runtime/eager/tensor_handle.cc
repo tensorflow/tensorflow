@@ -844,7 +844,7 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
                            context_view_id, mirror.context_view_id()));
     } else {
       LOG(WARNING) << "SetRemoteShape is ignored for a remote mirror that is "
-                      "accociated with a newer context_view_id.";
+                      "associated with a newer context_view_id.";
     }
     return OkStatus();
   }
@@ -999,6 +999,10 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   if (src->dtype() == tensorflow::DT_VARIANT) {
     attr.set_on_host(true);
   }
+  const auto* dstd_info = dstd->tensorflow_accelerator_device_info();
+  if (dstd_info != nullptr && dstd_info->use_pjrt_tensor_buffer) {
+    attr.set_use_pjrt_allocator(true);
+  }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     *output = dst;
@@ -1011,8 +1015,11 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    dst_device_context =
-        dstd->tensorflow_accelerator_device_info()->default_context;
+    if (dstd_info->use_pjrt_tensor_buffer) {
+      dst_device_context = dstd_info->pjrt_context;
+    } else {
+      dst_device_context = dstd_info->default_context;
+    }
   }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that

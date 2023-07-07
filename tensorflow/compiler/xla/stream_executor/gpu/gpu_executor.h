@@ -248,10 +248,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   fft::FftSupport* CreateFft() override;
 
-  bool SupportsRng() const override;
-
-  rng::RngSupport* CreateRng() override;
-
   bool SupportsDnn() const override;
 
   dnn::DnnSupport* CreateDnn() override;

@@ -16,8 +16,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/tsl/python/lib/core:pywrap_bfloat16",
+        "//tensorflow/tsl/python/lib/core:pywrap_ml_dtypes",
         "//third_party/py/numpy",
+        "@ml_dtypes",
     ],
 )
 
@@ -50,7 +51,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "optonly",
     ],
     deps = [
@@ -66,7 +66,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "optonly",
     ],
     deps = [

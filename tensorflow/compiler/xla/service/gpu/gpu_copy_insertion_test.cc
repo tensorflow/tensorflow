@@ -356,6 +356,168 @@ ENTRY main {
       GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
 }
 
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCanBeSharedBecauseDUSAndDSAccessSameSlice) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,2]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,2}
+  one = s32[] constant(1)
+  broadcast = s32[1,2]{1,0} broadcast(one), dimensions={}
+  add = s32[1,2] add(dynamic-slice, broadcast)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(
+      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedBecauseDUSAndDSAccessDifferentSliceSizes) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,2]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,2}
+  param_2.1 = s32[1,1]{1,0} parameter(2)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, param_2.1, param_1.1, zero)
+  param_3.1 = s32[2,3]{1,0} parameter(3)
+  dynamic-update-slice.1 = s32[2,3]{1,0} dynamic-update-slice(param_3.1, dynamic-slice, param_1.1, zero)
+  ROOT tuple = (s32[2,3]{1,0}, s32[2,3]{1,0}) tuple(dynamic-update-slice, dynamic-update-slice.1)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  param_2 = s32[1,1]{1,0} parameter(2)
+  param_3 = s32[2,3]{1,0} parameter(3)
+  ROOT fusion = (s32[2,3]{1,0}, s32[2,3]{1,0}) fusion(param_0, param_1, param_2, param_3), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCanBeSharedBecauseDUSAndDSAccessSlicesOfSizeOne) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, zero, param_1.1), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(
+      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedBecauseDUSAndDSAccessDifferentOperands) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1]{0} dynamic-slice(param_0.1, param_1.1), dynamic_slice_sizes={1}
+  one = s32[1]{0} constant({1})
+  add = s32[1] add(dynamic-slice, one)
+  bitcasted_add = s32[1,1]{1,0} bitcast(add)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, bitcasted_add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedBecauseDUSAndDSAccessDifferentOverlappingOffsets) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,2]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,2}
+  one = s32[] constant(1)
+  broadcast = s32[1,2]{1,0} broadcast(one), dimensions={}
+  add = s32[1,2] add(dynamic-slice, broadcast)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, one)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

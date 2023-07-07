@@ -122,6 +122,9 @@ Status BiasAddShape(shape_inference::InferenceContext* c);
 // Shape function for BiasAddGrad-like operations.
 Status BiasAddGradShape(shape_inference::InferenceContext* c);
 
+// Shape function for general Convolution operation
+Status ConvShape(shape_inference::InferenceContext* c);
+
 // Shape function for Conv2D-like operations that support explicit padding.
 Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
 

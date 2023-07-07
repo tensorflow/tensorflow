@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -65,7 +67,7 @@ cc_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
     python_version = "PY3",
@@ -746,7 +748,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
-        "@com_google_googletest//:gtest",
+        "//testing/base/public:gunit_for_library_testonly",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -889,14 +891,13 @@ cc_binary(
         ":constants",
         ":fb_storage",
         ":file_lock",
-        ":runner",
         ":set_big_core_affinity",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
@@ -1046,26 +1047,31 @@ cc_test(
     name = "validator_runner_impl_opaque_delegate_test",
     srcs = ["validator_runner_impl_opaque_delegate_test.cc"],
     data = ["//tensorflow/lite/delegates/utils/experimental/stable_delegate:libtensorflowlite_stable_xnnpack_delegate.so"],
+    linkopts = select({
+        clean_dep("//tensorflow:android"): [
+            # Exports the entrypoint, so that the validator runner impl class can successfully load
+            # the entrypoint symbol from the test binary directly.
+            "-Wl,--export-dynamic-symbol=Java_org_tensorflow_lite_acceleration_validation_entrypoint",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         # TODO(b/259303511): Propagate build config to data correctly to enable the test on x86 platforms.
-        "no_test_android",
         "no_test_android_x86",
     ],
     deps = [
         ":benchmark_result_evaluator",
         ":embedded_mobilenet_validation_model",
-        ":embedded_validator_runner_entrypoint",
         ":fb_storage",
-        ":libjpeg_handle_static_link",
+        ":libjpeg_handle_static_link",  # buildcleaner: keep
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator_runner_entrypoint",
-        ":validator_runner_impl",
+        ":validator_runner_impl_in_process",
         ":validator_runner_options",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
-        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader_opaque_delegate",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "@com_google_absl//absl/time",

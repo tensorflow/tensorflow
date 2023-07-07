@@ -53,4 +53,6 @@ bazel test \
       -//tensorflow/lite/... \
       -//tensorflow/tools/toolchains/... \
       -//tensorflow/compiler/xla/service/gpu/...
+      -//tensorflow/dtensor/mlir/tests:spmd_expansion.mlir.test
+      
       

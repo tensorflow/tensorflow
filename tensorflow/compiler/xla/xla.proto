@@ -508,7 +508,8 @@ message DebugOptions {
   bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
-  bool xla_gpu_enable_data_parallel_collective_optimizer = 217;
+  bool xla_gpu_enable_pipelined_all_reduce = 217;
+  bool xla_gpu_enable_pipelined_all_gather = 227;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -557,7 +558,9 @@ message DebugOptions {
   // this field.
   float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
 
-  // Next id: 226
+  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+
+  // Next id: 228
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

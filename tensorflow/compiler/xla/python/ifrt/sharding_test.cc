@@ -55,6 +55,21 @@ TEST(SingleDeviceShardingTest, IndexDomains) {
   EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
 }
 
+TEST(SingleDeviceShardingTest, Disassemble) {
+  auto device = reinterpret_cast<Device*>(1);
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device);
+
+  Shape shape({10, 20});
+  TF_ASSERT_OK_AND_ASSIGN(auto exploded, sharding->Disassemble(shape));
+
+  ASSERT_THAT(exploded, SizeIs(1));
+  const auto& [result_shape, result_sharding] = exploded[0];
+  ASSERT_EQ(shape, result_shape);
+  ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
+  EXPECT_THAT(result_sharding->devices().devices(), ElementsAre(device));
+}
+
 TEST(OpaqueShardingTest, Disassemble) {
   DeviceList device_list = CreateDummyDevices(2);
 

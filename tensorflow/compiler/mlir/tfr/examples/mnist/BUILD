@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
-load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,10 +23,15 @@ gen_op_libraries(
     src = "ops_defs.py",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/platform:flags",
+        "@absl_py//absl:app",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "mnist_ops_test",
     size = "small",
     srcs = ["mnist_ops_test.py"],
@@ -33,7 +39,6 @@ tf_py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
@@ -42,10 +47,12 @@ tf_py_test(
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mnist_train",
     srcs = ["mnist_train.py"],
     data = [":mnist_ops_mlir"],
@@ -59,7 +66,7 @@ py_library(
     ],
 )
 
-distribute_py_test(
+distribute_py_strict_test(
     name = "mnist_train_test",
     size = "medium",
     srcs = ["mnist_train_test.py"],
@@ -84,8 +91,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
-        "//tensorflow/python/framework:is_mlir_bridge_test_true",
-        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/framework:test_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

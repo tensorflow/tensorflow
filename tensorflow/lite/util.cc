@@ -218,7 +218,9 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
 }
 
 TensorUniquePtr BuildTfLiteTensor() {
-  return TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
+  auto tensor = TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
+  tensor->buffer_handle = kTfLiteNullBufferHandle;
+  return tensor;
 }
 
 TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,

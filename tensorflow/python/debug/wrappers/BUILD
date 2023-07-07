@@ -17,7 +17,7 @@ py_strict_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:stack",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
     ],
@@ -107,7 +107,7 @@ py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
@@ -134,7 +134,7 @@ py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:monitored_session",
     ],
 )
 
@@ -166,7 +166,7 @@ py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training:session_run_hook",
         "//third_party/py/numpy",
     ],
@@ -188,6 +188,6 @@ py_strict_test(
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:monitored_session",
     ],
 )

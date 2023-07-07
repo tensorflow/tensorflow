@@ -99,7 +99,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -199,13 +198,6 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
@@ -219,35 +211,9 @@ using ComputeCap = se::CudaComputeCapability;
 using ComputeCap = se::RocmComputeCapability;
 #endif
 namespace {
-
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
-
-// CollectivesScheduleLinearizer enforces a total ordering between collectives
-// to work around (1) divergence in initial HLOs across executables that are
-// communicating with each other using HLO collectives, and (2) divergence in
-// executables introduced due to auto tuning, specifically the use of extra
-// scratch space for convolutions.
-// We always apply this pass when not using SPMD (where initial HLO divergence
-// may be possible). This function decided whether to apply this pass when using
-// SPMD partitioning. When using SPMD, if convolutions are present in the code
-// and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
-// else we do not need to enable the pass.
-bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
-        return true;
-      }
-    }
-  }
-#endif
-  // No convolution auto-tuning candidates found in the module.
-  return false;
-}
-
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -671,7 +637,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
         /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
-    if (debug_options.xla_gpu_enable_data_parallel_collective_optimizer()) {
+    if (debug_options.xla_gpu_enable_pipelined_all_reduce()) {
       DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
@@ -680,6 +646,17 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*pipelining_direction=*/
           DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
+      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+    }
+    if (debug_options.xla_gpu_enable_pipelined_all_gather()) {
+      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+          /*level_to_operate_on=*/0,
+          /*max_pipelining_per_loop=*/INT64_MAX,
+          /*last_run=*/true,
+          /*process_different_sized_ops=*/true,
+          /*pipelining_direction=*/
+          DataParallelCollectiveOptimizer::PipeliningDirection::kBackward,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>};
       collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
     }
 
@@ -742,6 +719,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       hlo_module, stream_exec, options, gpu_target_config, autotune_results));
 
   const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
+  auto get_cuda_compute_capability = [&]() {
+    return stream_exec != nullptr
+               ? stream_exec->GetDeviceDescription().cuda_compute_capability()
+               : se::CudaComputeCapability();
+  };
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
@@ -765,13 +747,16 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                            gpu_device_info);
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                            gpu_device_info);
-      fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
+      fusion.AddPass<FusionMerger>(gpu_device_info,
+                                   get_cuda_compute_capability(),
+                                   ShapeSizeBytesFunction());
     }
     // Running CSE affects how many users an op has. This plays a role in what
     // we detect as a tiled transpose fusion.
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
+                                         get_cuda_compute_capability(),
                                          ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
@@ -1003,35 +988,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
-  const bool enable_collecive_schedule_linearizer_for_spmd =
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      hlo_module->config().use_spmd_partitioning() && stream_exec != nullptr &&
-      GpuConvAlgorithmPicker::IsEnabled(hlo_module);
-#else
-      false;
-#endif
-
-  if (enable_collecive_schedule_linearizer_for_spmd) {
+  if (EnableCollectiveScheduleLinearizerForSpmd(hlo_module, stream_exec)) {
     pipeline.AddPass<CollectivesScheduleLinearizer>(
-        RequiresCollectiveScheduleLinearizer);
+        [this](const HloModule* module) {
+          return RequiresCollectiveScheduleLinearizer(module);
+        });
   }
-
-  AutotuneConfig autotune_config =
-      stream_exec
-          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
-                           debug_options}
-          : AutotuneConfig{
-                DevicelessConfig{gpu_target_config.device_description_str},
-                debug_options};
-  if (autotune_config.IsDeviceless()) {
-    AutotunerUtil::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
-  }
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline.AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
-#if GOOGLE_CUDA
-  pipeline.AddPass<GemmAlgorithmPicker>(autotune_config);
 
   // By default use an externally provided thread pool.
   tsl::thread::ThreadPool* thread_pool = options.thread_pool;
@@ -1050,8 +1012,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     thread_pool = &*overriding_thread_pool;
   }
 
-  pipeline.AddPass<TritonAutotuner>(autotune_config, thread_pool);
-#endif  // GOOGLE_CUDA
+  TF_RETURN_IF_ERROR(AddAutotuningPasses(
+      &pipeline, hlo_module, stream_exec, debug_options, options,
+      gpu_target_config, autotune_results, thread_pool));
 
   GpuFloatSupport bf16_support(BF16);
   pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -1061,6 +1024,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
   FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
   pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
+  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
+  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
@@ -1093,21 +1060,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-#if GOOGLE_CUDA
   const DebugOptions& debug_options = module->config().debug_options();
-
-  // We are doing this before the timer is started.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_load_autotune_results_from();
-      !file_path.empty()) {
-    static absl::once_flag once;
-    Status status = OkStatus();
-    absl::call_once(once, [&file_path, &status] {
-      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
-    });
-    TF_RETURN_IF_ERROR(status);
-  }
-#endif  // GOOGLE_CUDA
+  TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_options));
 
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER(
@@ -1130,17 +1084,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-#if GOOGLE_CUDA
-  // We are doing this after the timer is finished.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_dump_autotune_results_to();
-      !file_path.empty()) {
-    // Warning: This writes the autotune results at every compilation, possibly
-    // multiple times per process.
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
-  }
-#endif  // GOOGLE_CUDA
+  TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_options));
 
   return std::move(module);
 }
@@ -1332,17 +1276,12 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
-#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
-#elif TENSORFLOW_USE_ROCM
-  return compile_single_module(llvm_module.get(), /*relocatable=*/false,
-                               /*shard_number=*/std::nullopt);
-#endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;
   for (llvm::Function& func : llvm_module->functions()) {
@@ -1724,82 +1663,6 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   return result;
 }
 
-StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
-    GpuCompiler* compiler, mlir::ModuleOp module, std::string module_name,
-    const HloModuleConfig& module_config,
-    const Compiler::CompileOptions& options,
-    absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
-    std::unique_ptr<llvm::Module> llvm_module,
-    IrEmitterContext* ir_emitter_context) {
-  mlir::func::FuncOp entry_function =
-      mlir::cast<mlir::func::FuncOp>(module.lookupSymbol(llvm::StringRef(
-          entry_function_name.data(), entry_function_name.size())));
-
-  std::vector<BufferAllocation> allocations;
-  OutputInfoMap output_info;
-  Shape output_shape;
-  EntryFunctionAttributes entry_func_attrs;
-  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &allocations,
-                                           &output_info, &output_shape,
-                                           &entry_func_attrs));
-
-  TF_RET_CHECK(!allocations.empty());
-
-  ir_emitter_context->set_allocations(allocations);
-
-  TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
-                                           module_config, ir_emitter_context));
-  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
-
-  bool supports_runtime_managed_constants =
-      // TODO(b/218907125): Implement this feature for ROCm as well.
-      compiler->PlatformId() != se::rocm::kROCmPlatformId;
-  if (supports_runtime_managed_constants) {
-    // Remove these globals from the generated code to indicate that XLA is
-    // responsible for allocating and initializing them.
-    RemoveUnusedAndUninitializedGlobals(ir_emitter_context->llvm_module(),
-                                        ir_emitter_context->constants());
-  }
-
-  bool enable_persistent_temp_buffers =
-      module_config.debug_options().xla_gpu_enable_persistent_temp_buffers();
-  using BackendCompileResult = std::pair<std::string, std::vector<uint8_t>>;
-  TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
-                      compiler->CompileToTargetBinary(
-                          module_config, std::move(llvm_module),
-                          compiler->GetGpuVersion(stream_exec), stream_exec,
-                          options, /*debug_module=*/nullptr));
-
-  if (IsXlaRuntimeExecutableEnabled(module_config)) {
-    std::vector<int64_t> buffer_sizes;
-    llvm::transform(
-        allocations, std::back_inserter(buffer_sizes),
-        [](const BufferAllocation& allocation) { return allocation.size(); });
-    TF_ASSIGN_OR_RETURN(
-        auto executable,
-        LowerToJitRt(module, entry_function.getName(), buffer_sizes,
-                     module_config, ir_emitter->ConsumeThunkSequence()));
-
-    GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
-    return GpuExecutable::Create(
-        {std::move(backend_result.first), std::move(backend_result.second),
-         gpu_version, std::move(executable), entry_func_attrs,
-         std::move(ir_emitter_context->constants()), std::move(output_info),
-         module_name, output_shape, std::move(allocations),
-         enable_persistent_temp_buffers});
-  }
-
-  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
-
-  GpuVersion gpu_version = compiler->GetGpuVersion(stream_exec);
-  return GpuExecutable::Create(
-      {std::move(backend_result.first), std::move(backend_result.second),
-       gpu_version, std::move(thunk_sequence), entry_func_attrs,
-       std::move(ir_emitter_context->constants()), std::move(output_info),
-       module_name, output_shape, std::move(allocations),
-       enable_persistent_temp_buffers});
-}
-
 std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     const HloInstruction* user, const HloInstruction* operand,
     const ShapeIndex& user_index) {
@@ -1846,6 +1709,10 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   for (int64_t o : user_index) {
     output = output->mutable_operand(o);
   }
+  const HloInstruction* non_bitcast_root = output;
+  if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
+    non_bitcast_root = non_bitcast_root->operand(0);
+  }
   std::queue<HloInstruction*> q;
   absl::flat_hash_set<HloInstruction*> visited;
   q.push(fusion_param);
@@ -1860,14 +1727,47 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
       // users in addition to the tuple user.
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
+      if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+          hlo->opcode() == HloOpcode::kDynamicSlice &&
+          non_bitcast_root->operand(0) == hlo->operand(0) &&
+          hlo->shape() == non_bitcast_root->operand(1)->shape()) {
+        // We can still share the buffer in this case if the same slice is
+        // accessed by the DUS and the DS. If they don't access the same slice,
+        // the two slices might partially overlap and read/write the same index
+        // at different times, and then we cannot guarantee that we read before
+        // it is overwritten. However if both access only a single element,
+        // there also can be no race condition.
+        if (!ShapeUtil::IsEffectiveScalar(hlo->shape()) ||
+            !ShapeUtil::IsEffectiveScalar(
+                non_bitcast_root->operand(1)->shape())) {
+          // Now compare all the slice start operands of 'hlo' and
+          // 'non_bitcast_root'.
+          for (int64_t i = 1; i < hlo->operand_count(); ++i) {
+            if (hlo->operand(i) != non_bitcast_root->operand(i + 1)) {
+              return false;
+            }
+          }
+        }
+      } else if ((!hlo->IsElementwiseOnOperand(
+                      hlo->operand_index(hlo_operand)) ||
+                  hlo->opcode() == HloOpcode::kCopy) &&
+                 hlo->opcode() != HloOpcode::kBitcast &&
+                 hlo->opcode() != HloOpcode::kTuple) {
+        // Even if 'hlo' is not elementwise on the operand, it is ok if we are
+        // coming from the second operand and 'hlo' is a DynamicUpdateSlice
+        // which is the non_bitcast_root. This corresponds to the special case
+        // above, where we allow a DynamicSlice if it accesses the exact same
+        // slice than the DynamicUpdateSlice. When we are coming from the first
+        // operand, IsElementwiseOnOperand() will return true for a
+        // DynamicUpdateSlice.
+        if (hlo != non_bitcast_root ||
+            hlo->opcode() != HloOpcode::kDynamicUpdateSlice ||
+            hlo->operand_index(hlo_operand) != 1) {
+          return false;
+        }
+      }
       if (visited.contains(hlo)) {
         continue;
-      }
-      if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
-           hlo->opcode() == HloOpcode::kCopy) &&
-          hlo->opcode() != HloOpcode::kBitcast &&
-          hlo->opcode() != HloOpcode::kTuple) {
-        return false;
       }
       visited.insert(hlo);
       q.push(hlo);

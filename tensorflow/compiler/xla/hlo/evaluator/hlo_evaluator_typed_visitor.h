@@ -890,7 +890,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
             result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
           }
         }
-      cnt : {}
+      cnt: {}
       } while (IndexUtil::BumpIndices(window_shape,
                                       absl::MakeSpan(rhs_spatial_index)));
 
@@ -1653,6 +1653,8 @@ extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
 
 }  // namespace xla
 
