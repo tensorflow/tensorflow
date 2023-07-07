@@ -571,6 +571,7 @@ cc_library(
         ":gpu_float_support",
         ":gpu_fusible",
         ":autotuner_util",
+        ":autotuner_compile_util",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter_triton",
@@ -1322,6 +1323,43 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
+    ]),
+)
+
+# We need a separate target, as runtime executable cannot depend on compilation
+# pipeline.
+cc_library(
+    name = "autotuner_compile_util",
+    srcs = if_gpu_is_configured(["autotuner_compile_util.cc"]),
+    hdrs = if_gpu_is_configured(["autotuner_compile_util.h"]),
+    deps = if_gpu_is_configured([
+        ":autotuner_util",
+        ":gpu_executable_run_options",
+        ":ir_emission_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
+        "//tensorflow/compiler/xla:autotuning_proto_cc",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer_header",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
     ]),
 )
 
