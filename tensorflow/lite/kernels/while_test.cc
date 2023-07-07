@@ -215,6 +215,33 @@ TEST_F(WhileTest, TestAllCases) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 }
 
+TEST_F(WhileTest, TestStaticUnconsumedOutputs) {
+  interpreter_ = std::make_unique<Interpreter>();
+  AddSubgraphs(2);
+  builder_->BuildLargeLessEqualCondSubgraph(interpreter_->subgraph(1), 3, 2);
+  builder_->BuildInputIsOutputSubgraph(interpreter_->subgraph(2));
+  builder_->BuildMultiInputWhileSubgraphWithUnconsumedOutput(
+      &interpreter_->primary_subgraph(), 2);
+
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1}),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {2});
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output0 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output0, {1}, {5});
+
+  ASSERT_EQ(interpreter_->subgraph(2)->tensor(1)->data.data,
+            interpreter_->tensor(interpreter_->inputs()[1])->data.data);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+}
+
 // Test a body subgraph which triggers the reallocation of an inplace output
 // tensor whose corresponding input has not been consumed yet. This tests that
 // the input pointer has be updated.

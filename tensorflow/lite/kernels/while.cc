@@ -140,6 +140,7 @@ TfLiteStatus DeepOrShallowCopyTensorsShapeTypeData(
   for (int i = 0; i < src_tensor_indices.size(); ++i) {
     // Skip copying unused destination tensors.
     if (dst_tensor_indices[i] == kTfLiteOptionalTensor) continue;
+    if (src_tensor_indices[i] == kTfLiteOptionalTensor) continue;
 
     const TfLiteTensor* src_tensor =
         src_subgraph->tensor(src_tensor_indices[i]);
@@ -157,6 +158,7 @@ TfLiteStatus DeepOrShallowCopyTensorsShapeTypeData(
   for (int i = 0; i < src_tensor_indices.size(); ++i) {
     // Skip copying unused destination tensors.
     if (dst_tensor_indices[i] == kTfLiteOptionalTensor) continue;
+    if (src_tensor_indices[i] == kTfLiteOptionalTensor) continue;
 
     const TfLiteTensor* src_tensor =
         src_subgraph->tensor(src_tensor_indices[i]);
@@ -249,6 +251,26 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
   }
 
+  // Detect when a WHILE input is read only.
+  const std::vector<int> input_tensors_count =
+      this_subgraph->GetInputTensorsCount();
+  for (int i = 0; i < num_inputs; ++i) {
+    if (body_subgraph->inputs()[i] == body_subgraph->outputs()[i]) {
+      // if there are no references to an output tensor, then it is not consumed
+      // and should not be allocated.
+      const int output_idx = node->outputs->data[i];
+      if (output_idx == kTfLiteOptionalTensor) continue;
+      if (input_tensors_count[output_idx] == 0) {
+        TfLiteTensor* body_input =
+            body_subgraph->tensor(body_subgraph->inputs()[i]);
+        if (body_input->type == kTfLiteString) continue;
+        if (IsResourceOrVariant(body_input)) continue;
+        node->outputs->data[i] = kTfLiteOptionalTensor;
+        body_input->allocation_type = kTfLiteCustom;
+      }
+    }
+  }
+
   // Prepare and check the body subgraph.
   TF_LITE_ENSURE_OK(
       context, CopyTensorsShapeAndType(
@@ -298,6 +320,7 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
     }
   }
   for (int i = 0; i < num_inputs; ++i) {
+    if (node->outputs->data[i] == kTfLiteOptionalTensor) continue;
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     if (op_data->body_has_dynamic_output_tensors) {
@@ -321,6 +344,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Just make node output tensors dynamic.
     int num_outputs = node->outputs->size;
     for (int i = 0; i < num_outputs; ++i) {
+      if (node->outputs->data[i] == kTfLiteOptionalTensor) continue;
       TfLiteTensor* output;
       TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
       SetTensorToDynamic(output);
@@ -348,6 +372,19 @@ TfLiteStatus Eval_cond_subgraph(TfLiteContext* context, Subgraph* cond_subgraph,
 
   *cond_subgraph_output = (cond_output->data.b[0]);
   return kTfLiteOk;
+}
+
+void SetupUnconsumedOutputs(const TfLiteNode* node, const OpData* op_data,
+                            Subgraph* this_subgraph, Subgraph* body_subgraph) {
+  const int num_inputs = node->inputs->size;
+  for (int i = 0; i < num_inputs; ++i) {
+    if (node->outputs->data[i] == kTfLiteOptionalTensor) {
+      TfLiteTensor* this_input = this_subgraph->tensor(node->inputs->data[i]);
+      TfLiteTensor* body_input =
+          body_subgraph->tensor(body_subgraph->inputs()[i]);
+      body_input->data.data = this_input->data.data;
+    }
+  }
 }
 
 // Evaluate WHILE op when body subgraph has dynamic outputs.
@@ -405,6 +442,8 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node) {
                                             TfLiteIntArrayView(node->inputs),
                                             this_subgraph,
                                             TfLiteIntArrayView(node->outputs)));
+
+  SetupUnconsumedOutputs(node, op_data, this_subgraph, body_subgraph);
 
   while (true) {
     // Step 3. Eval cond subgraph
@@ -497,11 +536,15 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
                       this_subgraph, TfLiteIntArrayView(node->outputs)));
   const int num_inputs = node->inputs->size;
   for (int i = 0; i < num_inputs; ++i) {
+    if (node->outputs->data[i] == kTfLiteOptionalTensor) continue;
     TfLiteTensor* body_input =
         body_subgraph->tensor(body_subgraph->inputs()[i]);
     TfLiteTensor* this_output = this_subgraph->tensor(node->outputs->data[i]);
     body_input->data = this_output->data;
   }
+
+  SetupUnconsumedOutputs(node, op_data, this_subgraph, body_subgraph);
+
   while (true) {
     // Step 3. Eval cond subgraph
     bool cond_subgraph_output;

@@ -846,6 +846,7 @@ TfLiteStatus Subgraph::Cancel() {
   if (continue_invocation_) {
     // Sets cancellation flag to false so cancellation check between nodes will
     // cancel the invocation.
+
     continue_invocation_->clear();
     return kTfLiteOk;
   }
@@ -912,6 +913,26 @@ TfLiteStatus Subgraph::CheckInputAndOutputForOverlap(const int* input_indices,
     }
   }
   return kTfLiteOk;
+}
+
+std::vector<int> Subgraph::GetInputTensorsCount() {
+  std::vector<int> input_tensors_count(tensors_.size(), 0);
+  for (int execution_plan_index = 0;
+       execution_plan_index < execution_plan().size(); execution_plan_index++) {
+    int node_index = execution_plan()[execution_plan_index];
+    TfLiteNode& node = nodes_and_registration_[node_index].first;
+    if (node.inputs->size > 0) {
+      for (int i = 0; i < node.inputs->size; ++i) {
+        const int input_idx = node.inputs->data[i];
+        if (input_idx == kTfLiteOptionalTensor) continue;
+        input_tensors_count[input_idx]++;
+      }
+    }
+  }
+  for (int i = 0; i < outputs_.size(); ++i) {
+    input_tensors_count[outputs_[i]]++;
+  }
+  return input_tensors_count;
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
@@ -1515,36 +1536,13 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Subgraph::RemoveUnusedInputs() {
-  auto graph_info = CreateGraphInfo();
-  std::vector<int> refcounts(graph_info->num_tensors(), 0);
-
-  for (int tensor_index : graph_info->variables()) {
-    refcounts[tensor_index]++;
-  }
-  // Count references to node input tensors.
-  const size_t num_execution_nodes = graph_info->num_execution_nodes();
-  for (size_t i = 0; i < num_execution_nodes; ++i) {
-    const TfLiteNode& node = graph_info->node(i);
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int j = 0; j < node_inputs->size; ++j) {
-      int tensor_index = node_inputs->data[j];
-      if (tensor_index != kTfLiteOptionalTensor) {
-        refcounts[tensor_index]++;
-      }
-    }
-  }
-  // Count references to SubGraph output tensors.
-  for (auto iter = outputs_.begin(); iter != outputs_.end(); iter++) {
-    if (*iter == kTfLiteOptionalTensor) continue;
-    refcounts[*iter]++;
-  }
-
+  std::vector<int> input_tensors_count = GetInputTensorsCount();
   // Mark unused inputs as kTfLiteOptionalTensor.
-  for (auto iter = inputs_.begin(); iter != inputs_.end(); iter++) {
-    if (*iter == kTfLiteOptionalTensor) continue;
-    if (refcounts[*iter] == 0) {
-      tensor(*iter)->bytes = 0;  // To make it clearer for memory analysis.
-      *iter = kTfLiteOptionalTensor;
+  for (int& tensor_idx : inputs()) {
+    if (tensor_idx == kTfLiteOptionalTensor) continue;
+    if (input_tensors_count[tensor_idx] == 0) {
+      tensor(tensor_idx)->bytes = 0;  // To make it clearer for memory analysis.
+      tensor_idx = kTfLiteOptionalTensor;
     }
   }
   return kTfLiteOk;

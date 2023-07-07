@@ -272,6 +272,10 @@ class Subgraph {
   // Returns status of success or failure.
   TfLiteStatus AllocateTensors();
 
+  // Returns the number of times each tensor is consumed. Subgraph output
+  // tensors are considered as consumed.
+  std::vector<int> GetInputTensorsCount();
+
   // Invoke the subgraph (run the whole graph in dependency order).
   //
   // NOTE: It is possible that the interpreter is not in a ready state

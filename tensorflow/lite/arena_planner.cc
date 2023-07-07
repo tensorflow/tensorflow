@@ -301,6 +301,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TfLiteIntArray* node_outputs = node.outputs;
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
+      if (tensor_index == kTfLiteOptionalTensor) continue;
       //  Don't allocate output tensors here for shared memory parts.
       nodes_to_tensors_[i].insert(tensor_index);
       TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
