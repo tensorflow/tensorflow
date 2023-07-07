@@ -611,10 +611,8 @@ ENTRY entry {
           .status());
 }
 
-// This test should be updated when fixes for
-// https://github.com/openai/triton/issues/1864 are applied.
 TEST_F(TritonGemmTest, TritonCompilerCanFailOnConstants) {
-  EXPECT_THAT(GetOptimizedModule(R"(
+  TF_CHECK_OK(GetOptimizedModule(R"(
 HloModule m, is_scheduled=true
 
 triton_gemm___computation {
@@ -633,9 +631,8 @@ ENTRY e {
                     "triton_gemm_config":{"block_m":"16","block_n":"64",
                                           "block_k":"16","split_k":"1",
                                           "num_stages":"3","num_warps":"2"}}
-})"),
-              tsl::testing::StatusIs(tsl::error::INTERNAL,
-                                     "Failed to compile Triton kernel."));
+})")
+                  .status());
 }
 
 class TritonGemmTestAny : public TritonGemmTest {
