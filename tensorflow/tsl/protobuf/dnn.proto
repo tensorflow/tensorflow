@@ -21,6 +21,7 @@ enum DataType {
   kF8E4M3FN = 9;
   kF8E5M2FNUZ = 10;
   kF8E4M3FNUZ = 11;
+  kInt64 = 12;
 }
 
 // Describes how a convolution input or output layer's data is formatted.
