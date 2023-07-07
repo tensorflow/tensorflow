@@ -428,10 +428,9 @@ class _SavedModelBuilder(object):
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
           path, self._saved_model.SerializeToString(deterministic=True))
-
+      # Placeholder for internal TF1 model fingerprint write
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
-    # Placeholder for internal TF1 model fingerprint write
 
     return path
 
