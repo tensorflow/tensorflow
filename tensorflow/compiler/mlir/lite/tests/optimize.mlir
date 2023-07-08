@@ -602,6 +602,50 @@ func.func @FuseFullyConnectedAddWithUnfusableRhs(%arg0: tensor<4x37xf32>, %arg1:
   // CHECK: return %[[add_result]]
 }
 
+// CHECK-LABEL: @FuseReshapeAroundBMMLHS
+func.func @FuseReshapeAroundBMMLHS(%arg0: tensor<6x5x1024xf32>) -> tensor<6x5x8192xf32> {
+  %cst = arith.constant dense_resource<__elided__> : tensor<1024x8192xf32>
+  %cst_0 = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  %cst_1 = arith.constant dense_resource<__elided__> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<6x5x1024xf32>, tensor<2xi32>) -> tensor<30x1024xf32>
+  %1 = "tfl.batch_matmul"(%0, %cst) {adj_x = false, adj_y = false} : (tensor<30x1024xf32>, tensor<1024x8192xf32>) -> tensor<30x8192xf32>
+  %2 = "tfl.reshape"(%1, %cst_0) : (tensor<30x8192xf32>, tensor<3xi32>) -> tensor<6x5x8192xf32>
+  return %2 : tensor<6x5x8192xf32>
+  // CHECK: %cst = arith.constant dense_resource<__elided__> : tensor<1024x8192xf32>
+  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %cst) {adj_x = false, adj_y = false} : (tensor<6x5x1024xf32>, tensor<1024x8192xf32>) -> tensor<6x5x8192xf32>
+  // CHECK: return %0 : tensor<6x5x8192xf32>
+}
+
+// CHECK-LABEL: @FuseReshapeAroundBMMNagativeTest
+func.func @FuseReshapeAroundBMMNagativeTest(%arg0: tensor<5x4x1x1024xf32>, %arg1: tensor<5x1024x8192xf32>) -> tensor<5x4x1x8192xf32> {
+  %cst = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  %cst_0 = arith.constant dense_resource<__elided__> : tensor<4xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<5x4x1x1024xf32>, tensor<3xi32>) -> tensor<5x4x1024xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<5x4x1024xf32>, tensor<5x1024x8192xf32>) -> tensor<5x4x8192xf32>
+  %2 = "tfl.reshape"(%1, %cst_0) : (tensor<5x4x8192xf32>, tensor<4xi32>) -> tensor<5x4x1x8192xf32>
+  return %2 : tensor<5x4x1x8192xf32>
+  // CHECK: %cst = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  // CHECK: %cst_0 = arith.constant dense_resource<__elided__> : tensor<4xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<5x4x1x1024xf32>, tensor<3xi32>) -> tensor<5x4x1024xf32>
+  // CHECK: %1 = "tfl.batch_matmul"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<5x4x1024xf32>, tensor<5x1024x8192xf32>) -> tensor<5x4x8192xf32>
+  // CHECK: %2 = "tfl.reshape"(%1, %cst_0) : (tensor<5x4x8192xf32>, tensor<4xi32>) -> tensor<5x4x1x8192xf32>
+  // CHECK: return %2 : tensor<5x4x1x8192xf32>
+}
+
+// CHECK-LABEL: @FuseReshapeAroundBMMRHS
+func.func @FuseReshapeAroundBMMRHS(%arg0: tensor<1x3x6x5x1024xf32>) -> tensor<1x3x6x5x8192xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "inputs", outputs = "Identity_1"}} {
+  %cst = arith.constant dense_resource<__elided__> : tensor<1x1024x8192xf32>
+  %cst_0 = arith.constant dense_resource<__elided__> : tensor<5xi32>
+  %cst_1 = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<1x3x6x5x1024xf32>, tensor<3xi32>) -> tensor<1x90x1024xf32>
+  %1 = "tfl.batch_matmul"(%0, %cst) {adj_x = false, adj_y = false} : (tensor<1x90x1024xf32>, tensor<1x1024x8192xf32>) -> tensor<1x90x8192xf32>
+  %2 = "tfl.reshape"(%1, %cst_0) : (tensor<1x90x8192xf32>, tensor<5xi32>) -> tensor<1x3x6x5x8192xf32>
+  return %2 : tensor<1x3x6x5x8192xf32>
+  // CHECK: %cst = arith.constant dense_resource<__elided__> : tensor<1x1024x8192xf32>
+  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %cst) {adj_x = false, adj_y = false} : (tensor<1x3x6x5x1024xf32>, tensor<1x1024x8192xf32>) -> tensor<1x3x6x5x8192xf32>
+  // CHECK: return %0 : tensor<1x3x6x5x8192xf32>
+}
+
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConst
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConst
 func.func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
