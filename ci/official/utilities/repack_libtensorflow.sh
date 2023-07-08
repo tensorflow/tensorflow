@@ -19,13 +19,6 @@
 #
 # Repacks libtensorflow tarballs into $DIR with provided $TARBALL_SUFFIX,
 # and also repacks libtensorflow-src.jar into a standardized format.
-#
-# -e: abort script if one command fails
-# -u: error if undefined variable used
-# -o pipefail: entire command fails if pipe fails. watch out for yes | ...
-# -o history: record shell history
-set -euxo pipefail -o history
-set -o allexport && source "$TFCI" && set +o allexport
 
 # Helper function to copy a srcjar after moving any source files
 # directly under the root to the "maven-style" src/main/java layout
