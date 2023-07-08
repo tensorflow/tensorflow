@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstring>
-#include <limits>
 #include <utility>
 
 #include "tensorflow/lite/array.h"
@@ -76,6 +75,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, arr->ElementType());
 
   IntArrayUniquePtr cur_shape_suffix;
+
   // If succeeds and result not nullptr, guaranteed to be fully defined.
   TF_LITE_ENSURE_OK(context, GetShapeIfAllEqual(*arr, cur_shape_suffix));
 
@@ -106,37 +106,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
            cur_shape_suffix->size * sizeof(int));
     final_output_shape->data[0] = arr->NumElements();
 
-    // Length zero will result in a tensor with empty allocation, so clear
-    // data just in case and short circuit.
-    if (arr->NumElements() == 0) {
-      TfLiteTensorDataFree(output);
-      if (output->dims) {
-        TfLiteIntArrayFree(output->dims);
-      }
-      output->dims = final_output_shape.release();
-      output->bytes = 0;
-      return kTfLiteOk;
-    }
-
   } else {
     final_output_shape = BuildTfLiteArray({arr->NumElements()});
   }
 
   context->ResizeTensor(context, output, final_output_shape.release());
 
-  int num_elements = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    const int d = output->dims->data[i];
-    if (d > 0) {
-      // Check overflow.
-      TF_LITE_ENSURE(context,
-                     num_elements < std::numeric_limits<int>().max() / d);
-      num_elements *= d;
-    }
+  const int num_elements = NumElements(output);
+  if (num_elements == 0) {
+    TfLiteTensorDataFree(output);
+    return kTfLiteOk;
   }
-
-  TF_LITE_ENSURE_EQ(context, output->bytes,
-                    num_elements * TfLiteTypeGetSize(output->type));
 
   // This has to be an int and we would have returned already if divisor == 0.
   const int element_num_elements = num_elements / output->dims->data[0];

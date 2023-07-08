@@ -36,10 +36,16 @@ IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape) {
 }
 
 IntArrayUniquePtr MergeShapesOrNull(IntArrayUniquePtr l, IntArrayUniquePtr r) {
-  if (l == nullptr || l->size == 0) {
+  if (l == nullptr) {
     return r;
   }
-  if (r == nullptr || r->size == 0) {
+  if (r == nullptr) {
+    return l;
+  }
+  if (l->size == 0) {
+    return r;
+  }
+  if (r->size == 0) {
     return l;
   }
   if (l->size != r->size) {

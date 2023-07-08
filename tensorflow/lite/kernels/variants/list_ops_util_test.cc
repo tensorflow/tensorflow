@@ -128,11 +128,18 @@ TEST(MergeShapesOrNull, UnrankedAndRankedUnknown_ReturnsRankedUnknown) {
 }
 
 TEST(MergeShapesOrNull, NullInput_ReturnsOther) {
-  IntArrayUniquePtr l = BuildTfLiteArray({3});
-  IntArrayUniquePtr r = BuildTfLiteArray({2});
-  EXPECT_THAT(MergeShapesOrNull(std::move(l), nullptr).get(), DimsAre({3}));
-  EXPECT_THAT(MergeShapesOrNull(nullptr, std::move(r)).get(), DimsAre({2}));
+  EXPECT_THAT(MergeShapesOrNull(BuildTfLiteArray({3}), nullptr).get(),
+              DimsAre({3}));
+  EXPECT_THAT(MergeShapesOrNull(nullptr, BuildTfLiteArray({2})).get(),
+              DimsAre({2}));
   EXPECT_EQ(MergeShapesOrNull(nullptr, nullptr).get(), nullptr);
+}
+
+TEST(MergeShapesOrNull, NullInput_ReturnsUnrankedOther) {
+  EXPECT_THAT(MergeShapesOrNull(BuildTfLiteArray({}), nullptr).get(),
+              DimsAre({}));
+  EXPECT_THAT(MergeShapesOrNull(nullptr, BuildTfLiteArray({})).get(),
+              DimsAre({}));
 }
 
 TEST(ElementsSameShape, NoElements_SucceedsWithNullptr) {
