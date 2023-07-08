@@ -26,6 +26,13 @@ namespace variants {
 
 // Creates a dims array from tensor whose data represents a shape
 // signature.
+// TODO(b/288302706) `TfLiteIntArray` is ill-equiped to encode the semantics
+// of something like a `tf.TensorShape`. In particular, there is no way
+// to cleanly capture the difference between a concrete scalar shape, and an
+// unranked shape-signature. The latter is defined to be compatible with any
+// shape (like `tf.TensorShape(None)`). This causes the need for some extra
+// checks. Consider wrapping in something like a `std::union` to differentiate
+// between these cases.
 IntArrayUniquePtr TensorAsShape(const TfLiteTensor& shape);
 
 // "Merges" two shape signature arrays if possible, returns nullptr otherwise.

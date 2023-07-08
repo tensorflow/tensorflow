@@ -112,7 +112,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   context->ResizeTensor(context, output, final_output_shape.release());
 
-  const int num_elements = NumElements(output);
+  const auto num_elements = static_cast<int>(NumElements(output));
   if (num_elements == 0) {
     TfLiteTensorDataFree(output);
     return kTfLiteOk;
