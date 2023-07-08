@@ -582,6 +582,10 @@ def build_conversion_flags(
     mlir_dump_pass_regex=None,
     mlir_dump_func_regex=None,
     mlir_enable_timing=None,
+    mlir_print_ir_before=None,
+    mlir_print_ir_after=None,
+    mlir_print_ir_module_scope=None,
+    mlir_elide_elementsattrs_if_larger=None,
     use_buffer_offset=False,
     **_
 ):
@@ -695,6 +699,15 @@ def build_conversion_flags(
       populated.
     mlir_enable_timing: A boolean, if set to true reports the execution time of
       each MLIR pass.
+    mlir_print_ir_before: A string containing a regular expression. If
+      specified, prints MLIR before passes which match.
+    mlir_print_ir_after: A string containing a regular expression. If specified,
+      prints MLIR after passes which match.
+    mlir_print_ir_module_scope: A boolean, if set to true always print the
+      top-level operation when printing IR for print_ir_[before|after].
+    mlir_elide_elementsattrs_if_larger: An int, if specified elides
+      ElementsAttrs with '...' that have more elements than the given upper
+      limit.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
@@ -796,6 +809,18 @@ def build_conversion_flags(
     conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
   if mlir_enable_timing is not None:
     conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+  if mlir_print_ir_before is not None:
+    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
+  if mlir_print_ir_after is not None:
+    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
+  if mlir_print_ir_module_scope is not None:
+    conversion_flags.debug_options.mlir_print_ir_module_scope = (
+        mlir_print_ir_module_scope
+    )
+  if mlir_elide_elementsattrs_if_larger is not None:
+    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
+        mlir_elide_elementsattrs_if_larger
+    )
 
   if use_buffer_offset is not None:
     conversion_flags.use_buffer_offset = use_buffer_offset
