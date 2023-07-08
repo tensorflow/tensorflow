@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_UTIL_H_
 
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -32,6 +35,16 @@ IntArrayUniquePtr MergeShapesOrNull(IntArrayUniquePtr l, IntArrayUniquePtr r);
 
 // Checks if array encodes a fully defined shape.
 bool IsShapeFullyDefined(const TfLiteIntArray& shape);
+
+// Returns a status denoting whether all of the elements in the `arr`
+// have the same shape. Write that shape to `result`.
+// If the `arr` has no set elements, still succeed but set `result` to nullptr.
+// TODO(b/288302706) This may be a performance bottleneck. We could potentially
+// amortize this work by constraining `TensorArray::element_shape_` every
+// time an element is added. This may cause divergence from tensorflow behavior
+// however; further investigation is needed.
+TfLiteStatus GetShapeIfAllEqual(const TensorArray& arr,
+                                IntArrayUniquePtr& result);
 
 }  // namespace variants
 }  // namespace tflite

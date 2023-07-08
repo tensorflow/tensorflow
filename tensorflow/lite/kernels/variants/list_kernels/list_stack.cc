@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -64,13 +65,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TensorArray* arr = static_cast<TensorArray*>(
       static_cast<VariantData*>(list_input->data.data));
 
-  IntArrayUniquePtr shape_from_list = BuildTfLiteArray(*arr->ElementShape());
-
   const TfLiteTensor* shape_input;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kShapeInput, &shape_input));
-
-  IntArrayUniquePtr shape_from_input = TensorAsShape(*shape_input);
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
@@ -78,43 +75,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, arr->ElementType());
 
-  // Attempt to compute all but the first dim of the output shape from
-  // the shape signatures provided in second input tensor and input list.
-  IntArrayUniquePtr cur_shape_suffix = MergeShapesOrNull(
-      std::move(shape_from_input), std::move(shape_from_list));
+  IntArrayUniquePtr cur_shape_suffix;
+  // If succeeds and result not nullptr, guaranteed to be fully defined.
+  TF_LITE_ENSURE_OK(context, GetShapeIfAllEqual(*arr, cur_shape_suffix));
 
-  if (cur_shape_suffix == nullptr) {
-    TF_LITE_KERNEL_LOG(
-        context,
-        "Given input shape is not compatible with input list's element shape.");
-    return kTfLiteError;
-  }
+  // Confirm that input shape, shape of elements and list shape are all
+  // compatible.
+  cur_shape_suffix = MergeShapesOrNull(
+      MergeShapesOrNull(TensorAsShape(*shape_input),
+                        BuildTfLiteArray(*arr->ElementShape())),
+      std::move(cur_shape_suffix));
 
-  // Get the shape of all present consituent elements if they are equal.
-  IntArrayUniquePtr first_shape = nullptr;
-  for (int i = 0; i < arr->NumElements(); ++i) {
-    if (arr->At(i) == nullptr) {
-      continue;
-    }
-    if (first_shape == nullptr) {
-      first_shape = BuildTfLiteArray(*arr->At(i)->dims);
-      continue;
-    }
-    TF_LITE_ENSURE(context,
-                   TfLiteIntArrayEqual(first_shape.get(), arr->At(i)->dims));
-  }
-  if (first_shape != nullptr) {
-    // List is non-empty, so compute updated shape suffix.
-    cur_shape_suffix =
-        MergeShapesOrNull(std::move(first_shape), std::move(cur_shape_suffix));
-    TF_LITE_ENSURE(context, cur_shape_suffix != nullptr);
-  }
-
-  // At this point the shape suffix needs to be fully known.
-  TF_LITE_ENSURE(context, IsShapeFullyDefined(*cur_shape_suffix));
+  TF_LITE_ENSURE_MSG(
+      context,
+      cur_shape_suffix != nullptr && IsShapeFullyDefined(*cur_shape_suffix),
+      "Shapes from input, list and elements are not compatible "
+      "or do not resolve to fully defined shape.");
 
   // Now compute the first dimension and concat with computed suffix.
-  IntArrayUniquePtr final_output_shape = nullptr;
+  IntArrayUniquePtr final_output_shape;
 
   const bool suffix_is_not_scalar =
       !(cur_shape_suffix->size == 0 ||
@@ -149,6 +128,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < output->dims->size; ++i) {
     const int d = output->dims->data[i];
     if (d > 0) {
+      // Check overflow.
       TF_LITE_ENSURE(context,
                      num_elements < std::numeric_limits<int>().max() / d);
       num_elements *= d;

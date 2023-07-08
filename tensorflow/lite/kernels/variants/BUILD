@@ -110,8 +110,12 @@ cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],
     hdrs = ["list_ops_util.h"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -121,6 +125,8 @@ cc_test(
     srcs = ["list_ops_util_test.cc"],
     deps = [
         ":list_ops_util",
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:test_util",
@@ -174,7 +180,7 @@ cc_library(
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",

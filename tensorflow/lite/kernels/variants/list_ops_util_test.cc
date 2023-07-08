@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -123,6 +125,85 @@ TEST(MergeShapesOrNull, UnrankedAndRankedUnknown_ReturnsRankedUnknown) {
   IntArrayUniquePtr r = BuildTfLiteArray({-1});
   EXPECT_THAT(MergeShapesOrNull(std::move(l), std::move(r)).get(),
               DimsAre({-1}));
+}
+
+TEST(MergeShapesOrNull, NullInput_ReturnsOther) {
+  IntArrayUniquePtr l = BuildTfLiteArray({3});
+  IntArrayUniquePtr r = BuildTfLiteArray({2});
+  EXPECT_THAT(MergeShapesOrNull(std::move(l), nullptr).get(), DimsAre({3}));
+  EXPECT_THAT(MergeShapesOrNull(nullptr, std::move(r)).get(), DimsAre({2}));
+  EXPECT_EQ(MergeShapesOrNull(nullptr, nullptr).get(), nullptr);
+}
+
+TEST(ElementsSameShape, NoElements_SucceedsWithNullptr) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(2);
+  IntArrayUniquePtr res;
+  ASSERT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteOk);
+  EXPECT_EQ(res.get(), nullptr);
+}
+
+TEST(ElementsSameShape, ZeroSize_SucceedsWithNullptr) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  IntArrayUniquePtr res;
+  ASSERT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteOk);
+  EXPECT_EQ(res.get(), nullptr);
+}
+
+TEST(ElementsSameShape, OneSize_SucceedsWithShape) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(1);
+  arr.Set(0, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  IntArrayUniquePtr res;
+  ASSERT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteOk);
+  EXPECT_THAT(res.get(), DimsAre({2}));
+}
+
+TEST(ElementsSameShape, MultipleElements_AllSet_SucceedsWithShape) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(2);
+  arr.Set(0, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  arr.Set(1, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  IntArrayUniquePtr res;
+  EXPECT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteOk);
+  EXPECT_THAT(res.get(), DimsAre({2}));
+}
+
+TEST(ElementsSameShape, MultipleElements_SomeSet_SucceedsWithShape) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(3);
+  arr.Set(0, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  arr.Set(2, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  IntArrayUniquePtr res;
+  EXPECT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteOk);
+  EXPECT_THAT(res.get(), DimsAre({2}));
+}
+
+TEST(ElementsSameShape, MultipleElements_SomeSetNotSameRank_Fails) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(3);
+  arr.Set(0, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2}),
+                               kTfLiteDynamic));
+  arr.Set(2, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2, 3}),
+                               kTfLiteDynamic));
+  IntArrayUniquePtr res;
+  EXPECT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteError);
+}
+
+TEST(ElementsSameShape, MultipleElements_SomeSetNotSameDim_Fails) {
+  TensorArray arr = {kTfLiteInt32, BuildTfLiteArray({})};
+  arr.Resize(3);
+  arr.Set(0, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2, 2}),
+                               kTfLiteDynamic));
+  arr.Set(2, BuildTfLiteTensor(kTfLiteInt32, BuildTfLiteArray({2, 3}),
+                               kTfLiteDynamic));
+  IntArrayUniquePtr res;
+  EXPECT_EQ(GetShapeIfAllEqual(arr, res), kTfLiteError);
 }
 
 }  // namespace
