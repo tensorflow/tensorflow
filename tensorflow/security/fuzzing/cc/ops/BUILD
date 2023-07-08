@@ -109,3 +109,20 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc:fuzz_session",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "general_ops_fuzz",
+    srcs = ["general_ops_fuzz.cc"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/ops:audio_ops_op_lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels/image:image",
+        "//tensorflow/core/kernels/image:decode_image_op",
+        "//tensorflow/security/fuzzing/cc:fuzz_session",
+        "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+    ],
+)
