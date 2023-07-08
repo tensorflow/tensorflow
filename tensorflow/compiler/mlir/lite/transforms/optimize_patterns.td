@@ -57,8 +57,6 @@ class HasRank<int n> : Constraint<
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
 
-class IsBoolAttrEqual<string true_or_false> : Constraint<CPred<
-  "$0.getValue() == "#true_or_false#"">>;
 
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
@@ -1482,27 +1480,3 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
    (BroadcastDimsProductEqual<1> $input, $initial_shape_change),
    (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
    (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
-
-def AreLastTwoDimsTransposed : Constraint<CPred<
-  "TFL::AreLastTwoDimsTransposed($0, $1)">>;
-
-// Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
-def FuseTransposeIntoBatchMatMulRHS: Pat<
-  (TFL_BatchMatMulOp $lhs,
-    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
-    $adj_x, $adj_y, $asymmetric_quantize_inputs),
-  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $input, $transposed_value),
-   (IsBoolAttrEqual<"false"> $adj_y),
-   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
-
-// Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
-def FuseTransposeIntoBatchMatMulLHS: Pat<
-  (TFL_BatchMatMulOp
-    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
-    $rhs, $adj_x, $adj_y, $asymmetric_quantize_inputs),
-  (TFL_BatchMatMulOp $input, $rhs, ConstBoolAttrTrue, $adj_y, $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $input, $transposed_value),
-   (IsBoolAttrEqual<"false"> $adj_x),
-   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
-

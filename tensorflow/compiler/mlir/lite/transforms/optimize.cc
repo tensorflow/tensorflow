@@ -139,17 +139,6 @@ bool BroadcastDimsProductEqual(Value input, Value output,
   return (agg_value == output_shape[agg_start_idx]);
 }
 
-// Return true if the product of dimension values of a subsection of the tensor
-// is equal to the non-contracting dimension after a reshape
-bool AreLastTwoDimsTransposed(Value input, Value output) {
-  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
-  ArrayRef<int64_t> output_shape =
-      output.getType().cast<ShapedType>().getShape();
-
-  return (input_shape.back() == output_shape[output_shape.size() - 2]) &&
-         (input_shape[input_shape.size() - 2] == output_shape.back());
-}
-
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
