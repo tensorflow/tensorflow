@@ -16,10 +16,17 @@
 #               (affects 'source $TFCI')
 set -euxo pipefail -o history -o allexport
 
-# Import all variables as set in $TFCI, which should be a file like those in
-# the envs directory that sets all TFCI_ variables, e.g. /path/to/envs/local_cpu
-if [[ -n "$TFCI" ]]; then
+# "TFCI" may optionally be set to the name of an env-type file with TFCI
+# variables in it, OR may be left empty if the user has already exported the
+# relevant variables in their environment. Because of 'set -o allexport' above
+# (which is equivalent to "set -a"), every variable in the file is exported
+# for other files to use.
+if [[ -n "${TFCI:-}" ]]; then
   source "$TFCI"
+else
+  echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
+  echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
+  echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
 # Make a "build" directory for outputting all build artifacts (TF's .gitignore
