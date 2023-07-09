@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1326,8 +1325,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseInt64(&parameter_number)) {
         return nullptr;
       }
+      const LocTy loc = lexer_.GetLoc();
       if (parameter_number < 0) {
-        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        Error(loc, "parameter number must be >= 0");
         return nullptr;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
@@ -1335,8 +1335,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       std::string param_name(name);
-      return builder->AddInstruction(HloInstruction::CreateParameter(
+      auto result = builder->AddParameter(HloInstruction::CreateParameter(
           parameter_number, *shape, param_name));
+      if (!result.ok()) {
+        Error(loc, result.status().message());
+        return nullptr;
+      }
+      return result.value();
     }
     case HloOpcode::kConstant: {
       Literal literal;

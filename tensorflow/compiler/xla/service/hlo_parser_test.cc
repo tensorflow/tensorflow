@@ -4160,6 +4160,20 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
               HasSubstr("parameter number must be >= 0"));
 }
 
+TEST_F(HloParserTest, DuplicateParameterNumberIsDetected) {
+  const std::string kHloString = R"(
+  ENTRY e {
+    a = s8[] parameter(0)
+    b = s8[] parameter(0)
+    ROOT a = s8[] add(a, b)
+  }
+  )";
+  auto result = ParseAndReturnUnverifiedModule(kHloString);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Duplicate parameter number 0"));
+}
+
 TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   const std::string hlo_string =
       "par0 = (f32[3,5], f32[]) parameter(0), "

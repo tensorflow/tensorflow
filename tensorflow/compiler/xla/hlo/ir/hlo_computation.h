@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_COMPUTATION_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_COMPUTATION_H_
 
-#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
@@ -34,15 +33,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -102,6 +99,15 @@ class HloComputation {
       return AddInstruction(std::move(instruction));
     }
 
+    StatusOr<HloInstruction*> AddParameter(
+        std::unique_ptr<HloInstruction> parameter) {
+      if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
+        return InternalError("Duplicate parameter number %d",
+                             parameter->parameter_number());
+      }
+      return AddInstruction(std::move(parameter));
+    }
+
     Status ForEachInstruction(
         absl::FunctionRef<Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
@@ -118,6 +124,7 @@ class HloComputation {
     const std::string name_;
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
+    absl::flat_hash_set<int> parameter_numbers_;
 
     Builder(const Builder&) = delete;
     Builder& operator=(const Builder&) = delete;
