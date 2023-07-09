@@ -6,13 +6,17 @@ cc_library(
     srcs = glob(
         ["list_kernels/*.cc"],
         exclude = ["list_kernels/*test*"],
-    ),
-    hdrs = ["list_ops_lib.h"],
+    ) + ["register_list_ops.cc"],
+    hdrs = [
+        "list_ops_lib.h",
+        "register_list_ops.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":list_ops_util",
         ":tensor_array",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

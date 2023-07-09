@@ -2,8 +2,8 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 pybind_extension(
-    name = "register_list_ops",
-    srcs = ["register_list_ops.cc"],
+    name = "register_list_ops_py",
+    srcs = ["register_list_ops_py.cc"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
@@ -17,8 +17,9 @@ py_strict_test(
     srcs = ["end_to_end_test.py"],
     tags = ["nochromiumos_arm"],
     deps = [
-        ":register_list_ops",
+        ":register_list_ops_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:test",

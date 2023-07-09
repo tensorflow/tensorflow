@@ -12,31 +12,17 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/lite/kernels/variants/list_ops_lib.h"
+#include "tensorflow/lite/kernels/variants/register_list_ops.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 
-namespace tflite {
-
-void RegisterListOps(tflite::MutableOpResolver* resolver) {
-  resolver->AddCustom("TensorListReserve",
-                      ::tflite::variants::ops::Register_LIST_RESERVE());
-  resolver->AddCustom("TensorListStack",
-                      ::tflite::variants::ops::Register_LIST_STACK());
-  resolver->AddCustom("TensorListSetItem",
-                      ::tflite::variants::ops::Register_LIST_SET_ITEM());
-  resolver->AddCustom("TensorListFromTensor",
-                      ::tflite::variants::ops::Register_LIST_FROM_TENSOR());
-}
-
-}  // namespace tflite
-
-PYBIND11_MODULE(register_list_ops, m) {
+PYBIND11_MODULE(register_list_ops_py, m) {
   m.doc() = R"pbdoc(
     Bindings to register list ops with python interpreter.
   )pbdoc";
   m.def(
       "TFLRegisterListOps",
       [](uintptr_t resolver) {
-        ::tflite::RegisterListOps(
+        ::tflite::variants::ops::RegisterListOps(
             reinterpret_cast<::tflite::MutableOpResolver*>(resolver));
       },
       R"pbdoc(
