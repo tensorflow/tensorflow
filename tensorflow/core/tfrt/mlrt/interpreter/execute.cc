@@ -109,6 +109,10 @@ void Execute(ExecutionContext& ctx) {
     current_function = &context.function_stack_[function_stack_index];
     current_function->pc_ = pc;
 
+    // The current execution is pasued, and we need to reset the per-thread
+    // context pointer.
+    current_execution_info.current_context = nullptr;
+
     // The state transition if a kernel set the execution state other than
     // kRunning.
     switch (context.state_) {
