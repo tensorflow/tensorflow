@@ -245,6 +245,32 @@ Status DeviceFactory::AddDevices(
     }
   }
 
+  // Then the stream devices.
+  DeviceFactory *stream_cpu_factory = nullptr, *stream_gpu_factory = nullptr;
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+  stream_gpu_factory = GetFactory("STREAM_GPU");
+  stream_cpu_factory = GetFactory("STREAM_CPU");
+  if (!stream_gpu_factory) {
+    return errors::NotFound(
+        "STREAM_GPU Factory not registered. Did you link in "
+        "threadpool_device?");
+  }
+  size_t init_size = devices->size();
+  TF_RETURN_IF_ERROR(
+      stream_gpu_factory->CreateDevices(options, name_prefix, devices));
+  if (devices->size() == init_size) {
+    LOG(INFO) << "No STREAM_GPU devices are available in this process";
+  } else {
+    init_size = devices->size();
+    TF_RETURN_IF_ERROR(
+        stream_cpu_factory->CreateDevices(options, name_prefix, devices));
+    if (devices->size() == init_size) {
+      LOG(INFO) << "No STREAM_CPU devices are available in this process";
+    }
+  }
+#endif
+
   auto cpu_factory = GetFactory("CPU");
   // Then the rest (including GPU).
   mutex_lock l(*get_device_factory_lock());
@@ -254,7 +280,8 @@ Status DeviceFactory::AddDevices(
       continue;  // Skip if the device type is not found from the device filter.
     }
     auto factory = p.second.factory.get();
-    if (factory != cpu_factory) {
+    if (factory != cpu_factory && factory != stream_gpu_factory &&
+        factory != stream_cpu_factory) {
       TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }

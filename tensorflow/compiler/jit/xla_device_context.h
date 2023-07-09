@@ -62,9 +62,10 @@ class XlaDeviceContext : public DeviceContext {
       XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
       thread::ThreadPool* thread_pool);
 
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute) const override;
+  void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute,
+      TensorHolder* tensor_holder = nullptr) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;

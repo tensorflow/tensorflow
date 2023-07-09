@@ -37,6 +37,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -76,6 +77,7 @@ namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
+static std::unordered_map<CUcontext, CUdevice> primary_ctx_used_;
 
 namespace {
 
@@ -286,8 +288,10 @@ static tsl::Status InternalInit() {
 
 /* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
                                               CUdevice* device) {
-  RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal),
-                           "Failed call to cuDeviceGet");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGet(device,
+                  DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal)),
+      "Failed call to cuDeviceGet");
   return ::tsl::OkStatus();
 }
 
@@ -359,31 +363,40 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
   former_context = cuda::CurrentContextOrDie();
   res = cuDevicePrimaryCtxRetain(&new_context, device);
-  if (former_context != nullptr) {
-    CUdevice former_device;
-    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-      if (former_device == device) {
-        if (former_context == new_context) {
-          VLOG(2) << "The primary context " << former_context << " for device "
-                  << device
-                  << " exists before initializing the StreamExecutor.";
-        } else {
-          LOG(WARNING) << "A non-primary context " << former_context
-                       << " for device " << device
-                       << " exists before initializing the StreamExecutor. The "
-                       << "primary context is now " << new_context << ". We "
-                       << "haven't verified StreamExecutor works with that.";
-        }
-      }
-    } else {
-      LOG(ERROR) << "Failed to get the device of the current context "
-                 << former_context;
+
+  // Calculate which context to use according to the stream group index. The
+  // index is encoded in "device_ordinal".
+  int stream_idx = DeviceOrdinalHelper::DecodeStreamFromOrdinal(device_ordinal);
+  int gpu_context_count = 1;
+  auto it = device_options.non_portable_tags.find("gpu_context_count");
+  if (it != device_options.non_portable_tags.end()) {
+    if (!absl::SimpleAtoi(it->second, &gpu_context_count)) {
+      return tsl::errors::InvalidArgument(
+          "Unable to parse gpu_context_count as an integer: ", it->second);
     }
+  }
+  int context_idx = stream_idx % gpu_context_count;
+
+  // Use created context or use the primary context or create a new context.
+  int device_idx = DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal);
+  if (CreatedContexts::OrdinalHas(device_idx, context_idx)) {
+    new_context = CreatedContexts::OrdinalGet(device_idx, context_idx);
+    VLOG(2) << "Device " << device << " stream " << stream_idx
+            << " use created context " << new_context;
+  } else if (primary_ctx_used_.find(new_context) == primary_ctx_used_.end()) {
+    // Don't create new context. Use the primary context.
+    VLOG(2) << "No context for device " << device << " stream " << stream_idx
+            << ", use cuDevicePrimaryCtxRetain context " << new_context;
+    primary_ctx_used_.insert(std::make_pair(new_context, device));
+  } else {
+    CHECK_EQ(CUDA_SUCCESS, cuCtxCreate(&new_context, flags, device));
+    VLOG(2) << "No context for device " << device << " stream " << stream_idx
+            << ", cuCtxCreate context " << new_context;
   }
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
   if (res == CUDA_SUCCESS) {
-    *context = CreatedContexts::Add(new_context, device_ordinal);
+    *context = CreatedContexts::Add(new_context, device_idx, context_idx);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
     VLOG(2) << "created or reused context " << new_context
@@ -415,7 +428,19 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   cuCtxGetDevice(&device);
   cuCtxSetCurrent(former_context);
 
-  res = cuDevicePrimaryCtxRelease(device);
+  bool is_primary_ctx = false;
+  for (auto iter = primary_ctx_used_.begin(); iter != primary_ctx_used_.end();
+       ++iter) {
+    if (iter->second == device) {
+      res = cuDevicePrimaryCtxRelease(device);
+      primary_ctx_used_.erase(iter);
+      is_primary_ctx = true;
+      break;
+    }
+  }
+  if (!is_primary_ctx) {
+    res = cuCtxDestroy(context->context());
+  }
 
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << ToString(res);
@@ -1142,27 +1167,22 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   if (gpu_dst == 0 || gpu_src == 0) {
     result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   } else {
-    // Any context work here.
-    CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
-
-    if (static_cast<void*>(dst_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
+    CUcontext dst_context = nullptr, src_context = nullptr;
+    tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+    if (tmp_context.ok()) {
+      dst_context = tmp_context.value()->context();
+    }
+    tmp_context = GetPointerContext(gpu_src);
+    if (tmp_context.ok()) {
+      src_context = tmp_context.value()->context();
     }
 
-    if (static_cast<void*>(src_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
+    // The context will be null if Async Allocator is used.
+    if (dst_context == nullptr || src_context == nullptr) {
+      result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
+    } else {
+      result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
     }
-
-    result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
   }
 
   RETURN_IF_CUDA_RES_ERROR(
@@ -1239,29 +1259,21 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
-    // Any context work here.
-    CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
-
-    if (static_cast<void*>(dst_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
+    CUcontext dst_context = nullptr, src_context = nullptr;
+    tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+    if (tmp_context.ok()) {
+      dst_context = tmp_context.value()->context();
+    }
+    tmp_context = GetPointerContext(gpu_src);
+    if (tmp_context.ok()) {
+      src_context = tmp_context.value()->context();
     }
 
-    if (static_cast<void*>(src_context) == nullptr) {
-      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
-    }
-
-    if (dst_context == src_context) {
+    if (dst_context == src_context || dst_context == nullptr ||
+        src_context == nullptr) {
       // Since the CUDA context is the same, the src and dst are within the same
-      // GPU. So we can use cuMemcpyDtoD.
+      // GPU. So we can use cuMemcpyDtoD. Besides, the context will be null if
+      // Async Allocator is used.
       result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
     } else {
       result = cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src, src_context,
@@ -1335,7 +1347,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 
 /* static */ tsl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
     CUdeviceptr pointer) {
-  GpuContext* context = nullptr;
+  CUcontext context = nullptr;
   CUresult result =
       cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT, pointer);
   if (result == CUDA_SUCCESS) {
@@ -1349,7 +1361,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
           absl::StatusCode::kUnavailable,
           "Empty context returned while querying context for device pointer");
     }
-    return context;
+    return CreatedContexts::Get(context);
   }
 
   return tsl::Status(
@@ -1548,7 +1560,9 @@ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
 
 /* static */ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
                                                  int device_ordinal) {
-  CUresult res = cuDeviceGetProperties(device_properties, device_ordinal);
+  CUresult res = cuDeviceGetProperties(
+      device_properties,
+      DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal));
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;

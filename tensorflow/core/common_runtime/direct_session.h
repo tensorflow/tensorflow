@@ -52,6 +52,49 @@ class DebugGateway;
 class Device;
 class DirectSessionFactory;
 
+// StreamGroupMgr manages the allocation and recycling of stream groups. It
+// maintains a min-heap, so it can give the stream group with the lowest load at
+// each request.
+class StreamGroupMgr {
+ public:
+  StreamGroupMgr(const size_t total_num);
+  virtual ~StreamGroupMgr(){};
+
+  // Apply for a stream group.
+  int RequireStreamGroup();
+
+  // Release the stream group when finish using it.
+  void ReleaseStreamGroup(const int stream_id);
+
+ private:
+  // One stream group is represented by a node in the min-heap. The node
+  // contains a workload counter to record how many workloads are running in the
+  // stream group, and an accumulator to record how many times has the node been
+  // used for. New task should be allocated to the node of the lowest load. If
+  // two nodes have the same load, the task goes to the one with smaller
+  // accumulator count.
+  struct StreamGroupNode {
+    int id_;
+    int workload_;
+    uint64_t accumulator_;
+    StreamGroupNode(const int id, const int workload = 0,
+                    const uint64_t accumulator = 0)
+        : id_(id), workload_(workload), accumulator_(accumulator) {}
+  };
+
+  // Swap two stream group nodes.
+  void swap(const size_t, const size_t);
+
+  // Reset the accumulator of all stream group nodes.
+  void reset_accumulators();
+
+  size_t total_num_;
+  mutable mutex mu_;
+  std::vector<std::unique_ptr<StreamGroupNode>> stream_group_heap_
+      TF_GUARDED_BY(mu_);
+  std::unordered_map<int, size_t> id2heap_map_ TF_GUARDED_BY(mu_);
+};
+
 class DirectSession : public Session {
  public:
   typedef std::function<void(Session*)> CloseCallback;
@@ -176,6 +219,8 @@ class DirectSession : public Session {
     CallableOptions callable_options;
 
     int64_t collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
+
+    std::vector<std::vector<PerPartitionExecutorsAndLib>> stream_items;
   };
 
   // A FunctionInfo object is created for every unique set of feeds/fetches.
@@ -192,6 +237,7 @@ class DirectSession : public Session {
   struct FunctionInfo {
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
     std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
+    std::vector<std::unique_ptr<ProcessFunctionLibraryRuntime>> stream_proc_flr;
   };
 
   // For each live Run() call, the session maintains a RunState.
@@ -203,6 +249,7 @@ class DirectSession : public Session {
     std::unique_ptr<StepStatsCollector> collector;
     TensorStore tensor_store;
     ScopedStepContainer step_container;
+    TensorHolder tensor_holder;
 
     RunState(int64_t step_id, const std::vector<Device*>* devices);
   };
@@ -437,6 +484,8 @@ class DirectSession : public Session {
   // Otherwise run in global thread pool, session owned thread pool or handler
   // pool according to other specifications of RunOptions and ConfigProto.
   bool run_in_caller_thread_ = false;
+
+  std::unique_ptr<StreamGroupMgr> stream_group_mgr_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 

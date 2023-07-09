@@ -219,6 +219,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 
   TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
   client_options.set_allowed_devices(allowed_gpus);
+  client_options.set_gpu_stream_group_index(device->GetStreamId());
 
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {

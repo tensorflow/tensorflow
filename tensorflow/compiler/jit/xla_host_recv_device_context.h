@@ -57,9 +57,10 @@ class XlaHostRecvDeviceContext : public DeviceContext {
         shape_(shape),
         done_event_(done_event) {}
 
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute) const override {
+  void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute,
+      TensorHolder* tensor_holder = nullptr) const override {
     done(errors::Internal("host->device copy not implemented."));
   }
 

@@ -100,6 +100,34 @@ struct StreamExecutorConfig {
   DeviceOptions device_options;
 };
 
+// Help to encode and decode the device_ordinal variable in stream_executor.
+class DeviceOrdinalHelper {
+ public:
+  // Encode the stream and device information to the integer device_ordinal,
+  // where the high half part is the stream index, and the low half part is
+  // the device index.
+  static int EncodeDeviceOrdinal(int stream_part, int device_part) {
+    return ((stream_part & low_mask_) << (4 * sizeof(int))) |
+           (device_part & low_mask_);
+  }
+
+  // Decode the stream information from the device_ordinal.
+  static int DecodeStreamFromOrdinal(int device_ordinal) {
+    return (device_ordinal & high_mask_) >> (4 * sizeof(int));
+  }
+
+  // Decode the device information from the device_ordinal.
+  static int DecodeDeviceFromOrdinal(int device_ordinal) {
+    return device_ordinal & low_mask_;
+  }
+
+ private:
+  static const int low_mask_ =
+      (1 << (4 * sizeof(int))) - 1;  // for int32, low_mask_ = 0x0000FFFFL;
+  static const int high_mask_ =
+      ~((1 << (4 * sizeof(int))) - 1);  // for int32, high_mask_ = 0xFFFF0000L;
+};
+
 // Abstract base class for a platform registered with the MultiPlatformManager.
 class Platform {
  public:

@@ -62,7 +62,8 @@ class PlatformUtil {
   // If the platform has no visible devices, a not-found error is returned.
   static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
       se::Platform* platform,
-      const std::optional<std::set<int>>& allowed_devices = std::nullopt);
+      const std::optional<std::set<int>>& allowed_devices = std::nullopt,
+      const int stream_id = 0);
 
  private:
   PlatformUtil(const PlatformUtil&) = delete;

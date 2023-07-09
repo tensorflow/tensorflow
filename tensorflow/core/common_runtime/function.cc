@@ -735,7 +735,7 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(
             << "find device " << options.target << " in device manager";
     return false;
   }
-  if (target_device != device_) {
+  if (target_device != device_ && target_device != device_->GetRealDevice()) {
     VLOG(1) << "Not instantiating function in FLR because target device "
             << options.target
             << " is different from FLR's device: " << device_->DebugString();
@@ -1033,6 +1033,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->user_intra_op_threadpool = run_opts.user_intra_op_threadpool;
   exec_args->coordination_service_agent = run_opts.coordination_service_agent;
   exec_args->stack_trace = run_opts.stack_trace;
+  exec_args->tensor_holder = run_opts.tensor_holder;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,

@@ -74,6 +74,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -325,6 +326,14 @@ class BaseGPUDevice::StreamGroupFactory {
       group->nccl->ThenWaitFor(group->compute);
 #endif
 
+      // If HtoD stream-merge is enabled
+      // (options.stream_merge_options().merge_h_to_d_stream() = true), it
+      // should work without creating a new HtoD copy stream, but override the
+      // compute stream. But we find some problems because many places in the
+      // code default to different streams here. So here we still create the
+      // HtoD copy stream as before and explicitly don't use it where HtoD
+      // stream-merge is needed.
+      // The same for the following DtoH and DtoD streams.
       group->host_to_device = GetInitializedStream(executor, priority);
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_gpu
               << "] = " << group->host_to_device;
@@ -489,7 +498,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options,
 Status BaseGPUDevice::Init(const SessionOptions& options) {
 #endif  // TF_GPU_USE_PJRT
   auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
-      DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
+      DEVICE_GPU, se::GPUMachineManager(), tf_device_id_, stream_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device ",
                             tf_device_id_.value());
@@ -523,7 +532,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   stream_ = emplace_result.first;
 #else
   stream_ = StreamGroupFactory::Global().GetOrCreate(
-      tf_device_id_, 0, executor_, options.config.gpu_options());
+      tf_device_id_, stream_id_, executor_, options.config.gpu_options());
 #endif  // TF_GPU_USE_PJRT
 
   // Get an allocator that allocates pinned memory on host.
@@ -533,7 +542,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   Allocator* host_memory_allocator = GetAllocator(attr);
 
   device_context_ =
-      new GPUDeviceContext(0, stream_->compute,
+      new GPUDeviceContext(stream_id_, stream_->compute,
 #if TENSORFLOW_USE_ROCM
                            stream_->nccl,
 #endif
@@ -559,8 +568,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       // associated Allocator, with ownership by GPUProcessState.
       // The GPUKernelTracker will use this SharedCounter, instead of
       // owning its own.
-      timing_counter =
-          GPUProcessState::singleton()->GPUAllocatorCounter(tf_device_id_);
+      timing_counter = GPUProcessState::singleton()->GPUAllocatorCounter(
+          tf_device_id_, stream_id_);
       DCHECK(timing_counter);
     }
     kernel_tracker_.reset(new GPUKernelTracker(
@@ -1174,6 +1183,20 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
   return min_system_memory;
 }
 
+int64_t RealMinSystemMemory(int64_t available_memory, int cc_major,
+                            int stream_group_count) {
+  int context_count = 1;
+#if GOOGLE_CUDA
+  char* context_count_string;
+  stream_executor::gpu::GetGPUContextCountFromEnv(&context_count_string,
+                                                  &context_count);
+#endif
+  int64_t sys_memory = MinSystemMemory(available_memory, cc_major);
+  // Every context occupies sys_memory space, and every stream group occupies
+  // extra space.
+  return context_count * sys_memory + stream_group_count * sys_memory / 10;
+}
+
 // Get the memory limit for the virtual device being created on GPU with
 // 'platform_device_id', when that virtual device is the only virtual device
 // being created on that GPU.
@@ -1205,8 +1228,9 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
 
   if (per_process_gpu_memory_fraction == 0) {
     allocated_memory = available_memory;
-    const int64_t min_system_memory =
-        MinSystemMemory(available_memory, cc.major);
+    const int64_t min_system_memory = RealMinSystemMemory(
+        available_memory, cc.major,
+        std::max(gpu_options.multi_stream_options().stream_group_count(), 1));
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
     }
@@ -1513,8 +1537,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
   }
 
   std::vector<InterconnectMap> interconnect_maps;
-  TF_RETURN_IF_ERROR(
-      GetInterconnectMaps(visible_gpu_order, gpu_manager, &interconnect_maps));
+  TF_RETURN_IF_ERROR(GetInterconnectMaps(
+      visible_gpu_order, gpu_manager, &interconnect_maps,
+      std::max(gpu_options.multi_stream_options().stream_group_count(), 1)));
 
   // Print each interconnect map to the log.
   for (const InterconnectMap& im : interconnect_maps) {
@@ -1660,9 +1685,24 @@ Status BaseGPUDeviceFactory::CreateDevices(
     }
 
     int64_t memory_limit = tf_device_specs[di].memory_limit_bytes;
-    Allocator* gpu_allocator = process_state->GetGPUAllocator(
-        options.config.gpu_options(), tf_device_id, memory_limit, peer_gpu_ids);
-    if (gpu_allocator == nullptr) {
+    std::vector<Allocator*> gpu_allocators;
+    int stream_group_count = 1;
+    if (is_stream_factory_) {
+      stream_group_count = std::max(1, options.config.gpu_options()
+                                           .multi_stream_options()
+                                           .stream_group_count());
+      if (stream_group_count == 1) {
+        // Don't create the StreamDevice if multi-stream is not enabled.
+        return OkStatus();
+      }
+    }
+    gpu_allocators.reserve(stream_group_count);
+    for (int i = 0; i < stream_group_count; ++i) {
+      gpu_allocators.push_back(process_state->GetGPUAllocator(
+          options.config.gpu_options(), tf_device_id, memory_limit,
+          peer_gpu_ids, i));
+    }
+    if (!gpu_allocators.size()) {
       return absl::InternalError(absl::StrCat(
           "Failed to get memory allocator for TF GPU ", tf_device_id.value(),
           " with ", memory_limit, " bytes of memory."));
@@ -1712,14 +1752,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
     }
     local_device_state = emplace_result.first->second.get();
 
-    // CreateGPUDevice sets stream to `gpu_allocator` and preallocates
+    // CreateGPUDevice sets stream to `gpu_allocators` and preallocates
     // devices memory.
-    TF_RETURN_IF_ERROR(CreateGPUDevice(
-        options, name_prefix, tf_device_id,
-        /*dev_locality=*/it->second,
-        /*xla_local_device_state=*/local_device_state, gpu_allocator, devices));
+    TF_RETURN_IF_ERROR(
+        CreateGPUDevice(options, name_prefix, tf_device_id,
+                        /*dev_locality=*/it->second,
+                        /*xla_local_device_state=*/local_device_state,
+                        gpu_allocators, devices));
 
-    auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
+    auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocators[0]);
     allocator_id_stream_tuples.emplace_back(
         std::move(gpu_allocator_ptr), tf_device_id.value(),
         local_device_state->compute_stream());
@@ -1762,7 +1803,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #else
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_device_id,
                                        /*dev_locality=*/it->second,
-                                       gpu_allocator, devices));
+                                       gpu_allocators, devices));
   }
   return OkStatus();
 #endif  // TF_GPU_USE_PJRT
@@ -1789,13 +1830,15 @@ static string GetShortDeviceDescription(
 Status BaseGPUDeviceFactory::CreateGPUDevice(
     const SessionOptions& options, const string& name_prefix,
     tsl::TfDeviceId tf_device_id, const DeviceLocality& dev_locality,
-    xla::LocalDeviceState* xla_local_device_state, Allocator* gpu_allocator,
+    xla::LocalDeviceState* xla_local_device_state,
+    std::vector<Allocator*>& gpu_allocators,
     std::vector<std::unique_ptr<Device>>* devices) {
 #else
 Status BaseGPUDeviceFactory::CreateGPUDevice(
     const SessionOptions& options, const string& name_prefix,
     tsl::TfDeviceId tf_device_id, const DeviceLocality& dev_locality,
-    Allocator* gpu_allocator, std::vector<std::unique_ptr<Device>>* devices) {
+    std::vector<Allocator*>& gpu_allocators,
+    std::vector<std::unique_ptr<Device>>* devices) {
 #endif  // TF_GPU_USE_PJRT
   CHECK_GE(tf_device_id.value(), 0);
   const string device_name =
@@ -1815,31 +1858,41 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   }
   auto desc = std::move(desc_status).value();
 
-  std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
+  for (size_t i = 0; i < gpu_allocators.size(); ++i) {
+    std::optional<AllocatorStats> stats = gpu_allocators[i]->GetStats();
 
-  // 'memory_limit' is the required memory size, but if the allocator with
-  // given tf_device_id was created before, we'll use it instead of creating a
-  // new one (as TF gpu device is a shared resource), in which case the actual
-  // memory limit represented by 'stats.bytes_limit' used by that allocator
-  // may be different (which should be an error).
-  //
-  // TODO(laigd): report error if memory_limit doesn't match
-  // stats->bytes_limit.
-  int64_t bytes_limit = (stats && stats->bytes_limit) ? *stats->bytes_limit : 0;
-  std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
-      options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
-      tf_device_id, GetShortDeviceDescription(platform_device_id, *desc),
-      gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
-  LOG(INFO) << "Created device " << device_name << " with "
-            << (bytes_limit >> 20) << " MB memory: "
-            << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
+    // 'memory_limit' is the required memory size, but if the allocator with
+    // given tf_device_id was created before, we'll use it instead of creating a
+    // new one (as TF gpu device is a shared resource), in which case the actual
+    // memory limit represented by 'stats.bytes_limit' used by that allocator
+    // may be different (which should be an error).
+    //
+    // TODO(laigd): report error if memory_limit doesn't match
+    // stats->bytes_limit.
+    int64_t bytes_limit =
+        (stats && stats->bytes_limit) ? *stats->bytes_limit : 0;
+    const string stream_name = strings::StrCat(
+        name_prefix, "/device:STREAM_GPU_", tf_device_id.value(), ":", i);
+    std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
+        options, is_stream_factory_ ? stream_name : device_name,
+        static_cast<Bytes>(bytes_limit), dev_locality, tf_device_id,
+        GetShortDeviceDescription(platform_device_id, *desc), gpu_allocators[i],
+        ProcessState::singleton()->GetCPUAllocator(numa_node));
+    LOG(INFO) << "Created device "
+              << (is_stream_factory_ ? stream_name : device_name) << " with "
+              << (bytes_limit >> 20) << " MB memory: "
+              << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
+    if (is_stream_factory_) {
+      gpu_device->SetStreamId(i);
+    }
 #ifdef TF_GPU_USE_PJRT
-  TF_RETURN_IF_ERROR(gpu_device->Init(options, xla_local_device_state));
+    TF_RETURN_IF_ERROR(gpu_device->Init(options, xla_local_device_state));
 #else
-  TF_RETURN_IF_ERROR(gpu_device->Init(options));
+    TF_RETURN_IF_ERROR(gpu_device->Init(options));
 #endif  // TF_GPU_USE_PJRT
-  gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
-  devices->push_back(std::move(gpu_device));
+    gpu_allocators[i]->SetStreamAndPreallocateMemory(gpu_device->GetStream());
+    devices->push_back(std::move(gpu_device));
+  }
 
   return OkStatus();
 }
@@ -1848,7 +1901,8 @@ namespace {
 std::unique_ptr<
     std::map<std::pair<tsl::PlatformDeviceId, tsl::PlatformDeviceId>, bool>>
 GetPeerAccessMap(se::Platform* platform,
-                 const std::vector<tsl::PlatformDeviceId>& visible_gpu_order) {
+                 const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
+                 const int gpu_stream_group_count) {
   std::unique_ptr<
       std::map<std::pair<tsl::PlatformDeviceId, tsl::PlatformDeviceId>, bool>>
       map(new std::map<std::pair<tsl::PlatformDeviceId, tsl::PlatformDeviceId>,
@@ -1858,6 +1912,13 @@ GetPeerAccessMap(se::Platform* platform,
       se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                                      platform, platform_gpu_i)
                                      .value();
+      if (platform_gpu_j == visible_gpu_order[0]) {
+        for (int i = 1; i < gpu_stream_group_count; ++i) {
+          from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     platform, platform_gpu_i, i)
+                     .value();
+        }
+      }
       se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                                    platform, platform_gpu_j)
                                    .value();
@@ -1873,9 +1934,11 @@ GetPeerAccessMap(se::Platform* platform,
 
 Status BaseGPUDeviceFactory::GetInterconnectMaps(
     const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
-    se::Platform* gpu_manager, std::vector<InterconnectMap>* maps) {
+    se::Platform* gpu_manager, std::vector<InterconnectMap>* maps,
+    const int gpu_stream_group_count) {
   // The default interconnect map is obtained from the StreamExecutor.
-  auto access_map = GetPeerAccessMap(gpu_manager, visible_gpu_order);
+  auto access_map =
+      GetPeerAccessMap(gpu_manager, visible_gpu_order, gpu_stream_group_count);
   maps->resize(1);
   InterconnectMap& imap = maps->at(0);
   imap.name = "StreamExecutor";

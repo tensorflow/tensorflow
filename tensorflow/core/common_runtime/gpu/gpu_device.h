@@ -373,7 +373,7 @@ class GPUKernelTracker {
 
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
+  virtual Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options,
                        const std::string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
@@ -399,7 +399,8 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // pathways between GPUs.
   virtual Status GetInterconnectMaps(
       const std::vector<tsl::PlatformDeviceId>& visible_gpu_order,
-      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
+      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps,
+      const int gpu_stream_group_count);
 
   struct TfDeviceIdHash {
     std::size_t operator()(const tsl::TfDeviceId& id) const noexcept {
@@ -424,14 +425,14 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                          tsl::TfDeviceId tf_device_id,
                          const DeviceLocality& dev_locality,
                          xla::LocalDeviceState* xla_local_device_state,
-                         Allocator* gpu_allocator,
+                         std::vector<Allocator*>& gpu_allocators,
                          std::vector<std::unique_ptr<Device>>* devices);
 #else
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix,
                          tsl::TfDeviceId tf_device_id,
                          const DeviceLocality& dev_locality,
-                         Allocator* gpu_allocator,
+                         std::vector<Allocator*>& gpu_allocators,
                          std::vector<std::unique_ptr<Device>>* devices);
 #endif  // TF_GPU_USE_PJRT
 

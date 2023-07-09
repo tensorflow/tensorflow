@@ -53,6 +53,7 @@ class RendezvousInterface {
     DeviceContext* device_context = nullptr;
     AllocatorAttributes alloc_attrs;
     CancellationManager* cancellation_manager = nullptr;  // not owned.
+    TensorHolder* tensor_holder = nullptr;                // not owned.
   };
 
   // Parses the key constructed by CreateKey and parse src/dst device

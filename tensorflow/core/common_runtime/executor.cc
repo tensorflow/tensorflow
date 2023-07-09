@@ -395,6 +395,7 @@ class ExecutorState {
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
   const bool run_all_kernels_inline_;
+  TensorHolder* tensor_holder_;
 
   PropagatorStateType propagator_;
 
@@ -445,7 +446,8 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
       propagator_(immutable_state, step_id_, vlog_),
-      num_outstanding_ops_(0) {
+      num_outstanding_ops_(0),
+      tensor_holder_(args.tensor_holder) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = immutable_state_.params().device;
     user_device_ = RenamedDevice::NewRenamedDevice(
@@ -765,6 +767,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   // Set the device_context for this device, if it exists.
   params->op_device_context = device_context_;
+  params->tensor_holder = tensor_holder_;
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;

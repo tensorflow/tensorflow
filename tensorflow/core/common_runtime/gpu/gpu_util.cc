@@ -202,16 +202,21 @@ void GPUUtil::DeviceToDeviceCopy(
     done(s);
     return;
   }
-  auto send_device_to_device_stream =
-      static_cast<const GPUDeviceContext*>(send_dev_context)
-          ->device_to_device_stream(dev_to_dev_stream_index);
-  if (send_device_to_device_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
-    return;
+  se::Stream* send_device_to_device_stream = nullptr;
+  if (src->merge_DtoD_copy_stream()) {
+    send_device_to_device_stream = send_stream;
+  } else {
+    send_device_to_device_stream =
+        static_cast<const GPUDeviceContext*>(send_dev_context)
+            ->device_to_device_stream(dev_to_dev_stream_index);
+    if (send_device_to_device_stream == nullptr) {
+      done(errors::Internal("No send gpu copy-out-stream is available."));
+      return;
+    }
+    // Wait for the main stream on the sender to make sure the result is
+    // available.
+    send_device_to_device_stream->ThenWaitFor(send_stream);
   }
-  // Wait for the main stream on the sender to make sure the result is
-  // available.
-  send_device_to_device_stream->ThenWaitFor(send_stream);
 
   const int64_t total_bytes = input->TotalBytes();
   if (total_bytes > 0) {
@@ -230,7 +235,9 @@ void GPUUtil::DeviceToDeviceCopy(
     // truly free.
     // TODO(zhengxq): remove this dependency when we switch to a better way
     // to make sure the memory is free.
-    send_device_to_device_stream->ThenWaitFor(recv_stream);
+    if (send_device_to_device_stream != recv_stream) {
+      send_device_to_device_stream->ThenWaitFor(recv_stream);
+    }
 
     VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
     send_device_to_device_stream->ThenMemcpy(&gpu_dst_ptr, gpu_src_ptr,
@@ -282,15 +289,20 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     return;
   }
 
-  auto send_device_to_host_stream =
-      static_cast<const GPUDeviceContext*>(device_context)
-          ->device_to_host_stream();
-  if (send_device_to_host_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
-    return;
+  se::Stream* send_device_to_host_stream = nullptr;
+  if (gpu_device->merge_DtoH_copy_stream()) {
+    send_device_to_host_stream = send_stream;
+  } else {
+    send_device_to_host_stream =
+        static_cast<const GPUDeviceContext*>(device_context)
+            ->device_to_host_stream();
+    if (send_device_to_host_stream == nullptr) {
+      done(errors::Internal("No send gpu copy-out-stream is available."));
+      return;
+    }
+    // Wait for the sender's main stream to make sure the data are available.
+    send_device_to_host_stream->ThenWaitFor(send_stream);
   }
-  // Wait for the sender's main stream to make sure the data are available.
-  send_device_to_host_stream->ThenWaitFor(send_stream);
 
   const int64_t total_bytes = gpu_tensor->TotalBytes();
   if (total_bytes > 0) {
@@ -316,7 +328,8 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
 void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
-                                 StatusCallback done, bool sync_dst_compute) {
+                                 StatusCallback done, bool sync_dst_compute,
+                                 TensorHolder* tensor_holder) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
@@ -327,16 +340,21 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     return;
   }
 
-  auto recv_host_to_device_stream =
-      static_cast<const GPUDeviceContext*>(device_context)
-          ->host_to_device_stream();
-  if (recv_host_to_device_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
-    return;
-  }
-  // Wait for the recv-stream to make sure the buffer is truly available.
-  if (sync_dst_compute) {
-    recv_host_to_device_stream->ThenWaitFor(recv_stream);
+  se::Stream* recv_host_to_device_stream = nullptr;
+  if (gpu_device->merge_HtoD_copy_stream()) {
+    recv_host_to_device_stream = recv_stream;
+  } else {
+    recv_host_to_device_stream =
+        static_cast<const GPUDeviceContext*>(device_context)
+            ->host_to_device_stream();
+    if (recv_host_to_device_stream == nullptr) {
+      done(errors::Internal("No send gpu copy-out-stream is available."));
+      return;
+    }
+    // Wait for the recv-stream to make sure the buffer is truly available.
+    if (sync_dst_compute) {
+      recv_host_to_device_stream->ThenWaitFor(recv_stream);
+    }
   }
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
@@ -378,20 +396,27 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
   }
 
-  dev_info->event_mgr->ThenExecute(
-      recv_host_to_device_stream,
-      [recv_host_to_device_stream, done, input_ref, do_staging, staging_buffer,
-       host_memory_allocator]() {
-        if (do_staging) {
-          host_memory_allocator->DeallocateRaw(staging_buffer);
-        } else {
-          input_ref.Unref();
-        }
-        if (!recv_host_to_device_stream->ok()) {
-          LOG(FATAL) << "CPU->GPU Memcpy failed";
-        }
-        done(OkStatus());
-      });
+  if (gpu_device->merge_HtoD_copy_stream() && tensor_holder != nullptr &&
+      !do_staging) {
+    tensor_holder->AddTensor(*cpu_tensor);
+    input_ref.Unref();
+    done(OkStatus());
+  } else {
+    dev_info->event_mgr->ThenExecute(
+        recv_host_to_device_stream,
+        [recv_host_to_device_stream, done, input_ref, do_staging,
+         staging_buffer, host_memory_allocator]() {
+          if (do_staging) {
+            host_memory_allocator->DeallocateRaw(staging_buffer);
+          } else {
+            input_ref.Unref();
+          }
+          if (!recv_host_to_device_stream->ok()) {
+            LOG(FATAL) << "CPU->GPU Memcpy failed";
+          }
+          done(OkStatus());
+        });
+  }
 }
 
 Status GPUUtil::Sync(Device* gpu_device) {

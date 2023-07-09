@@ -326,7 +326,11 @@ DirectSession::DirectSession(const SessionOptions& options,
       device_mgr_(device_mgr),
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
-      operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
+      operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()),
+      stream_group_mgr_(device_mgr->StreamGroupCount() > 1
+                            ? absl::make_unique<StreamGroupMgr>(
+                                  device_mgr->StreamGroupCount())
+                            : nullptr) {
   const int thread_pool_size =
       options_.config.session_inter_op_thread_pool_size();
   if (thread_pool_size > 0) {
@@ -585,6 +589,11 @@ Status DirectSession::RunInternal(
   }
 #endif
 
+  // Get the stream group.
+  int stream_group_idx = stream_group_mgr_ == nullptr
+                             ? -1
+                             : stream_group_mgr_->RequireStreamGroup();
+
   thread::ThreadPool* pool;
   // Use std::unique_ptr to ensure garbage collection
   std::unique_ptr<thread::ThreadPool> threadpool_wrapper;
@@ -605,6 +614,8 @@ Status DirectSession::RunInternal(
     threadpool_wrapper = std::make_unique<thread::ThreadPool>(
         threadpool_options.inter_op_threadpool);
     pool = threadpool_wrapper.get();
+  } else if (stream_group_idx >= 0) {
+    pool = thread_pools_[stream_group_idx % thread_pools_.size()].first;
   } else {
     if (run_options.inter_op_thread_pool() < -1 ||
         run_options.inter_op_thread_pool() >=
@@ -679,6 +690,7 @@ Status DirectSession::RunInternal(
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
   args.deadline = deadline;
+  args.tensor_holder = &run_state.tensor_holder;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -764,7 +776,12 @@ Status DirectSession::RunInternal(
                               executors_done.Notify();
                             });
 
-    for (const auto& item : executors_and_keys->items) {
+    for (int i = 0; i < executors_and_keys->items.size(); ++i) {
+      const auto& item =
+          stream_group_idx == -1 ||
+                  executors_and_keys->stream_items[i].size() <= stream_group_idx
+              ? executors_and_keys->items[i]
+              : executors_and_keys->stream_items[i][stream_group_idx];
       set_threadpool_args_for_item(item, &args);
       item.executor->RunAsync(args, barrier->Get());
     }
@@ -780,6 +797,10 @@ Status DirectSession::RunInternal(
   if (step_cancellation_manager.IsCancelled()) {
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
+
+  // Release the stream group.
+  if (stream_group_mgr_ != nullptr)
+    stream_group_mgr_->ReleaseStreamGroup(stream_group_idx);
 
   if (device_profiler_session) {
     TF_RETURN_IF_ERROR(device_profiler_session->CollectData(
@@ -1025,6 +1046,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.session_handle = session_handle_;
   args.tensor_store = &run_state->tensor_store;
   args.step_container = &run_state->step_container;
+  args.tensor_holder = &run_state->tensor_holder;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
@@ -1360,8 +1382,12 @@ Status DirectSession::CreateExecutors(
     }
   }
   ek->items.reserve(graphs.size());
+  ek->stream_items.reserve(graphs.size());
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
+  const bool share_consts = options_.config.gpu_options()
+                                .multi_stream_options()
+                                .constant_memory_mode() == "shared";
 
   int graph_def_version = graphs.begin()->second->versions().producer();
 
@@ -1379,6 +1405,25 @@ Status DirectSession::CreateExecutors(
             new IntraProcessRendezvous(device_mgr));
         return OkStatus();
       }}));
+
+  int stream_group_count = device_mgr_->StreamGroupCount();
+  func_info->stream_proc_flr.reserve(stream_group_count);
+  for (int executor_index = 0; executor_index < stream_group_count;
+       ++executor_index) {
+    // Every stream-specific FLR uses its own thread pool.
+    func_info->stream_proc_flr.push_back(
+        absl::make_unique<ProcessFunctionLibraryRuntime>(
+            device_mgr_.get(), options_.env, &options_.config,
+            graph_def_version, func_info->flib_def.get(), optimizer_opts,
+            thread_pools_[executor_index % thread_pools_.size()].first,
+            /*parent=*/nullptr, session_metadata,
+            Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+              *r = tsl::core::RefCountPtr<Rendezvous>(
+                  new IntraProcessRendezvous(device_mgr));
+              return OkStatus();
+            }}));
+  }
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1402,13 +1447,15 @@ Status DirectSession::CreateExecutors(
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel =
-        [this, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
-                           OpKernel** kernel) {
+        [this, lib, opseg, share_consts](
+            const std::shared_ptr<const NodeProperties>& props,
+            OpKernel** kernel) {
           // NOTE(mrry): We must not share function kernels (implemented
           // using `CallOp`) between subgraphs, because `CallOp::handle_`
           // is tied to a particular subgraph. Even if the function itself
           // is stateful, the `CallOp` that invokes it is not.
-          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op(),
+                                          share_consts)) {
             return lib->CreateKernel(props, kernel);
           }
           auto create_fn = [lib, &props](OpKernel** kernel) {
@@ -1420,8 +1467,9 @@ Status DirectSession::CreateExecutors(
           return opseg->FindOrCreate(session_handle_, props->node_def.name(),
                                      kernel, create_fn);
         };
-    params.delete_kernel = [lib](OpKernel* kernel) {
-      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
+    params.delete_kernel = [lib, share_consts](OpKernel* kernel) {
+      if (kernel &&
+          !OpSegment::ShouldOwnKernel(lib, kernel->type_string(), share_consts))
         delete kernel;
     };
 
@@ -1443,6 +1491,82 @@ Status DirectSession::CreateExecutors(
     item->executor = nullptr;
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
+
+    // Create the multi-stream executors first.
+    ek->stream_items.resize(ek->stream_items.size() + 1);
+    auto* items = &(ek->stream_items.back());
+    items->reserve(stream_group_count);
+
+    std::vector<FunctionLibraryRuntime*> stream_libs;
+    for (size_t executor_index = 0; executor_index < stream_group_count;
+         ++executor_index) {
+      stream_libs.push_back(
+          func_info->stream_proc_flr[executor_index]->GetFLR(partition_name));
+    }
+    for (int executor_index = 0; executor_index < stream_group_count;
+         ++executor_index) {
+      items->resize(items->size() + 1);
+      auto* item = &(items->back());
+
+      auto lib = stream_libs[executor_index];
+      if (lib == nullptr) {
+        return errors::Internal("Could not find device: ", partition_name);
+      }
+      item->flib = lib;
+
+      static size_t const_stream_idx = 0;
+      LocalExecutorParams params;
+      params.device = device_mgr_->LookupStream(device, executor_index);
+      params.session_metadata = session_metadata;
+      params.function_library = lib;
+      params.create_kernel =
+          [this, lib, opseg, share_consts, stream_group_count, &stream_libs](
+              const std::shared_ptr<const NodeProperties>& props,
+              OpKernel** kernel) {
+            // NOTE(mrry): We must not share function kernels (implemented
+            // using `CallOp`) between subgraphs, because `CallOp::handle_`
+            // is tied to a particular subgraph. Even if the function itself
+            // is stateful, the `CallOp` that invokes it is not.
+            if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op(),
+                                            share_consts)) {
+              return lib->CreateKernel(props, kernel);
+            }
+            auto create_fn = [lib, &props, stream_group_count,
+                              &stream_libs](OpKernel** kernel) {
+              if (props->node_def.op() == "Const") {
+                const_stream_idx = (++const_stream_idx) % stream_group_count;
+                return stream_libs[const_stream_idx]->CreateKernel(props,
+                                                                   kernel);
+              } else {
+                return lib->CreateKernel(props, kernel);
+              }
+            };
+            // Kernels created for subgraph nodes need to be cached.  On
+            // cache miss, create_fn() is invoked to create a kernel based
+            // on the function library here + global op registry.
+            return opseg->FindOrCreate(session_handle_, props->node_def.name(),
+                                       kernel, create_fn);
+          };
+      params.delete_kernel = [lib, share_consts](OpKernel* kernel) {
+        if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string(),
+                                                  share_consts))
+          delete kernel;
+      };
+
+      // NewLocalExecutor takes ownership of dup_graph.
+      std::unique_ptr<Graph> dup_graph(new Graph(func_info->flib_def.get()));
+      CopyGraph(*partition_graph, dup_graph.get());
+      item->executor = nullptr;
+      item->device = params.device;
+      TF_RETURN_IF_ERROR(
+          NewExecutor(executor_type, params, *dup_graph, &item->executor));
+      if (!options_.config.experimental().disable_output_partition_graphs() ||
+          options_.config.graph_options().build_cost_model() > 0) {
+        item->graph = std::move(dup_graph);
+      }
+    }
+
+    // Create the original executor at last.
     TF_RETURN_IF_ERROR(
         NewExecutor(executor_type, params, *partition_graph, &item->executor));
     if (!options_.config.experimental().disable_output_partition_graphs() ||
@@ -2063,6 +2187,98 @@ DirectSession::Callable::~Callable() {
   // or not).
   executors_and_keys.reset();
   function_info.reset();
+}
+
+StreamGroupMgr::StreamGroupMgr(const size_t total_num) : total_num_(total_num) {
+  stream_group_heap_.resize(total_num);
+  for (int i = 0; i < total_num; ++i) {
+    stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
+    id2heap_map_.insert(std::make_pair(i, i));
+  }
+}
+
+void StreamGroupMgr::swap(const size_t idx1, const size_t idx2) {
+  id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
+  id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
+  std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
+}
+
+void StreamGroupMgr::reset_accumulators() {
+  VLOG(2) << "One of the Stream Group Node reaches access limit"
+          << ", reset...";
+  for (auto& node : stream_group_heap_) {
+    node->accumulator_ = 0;
+  }
+}
+
+int StreamGroupMgr::RequireStreamGroup() {
+  mutex_lock l(mu_);
+  int ret(stream_group_heap_[0]->id_);
+  ++stream_group_heap_[0]->workload_;
+  if (++stream_group_heap_[0]->accumulator_ == 0xFFFFFFFFFFFFFFFFull) {
+    reset_accumulators();
+  }
+  size_t ptr(0);
+  while (true) {
+    if (2 * ptr + 2 >= total_num_) {
+      if (2 * ptr + 2 == total_num_ &&
+          stream_group_heap_[ptr]->workload_ >
+              stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+      }
+      break;
+    }
+    if (stream_group_heap_[2 * ptr + 1]->workload_ <
+        stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        swap(ptr, 2 * ptr + 1);
+        ptr = 2 * ptr + 1;
+      } else {
+        break;
+      }
+    } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
+               stream_group_heap_[2 * ptr + 2]->workload_) {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 2]->workload_) {
+        swap(ptr, 2 * ptr + 2);
+        ptr = 2 * ptr + 2;
+      } else {
+        break;
+      }
+    } else {
+      if (stream_group_heap_[ptr]->workload_ >
+          stream_group_heap_[2 * ptr + 1]->workload_) {
+        if (stream_group_heap_[2 * ptr + 1]->accumulator_ <
+            stream_group_heap_[2 * ptr + 2]->accumulator_) {
+          swap(ptr, 2 * ptr + 1);
+          ptr = 2 * ptr + 1;
+        } else {
+          swap(ptr, 2 * ptr + 2);
+          ptr = 2 * ptr + 2;
+        }
+      } else {
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
+void StreamGroupMgr::ReleaseStreamGroup(const int stream_id) {
+  mutex_lock l(mu_);
+  size_t ptr = id2heap_map_[stream_id];
+  --stream_group_heap_[ptr]->workload_;
+  while (ptr != 0) {
+    size_t parent = (ptr + 1) / 2 - 1;
+    if (stream_group_heap_[ptr]->workload_ <
+        stream_group_heap_[parent]->workload_) {
+      swap(ptr, parent);
+      ptr = parent;
+    } else {
+      break;
+    }
+  }
 }
 
 }  // namespace tensorflow

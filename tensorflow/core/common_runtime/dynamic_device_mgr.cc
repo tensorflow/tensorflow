@@ -27,13 +27,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
+DynamicDeviceMgr::DynamicDeviceMgr()
+    : cpu_device_(nullptr), stream_group_count_(0) {}
 
 DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>>&& devices)
-    : cpu_device_(nullptr) {
+    : cpu_device_(nullptr), stream_group_count_(0) {
   Status status = AddDevices(std::move(devices));
   CHECK(status.ok());  // Crash OK
+  InitStreamDevice();
   mutex_lock l(devices_mu_);
   // Initialize cpu_device_.
   for (const auto& it : dynamic_devices_) {
@@ -252,6 +254,78 @@ Device* DynamicDeviceMgr::HostCPU() const {
   }
 
   return cpu_device_.load(std::memory_order_relaxed);
+}
+
+void DynamicDeviceMgr::InitStreamDevice() {
+  // Counts how many StreamDevices there are within a GPU/CPU.
+  std::unordered_map<int, size_t> gpu_id2num, cpu_id2num;
+  for (auto& item : dynamic_devices_) {
+    Device* d = item.first;
+    tsl::StatusOr<int> idx =
+        DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
+    if (idx.ok()) {
+      if (d->parsed_name().type.find("STREAM_GPU_") != string::npos) {
+        if (gpu_id2num.find(idx.value()) == gpu_id2num.end()) {
+          gpu_id2num[idx.value()] = 1;
+        } else {
+          ++gpu_id2num[idx.value()];
+        }
+      } else {
+        if (cpu_id2num.find(idx.value()) == cpu_id2num.end()) {
+          cpu_id2num[idx.value()] = 1;
+        } else {
+          ++cpu_id2num[idx.value()];
+        }
+      }
+    }
+  }
+
+  // Create stream group map.
+  Device* gpu;
+  for (auto& item : gpu_id2num) {
+    TF_CHECK_OK(
+        LookupDevice(strings::StrCat("/device:GPU:", item.first), &gpu));
+    stream_device_map_[gpu] = std::vector<Device*>(item.second);
+    if (stream_group_count_ < item.second) stream_group_count_ = item.second;
+  }
+  Device* cpu;
+  for (auto& item : cpu_id2num) {
+    TF_CHECK_OK(
+        LookupDevice(strings::StrCat("/device:CPU:", item.first), &cpu));
+    stream_device_map_[cpu] = std::vector<Device*>(item.second);
+  }
+
+  // Fill in the stream group map and set real device for the stream devices.
+  Device* real_device;
+  for (auto& item : dynamic_devices_) {
+    Device* d = item.first;
+    tsl::StatusOr<string> name =
+        DeviceNameUtils::GetDeviceNameFromStreamDeviceName(d->name());
+    if (name.ok()) {
+      TF_CHECK_OK(LookupDevice(name.value(), &real_device));
+      stream_device_map_[real_device][d->parsed_name().id] = d;
+      d->SetRealDevice(real_device);
+    }
+  }
+
+  for (auto& item : gpu_id2num) {
+    DCHECK_EQ(item.second, stream_group_count_);
+  }
+  for (auto& item : cpu_id2num) {
+    DCHECK_EQ(item.second, stream_group_count_);
+  }
+}
+
+int DynamicDeviceMgr::StreamGroupCount() const { return stream_group_count_; }
+
+Device* DynamicDeviceMgr::LookupStream(const Device* device,
+                                       const int stream_id) const {
+  if (stream_id < 0 ||
+      stream_device_map_.find(device) == stream_device_map_.end() ||
+      stream_device_map_.at(device).size() <= stream_id) {
+    return const_cast<Device*>(device);
+  }
+  return stream_device_map_.at(device).at(stream_id);
 }
 
 }  // namespace tensorflow

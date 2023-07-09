@@ -63,7 +63,8 @@ class OpSegment {
 
   // Returns true if OpSegment should own the kernel.
   static bool ShouldOwnKernel(FunctionLibraryRuntime* lib,
-                              const std::string& node_op);
+                              const std::string& node_op,
+                              const bool own_const_kernel = false);
 
  private:
   // op name -> OpKernel

@@ -992,6 +992,9 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     // If not null, use this thread pool for intra op scheduling.
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
+    // To hold some tensors.
+    TensorHolder* tensor_holder = nullptr;
+
     // Returns a human readable representation of this.
     std::string DebugString() const;
   };

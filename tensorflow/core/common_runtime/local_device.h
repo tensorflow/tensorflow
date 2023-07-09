@@ -37,6 +37,18 @@ class LocalDevice : public Device {
               const DeviceAttributes& attributes);
   ~LocalDevice() override;
 
+  bool merge_DtoD_copy_stream() const override {
+    return gpu_stream_merge_options.merge_d_to_d_stream();
+  }
+
+  bool merge_DtoH_copy_stream() const override {
+    return gpu_stream_merge_options.merge_d_to_h_stream();
+  }
+
+  bool merge_HtoD_copy_stream() const override {
+    return gpu_stream_merge_options.merge_h_to_d_stream();
+  }
+
  private:
   static bool use_global_threadpool_;
 
@@ -46,6 +58,8 @@ class LocalDevice : public Device {
 
   struct EigenThreadPoolInfo;
   std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
+
+  const GPUOptions::STREAM_MERGE_OPTIONS gpu_stream_merge_options;
 
   friend class test::Benchmark;
 

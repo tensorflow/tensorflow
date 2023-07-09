@@ -1,0 +1,24 @@
+session_inter_op_thread_pool { num_threads: 1 }
+session_inter_op_thread_pool { num_threads: 1 }
+session_inter_op_thread_pool { num_threads: 1 }
+session_inter_op_thread_pool { num_threads: 1 }
+graph_options {
+  optimizer_options {
+    global_jit_level: ON_1
+  }
+}
+gpu_options {
+  stream_merge_options {
+    merge_h_to_d_stream: true
+    merge_d_to_h_stream: true
+    merge_d_to_d_stream: true
+  }
+  multi_stream_options {
+    stream_group_count: 4
+    host_allocator_mode: "private"
+    constant_memory_mode: "shared"
+  }
+  experimental {
+    virtual_devices { memory_limit_mb: 10240 }
+  }
+}

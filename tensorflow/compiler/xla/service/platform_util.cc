@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -163,8 +164,8 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
-    se::Platform* platform,
-    const std::optional<std::set<int>>& allowed_devices) {
+    se::Platform* platform, const std::optional<std::set<int>>& allowed_devices,
+    const int stream_id) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());
@@ -184,11 +185,15 @@ PlatformUtil::GetStreamExecutors(
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                         "device_initialization", device_count);
-    auto create_fn = [](se::Platform* platform,
-                        std::vector<se::StreamExecutor*>& stream_executors,
-                        int device_ordinal, int count) {
+    auto create_fn = [stream_id](
+                         se::Platform* platform,
+                         std::vector<se::StreamExecutor*>& stream_executors,
+                         int device_ordinal, int count) {
       VLOG(1) << "Started device init " << device_ordinal;
-      auto executor_status = platform->ExecutorForDevice(device_ordinal);
+      int encoded_ordinal =
+          stream_executor::DeviceOrdinalHelper::EncodeDeviceOrdinal(
+              stream_id, device_ordinal);
+      auto executor_status = platform->ExecutorForDevice(encoded_ordinal);
       if (executor_status.ok()) {
         se::StreamExecutor* executor = executor_status.value();
         if (IsDeviceSupported(executor)) {
@@ -197,7 +202,7 @@ PlatformUtil::GetStreamExecutors(
       } else {
         LOG(WARNING) << "unable to create StreamExecutor for "
                      << platform->Name() << ":" << device_ordinal << ": "
-                     << executor_status.status().message();
+                     << stream_id << ": " << executor_status.status().message();
       }
       VLOG(1) << "Finished device init " << device_ordinal;
     };

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_holder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -693,6 +694,9 @@ class OpKernelContext {
 
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    // To hold some tensors.
+    TensorHolder* tensor_holder = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -1172,6 +1176,9 @@ class OpKernelContext {
   tsl::CoordinationServiceAgent* coordination_service_agent() const {
     return params_->coordination_service_agent;
   }
+
+  // Obtain the tensor holder.
+  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);

@@ -110,6 +110,11 @@ class DeviceFactory {
   // Returns true if 'device_type' is registered from plugin. Returns false if
   // 'device_type' is a first-party device.
   static bool IsPluggableDevice(const std::string& device_type);
+
+ protected:
+  // Returns true if the factory is a StreamDeviceFactory or a
+  // StreamCompatibleCPUDeviceFactory.
+  bool is_stream_factory_ = false;
 };
 
 namespace dfactory {

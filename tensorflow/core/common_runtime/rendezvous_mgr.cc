@@ -87,6 +87,24 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     done(s);
     return;
   }
+  // Get the corresponding stream devices of src_device and dst_device. Return
+  // themselves when multiple stream groups are not enabled.
+  if (src_device->parsed_name().type == "GPU") {
+    src_device = device_mgr->LookupStream(
+        src_device, send_args.device_context->stream_id());
+    if (dst_device->parsed_name().type == "CPU") {
+      dst_device = device_mgr->LookupStream(
+          dst_device, send_args.device_context->stream_id());
+    }
+  }
+  if (dst_device->parsed_name().type == "GPU") {
+    dst_device = device_mgr->LookupStream(
+        dst_device, recv_args.device_context->stream_id());
+    if (src_device->parsed_name().type == "CPU") {
+      src_device = device_mgr->LookupStream(
+          src_device, recv_args.device_context->stream_id());
+    }
+  }
 
   profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", 0, "dynamic", in.dtype(),
@@ -123,10 +141,11 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     }
   }
 
-  CopyTensor::ViaDMA(
-      parsed.edge_name, send_args.device_context, recv_args.device_context,
-      src_device, dst_device, send_args.alloc_attrs, recv_args.alloc_attrs, &in,
-      out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
+  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
+                     recv_args.device_context, src_device, dst_device,
+                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
+                     0 /*dev_to_dev_stream_index*/, std::move(done),
+                     sync_dst_compute, send_args.tensor_holder);
 }
 
 void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
