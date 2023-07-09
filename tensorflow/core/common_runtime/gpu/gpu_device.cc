@@ -440,8 +440,6 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   set_xla_global_id(Fingerprint32(name) % std::numeric_limits<int32_t>::max());
 
 #ifdef TF_GPU_USE_PJRT
-  pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
-
   // Note: ShapeDeterminationFns is not used in GPU.
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
