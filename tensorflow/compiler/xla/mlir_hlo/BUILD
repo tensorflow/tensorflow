@@ -734,6 +734,7 @@ cc_library(
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
+        "mhlo/transforms/legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc",
         "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
         "mhlo/transforms/lower_complex/generated_lower_complex.inc",
         "mhlo/transforms/lower_complex/lower_complex.cc",
