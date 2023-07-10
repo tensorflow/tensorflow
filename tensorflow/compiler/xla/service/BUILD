@@ -1,6 +1,7 @@
 # Description:
 #   XLA service implementation.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load(
@@ -6424,19 +6425,19 @@ xla_py_proto_library(
     deps = [":hlo_proto"],
 )
 
-py_library(
+py_strict_library(
     name = "generate_test_hlo_checks",
     srcs = ["generate_test_hlo_checks.py"],
     srcs_version = "PY3",
 )
 
-py_test(
+py_strict_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
     python_version = "PY3",
-    # TODO(b/200806426): Test fails in OSS.
     tags = [
         "no_oss",
+        "nopip",
     ],
     deps = [
         ":generate_test_hlo_checks",
