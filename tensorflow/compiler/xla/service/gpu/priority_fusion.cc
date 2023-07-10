@@ -408,14 +408,14 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
   GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
-                                              &cost_analysis_, device_info_);
+                                              &*cost_analysis_, device_info_);
   return result;
 }
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, device_info_, &cost_analysis_,
+      computation, device_info_, &*cost_analysis_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));
