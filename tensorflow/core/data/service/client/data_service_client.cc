@@ -427,11 +427,6 @@ void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       req.set_blocked_round(round_robin_round_limit_.value());
     }
   }
-  {
-    mutex_lock l(mu_);
-    double target_processing_time_nsec = ctx_->GetTargetProcessingTimeNsec();
-    req.set_target_processing_time_nsec(target_processing_time_nsec);
-  }
   ClientHeartbeatResponse resp;
   Status s = dispatcher_->ClientHeartbeat(req, resp);
   if (!s.ok()) {
