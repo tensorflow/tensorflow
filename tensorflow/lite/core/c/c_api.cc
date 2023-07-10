@@ -441,6 +441,8 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
        optional_options->op_resolver_callbacks.find_custom_op_v1 != nullptr ||
        optional_options->op_resolver_callbacks.find_builtin_op_v2 != nullptr ||
        optional_options->op_resolver_callbacks.find_custom_op_v2 != nullptr ||
+       optional_options->op_resolver_callbacks.find_builtin_op_v3 != nullptr ||
+       optional_options->op_resolver_callbacks.find_custom_op_v3 != nullptr ||
        optional_options->op_resolver_callbacks.find_builtin_op_external !=
            nullptr ||
        optional_options->op_resolver_callbacks.find_custom_op_external !=
