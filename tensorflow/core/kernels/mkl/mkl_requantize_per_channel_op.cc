@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <math.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -115,7 +115,14 @@ class MklRequantizePerChannelOp : public OpKernel {
                  cpu_engine_, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
 
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          ctx->device()
+              ->tensorflow_cpu_worker_threads()
+              ->workers->AsEigenThreadPool();
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),

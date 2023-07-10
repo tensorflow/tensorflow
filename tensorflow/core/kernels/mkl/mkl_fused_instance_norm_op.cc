@@ -15,7 +15,6 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using namespace dnnl;
 using dnnl::batch_normalization_forward;
@@ -71,7 +71,14 @@ class MklFusedInstanceNormOp : public OpKernel {
       OP_REQUIRES(ctx, FormatFromString(data_format_, &tensor_format),
                   errors::InvalidArgument("Invalid data format"));
 
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          ctx->device()
+              ->tensorflow_cpu_worker_threads()
+              ->workers->AsEigenThreadPool();
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       std::shared_ptr<stream> engine_stream_ptr;
       engine_stream_ptr.reset(CreateStream(&eigen_tp, cpu_engine_));
 

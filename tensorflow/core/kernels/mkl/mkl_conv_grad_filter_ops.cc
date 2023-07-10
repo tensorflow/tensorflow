@@ -517,7 +517,14 @@ class MklConvCustomBackpropFilterOp
       // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
 
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          context->device()
+              ->tensorflow_cpu_worker_threads()
+              ->workers->AsEigenThreadPool();
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklConvBwdFilterPrimitive<T>* conv_bwd_filter =
           MklConvBwdFilterPrimitiveFactory<T>::Get(convBwdFilterDims,
                                                    do_not_cache);

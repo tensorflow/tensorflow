@@ -760,7 +760,14 @@ class MklConcatOp : public OpKernel {
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
       if (are_all_mkl_inputs)
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over eigen threapool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          context->device()
+              ->tensorflow_cpu_worker_threads()
+              ->workers->AsEigenThreadPool();
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       if (!inputs.empty()) {
         if (are_all_mkl_inputs) {
           auto concat_pd =

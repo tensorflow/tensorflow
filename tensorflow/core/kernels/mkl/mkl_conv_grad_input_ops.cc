@@ -470,7 +470,14 @@ class MklConvCustomBackpropInputOp
                           (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                            IsConv1x1StrideNot1(fwd_filter_dims, strides));
 
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          context->device()
+              ->tensorflow_cpu_worker_threads()
+              ->workers->AsEigenThreadPool();
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklConvBwdInputPrimitive<T>* conv_bwd_input =
           MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
                                                   do_not_cache);

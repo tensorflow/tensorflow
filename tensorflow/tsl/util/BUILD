@@ -304,6 +304,18 @@ filegroup(
 )
 
 filegroup(
+    name = "onednn_util_hdrs",
+    srcs = [
+        "onednn_threadpool.h",
+    ],
+    visibility = set_external_visibility([
+        "//tensorflow/compiler/xla:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/framework:__pkg__",
+    ]),
+)
+
+filegroup(
     name = "android_test_hdrs",
     testonly = 1,
     srcs = [
