@@ -97,9 +97,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fused_mha_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -255,50 +257,6 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
     instruction_count++;
   }
   return instruction_count == 1;
-}
-
-bool MayPreventVectorization(mlir::Operation* op) {
-  // An empirically chosen constant: unrolling concat with a large amount of
-  // arguments causes excessive register spilling.
-  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
-
-  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  for (mlir::Operation& instr : fusion.getRegion().front()) {
-    if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                  mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
-            &instr)) {
-      continue;
-    }
-
-    CHECK(instr.getDialect() ==
-          instr.getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>())
-        << llvm_ir::DumpToString(op);
-    switch (*MhloToHloOpcode(&instr)) {
-      case HloOpcode::kReduceWindow:
-      case HloOpcode::kSort:
-      case HloOpcode::kDot:
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kTan:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      case HloOpcode::kConcatenate:
-        if (instr.getOperands().size() > kMaxConcatArgumentsForUnrolling) {
-          return true;
-        }
-        break;
-      case HloOpcode::kReduce:
-        if (instr.getNumResults() > 1) {
-          return true;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  return false;
 }
 
 // Computes the maximum valid unroll factor for a given instruction.
@@ -1439,88 +1397,6 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
 
 #endif  // GOOGLE_CUDA
 
-namespace {
-// An MLIR value and its name as defined in the ODS spec.
-struct NamedValue {
-  mlir::Value value;
-  absl::string_view name;
-};
-
-// Determine if we enable the row optimized codegen.  When we have a
-// fusion with only point-wise operations, scalar broadcasting and row
-// broadcasting, we can trigger a kernel that vectorize the row loads.
-// This speed up the kernel, in particular on A100.
-// Returns a pair<bool, int>. The bool mean should we try to enable
-// row vectorization.  The int is the number of inputs with the higher
-// rank.
-std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
-  const auto is_row_major = [](mlir::Value value) {
-    // Only tested when the inputs are row-major. So only
-    // enable that case. Maybe it would works if only the
-    // inner dimensions is contiguous.
-    return LayoutUtil::IsMonotonicWithDim0Major(GetShape(value).layout());
-  };
-  bool row_vectorized =
-      fusion.getFusionResults().size() == 1 &&  // Not tested with MOF.
-      absl::c_all_of(GetHloOperands(fusion), is_row_major) &&
-      absl::c_all_of(GetHloOutputs(fusion), is_row_major);
-
-  // Check that the operations in the fusion are supported.  Each
-  // supported operation (or category) must be manually vetted as XLA
-  // only unrolls and relies on LLVM to vectorize. But this is brittle.
-  // Currently tested and supported operations:
-  // Elementwise, scalar and row broadcasting.
-  //
-  // We also detect at the same time if there is a row broadcasting
-  // operation.
-  bool some_row_broadcasting = false;
-  auto out_rank =
-      fusion.getFusionResults()[0].getType().cast<mlir::ShapedType>().getRank();
-  int num_big_inputs = 0;
-  for (mlir::Operation& op : fusion.getRegion().front()) {
-    if (auto load = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(op)) {
-      auto rank = load.getResult().getType().cast<mlir::ShapedType>().getRank();
-      num_big_inputs += static_cast<int>(rank == out_rank);
-      continue;
-    } else if (mlir::isa<mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
-                         mlir::mhlo::ReturnOp, mlir::mhlo::ConstantOp,
-                         mlir::lmhlo::ConstantOp>(op)) {
-      continue;
-    }
-    HloOpcode opcode = *MhloToHloOpcode(&op);
-    if (HloInstruction::IsOpElementwise(opcode)) {
-      continue;
-    }
-
-    if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      const auto& broadcast_dimensions_size =
-          broadcast.getBroadcastDimensions().size();
-      if (broadcast_dimensions_size == 0) {
-        continue;
-      }
-      llvm::SmallVector<int64_t> broadcast_dimensions;
-      broadcast_dimensions.reserve(broadcast_dimensions_size);
-      for (const llvm::APInt& int_value : broadcast.getBroadcastDimensions()) {
-        broadcast_dimensions.push_back(int_value.getSExtValue());
-      }
-
-      auto rank = GetShape(broadcast.getResult()).rank();
-      if (broadcast_dimensions.size() == 1 &&
-          broadcast_dimensions.back() == (rank - 1)) {
-        some_row_broadcasting = true;
-        continue;
-      }
-    }
-    VLOG(2) << "Row vectorization not enabled due to this op: "
-            << llvm_ir::DumpToString(&op);
-    return std::make_pair(false, 0);
-  }
-  // Trigger only when there is a row broadcasting.
-  return std::make_pair(row_vectorized && some_row_broadcasting,
-                        num_big_inputs);
-}
-}  // namespace
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(op);
@@ -2060,82 +1936,11 @@ Status IrEmitterUnnested::EmitTritonFusion(
 //
 // This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
 // subclass. The logic is de-virtualized and less scattered.
-Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
-  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
+Status IrEmitterUnnested::EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
+                                         HloFusionAnalysis& fusion_analysis) {
+  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
+                      fusion_analysis.GetLaunchDimensions());
 
-  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
-                      GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
-                                                          /*is_fusion=*/true));
-
-  const GpuDeviceInfo gpu_device_info = ir_emitter_context_->gpu_device_info();
-
-  Shape element_shape = GetShape(fusion.getOutputBuffers()[0]);
-  int unroll_factor = 1;
-  {
-    // Unrolling is good to read large inputs with small elements
-    // due to vector loads, but increases the register pressure when one
-    // thread has to produce multiple output elements.
-    // Therefore for fusions with small outputs prefer to use one thread
-    // per output element = no unroll.
-    // Call 'small' fusions that use less threads than the GPU has.
-    int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
-    int64_t n_threads_max =
-        gpu_device_info.threads_per_core_limit * gpu_device_info.core_count;
-    if (num_elements >= n_threads_max && !MayPreventVectorization(fusion)) {
-      unroll_factor = ComputeMaxUnrollFactor(fusion);
-    }
-  }
-  VLOG(2) << "Unroll factor: " << unroll_factor;
-
-  bool row_vectorized;
-  int num_big_inputs;
-  std::tie(row_vectorized, num_big_inputs) = RowVectorizationEnabled(fusion);
-  bool few_waves = [fusion, row_vectorized, num_big_inputs]() mutable {
-    for (mlir::Operation& op : fusion.getRegion().front()) {
-      if (mlir::isa<mlir::bufferization::ToTensorOp,
-                    mlir::memref::TensorStoreOp, mlir::lmhlo::TerminatorOp,
-                    mlir::mhlo::ReturnOp, mlir::mhlo::ConstantOp>(op)) {
-        continue;
-      }
-      HloOpcode opcode = *MhloToHloOpcode(&op);
-      if (HloInstruction::IsOpElementwise(opcode)) {
-        continue;
-      }
-      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-        if (broadcast.getBroadcastDimensions().empty() ||
-            // More than 3 big inputs cause a speed regression.
-            (row_vectorized && num_big_inputs <= 3)) {
-          continue;
-        }
-      }
-      VLOG(2) << "few_waves not enabled due to: " << llvm_ir::DumpToString(&op);
-      return false;
-    }
-    return true;
-  }();
-
-  LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
-                                       row_vectorized};
-  // Check that the shapes is supported.
-  if (launch_config.row_vectorized &&
-      ThreadsPerBlockRowVectorized(element_shape, gpu_device_info,
-                                   launch_config) <= 0) {
-    VLOG(2) << "Cancelling row_vectorization as the shape isn't supported.";
-    launch_config.row_vectorized = false;
-    launch_config.few_waves = false;
-  }
-
-  // Do not use experimental block size if row_vectorized or few_waves flags are
-  // enabled.
-  bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
-          .xla_gpu_enable_experimental_block_size() &&
-      !launch_config.row_vectorized && !launch_config.few_waves;
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(element_shape, gpu_device_info,
-                                                use_experimental_block_size,
-                                                launch_config, op));
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
       BuildKernelThunkForFusion(fusion, launch_dimensions));
@@ -2153,6 +1958,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
 
+  const HloComputation* fused_computation = fusion_analysis.fused_computation();
   for (int i = 0; i < fusion.getInputBuffers().size(); i++) {
     auto* builder = &b_;
     auto ir_array = operand_arrays[i];
@@ -2171,7 +1977,8 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
 
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(element_generator, output_element_arrays,
-                          launch_dimensions, &b_, launch_config)
+                          launch_dimensions, &b_,
+                          *fusion_analysis.GetLoopFusionConfig())
           .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
 
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
@@ -2179,45 +1986,11 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitUnnestedTranspose(
-    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation) {
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
-
-  // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
-  // possible?
-  std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
-      **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
-        return FindAnyTiledTranspose(*instr);
-      }));
-
-  // TODO(cheshire): have a more robust way of checking this.
-  CHECK(dims_and_order.has_value());
-
-  constexpr int kNumRows = 4;
-  CHECK_EQ(WarpSize() % kNumRows, 0);
-
-  // 3D view over the input shape.
-  Vector3 dims = dims_and_order->dimensions;
-  Vector3 order = dims_and_order->permutation;
-
-  // We expect that the last dimension is swapped with a different dimension.
-  CHECK_NE(order[2], 2);
-  Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
-  Vector3 tile_sizes{1, 1, 1};
-  tile_sizes[order[2]] = WarpSize() / kNumRows;
-  Vector3 num_threads{1, 1, WarpSize()};
-  num_threads[order[2]] = kNumRows;
-
-  TilingScheme tiling_scheme(
-      /*permuted_dims*/ permuted_dims,
-      /*tile_sizes=*/tile_sizes,
-      /*num_threads=*/num_threads,
-      /*indexing_order=*/kLinearIndexingX,
-      /*vector_size=*/1,
-      /*scaling_factor=*/1,
-      /*tiling_dimensions=*/{order[2], 2});
-  LaunchDimensions launch_dimensions(
-      tiling_scheme.GetNumberOfBlocksPhysical(),
-      tiling_scheme.GetNumThreadsPerBlockPhysical());
+    mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
+  TF_ASSIGN_OR_RETURN(auto tiling_scheme,
+                      fusion_analysis.GetTransposeTilingScheme());
+  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
+                      fusion_analysis.GetLaunchDimensions());
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
@@ -2229,51 +2002,17 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
 
   TF_RETURN_IF_ERROR(EmitTransposeTile(
-      fusion, fused_computation,
+      fusion, fusion_analysis.fused_computation(),
       absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
       absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
-      tiling_scheme, launch_dimensions));
+      *tiling_scheme, launch_dimensions));
   return OkStatus();
-}
-
-// Returns true if the fusion has consistent transpose heros.
-static bool HasConsistentTransposeHeros(HloComputation* fusion) {
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
-  if (!HasAnyTiledTransposeRoot(fusion)) {
-    return false;
-  }
-  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
-  // We need the following invariant:
-  // For every tuple element:
-  //  -> EITHER it's a kCopy: S{L} -> S{L'}
-  //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      if (*tiled_transpose != *first_tiled_transpose) {
-        return false;
-      }
-    } else {
-      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-              root->shape(), transpose_in_shape,
-              /*ignore_element_type=*/true)) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
+  // Parse backend config.
   FusionBackendConfig backend_config;
   if (auto backend_config_str = fusion_op.getBackendConfig()
                                     .value_or(mlir::Attribute())
@@ -2287,100 +2026,100 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     }
   }
 
+  // Create HloFusionInstruction instance.
   TF_ASSIGN_OR_RETURN(
       HloComputation * fused_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
                                           /*is_fusion=*/true));
+  HloInstruction* fusion_root = fused_computation->root_instruction();
+  auto fusion_kind = StringToFusionKind(backend_config.kind())
+                         .value_or(HloInstruction::FusionKind::kCustom);
+  HloFusionInstruction fusion(fusion_root->shape(), fusion_kind, {},
+                              fused_computation);
+  TF_RETURN_IF_ERROR(fusion.set_backend_config(backend_config));
 
+  // Create HloFusionAnalysis instance.
+  GpuDeviceInfo device_info = ir_emitter_context_->gpu_device_info();
+  HloFusionAnalysis fusion_analysis(
+      &fusion, &device_info, ir_emitter_context_->cuda_compute_capability());
+
+  // Dispatch to the fusion specific emitter.
+  TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind,
+                      fusion_analysis.GetEmitterFusionKind());
+  switch (emitter_fusion_kind) {
+    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
 #if GOOGLE_CUDA
-  if (backend_config.kind() == kTritonGemmFusionKind) {
-    if (!backend_config.has_triton_gemm_config()) {
-      LOG(WARNING) << "Using fallback triton GEMM config for op "
-                   << GetIrNameFromLoc(op->getLoc());
-      auto& triton_config = *backend_config.mutable_triton_gemm_config();
-      triton_config.set_block_m(64);
-      triton_config.set_block_k(64);
-      triton_config.set_block_n(64);
-      triton_config.set_split_k(1);
-      triton_config.set_num_stages(1);
-      triton_config.set_num_warps(2);
-    }
-    return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
-  } else if (backend_config.kind() == kTritonSoftmaxFusionKind) {
-    auto& triton_config = *backend_config.mutable_triton_gemm_config();
-    triton_config.set_num_stages(1);
-    triton_config.set_num_warps(4);
-    return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
-  }
-#endif  // GOOGLE_CUDA
-
-  if (HasAnyUnnestedReductionRoot(fused_computation)) {
-    return EmitUnnestedReduction(fusion_op, fused_computation);
-  }
-
-  // Triton fusions can have transposes too but they are intercepted earlier.
-  // TODO(b/286029825): Do not generate fusions with inconsistent transposes.
-  if (HasConsistentTransposeHeros(fused_computation)) {
-    return EmitUnnestedTranspose(fusion_op, fused_computation);
-  }
-
-  auto fusion_results = fusion_op.getFusionResults();
-  TF_RET_CHECK(!fusion_results.empty());
-  if (fusion_results.size() > 1) {
-    // In the case of root tuple, it can be either reduce or slice input
-    // fusion.
-    if (IsInputFusibleSlices(op, /*verify_no_strides=*/true)) {
-      // The emitter doesn't support all cases. If it's not supported, fallback
-      // to ElementalIrEmitter.
-      auto status = EmitInputFusibleNonStridedSlices(op);
-      if (status.code() == tsl::error::FAILED_PRECONDITION) {
-        return EmitLoopFusion(op);
+      if (backend_config.kind() == kTritonGemmFusionKind) {
+        if (!backend_config.has_triton_gemm_config()) {
+          LOG(WARNING) << "Using fallback triton GEMM config for op "
+                       << GetIrNameFromLoc(op->getLoc());
+          auto& triton_config = *backend_config.mutable_triton_gemm_config();
+          triton_config.set_block_m(64);
+          triton_config.set_block_k(64);
+          triton_config.set_block_n(64);
+          triton_config.set_split_k(1);
+          triton_config.set_num_stages(1);
+          triton_config.set_num_warps(2);
+        }
+        return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
       }
-      return status;
-    }
-  }
-
-  mlir::Operation* fusion_root = fusion_results[0].getDefiningOp();
-  if (mlir::isa<mlir::mhlo::ScatterOp>(fusion_root)) {
-    return EmitScatter(fusion_op, fused_computation);
-  }
-
-  if (!IsSingleInstructionFusion(fusion_op) &&
-      CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-          fusion_op, ir_emitter_context_->allocations())) {
-    return EmitDynamicUpdateSlice(fusion_op, fused_computation);
-  }
-
-  if (auto copy = mlir::dyn_cast<mlir::mhlo::CopyOp>(fusion_root);
-      copy && IsSingleInstructionFusion(fusion_op)) {
-    auto operands = GetHloOperands(fusion_op);
-    auto outputs = GetHloOutputs(fusion_op);
-    TF_RET_CHECK(operands.size() == 1);
-    TF_RET_CHECK(outputs.size() == 1);
-    auto operand_shape = GetShape(operands[0]);
-    auto output_shape = GetShape(outputs[0]);
-
-    CHECK(ShapeUtil::Compatible(operand_shape, output_shape));
-    auto maybe_slice = GetAllocationSlice(operands[0]);
-    if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
-        maybe_slice.ok()) {
-      // Copy the operand into the output if it's not the same buffer already.
-      auto operand_buffer = *maybe_slice;
-      auto destination_buffer = *GetAllocationSlice(outputs[0]);
-      if (operand_buffer != destination_buffer) {
-        AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-            GetThunkInfo(op),
-            /*source_buffer=*/operand_buffer,
-            /*destination_buffer=*/destination_buffer,
-            /*mem_size=*/ByteSizeOf(operand_shape),
-            /*source_value=*/operands[0],
-            /*destination_value=*/outputs[0]));
+      if (backend_config.kind() == kTritonSoftmaxFusionKind) {
+        auto& triton_config = *backend_config.mutable_triton_gemm_config();
+        triton_config.set_num_stages(1);
+        triton_config.set_num_warps(4);
+        return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
       }
-      return OkStatus();
+#endif
+      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      return EmitUnnestedReduction(fusion_op, fusion_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
+      return EmitUnnestedTranspose(fusion_op, fusion_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
+      return EmitInputFusibleNonStridedSlices(op);
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+      return EmitScatter(fusion_op, fused_computation);
+    case HloFusionAnalysis::EmitterFusionKind::kLoop: {
+      // Special case: DUS
+      bool is_single = IsSingleInstructionFusion(fusion_op);
+      if (!is_single && CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+                            fusion_op, ir_emitter_context_->allocations())) {
+        return EmitDynamicUpdateSlice(fusion_op, fused_computation);
+      }
+      // Special case: copy
+      if (is_single && fusion_root->opcode() == HloOpcode::kCopy) {
+        llvm::SmallVector<mlir::Value> operands = GetHloOperands(fusion_op);
+        llvm::SmallVector<mlir::Value> outputs = GetHloOutputs(fusion_op);
+        TF_RET_CHECK(operands.size() == 1);
+        TF_RET_CHECK(outputs.size() == 1);
+        Shape operand_shape = GetShape(operands[0]);
+        Shape output_shape = GetShape(outputs[0]);
+
+        CHECK(ShapeUtil::Compatible(operand_shape, output_shape));
+        StatusOr<BufferAllocation::Slice> maybe_slice =
+            GetAllocationSlice(operands[0]);
+        if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
+            maybe_slice.ok()) {
+          BufferAllocation::Slice operand_buffer = *maybe_slice;
+          BufferAllocation::Slice destination_buffer =
+              *GetAllocationSlice(outputs[0]);
+          if (operand_buffer != destination_buffer) {
+            AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+                GetThunkInfo(op),
+                /*source_buffer=*/operand_buffer,
+                /*destination_buffer=*/destination_buffer,
+                /*mem_size=*/ByteSizeOf(operand_shape),
+                /*source_value=*/operands[0],
+                /*destination_value=*/outputs[0]));
+          }
+          return OkStatus();
+        }
+      }
+      // Default loop fusion emitter.
+      return EmitLoopFusion(fusion_op, fusion_analysis);
     }
   }
-
-  return EmitLoopFusion(op);
 }
 
 Status IrEmitterUnnested::EmitExtraOutputsForReduce(
@@ -4783,12 +4522,13 @@ static IrArray::Index PermuteIndex(const IrArray::Index& index,
 }
 
 Status IrEmitterUnnested::EmitTransposeTile(
-    mlir::lmhlo::FusionOp fusion, HloComputation* fusion_hlo,
+    mlir::lmhlo::FusionOp fusion, const HloComputation* fusion_hlo,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
+  std::vector<HloInstruction*> hlo_roots =
+      GetFusionRoots(const_cast<HloComputation*>(fusion_hlo));
   FusedIrEmitter fused_emitter(elemental_emitter_);
   for (int i = 0; i < fusion_hlo->num_parameters(); i++) {
     llvm_ir::IrArray ir_array = operand_arrays[i];
@@ -4924,170 +4664,6 @@ Status IrEmitterUnnested::EmitTransposeTile(
   return EmitTilingKernel(tiling_scheme, index_type, tile_generator).status();
 }
 
-namespace {
-
-// Returns true if all the transitive users of hlo before hitting users in
-// use_chain_endings are elementwise operations.
-bool AreUsersElementwise(
-    mlir::Value value,
-    const absl::flat_hash_set<mlir::Operation*>& use_chain_endings) {
-  return absl::c_all_of(value.getUsers(), [&](mlir::OpOperand use) {
-    mlir::Operation* user = use.getOwner();
-    return use_chain_endings.count(user) ||
-           (HloInstruction::IsOpElementwise(*MhloToHloOpcode(user)) &&
-            absl::c_all_of(user->getResults(),
-                           [&](const mlir::OpResult result) {
-                             return AreUsersElementwise(result,
-                                                        use_chain_endings);
-                           })
-
-           );
-  });
-}
-
-// Returns the number of fusion inputs that have the same dimension as the
-// given shape, and involve in only elementwise operations.
-int64_t NumInputsInvolveInOnlyElementwiseOps(
-    mlir::lmhlo::FusionOp fusion, const Shape& op_shape,
-    const absl::flat_hash_set<mlir::Operation*>& use_chain_endings) {
-  return absl::c_count_if(
-      fusion.getFusionParameters(), [&](mlir::Value parameter) {
-        Shape parameter_shape = GetShape(parameter);
-        return ShapeUtil::SameDimensions(op_shape, parameter_shape) &&
-               AreUsersElementwise(parameter, use_chain_endings);
-      });
-}
-
-// Returns the number of fusion inputs that have more elements than the given
-// shape.
-int64_t NumInputsWithMoreElementsThan(mlir::lmhlo::FusionOp fusion,
-                                      const Shape& shape) {
-  int64_t num_elements = ShapeUtil::ElementsIn(shape);
-  return absl::c_count_if(
-      fusion.getFusionParameters(), [&](mlir::Value parameter) {
-        Shape parameter_shape = GetShape(parameter);
-        return ShapeUtil::ElementsIn(parameter_shape) > num_elements;
-      });
-}
-
-// If the reduce is relatively small, it's possible to unroll so much that we
-// don't have enough blocks to saturate the GPU.  This function computes the max
-// number of times we can unroll the reduction while still saturating the GPU.
-static int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize(
-    const GpuDeviceInfo& gpu_info, HloComputation* fused_computation) {
-  int64_t num_reduce_output_elems = 0;
-  for (const HloInstruction* root : GetFusionRoots(fused_computation)) {
-    if (!IsReductionFromOrToContiguousDimensions(*root)) {
-      continue;
-    }
-    const Shape* output_shape = &root->shape();
-    // Unwrap multi-output reduction.  All outputs should be the same shape.
-    if (output_shape->IsTuple()) {
-      output_shape = &output_shape->tuple_shapes()[0];
-    }
-    num_reduce_output_elems =
-        std::max(num_reduce_output_elems, ShapeUtil::ElementsIn(*output_shape));
-  }
-
-  // A column reduction that's unrolled N times uses one warp to generate N
-  // output elements.  The block size is always 32 warps = 1024 threads.
-  int64_t num_blocks = CeilOfRatio(num_reduce_output_elems, int64_t{32});
-  int64_t num_threads = num_blocks * 1024;
-  // Number of SMs we can saturate with this work.
-  int num_cores =
-      CeilOfRatio<int64_t>(num_threads, gpu_info.threads_per_core_limit);
-  return static_cast<int>(CeilOfRatio(num_cores, gpu_info.core_count));
-}
-
-// The benefit of unrolling a kInput fusion that is a column reduction comes
-// from the vectorization of non-reduction fusion outputs and fusion inputs.
-// On the other hand, unrolling can also introduce factors that can cause
-// the kernel to run slower. This routine uses a simple heuristic to estimate
-// the benefit as well as the overhead of unrolling in order to decide whether
-// unrolling is beneficial for the given kInput fusion.
-static bool IsUnrollingColumnReductionBeneficial(
-    const GpuDeviceInfo& gpu_info, mlir::lmhlo::FusionOp fusion,
-    HloComputation* fused_computation, const Shape& input_shape,
-    int64_t num_kept_minor, bool reduction_is_race_free) {
-  if (num_kept_minor % (WarpSize() * 2) != 0) {
-    return false;
-  }
-
-  if (input_shape.dimensions()[input_shape.rank() - 1] < 64) {
-    return false;
-  }
-
-  int64_t can_be_vectorized = 0;
-  int64_t cannot_be_vectorized = 0;
-  llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
-  absl::flat_hash_set<mlir::Operation*> use_chain_endings;
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fused_computation);
-
-  for (int i = 0; i < fusion_roots.size(); i++) {
-    if (!reduction_is_race_free &&
-        IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
-      // Atomics cannot be vectorized.
-      cannot_be_vectorized++;
-    } else {
-      can_be_vectorized++;
-    }
-    use_chain_endings.insert(fusion_roots[i]);
-  }
-  // Fusion inputs that have the same dimension as the reduce input and
-  // only involve in elementwise operations can be vectorized.
-  can_be_vectorized += NumInputsInvolveInOnlyElementwiseOps(fusion, input_shape,
-                                                            use_chain_endings);
-  // Fusion inputs with more elements than the reduce op input must participate
-  // in non-elementwise operations and we assume that they are not vectorizable
-  // for the purpose of estimating the benefit of unrolling. If the kernel is
-  // unrolled even with such an assumption,  and the accesses to those inputs
-  // turn out to be vectorizable, the compiler will still vectorize them.
-  cannot_be_vectorized += NumInputsWithMoreElementsThan(fusion, input_shape);
-  if (can_be_vectorized < cannot_be_vectorized) {
-    return false;
-  }
-
-  return MaxBeneficialColumnReductionUnrollBasedOnBlockSize(
-             gpu_info, fused_computation) > 1;
-}
-
-int64_t NearestPowerOfTwo(int64_t v) {
-  if (v < 0) {
-    return 0;
-  }
-  int64_t upper = absl::bit_ceil<uint64_t>(v);
-  int64_t lower = upper >> 1;
-  return upper - v < v - lower ? upper : lower;
-}
-
-}  // namespace
-
-// Returns primitive bitwidth for shape of the value.
-static int GetPrimitiveBitwidth(mlir::Value i) {
-  // TODO(timshen): may not be efficient.
-  return primitive_util::BitWidth(GetShape(i).element_type());
-}
-
-// Experimentally determined values to achieve optimal number of
-// bytes-in-flight. With a bound of #warps/SM which can be concurrently
-// scheduled, for small reduced values it can be hard to achieve optimal
-// number of bytes-in-flight. In order to address it, we increase the # of
-// threads/block (physically, while keeping logical mapping the same), which
-// allows larger # of bytes-in-flight.
-static int CalculateVirtualThreadScalingFactorForReduction(
-    const ReductionDimensions& reduction_dimensions,
-    const se::CudaComputeCapability& cc) {
-  int64_t dimx = reduction_dimensions.dimensions[kDimX];
-  if (reduction_dimensions.is_row_reduction && dimx <= 128) {
-    int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
-    if (cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      return rows_per_warp * 3;
-    }
-    return rows_per_warp * 5;
-  }
-  return 1;
-}
-
 llvm::Type* IrEmitterUnnested::ThreadIdInfo::GEPIntoSharedMemoryType(
     llvm::GlobalVariable* shared,
     absl::Span<llvm::Value* const> idx_major_to_minor) const {
@@ -5140,190 +4716,6 @@ llvm::GlobalVariable* IrEmitterUnnested::AllocateShared(
                                     tiling_scheme.GetThreadIdScalingFactor());
   return llvm_ir::AllocateSharedMemoryTile(b_.GetInsertBlock()->getModule(),
                                            array_type, buffer_name);
-}
-
-// Returns the size of the dtype of the smallest "nontrivial" input to this
-// fusion.
-//
-// We use this as part of the heuristic of choosing our fusion unroll factor.
-// Fusions which read smaller elements (e.g. i8) should unroll more, so that
-// they execute larger coalesced loads.
-static int SmallestInputDtypeBits(mlir::lmhlo::FusionOp fusion) {
-  int bits = std::numeric_limits<int>::max();
-  for (mlir::Value operand : fusion.getInputBuffers()) {
-    bits = std::min(GetPrimitiveBitwidth(operand), bits);
-  }
-  return bits;
-}
-
-// Whether the reduction can be vectorized.
-static bool CanVectorizeReduction(
-    se::CudaComputeCapability cc, const GpuDeviceInfo& gpu_info,
-    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-    const ReductionDimensions& reduction_dimensions, int num_threads_x,
-    Vector3 reduction_tiling, const Shape& input_shape,
-    bool reduction_is_race_free) {
-  if (!reduction_dimensions.is_row_reduction) {
-    return IsUnrollingColumnReductionBeneficial(
-        gpu_info, fusion, fused_computation, input_shape,
-        reduction_dimensions.dimensions[kDimX], reduction_is_race_free);
-  }
-
-  if (reduction_dimensions.dimensions[kDimX] % 2 != 0 ||
-      MayPreventVectorization(fusion)) {
-    return false;
-  }
-
-  // Enabling vectorization if number of threads is <= warpsize leads to half or
-  // more of the threads not doing any work.
-  if (reduction_dimensions.is_row_reduction && num_threads_x <= WarpSize()) {
-    return false;
-  }
-
-  if (cc.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    return true;
-  }
-
-  if (cc.IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
-    return SmallestInputDtypeBits(fusion) <= 32 &&
-           reduction_dimensions.dimensions[kDimX] %
-                   (reduction_tiling[2] * num_threads_x) ==
-               0;
-  }
-  return false;
-}
-
-// Projected shmem usage of reduction fusion.
-static int64_t ProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<HloInstruction*>>& instr_index_groups) {
-  int64_t out = 0;
-  // Different groups are computed in parallel on different blocks, so they are
-  // not sharing the shmem budget. The overall usage is given by the largest
-  // one.
-  for (const std::vector<HloInstruction*>& group : instr_index_groups) {
-    int64_t sum = 0;
-    for (HloInstruction* root : group) {
-      if (IsReductionFromOrToContiguousDimensions(*root)) {
-        sum += SharedMemoryUsage(*root);
-      }
-    }
-    out = std::max(out, sum);
-  }
-  return out;
-}
-
-StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
-    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-    HloInstruction* first_reduce,
-    const std::vector<std::vector<HloInstruction*>>& instr_index_groups) {
-  Shape input_shape = first_reduce->operand(0)->shape();
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(*first_reduce);
-  VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
-           << " " << reduction_dimensions.dimensions[0] << " "
-           << reduction_dimensions.dimensions[1] << " "
-           << reduction_dimensions.dimensions[2];
-  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
-
-  int64_t num_threads_y =
-      reduction_dimensions.is_row_reduction ? 1 : WarpSize();
-  int64_t num_threads_x = [&] {
-    if (reduction_dimensions.is_row_reduction) {
-      if (RowReductionGetRowsPerWarp(reduction_dimensions.dimensions[2]) > 1) {
-        return reduction_dimensions.dimensions[2];
-      }
-      // Use 512 as default block size (threads per block) for row reductions.
-      // For multi-output fusions, reduce the block size further to decrease
-      // register pressure when multiple outputs are computed by each thread.
-      int64_t fan_out = fusion.getFusionRoots().size();
-      int64_t max_block_size =
-          std::max(MinThreadsXRowReduction(),
-                   static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
-      return std::min(max_block_size,
-                      RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
-                                            reduction_tiling[2]),
-                                WarpSize()));
-    }
-    return WarpSize();
-  }();
-
-  se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
-
-  TilingScheme::IndexingOrder indexing_order =
-      reduction_dimensions.is_row_reduction ? kStridedIndexingX
-                                            : kLinearIndexingX;
-  int64_t shmem_usage =
-      ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
-  const int64_t shmem_budget =
-      ir_emitter_context_->gpu_device_info().shared_memory_per_block;
-  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
-  bool vectorize =
-      // Vectorization might cause us to run out of budget.
-      (shmem_usage * 2 <= shmem_budget) &&
-      CanVectorizeReduction(cc, ir_emitter_context_->gpu_device_info(), fusion,
-                            fused_computation, reduction_dimensions,
-                            num_threads_x, reduction_tiling, input_shape,
-                            reduction_is_race_free);
-  int vector_size = vectorize ? 2 : 1;
-
-  int num_partial_results = 1;
-  if (!reduction_dimensions.is_row_reduction && vectorize) {
-    int smallest_input_dtype_bits = SmallestInputDtypeBits(fusion);
-    if (smallest_input_dtype_bits <= 32) {
-      // Make sure to use all the data read at once.
-      // Instead of hardcoding the granularity, we can query the granularity we
-      // need like this:
-      //   size_t granularity = 0;
-      //   CUresult res = cuCtxGetLimit(&granularity,
-      //   CU_LIMIT_MAX_L2_FETCH_GRANULARITY); // 0x05
-      // But we need a context to be active. Which isn't the case here.
-      num_partial_results = std::min(64 / smallest_input_dtype_bits, 8);
-
-      // Limit register presure, PRED dtype is only one bit.
-      num_partial_results = std::min(num_partial_results, 8);
-      // Limit register presure for MOF, but still use a minimum of 2.
-      int64_t fan_out = fusion.getFusionRoots().size();
-      num_partial_results /= fan_out;
-      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
-      // the unroll factor, we should have set this reduction as unvectorized.
-      num_partial_results = std::max(num_partial_results, 2);
-    } else {
-      num_partial_results = 2;
-    }
-  }
-
-  // TODO(b/283542954): Autotune num_partial_results?  This can make a big
-  // difference, e.g. by affecting register spilling.
-
-  // Row reductions use one shmem block per partial result, so we have to make
-  // sure we fit in budget.  Column reductions only ever use one shmem block.
-  // (Indeed I *think* "num_partial_results" is a misnomer for column
-  // reductions; I think it's the number of *complete*, i.e. not partial,
-  // results per warp.)
-  if (reduction_dimensions.is_row_reduction) {
-    while (shmem_usage * num_partial_results > shmem_budget) {
-      num_partial_results /= 2;
-      if (num_partial_results == 1) {
-        break;
-      }
-    }
-  }
-
-  VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
-  reduction_tiling[kDimX] *= num_partial_results;
-
-  Vector3 num_threads = {1, num_threads_y, num_threads_x};
-  int virtual_thread_scaling_factor =
-      CalculateVirtualThreadScalingFactorForReduction(reduction_dimensions, cc);
-  VLOG(2) << "Using virtual thread scaling: " << virtual_thread_scaling_factor;
-
-  TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
-                             num_threads, indexing_order, vector_size,
-                             virtual_thread_scaling_factor);
-  return ReductionCodegenInfo(
-      tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, std::move(instr_index_groups));
 }
 
 // Generate a single element of the tile (update the accumulator state) for a
@@ -5474,133 +4866,21 @@ Status IrEmitterUnnested::EmitIRForReduction(
   return OkStatus();
 }
 
-namespace {
-
-// Divides `num_reduces` reduces into groups. Different groups will be executed
-// in parallel. Generally speaking, we'd like to run the reduce instructions
-// in parallel without incurring too much recomputation overhead. The current
-// heuristic is to place reduce instructions who share nothing or only
-// (broadcasted) scalars/constants into different groups; otherwise, they are
-// placed in the same group. Non-reduce instructions always go with the reduce
-// instructions into the same group so long as they share any predecessors.
-std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
-    HloComputation* fused_computation) {
-  const Shape& root_shape = fused_computation->root_instruction()->shape();
-  int num_fusion_outputs =
-      fused_computation->root_instruction()->opcode() == HloOpcode::kTuple
-          ? root_shape.tuple_shapes_size()
-          : 1;
-  CHECK_NE(0, num_fusion_outputs);
-  if (num_fusion_outputs == 1) {
-    return {{fused_computation->root_instruction()}};
-  }
-
-  std::vector<HloInstruction*> roots = GetFusionRoots(fused_computation);
-  HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;
-
-  // TODO(b/249976438): we currently do not treat properly
-  // aliasing between inputs and outputs of the fusion, so for now put all
-  // non-reduction roots into one group to avoid read-after-write conflicts.
-  HloInstruction* first_non_reduction_root = nullptr;
-
-  for (HloInstruction* root : roots) {
-    disjoint_sets[root].Get() = root;
-    if (!IsReductionFromOrToContiguousDimensions(*root)) {
-      if (!first_non_reduction_root) {
-        first_non_reduction_root = root;
-      } else {
-        disjoint_sets[first_non_reduction_root].Merge(&disjoint_sets[root]);
-      }
-    }
-  }
-
-  std::unique_ptr<HloReachabilityMap> reachability_map =
-      HloReachabilityMap::Build(fused_computation);
-  for (HloInstruction* instr : fused_computation->instructions()) {
-    std::vector<HloInstruction*> reached_output_ids;
-    bool added_to_reduce = false;
-    for (HloInstruction* output : roots) {
-      if (IsReductionFromOrToContiguousDimensions(*output) &&
-          (hlo_query::IsBroadcastedConstantOrScalar(*instr))) {
-        if (added_to_reduce) {
-          // Do not group more than one output reduce instructions through
-          // broadcasted constants or scalars, as the recomputation should be
-          // acceptable.
-          VLOG(3) << "Skip broadcasted constant or scalar "
-                  << instr->ToString();
-          continue;
-        }
-      }
-      // Now group output instructions if they have common predecessors.
-      if (reachability_map->IsReachable(instr, output)) {
-        VLOG(3) << "Reaching " << output->ToString() << " from "
-                << instr->ToString();
-        reached_output_ids.push_back(output);
-        if (IsReductionFromOrToContiguousDimensions(*output)) {
-          added_to_reduce = true;
-        }
-      }
-    }
-    for (size_t j = 1; j < reached_output_ids.size(); ++j) {
-      disjoint_sets[reached_output_ids[0]].Merge(
-          &disjoint_sets[reached_output_ids[j]]);
-    }
-  }
-
-  // Place output instructions in the same set into the same group.
-  HloInstructionMap<std::vector<HloInstruction*>> groups;
-  for (HloInstruction* root : roots) {
-    groups[disjoint_sets[root].Get()].push_back(root);
-  }
-
-  std::vector<std::vector<HloInstruction*>> ret;
-  absl::c_for_each(
-      groups, [&](auto& iter) { ret.emplace_back(std::move(iter.second)); });
-  return ret;
-}
-
-}  // namespace
-
 Status IrEmitterUnnested::EmitUnnestedReduction(
-    mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation) {
-  llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
+    mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
+  TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
+                      fusion_analysis.GetReductionCodegenInfo());
+  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
+                      fusion_analysis.GetLaunchDimensions());
 
-  // Group disjoint reductions in groups, to be executed in parallel.
-  std::vector<std::vector<HloInstruction*>> instr_index_groups =
-      GroupDisjointReductions(fused_computation);
-
-  VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
-                    llvm_ir::DumpToString(fusion));
-
-  // hlo_roots has same ordering as fusion_roots.
-  auto hlo_roots = GetFusionRoots(fused_computation);
-  HloInstruction* first_reduce =
-      *absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
-        return IsReductionFromOrToContiguousDimensions(*instr);
-      });
-
-  // We always use the first reduce as representative to construct
-  // ReductionCodegenInfo, since all the reductions are required to have the
-  // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  TF_ASSIGN_OR_RETURN(
-      ReductionCodegenInfo reduction_codegen_info,
-      ComputeReductionCodegenInfo(fusion, fused_computation, first_reduce,
-                                  instr_index_groups));
-  const TilingScheme& tiling_scheme = reduction_codegen_info.GetTilingScheme();
-
-  // block_y_count is set to instr_index_groups.size(), so that each reduction
-  // group can be run in parallel by a different BlockIdy.
-  LaunchDimensions launch_dimensions(
-      {/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
-       /*y=*/static_cast<int64_t>(instr_index_groups.size()),
-       /*z=*/1},
-      {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(), /*y=*/1, /*z=*/1});
   VLOG(3) << "Launch dimensions of "
           << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc()) << ": "
           << launch_dimensions.ToString();
-  if (!reduction_codegen_info.IsRaceFree()) {
+  if (!reduction_codegen_info->IsRaceFree()) {
+    absl::Span<HloInstruction* const> fusion_roots =
+        fusion_analysis.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      if (IsReductionFromOrToContiguousDimensions(*hlo_roots[i])) {
+      if (IsReductionFromOrToContiguousDimensions(*fusion_roots[i])) {
         TF_RETURN_IF_ERROR(BuildFusedInitializerThunk(fusion, i));
       }
     }
@@ -5616,6 +4896,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
+  const HloComputation* fused_computation = fusion_analysis.fused_computation();
   CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
     llvm_ir::IrArray ir_array = ir_arrays[i];
@@ -5633,7 +4914,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
 
   // Skip all parameter buffers first.
   int ir_arrays_idx = fused_computation->num_parameters();
-  for (HloInstruction* root : hlo_roots) {
+  for (HloInstruction* root : fusion_analysis.fusion_roots()) {
     int get_num_results = GetNumOutputs(root->shape());
     result_ir_arrays[root] =
         absl::MakeSpan(ir_arrays).subspan(ir_arrays_idx, get_num_results);
@@ -5646,6 +4927,10 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
   // block_id_y instead of block_id_x simplifies the index calculation
   // for reduction code generation as the block_id_y is orthogonal to
   // the indices used within the reductions.
+  const std::vector<std::vector<HloInstruction*>>& instr_index_groups =
+      reduction_codegen_info->GetIndexGroups();
+  Shape reduce_operand_shape = reduction_codegen_info->GetReduceOperandShape();
+
   llvm::CallInst* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdy, {}, {}, &b_);
   llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
@@ -5656,7 +4941,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
         b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
           return EmitIRForReduction(
               fusion, instr_index_groups[i], fused_emitter, result_ir_arrays,
-              reduction_codegen_info, first_reduce->operand(0)->shape());
+              *reduction_codegen_info, reduce_operand_shape);
         }));
   }
 

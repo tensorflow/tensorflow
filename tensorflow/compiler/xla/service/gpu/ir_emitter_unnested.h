@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,14 +29,14 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -210,7 +209,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
-  Status EmitLoopFusion(mlir::Operation* op);
+  Status EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
+                        HloFusionAnalysis& fusion_analysis);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
   Status EmitWhile(mlir::Operation* op);
@@ -469,7 +469,7 @@ class IrEmitterUnnested : public IrEmitter {
   // instructions. In other words, a block_id_y is assigned to a group and so
   // different groups can be run in parallel.
   Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion,
-                               HloComputation* fused_computation);
+                               HloFusionAnalysis& fusion_analysis);
 
   // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
   // algorithm to improve the memory access patterns for the input parameters
@@ -496,17 +496,7 @@ class IrEmitterUnnested : public IrEmitter {
   // TODO(b/33320379): Here each block transposes 1 tile. It may be more
   // efficient to launch fewer blocks so each transposes many tiles.
   Status EmitUnnestedTranspose(mlir::lmhlo::FusionOp fusion,
-                               HloComputation* fused_computation);
-
-  // Computes the KernelMappingScheme for the reduce HLO and indicates whether
-  // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
-  // and first_reduce are the same instruction. For a kInput fusion,
-  // unnested_hlo is the fusion instruction while first_reduce is the first
-  // reduce op.
-  StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
-      mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-      HloInstruction* first_reduce,
-      const std::vector<std::vector<HloInstruction*>>& instr_index_groups);
+                               HloFusionAnalysis& fusion_analysis);
 
   // Generates code for input-fusible slices.
   //
@@ -559,7 +549,7 @@ class IrEmitterUnnested : public IrEmitter {
                      const LaunchDimensions& launch_dimensions);
 
   Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
-                           HloComputation* fusion_hlo,
+                           const HloComputation* fusion_hlo,
                            absl::Span<const llvm_ir::IrArray> operand_arrays,
                            absl::Span<const llvm_ir::IrArray> output_arrays,
                            const TilingScheme& tiling_scheme,
