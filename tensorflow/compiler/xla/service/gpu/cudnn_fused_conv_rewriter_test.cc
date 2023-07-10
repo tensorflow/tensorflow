@@ -931,11 +931,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   const std::string module_str = R"(
     HloModule Test
 
@@ -958,7 +953,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  // elu fusion is only active on Ampere+.
+  CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0)};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());

@@ -3171,7 +3171,8 @@ xla_cc_test(
         "no_oss",
         "noasan",
         "nomsan",
-        "requires-gpu-sm70",
+        # This test runs some fusions that are only supported on Ampere+.
+        "requires-gpu-sm80",
     ],
     deps = [
         ":backend_configs_cc",
