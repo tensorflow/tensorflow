@@ -214,7 +214,6 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::RunBackend(
   options.set_xla_gpu_dump_llvmir(false);
   // Avoid using another thread pool.
   options.set_xla_gpu_force_compilation_parallelism(1);
-  options.set_xla_gpu_enable_xla_runtime_executable(false);
   module->config().set_debug_options(options);
   StatusOr<std::unique_ptr<Executable>> out =
       compiler_->RunBackend(std::move(module), &stream_executor_, &allocator_);
