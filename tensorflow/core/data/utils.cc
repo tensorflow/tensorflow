@@ -33,7 +33,5 @@ std::string TranslateFileName(const std::string& fname) { return fname; }
 
 std::string DefaultDataTransferProtocol() { return "grpc"; }
 
-std::string LocalityOptimizedPath(const std::string& path) { return path; }
-
 }  // namespace data
 }  // namespace tensorflow
