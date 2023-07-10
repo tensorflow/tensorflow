@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -31,6 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
@@ -91,6 +94,35 @@ class TritonGemmTest : public GpuCodegenTest {
         .cuda_compute_capability();
   }
 };
+
+TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f16[30,30] parameter(0)
+  p1 = s8[30,30] parameter(1)
+  cp1 = f16[30,30] convert(p1)
+  ROOT _ = f16[30,30] dot(p0, cp1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  std::string output_directory;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
+    output_directory = tsl::testing::TmpDir();
+  }
+  DebugOptions debug_options = verified_module->config().debug_options();
+  debug_options.set_xla_dump_to(output_directory);
+  debug_options.set_xla_gpu_dump_llvmir(true);
+  verified_module->config().set_debug_options(debug_options);
+
+  EXPECT_TRUE(RunAndCompare(std::move(verified_module),
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+
+  std::vector<std::string> paths;
+  TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
+  EXPECT_EQ(paths.size(), 1);
+}
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   const std::string kHloText = R"(

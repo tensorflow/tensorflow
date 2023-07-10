@@ -2725,6 +2725,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     TF_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
+    module->config().set_debug_options(hlo_module_config_.debug_options());
 
     if (is_fusion) {
       HloComputation* fused_computation = module->entry_computation();
