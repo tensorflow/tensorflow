@@ -1836,6 +1836,12 @@ py_strict_library(
 py_strict_library(
     name = "tensor",
     srcs = ["tensor.py"],
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":common_shapes",
         ":dtypes",
