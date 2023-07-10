@@ -1,4 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 # Description: Sparse CSR support for TensorFlow.
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -53,7 +54,7 @@ py_strict_library(
     srcs = ["__init__.py"],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "conjugate_gradient",
     srcs = ["conjugate_gradient.py"],
     deps = [
