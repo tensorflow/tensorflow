@@ -241,9 +241,15 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
 }
 
 // GPU specific resources for latency hiding scheduler.
+//
+// We use two resources to model collective operations: a resource for sending
+// data and a resource for receiving data. All collective operations require
+// both resources while the Send and Recv operations requires only the single
+// resource corresponding to the operation.
 enum class GpuResourceType {
-  kGpuAsyncStream = 0,  // The async stream for collectives.
-  kNumTargetResources = 1,
+  kGpuAsyncStreamSend = 0,  // The resource for sending data.
+  kGpuAsyncStreamRecv = 1,  // The resource for receiving data.
+  kNumTargetResources = 2,
 };
 
 // Base GPU async tracker that enables async tracking only for async collectives
@@ -285,11 +291,20 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
       ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
                                     ? ResourceUsageType::kResourceRelease
                                     : ResourceUsageType::kResourceOccupy;
+      ResourcesVector resources;
+      auto add_resource = [&](GpuResourceType resource_type) {
+        const int64_t gpu_stream_resource = GetFirstTargetDefinedResource() +
+                                            static_cast<int64_t>(resource_type);
+        resources.push_back(std::make_pair(gpu_stream_resource, usage));
+      };
 
-      const int64_t gpu_stream_resource =
-          GetFirstTargetDefinedResource() +
-          static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
-      return {std::make_pair(gpu_stream_resource, usage)};
+      if (op.inner != HloOpcode::kRecv) {
+        add_resource(GpuResourceType::kGpuAsyncStreamSend);
+      }
+      if (op.inner != HloOpcode::kSend) {
+        add_resource(GpuResourceType::kGpuAsyncStreamRecv);
+      }
+      return resources;
     }
     return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
   }
@@ -304,9 +319,9 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     if (resource_type < first_target_resource) {
       return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
     }
-    CHECK_EQ(resource_type,
+    CHECK_LT(resource_type,
              first_target_resource +
-                 static_cast<int64_t>(GpuResourceType::kGpuAsyncStream));
+                 static_cast<int64_t>(GpuResourceType::kNumTargetResources));
 
     // We will allow upto 1 outstanding collective on the async stream. This
     // controls the number of collectives in flight in the schedule (a
@@ -329,8 +344,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
     switch (resource_type - first_target_resource) {
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStream):
-        return "kGpuAsyncStream";
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend):
+        return "kGpuAsyncStreamSend";
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamRecv):
+        return "kGpuAsyncStreamRecv";
       default:
         return "kUnsupportedResource";
     }
