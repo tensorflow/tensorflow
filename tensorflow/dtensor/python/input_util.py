@@ -74,6 +74,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -110,7 +111,7 @@ class _DTensorIterator(iterator_ops.OwnedIterator):
 
   def __init__(
       self,
-      dtensor_components: Tuple[ops.Tensor],
+      dtensor_components: Tuple[tensor.Tensor],
       global_element_spec: tensor_spec.TensorSpec,
       layouts: Any):
     """Initializes a distributed iterator for DTensor datasets.
@@ -283,7 +284,7 @@ def _shard_counts(layout: layout_lib.Layout,
 
 
 def _index_matrix(layout: layout_lib.Layout,
-                  elem_spec: tensor_spec.TensorSpec) -> ops.Tensor:
+                  elem_spec: tensor_spec.TensorSpec) -> tensor.Tensor:
   """Computes a utility matrix to derive device-based slice offsets.
 
   This function builds a matrix of shape `[mesh.rank, layout.rank]` for each

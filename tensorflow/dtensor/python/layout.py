@@ -25,6 +25,7 @@ from tensorflow.dtensor.proto import layout_pb2
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.util.tf_export import tf_export
 
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
@@ -245,7 +246,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return Mesh.from_string, (self.to_string(),)
 
   # TODO(b/242201545): implement this in Mesh C++ class
-  def coords(self, device_idx: int) -> ops.Tensor:
+  def coords(self, device_idx: int) -> tensor.Tensor:
     """Converts the device index into a tensor of mesh coordinates."""
     strides = ops.convert_to_tensor(self.strides)
     shape = ops.convert_to_tensor(self.shape())
