@@ -1603,7 +1603,7 @@ class TritonSoftmaxTest : public GpuCodegenTest {
 };
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1641,7 +1641,7 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32WithShortRows) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1679,7 +1679,7 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitFirstSoftmaxDiamondF16) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f16[] parameter(0)
@@ -1712,7 +1712,7 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF64) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f64[] parameter(0)
@@ -1752,7 +1752,7 @@ ENTRY main {
 TEST_F(
     TritonSoftmaxTest,
     CanFuseAndEmitSoftmaxWithBatchDimMergingAndSplittingBitcastsOnEveryEdge) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1798,7 +1798,7 @@ ENTRY main {
 
 TEST_F(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1827,7 +1827,7 @@ ENTRY main {
 
 TEST_F(TritonSoftmaxTest,
        CanFuseAndEmitSoftmaxWithIntermediateUnaryElementwise) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1868,7 +1868,7 @@ ENTRY main {
 TEST_F(
     TritonSoftmaxTest,
     CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {  // NOLINT(whitespace/line_length)
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1906,7 +1906,7 @@ ENTRY main {
 
 TEST_F(TritonSoftmaxTest,
        CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1935,7 +1935,7 @@ ENTRY main {
 }
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
@@ -1965,7 +1965,7 @@ ENTRY main {
 
 TEST_F(TritonSoftmaxTest,
        CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
-  const std::string& hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
   arg_0 = f32[] parameter(0)
