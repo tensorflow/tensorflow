@@ -12,13 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-<<<<<<< HEAD
-#include <memory>
-#include <optional>
-#include <vector>
-
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include <memory>

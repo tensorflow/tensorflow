@@ -1513,14 +1513,9 @@ cc_library(
     name = "gpu_conv_algorithm_picker",
     srcs = if_gpu_is_configured(["gpu_conv_algorithm_picker.cc"]),
     hdrs = if_gpu_is_configured(["gpu_conv_algorithm_picker.h"]),
-<<<<<<< HEAD
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + 
-            if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
-=======
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "-DTENSORFLOW_USE_ROCM=1",
     ]),
->>>>>>> google_upstream/master
     deps = if_gpu_is_configured([
         ":backend_configs_cc",
         ":gpu_asm_opts_util",
