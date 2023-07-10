@@ -41,7 +41,8 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
   // Outline CUDA-Graph-compatible operations into graph capture functions.
-  pm.addPass(createOutlineCudaGraphsPass(opts.cuda_graph_level));
+  pm.addPass(
+      createOutlineCudaGraphsPass(opts.cuda_graph_level, opts.min_graph_size));
   if (opts.enable_concurrent_region) {
     pm.addPass(createAddConcurrentRegionsPass());
   }
