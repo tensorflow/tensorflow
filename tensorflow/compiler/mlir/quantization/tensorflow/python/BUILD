@@ -5,7 +5,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_cloud",
+    "get_compatible_with_portable",
     "tf_py_test",
     "tf_python_pybind_extension",
 )
@@ -25,7 +25,7 @@ cc_library(
     name = "quantize_model_cc_impl",
     srcs = ["quantize_model.cc"],
     hdrs = ["quantize_model.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         # Directly linked to `libtensorflow_cc.so` or
         # `_pywrap_tensorflow_internal.so` if static build.
@@ -82,7 +82,7 @@ cc_library(
 cc_library(
     name = "quantize_model_cc",
     hdrs = ["quantize_model.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = if_static([":quantize_model_cc_impl"]) + [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

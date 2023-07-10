@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
@@ -36,7 +36,7 @@ cc_library(
     hdrs = [
         "passes/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":fill_quantization_options",
         ":quantization_options_proto_cc",
@@ -63,7 +63,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "bridge_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -89,7 +89,7 @@ cc_library(
     hdrs = [
         "passes/bridge/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
@@ -162,7 +162,7 @@ cc_library(
     hdrs = [
         "quantize_passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [":internal_visibility_allowlist_package"],
     deps = [
         ":fill_quantization_options",
@@ -180,7 +180,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "stablehlo_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -200,7 +200,7 @@ cc_library(
     name = "fill_quantization_options",
     srcs = ["utils/fill_quantization_options.cc"],
     hdrs = ["utils/fill_quantization_options.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
@@ -213,7 +213,7 @@ cc_library(
     name = "math_utils",
     srcs = ["utils/math_utils.cc"],
     hdrs = ["utils/math_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = ["@llvm-project//mlir:Support"],
 )
 

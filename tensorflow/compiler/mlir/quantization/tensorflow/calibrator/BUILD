@@ -5,7 +5,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_cloud",
+    "get_compatible_with_portable",
     "tf_kernel_library",
     "tf_py_strict_test",
 )
@@ -29,7 +29,7 @@ cc_library(
     name = "calibrator_singleton_impl",
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -42,7 +42,7 @@ cc_library(
 cc_library(
     name = "calibrator_singleton",
     hdrs = ["calibrator_singleton.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = if_static([":calibrator_singleton_impl"]) + [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -65,7 +65,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "custom_aggregator_op",
     srcs = ["custom_aggregator_op.cc"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",

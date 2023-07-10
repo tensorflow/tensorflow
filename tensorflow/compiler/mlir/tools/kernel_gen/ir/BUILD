@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,7 +18,7 @@ td_library(
         "tf_framework_ops.td",
         "tf_status.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:AllocationOpInterfaceTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -29,7 +29,7 @@ td_library(
 
 gentbl_cc_library(
     name = "tf_framework_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -55,7 +55,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_status_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-enum-decls"],
