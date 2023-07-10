@@ -208,7 +208,7 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
-            "//third_party/mkl_dnn:onednn_reorder_padded.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder.patch",
         ],
@@ -221,7 +221,7 @@ def _tf_repositories():
         name = "compute_library",
         sha256 = "4c22983f08cbc26a7b66c695ee6850d39ea1346a6c76a902323dd10217df4606",
         strip_prefix = "ComputeLibrary-23.05",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_acl_reorder.patch"],
+        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_reorder.patch"],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.tar.gz"),
     )
 
