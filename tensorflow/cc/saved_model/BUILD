@@ -2,6 +2,7 @@
 #Description:
 # TensorFlow SavedModel.
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -249,7 +250,7 @@ tf_cc_test(
 )
 
 # A subset of the TF2 saved models can be generated with this tool.
-py_binary(
+py_strict_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
     data = [
@@ -259,12 +260,14 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:lookup_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -277,17 +280,18 @@ py_binary(
 
 # copybara:uncomment_begin(google-only)
 #
-# py_binary(
+# py_strict_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
 #     python_version = "PY3",
 #     srcs_version = "PY3",
 #     deps = [
+#         "//third_party/py/numpy",
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
 #         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/lib/io:lib",
 #         "//tensorflow/python/module",
-#         "//tensorflow/python/platform:client_testlib",
 #         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",
 #         "//tensorflow/python/saved_model:save_options",
@@ -295,6 +299,7 @@ py_binary(
 #         "//tensorflow/tools/proto_splitter:constants",
 #         "//tensorflow/tools/proto_splitter/python:saved_model",
 #         "@absl_py//absl:app",
+#         "@absl_py//absl/flags",
 #     ],
 # )
 #
