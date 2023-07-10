@@ -136,6 +136,8 @@ static constexpr int kSparseTensorNum = 3;
 
 // Attribute which stores the environment variable value for all_reduce
 // optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+// This represents the maximum number of AllReduce ops to merge into one op. It
+// is a determining factor used during dtensor_allreduce_combine_optimization.
 static constexpr char kAllReduceNumOpsInGroup[] =
     "dtensor.all_reduce_combiner.num_ops_in_group";
 
@@ -143,6 +145,14 @@ static constexpr char kAllReduceNumOpsInGroup[] =
 // multi-device expansion is enabled: DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION.
 static constexpr char kEnableMultiDeviceMode[] =
     "dtensor.enable_multi_device_mode";
+
+// Attribute which stores the environment variable value for all_reduce
+// optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+// This represents the maximum distance between two AllReduce on the compute
+// graph in terms of topological level. It is a determining factor used during
+// dtensor_allreduce_combine_optimization.
+static constexpr char kAllReduceTopologicalDistance[] =
+    "dtensor.all_reduce_combiner.topological_distance";
 
 }  // namespace dtensor
 }  // namespace tensorflow
