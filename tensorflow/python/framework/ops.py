@@ -234,8 +234,6 @@ def value_text(tensor, is_repr=False):
   return text
 
 
-enable_tensor_equality = tensor_lib.enable_tensor_equality
-disable_tensor_equality = tensor_lib.disable_tensor_equality
 Tensor = tensor_lib.Tensor
 
 
