@@ -16,6 +16,6 @@ def repo():
         # For temporary changes which haven't landed upstream yet.
         patch_file = [
             "//third_party/triton:cl536931041.patch",
-            "//third_party/triton:cl545371535.patch",
+            "//third_party/triton:cl545644269.patch",
         ],
     )
