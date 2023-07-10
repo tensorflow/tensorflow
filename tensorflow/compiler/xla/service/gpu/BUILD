@@ -2945,6 +2945,7 @@ cc_library(
     name = "gpu_asm_opts_util",
     srcs = ["gpu_asm_opts_util.cc"],
     hdrs = ["gpu_asm_opts_util.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = tsl_copts(),
     deps = [
         "//tensorflow/compiler/xla:xla_proto_cc",
