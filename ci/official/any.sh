@@ -23,7 +23,9 @@ fi
 
 if [[ "${PIP_WHEEL}" -eq "1" ]]; then
   # Update the version numbers to build a "nightly" package
-  [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]] && tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
+    tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  fi
 
   tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" tensorflow/tools/pip_package:build_pip_package
   tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package build "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"
