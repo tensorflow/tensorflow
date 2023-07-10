@@ -94,7 +94,8 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
   ENTRY test_computation {
     p = u32[] replica-id()
     start = (u32[], u32[]) collective-permute-start(p),
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
+      metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     ROOT done = u32[] collective-permute-done(start)
   }
   )";
@@ -105,6 +106,12 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
 
+  auto check_metadata = [](const HloInstruction* inst) {
+    EXPECT_EQ(inst->metadata().op_name(), "op1/op2/add");
+    EXPECT_EQ(inst->metadata().source_file(), "foo/bar/mysource.py");
+    EXPECT_EQ(inst->metadata().source_line(), 35);
+  };
+
   HloInstruction* after_all = FindInstruction(module.get(), "after-all");
   HloInstruction* recv = FindInstruction(module.get(), "recv");
   EXPECT_EQ(recv->operand(0), after_all);
@@ -113,6 +120,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
       recv->ToString(),
       HasSubstr(
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+  check_metadata(recv);
   HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
   EXPECT_EQ(recv_done->operand(0), recv);
 
@@ -124,6 +132,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
       send->ToString(),
       HasSubstr(
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+  check_metadata(send);
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
   EXPECT_EQ(send_done->operand(0), send);
   EXPECT_EQ(send_done->control_predecessors()[0], recv_done);
