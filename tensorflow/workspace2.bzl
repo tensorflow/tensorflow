@@ -219,10 +219,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "4c22983f08cbc26a7b66c695ee6850d39ea1346a6c76a902323dd10217df4606",
-        strip_prefix = "ComputeLibrary-23.05",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_reorder.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.tar.gz"),
+        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
+        strip_prefix = "ComputeLibrary-23.05.1",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
     )
 
     tf_http_archive(

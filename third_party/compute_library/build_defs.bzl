@@ -15,6 +15,6 @@ def acl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "@org_tensorflow//third_party/compute_library:build_with_acl": ["@compute_library//:arm_compute_core"],
+        "@org_tensorflow//third_party/compute_library:build_with_acl": ["@compute_library//:arm_compute"],
         "//conditions:default": [],
     })
