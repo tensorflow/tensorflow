@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -131,7 +131,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
 #endif  // !ENABLE_ONEDNN_V3
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -416,7 +416,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
 
   struct BatchNormFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -542,7 +542,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                U* diff_scale_data, U* diff_shift_data, U* res_space_data,
 #endif  // !ENABLE_ONEDNN_V3
                std::shared_ptr<stream> bwd_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -765,7 +765,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
   struct BatchNormBwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };

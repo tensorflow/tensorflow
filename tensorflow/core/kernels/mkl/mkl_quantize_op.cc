@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -111,7 +111,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
                void* scale_data,
 #endif  // ENABLE_ONEDNN_V3
                std::shared_ptr<stream> reorder_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -202,7 +202,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 #endif  // ENABLE_ONEDNN_V3
   }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
