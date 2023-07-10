@@ -2588,7 +2588,7 @@ void Model::RecordIteratorGapTime(uint64_t duration_usec) {
 
 double Model::ComputeTargetTimeNsec() {
   tf_shared_lock l(gap_mu_);
-  if (gap_times_usec_.empty()) {
+  if (gap_times_usec_.size() < kGapTimeWindow) {
     return 0.0;
   }
   double target_time_sigmas = 0.0;
@@ -2599,6 +2599,22 @@ double Model::ComputeTargetTimeNsec() {
                               kOutlierSigmas, target_time_sigmas)
              .GetTargetTimeUsec() *
          1.0e3;
+}
+
+double Model::ComputeProcessingTimeNsec() const {
+  const std::shared_ptr<Node> root = output();
+  if (root == nullptr) {
+    return 0.0;
+  }
+
+  ModelTiming model_timing(root);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  StatusOr<std::pair<double, Node*>> critical_root_status =
+      priority_queue.PopSlowestStageRoot();
+  if (!critical_root_status.ok()) {
+    return 0.0;
+  }
+  return critical_root_status->first;
 }
 
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -771,6 +772,27 @@ ENTRY e {
       tsl::testing::StatusIs(tsl::error::CANCELLED,
                              "Contracting dimension is too fragmented."));
 }
+
+TEST_F(GemmRewriterTritonTest, HandleDotIfCublasRequiresPadding) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[5,3] parameter(0)
+  p1 = f16[5,7] parameter(1)
+  ROOT d = f16[3,7] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::VOLTA, 0};
+  EXPECT_TRUE(CublasRequiresPadding(
+      *xla::Cast<HloDotInstruction>(
+          module->entry_computation()->root_instruction()),
+      cc));
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

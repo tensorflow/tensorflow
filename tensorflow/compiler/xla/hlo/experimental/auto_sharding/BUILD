@@ -183,6 +183,7 @@ xla_cc_test(
     srcs = ["auto_sharding_solver_test.cc"],
     deps = [
         ":auto_sharding_solver",
+        ":auto_sharding_strategy",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
     ],

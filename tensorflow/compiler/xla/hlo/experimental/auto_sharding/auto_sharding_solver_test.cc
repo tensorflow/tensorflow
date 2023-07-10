@@ -12,11 +12,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 
 namespace xla {
 namespace spmd {
@@ -63,7 +65,55 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   request.v = {{0, 1, 1,
                 1, 0, 1,
                 1, 1, 0}};
+  request.instruction_names = {"A", "B", "C", "D", "E"};
   return request;
+}
+
+TEST(CallORToolsSolverTest, SolvesOptimally) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<int64_t> chosen_strategy = {0, 0, 0, 0, 0};
+  const std::vector<int64_t> e_val = {0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, AvoidsInfiniteNodeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.c[0][0] = request.c[0][1] = request.c[0][2] = kInfinityCost;
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<int64_t> chosen_strategy = {3, 0, 0, 0, 0};
+  const std::vector<int64_t> e_val = {12, 0};
+  const double objective_value = 10683.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, AvoidsInfiniteEdgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.r[0][0] = kInfinityCost;
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<int64_t> chosen_strategy = {0, 0, 1, 1, 0};
+  const std::vector<int64_t> e_val = {1, 1};
+  const double objective_value = 7872.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+  EXPECT_EQ(result, expected_result);
 }
 
 TEST(AutoShardingEvaluatorTest, NoViolations) {
@@ -83,6 +133,10 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
   expected_evaluation.total_communication_cost = 1590.0;  // 130+210+320+420+510
   expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
   expected_evaluation.total_cost = 12149.0;  // 159+1590+10400
+  expected_evaluation.lower_bound_computation_cost = 150.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7650.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -104,6 +158,10 @@ TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
   expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+410+510
   expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
   expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
+  expected_evaluation.lower_bound_computation_cost = 150.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7650.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -125,6 +183,10 @@ TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
   expected_evaluation.total_communication_cost = 1580.0;  // 130+210+320+420+500
   expected_evaluation.total_resharding_cost = 10400.0;  // 4200+6200
   expected_evaluation.total_cost = 12138.0;  // 158+1580+10400
+  expected_evaluation.lower_bound_computation_cost = 150.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7650.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
@@ -146,7 +208,91 @@ TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
   expected_evaluation.total_communication_cost = 1580.0;  // 120+210+320+420+510
   expected_evaluation.total_resharding_cost = 9400.0;  // 3200+6200
   expected_evaluation.total_cost = 11138.0;  // 158+1580+9400
+  expected_evaluation.lower_bound_computation_cost = 150.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7650.0;
   EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForNode) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.c[0][0] = request.c[0][1] = request.c[0][2] = kInfinityCost;
+  const std::vector<int64_t> chosen_strategy = {0 /* violates */, 1, 2, 2, 1};
+  const std::vector<int64_t> e_val = {2, 6};
+  const double objective_value = 1e+20;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kInfiniteCostViolationCode};
+  expected_evaluation.total_computation_cost = 1e+20;  // infinite cost
+  expected_evaluation.total_communication_cost = 1560.0;  // 100+210+320+420+510
+  expected_evaluation.total_resharding_cost = 7400.0;  // 1200+6200
+  expected_evaluation.total_cost = 1e+20;  // infinite cost
+  expected_evaluation.lower_bound_computation_cost = 153.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7653.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForEdge) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.r[0][2] = kInfinityCost;
+  const std::vector<int64_t> chosen_strategy = {0, 1, 2, 2, 1};
+  const std::vector<int64_t> e_val = {2 /* violates */, 6};
+  const double objective_value = 1e+20;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+
+  const AutoShardingEvaluation evaluation = Evaluate(request, result);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kInfiniteCostViolationCode};
+  expected_evaluation.total_computation_cost = 156.0;  // 10+21+32+42+51
+  expected_evaluation.total_communication_cost = 1560.0;  // 100+210+320+420+510
+  expected_evaluation.total_resharding_cost = 1e+20;  // infinite cost
+  expected_evaluation.total_cost = 1e+20;  // infinite cost
+  expected_evaluation.lower_bound_computation_cost = 150.0;
+  expected_evaluation.lower_bound_communication_cost = 1500.0;
+  expected_evaluation.lower_bound_resharding_cost = 6000.0;
+  expected_evaluation.lower_bound_cost = 7650.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingRationalizerTest, RationalizesProperly) {
+  const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<int64_t> chosen_strategy = {0, 1, 2, 2, 1};
+  const std::vector<int64_t> e_val = {2, 6};
+  const double objective_value = 9116.0;
+  const AutoShardingSolverResult result = {
+      std::make_tuple(
+          std::move(chosen_strategy), std::move(e_val), objective_value),
+      false};
+  const std::vector<int64_t> subopt_strategy = {3, 1, 2, 2, 1};
+  const std::vector<int64_t> subopt_val = {14, 6};
+  const double subopt_value = 12149.0;
+  const AutoShardingSolverResult subopt = {
+      std::make_tuple(
+          std::move(subopt_strategy), std::move(subopt_val), subopt_value),
+      false};
+
+  const std::vector<std::string> rationales =
+      Rationalize(request, result, subopt);
+
+  const std::vector<std::string> expected_rationales = {
+      "strategy changes for A (0 -> 3)",
+      "communication cost increases for A (100 -> 130)",
+      "computation cost increases for A (10 -> 13)",
+      "resharding cost increases for A and C (1200 -> 4200)"};
+  EXPECT_EQ(rationales, expected_rationales);
 }
 
 // clang-format on

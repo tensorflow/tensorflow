@@ -1,6 +1,6 @@
 // RUN: dtensor-opt -- %s -split-input-file -dtensor-annotate-global-shape -dtensor-spmd-expansion -verify-diagnostics | FileCheck %s
 
-module @test_spmd {
+module @test_spmd_expect_error_no_layout {
 func.func @main() {
   %0 = "tf_device.cluster"() ({
     %1 = "tf.A"() : () -> tensor<i32>
@@ -97,8 +97,8 @@ func.func @main(
 // -----
 
 // Check tf.Neg Op SPMD.
-// CHECK-LABEL: module @test_spmd_neg_op
-module @test_spmd_neg_op {
+// CHECK-LABEL: module @test_spmd_neg_op_x_y
+module @test_spmd_neg_op_x_y {
 func.func @main(
   %arg0: tensor<2x2xi32> { tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|*TPU"}) {
   // CHECK:        "tf_device.cluster"
@@ -116,8 +116,8 @@ func.func @main(
 // -----
 
 // Check replicated tf.Const op SPMD.
-// CHECK-LABEL: module @test_spmd_const_op
-module @test_spmd_const_op {
+// CHECK-LABEL: module @test_spmd_const_op_unsharded
+module @test_spmd_const_op_unsharded {
 func.func @main(%arg0: tensor<i32>) {
   // CHECK:        "tf_device.cluster"
   // CHECK-NEXT:      %[[A_OUT:.*]] = "tf.Const"
@@ -307,8 +307,8 @@ func.func @main(%arg0: tensor<32x32xf32> { tf._layout = "sharding_specs:x,unshar
 // -----
 
 // Check SPMD expansion of SoftMax op.
-// CHECK-LABEL: module @test_spmd_softmax
-module @test_spmd_softmax {
+// CHECK-LABEL: module @test_spmd_log_softmax
+module @test_spmd_log_softmax {
 func.func @main(%arg0: tensor<32x32x32xf32> { tf._layout = "sharding_specs:x,y,unsharded, mesh:TPU|x=2,y=2,z=2|*TPU"}) {
   // CHECK:        "tf_device.cluster"
   // CHECK-NEXT:     "tf.LogSoftmax"
@@ -483,8 +483,8 @@ func.func @main(%arg0: tensor<i32>) {
 }
 }
 // -----
-// CHECK-LABEL: module @test_spmd_neg_op1
-module @test_spmd_neg_op1 {
+// CHECK-LABEL: module @test_spmd_neg_op_unsharded
+module @test_spmd_neg_op_unsharded {
 // CHECK: func @main
 // CHECK-SAME: %[[ARG0:[a-z0-9]*]]: tensor<i32>
 // CHECK-SAME: %[[ARG1:[a-z0-9]*]]: tensor<2x2xf32>
@@ -587,8 +587,8 @@ func.func @main(
 // Check SPMD expansion of Cumsum op with sharding on axis dimension, should
 // produce a replicated layout on that axis dimension, with allgather and
 // allscatter for intermediate layout computation.
-// CHECK-LABEL: module @test_spmd_cumsum_op
-module @test_spmd_cumsum_op {
+// CHECK-LABEL: module @test_spmd_cumsum_op_sharded
+module @test_spmd_cumsum_op_sharded {
 // CHECK: func @main
 func.func @main(%arg0: tensor<32x32xf32> { tf._layout = "sharding_specs:x,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"}) {
   // CHECK:        "tf_device.cluster"
@@ -805,7 +805,7 @@ func.func @main(%arg0: tensor<2x4x4xi32> {tf._layout = "sharding_specs:unsharded
 // -----
 
 // Check stateful random operations raise error.
-module @test_spmd_error_on_stateful_random_op {
+module @test_spmd_error_on_stateful_random_uniform_op {
 func.func @main(
   %arg0: tensor<2xi32> { tf._layout = "sharding_specs:unsharded, mesh:CPU|x=2,y=2|*CPU"}) {
   %0 = "tf_device.cluster"() ({
@@ -821,7 +821,7 @@ func.func @main(
 // -----
 
 // Check stateful random operations raise error.
-module @test_spmd_error_on_stateful_random_op1 {
+module @test_spmd_error_on_stateful_random_uniform_int_op {
 func.func @main(
   %arg0: tensor<2xi32> { tf._layout = "sharding_specs:unsharded, mesh:CPU|x=2,y=2|*CPU"},
   %arg1: tensor<1xi32> { tf._layout = "sharding_specs:unsharded, mesh:CPU|x=2,y=2|*CPU"},

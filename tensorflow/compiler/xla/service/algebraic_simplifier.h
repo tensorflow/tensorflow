@@ -221,6 +221,18 @@ class AlgebraicSimplifierOptions {
   bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
   void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
 
+  // When true, always replaces Reduce(concat({a,b,...})) with
+  // map(reduce(a),map(reduce(b),...,)). If false, only does the replacement if
+  // the shapes of a,b,... have the same dimensions.
+  bool enable_unconditional_reduce_of_concat_replacement() const {
+    return enable_unconditional_reduce_of_concat_replacement_;
+  }
+  void set_enable_unconditional_reduce_of_concat_replacement(
+      bool enable_unconditional_reduce_of_concat_replacement) {
+    enable_unconditional_reduce_of_concat_replacement_ =
+        enable_unconditional_reduce_of_concat_replacement;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -251,6 +263,7 @@ class AlgebraicSimplifierOptions {
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
+  bool enable_unconditional_reduce_of_concat_replacement_{true};
   bool use_associative_reordering_{false};
   double associative_reordering_threshold_{2.0};
   Metadata metadata_;

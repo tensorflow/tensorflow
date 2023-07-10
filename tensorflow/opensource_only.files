@@ -173,6 +173,7 @@ tensorflow/tools/toolchains/cpus/py/BUILD:
 tensorflow/tools/toolchains/cpus/py3/BUILD:
 tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tensorflow/tools/toolchains/java/BUILD:
+tensorflow/tools/toolchains/python/BUILD:
 tensorflow/tools/toolchains/remote/BUILD:
 tensorflow/tools/toolchains/remote_config/BUILD:
 tensorflow/tools/toolchains/win/BUILD:
@@ -298,6 +299,13 @@ third_party/py/BUILD.tpl:
 third_party/py/BUILD:
 third_party/py/ml_dtypes/BUILD:
 third_party/py/ml_dtypes/LICENSE:
+third_party/py/non_hermetic/BUILD.tpl:
+third_party/py/non_hermetic/BUILD:
+third_party/py/non_hermetic/README:
+third_party/py/non_hermetic/ml_dtypes/BUILD:
+third_party/py/non_hermetic/ml_dtypes/LICENSE:
+third_party/py/non_hermetic/numpy/BUILD:
+third_party/py/non_hermetic/python_configure.bzl:
 third_party/py/numpy/BUILD:
 third_party/py/python_configure.bzl:
 third_party/pybind11.BUILD:

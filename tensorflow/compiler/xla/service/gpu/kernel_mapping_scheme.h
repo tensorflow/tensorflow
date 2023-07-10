@@ -172,12 +172,14 @@ class ReductionCodegenInfo {
 
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,
-                                bool is_race_free, IndexGroups index_groups)
+                                bool is_race_free, IndexGroups index_groups,
+                                HloInstruction* first_reduce)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
         is_race_free_(is_race_free),
-        index_groups_(std::move(index_groups)) {
+        index_groups_(std::move(index_groups)),
+        first_reduce_(first_reduce) {
     if (num_partial_results > 1) {
       CHECK_EQ(num_partial_results,
                mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
@@ -186,6 +188,9 @@ class ReductionCodegenInfo {
 
   const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
   const IndexGroups& GetIndexGroups() const { return index_groups_; }
+  Shape GetReduceOperandShape() const {
+    return first_reduce_->operand(0)->shape();
+  }
 
   int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRaceFree() const { return is_race_free_; }
@@ -198,6 +203,7 @@ class ReductionCodegenInfo {
   bool is_row_reduction_;
   bool is_race_free_;
   IndexGroups index_groups_;
+  HloInstruction* first_reduce_;
 };
 
 class ReductionCodegenState {

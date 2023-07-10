@@ -18,6 +18,8 @@ from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as pywrap_fingerprinting
 
+is_oss = True  # Updated by copybara.
+
 
 class FingerprintingTest(test.TestCase):
   def test_create_fingerprint_def(self):
@@ -67,6 +69,18 @@ class FingerprintingTest(test.TestCase):
         fingerprint.signature_def_hash,
         fingerprint.saved_object_graph_hash,
         fingerprint.checkpoint_hash)
+    # checkpoint_hash is non-deterministic and not included
+    self.assertRegex(singleprint,
+                     "/".join([
+                         "706963557435316516",  # graph_def_program_hash
+                         "5693392539583495303",  # signature_def_hash
+                         "12074714563970609759",  # saved_object_graph_hash
+                         ]))
+
+  def test_read_saved_model_singleprint_from_sm(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
+    singleprint = pywrap_fingerprinting.SingleprintFromSM(export_dir)
     # checkpoint_hash is non-deterministic and not included
     self.assertRegex(singleprint,
                      "/".join([

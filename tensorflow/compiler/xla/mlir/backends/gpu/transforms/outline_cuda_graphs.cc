@@ -334,7 +334,7 @@ static LogicalResult Outline(unsigned ordinal,
   });
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   int32_t graph_capture_threshold =
-      debug_options.xla_gpu_cuda_graph_capture_threshold();
+      debug_options.xla_gpu_cuda_graph_min_graph_size();
   if (num_move_captures < graph_capture_threshold) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();

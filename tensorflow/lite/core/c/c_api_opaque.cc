@@ -407,6 +407,16 @@ TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
   return subgraph->MarkSubgraphAsDelegationSkippable(subgraph_index);
 }
 
+TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+    const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size) {
+  auto* subgraph = GetSubgraph(context);
+  return subgraph->GetNodeInitDataMmapInfo(Convert(node), fd,
+                                           custom_initial_data_offset_in_file,
+                                           custom_initial_data_size);
+}
+
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...) {
   va_list vlist;

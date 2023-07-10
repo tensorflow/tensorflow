@@ -164,13 +164,12 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
   }
-  return PjRtArray::Create(
-      client, dtype, std::move(shape),
-      ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(devices)),
-          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-              std::move(shapes))),
-      std::move(pjrt_buffers));
+  auto sharding =
+      ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),
+                                     /*shape=*/shape,
+                                     /*shard_shapes=*/shapes);
+  return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
+                           std::move(pjrt_buffers));
 }
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,

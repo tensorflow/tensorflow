@@ -85,6 +85,15 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   OP_REQUIRES_OK(c, c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
   OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
 
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_batch_size",
+                               &low_priority_max_batch_size_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_batch_timeout_micros",
+                               &low_priority_batch_timeout_micros_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_allowed_batch_sizes",
+                               &low_priority_allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
+                               &low_priority_max_enqueued_batches_));
+
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).

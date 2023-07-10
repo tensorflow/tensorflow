@@ -60,7 +60,6 @@ void AddQuantizeQatPasses(
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -103,7 +102,6 @@ void AddQuantizeQatPasses(
 void AddQuantizePtqDynamicRangePasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -145,7 +143,6 @@ void AddQuantizePtqDynamicRangePasses(
 
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());

@@ -42,6 +42,14 @@ def DTensorConstantFolding
   ];
 }
 
+def DTensorCollectiveTypeLoweringPass
+    : Pass<"dtensor-collective-type-lowering", "mlir::func::FuncOp"> {
+  let summary = "Lowers collectives from unsupported types (e.g. complex) to supported types.";
+  let constructor = "CreateDTensorCollectiveTypeLoweringPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorAllReduceSumOptimization
     : Pass<"dtensor-allreduce-sum-optimization", "mlir::func::FuncOp"> {
   let summary = "Changes order of add/allreduce to minimize all reduce operations.";
@@ -243,38 +251,6 @@ def DTensorUpdateTPUMetadata
     : Pass<"dtensor-update-tpu-metadata", "mlir::ModuleOp"> {
   let summary = "Changes metadata on TPU specific ops such as device placement.";
   let constructor = "CreateDTensorUpdateTPUMetadata()";
-  let dependentDialects = [
-  ];
-}
-
-def DTensorEmbedding
-    : Pass<"dtensor-embedding", "mlir::ModuleOp"> {
-  let summary = "Extracts the ApplyEmbeddingOptimizer and checks if the attached optimizer is usable for TPU embeddings.";
-  let constructor = "CreateDTensorEmbeddingPass()";
-  let dependentDialects = [
-    "::mlir::chlo::ChloDialect",
-    "::mlir::memref::MemRefDialect",
-    "::mlir::mhlo::MhloDialect",
-    "::mlir::shape::ShapeDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::tensor::TensorDialect",
-    "::mlir::sparse_tensor::SparseTensorDialect",
-    "::mlir::quant::QuantizationDialect",
-  ];
-}
-
-def DTensorEmbeddingV2
-    : Pass<"dtensor-embedding-v2", "mlir::ModuleOp"> {
-  let summary = "Embedding Pass";
-  let constructor = "CreateDTensorEmbeddingPassV2()";
-  let dependentDialects = [
-  ];
-}
-
-def DTensorEmbeddingCheckpoint
-    : Pass<"dtensor-embedding-checkpoint", "mlir::ModuleOp"> {
-  let summary = "Checkpoint pass to save or load TPU embeddings variables.";
-  let constructor = "CreateDTensorEmbeddingCheckpointPass()";
   let dependentDialects = [
   ];
 }

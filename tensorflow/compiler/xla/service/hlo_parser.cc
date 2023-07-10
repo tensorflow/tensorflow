@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1326,8 +1325,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseInt64(&parameter_number)) {
         return nullptr;
       }
+      const LocTy loc = lexer_.GetLoc();
       if (parameter_number < 0) {
-        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        Error(loc, "parameter number must be >= 0");
         return nullptr;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
@@ -1335,8 +1335,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       std::string param_name(name);
-      return builder->AddInstruction(HloInstruction::CreateParameter(
+      auto result = builder->AddParameter(HloInstruction::CreateParameter(
           parameter_number, *shape, param_name));
+      if (!result.ok()) {
+        Error(loc, result.status().message());
+        return nullptr;
+      }
+      return result.value();
     }
     case HloOpcode::kConstant: {
       Literal literal;
@@ -5766,6 +5771,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
+  optional<bool> preserve_layout;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -5774,6 +5780,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
                                 &deduplicated_name};
+  attrs["preserve_layout"] = {/*required=*/false, AttrTy::kBool,
+                              &preserve_layout};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5799,6 +5807,11 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (deduplicated_name) {
     metadata->set_deduplicated_name(*deduplicated_name);
+  }
+  if (preserve_layout) {
+    metadata->set_preserve_layout(*preserve_layout);
+  } else {
+    metadata->set_preserve_layout(false);
   }
   return true;
 }

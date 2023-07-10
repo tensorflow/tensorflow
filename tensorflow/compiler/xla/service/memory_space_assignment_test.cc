@@ -6644,6 +6644,77 @@ ENTRY entry {
               op::Tuple(op::Fusion(op::Parameter()), op::Negate()));
 }
 
+TEST_P(MemorySpaceAssignmentTest, InefficientAllocationLivelockBug) {
+  // This is a carefully crafted test where two in-place operations on the same
+  // buffer (fusion.1 and fusion.2) have a single very long executing operation
+  // between them. This test deliberately sets a very low transcendentals per
+  // second value to ensure the tanh op takes longer than what is allowed for a
+  // no-copy allocation. A quirk of the prefetch interval picker allows a
+  // prefetch to be scheduled during this tanh operation even though a no-copy
+  // allocation isn't allowed. Because of this, the first time this buffer is
+  // allocated, fusion.1 will be put in the alternate memory, but not fusion.2
+  // because tanh executes for too long to allow a no-copy allocation. Then, we
+  // check for inefficient allocations, and consider fusion.1 to be inefficient,
+  // and add a required assignment in default memory for fusion.1 and
+  // reallocate. When we reallocate, we aren't allowed to prefetch into
+  // fusion.1, but fusion.2 succeeds. We then find fusion.2 to be inefficient,
+  // so we throw away the required assignment on fusion.1 and reallocate.
+  // Without the appropriate fix, this will go on forever, causing a livelock.
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation_1 {
+  param0 = f32[5,4] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[5,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[5,4] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+fused_computation_2 {
+  param0 = f32[5,4] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[5,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[5,4] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+ENTRY entry {
+  p0 = f32[5,4] parameter(0)
+  p1 = pred[] parameter(1)
+  p2 = f32[2,3] parameter(2)
+  neg0 = f32[2,3] negate(p2)
+  neg1 = f32[2,3] negate(neg0)
+  neg2 = f32[2,3] negate(neg1)
+  neg3 = f32[2,3] negate(neg2)
+  neg4 = f32[2,3] negate(neg3)
+  neg5 = f32[2,3] negate(neg4)
+  neg6 = f32[2,3] negate(neg5)
+  neg7 = f32[2,3] negate(neg6)
+  fusion.1 = f32[5,4] fusion(p0), kind=kLoop, calls=fused_computation_1
+  tanh = f32[2,3] tanh(neg7)
+  fusion.2 = f32[5,4] fusion(fusion.1), kind=kLoop, calls=fused_computation_2
+  neg8 = f32[2,3] negate(tanh)
+  neg9 = f32[2,3] negate(neg8)
+  neg10 = f32[2,3] negate(neg0)
+  neg11 = f32[2,3] negate(neg10)
+  neg12 = f32[2,3] negate(neg11)
+  ROOT tuple = (f32[5,4], f32[2,3]) tuple(fusion.2, neg12)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = false;
+  options.inefficient_use_to_copy_ratio = 0.5;
+  HloCostAnalysis::Options cost_options = DefaultHloCostAnalysisOptions();
+  cost_options.set_transcendentals_per_second(0.4);
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options, cost_options);
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));

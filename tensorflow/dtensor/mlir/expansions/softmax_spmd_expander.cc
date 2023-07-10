@@ -330,6 +330,8 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
     mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto logits_layout,
                       ExtractLayoutFromOperand(op->getOperand(0)));
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
 
   if (!logits_layout) {
     return errors::InvalidArgument("Failed during SPMD expansion of ",
@@ -358,8 +360,6 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
 
   // Add a final Relayout in case the output layout is not the same as the
   // layout of input logits.
-  TF_ASSIGN_OR_RETURN(const Layout output_layout,
-                      ExtractRequiredSingleLayoutFromOp(op));
   llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
   auto final_result = EmitRelayout(softmax_result, *logits_layout,
                                    output_layout, &newly_created_ops);

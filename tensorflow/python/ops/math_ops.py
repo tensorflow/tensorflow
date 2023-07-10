@@ -1429,7 +1429,7 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   """
   if not tensors:
     return tensors
-  if not ops._numpy_style_type_promotion:
+  if not ops.is_numpy_style_type_promotion():
     if not force_same_dtype:
       return tensors
     promoted_tensors = []
@@ -3913,7 +3913,7 @@ def matvec(a,
 # TODO(b/178650720): Also support numpy-style type promotion in freestanding TF
 #   functions (e.g. tf.add).
 def matmul_wrapper(a, b, name=None):  # pylint: disable=missing-function-docstring
-  if ops._numpy_style_type_promotion:
+  if ops.is_numpy_style_type_promotion():
     return a._matmul(b)
   return matmul(a, b, name=name)
 matmul_wrapper.__doc__ = matmul.__doc__

@@ -192,6 +192,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nomsan",  # TODO(b/290211396)
     ],
     deps = [
         ":cluster_coordinator",

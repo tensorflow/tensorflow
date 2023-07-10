@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -70,14 +71,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
  public:
   GpuPriorityFusionQueue(
       HloComputation* computation, const GpuDeviceInfo& d,
-      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      GpuHloCostAnalysis* cost_analysis,
       const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
       : computation_(computation),
         gpu_device_info_(d),
-        cost_analysis_(cost_analysis_options),
+        cost_analysis_(cost_analysis),
         can_fuse_(can_fuse) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+    TF_CHECK_OK(computation_->Accept(cost_analysis_));
 
     // Initializes the priority queue.
     for (auto instruction : computation->MakeInstructionPostOrder()) {
@@ -103,11 +104,17 @@ class GpuPriorityFusionQueue : public FusionQueue {
         return {};
       }
       auto next_it = std::prev(producer_priority_queue_.end());
+      auto priority = next_it->first.first;
 
       current_producer_ = next_it->second;
       producer_priority_queue_.erase(next_it);
       reverse_map_.erase(current_producer_);
 
+      // If the priority is negative, it's not helpful to perform fusion on this
+      // instruction.
+      if (priority < 0) {
+        continue;
+      }
       current_consumers_ = GetFusibleUsers(current_producer_);
     }
 
@@ -177,7 +184,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       // Revisit costs of all updated ops. It's important to update cost
       // analysis before recalculating priorities.
       for (auto instruction : to_update_priority_) {
-        TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
+        TF_CHECK_OK(cost_analysis_->RevisitInstruction(instruction));
       }
 
       for (auto instruction : to_update_priority_) {
@@ -224,12 +231,23 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
     std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
+    bool use_experimental_block_size =
+        producer->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_enable_experimental_block_size();
 
-    GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-        producer, &cost_analysis_, gpu_device_info_, std::nullopt,
-        fusible_users, /*multi_output=*/false);
+    // Don't bother computing cost for non-fusible ops.
+    if (fusible_users.empty()) {
+      return std::numeric_limits<Priority>::min();
+    }
 
-    return absl::ToInt64Nanoseconds(t.time_unfused - t.time_fused);
+    GpuPerformanceModel::RunTimes run_times =
+        GpuPerformanceModel::EstimateRunTimes(
+            producer, cost_analysis_, gpu_device_info_,
+            use_experimental_block_size, std::nullopt, fusible_users);
+    return absl::ToInt64Nanoseconds(run_times.time_unfused -
+                                    run_times.time_fused);
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
@@ -258,8 +276,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Data that describes the execution target.
   const GpuDeviceInfo gpu_device_info_;
 
-  // Cost model that defines priorities in the queue.
-  GpuHloCostAnalysis cost_analysis_;
+  // Reference to cost model that defines priorities in the queue.
+  GpuHloCostAnalysis* cost_analysis_;
 
   // The priority queue of producers, implemented as an ordered map, where a
   // key is a pair: the first element is the priority and the second element is
@@ -307,6 +325,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
         return false;
       }
       break;
+    // Loop fusions are cheap.
+    case HloOpcode::kFusion:
+      return false;
     default:
       break;
   }
@@ -317,10 +338,6 @@ FusionDecision GpuPriorityFusion::ShouldFuseInexpensiveChecks(
     HloInstruction* consumer, int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
-  // Output fusions are not currently supported on GPUs.
-  if (producer->opcode() == HloOpcode::kFusion) {
-    return "the producer is a fusion";
-  }
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
@@ -335,36 +352,43 @@ FusionDecision GpuPriorityFusion::ShouldFuseInexpensiveChecks(
     return "fusing the producer would break read coalescing";
   }
 
-  if (NoFusionPossible fusible =
-          !IsProducerConsumerFusible(*producer, *consumer)) {
-    return !fusible;
+  if (auto fusible = IsProducerConsumerFusible(*producer, *consumer);
+      !fusible) {
+    return fusible;
   }
 
   if (CreatesHeavyComputation(*producer, *consumer)) {
     return "the fusion would create a heavy computation";
   }
 
-  if (NoFusionPossible fusible =
-          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    return !fusible;
-  }
-  return {};
+  return InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 
 FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
-  if (NoFusionPossible fusible =
-          !ShouldFuseInexpensiveChecks(consumer, operand_index)) {
-    return !fusible;
+  if (auto fusible = ShouldFuseInexpensiveChecks(consumer, operand_index);
+      !fusible) {
+    return fusible;
   }
 
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer, device_info_,
-                              /*is_consumer_producer_fusion=*/true)) {
-    return !too_large;
+  if (auto fusible = FusionFitsInBudget(*consumer, *producer, device_info_,
+                                        /*is_consumer_producer_fusion=*/true);
+      !fusible) {
+    return fusible;
+  }
+
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  // TODO(kramerb): Re-enable caching of FusionNodeIndexingEvaluation. It
+  // doesn't get invalidated when fusions are merged.
+  if (consumer->opcode() == HloOpcode::kFusion &&
+      FusionNodeIndexingEvaluation(consumer).CodeDuplicationTooHigh(producer)) {
+    return "the fusion would result in an overly large code duplication";
   }
 
   return {};
@@ -377,13 +401,21 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
 
 HloInstruction* GpuPriorityFusion::FuseInstruction(
     HloInstruction* fusion_instruction, HloInstruction* producer) {
-  return InstructionFusion::FuseInstruction(fusion_instruction, producer);
+  HloInstruction* result = fusion_instruction;
+  if (producer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction->MergeFusionInstruction(producer);
+  } else {
+    result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
+  }
+  GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
+                                              &*cost_analysis_, device_info_);
+  return result;
 }
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, device_info_, cost_analysis_options_,
+      computation, device_info_, &*cost_analysis_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));

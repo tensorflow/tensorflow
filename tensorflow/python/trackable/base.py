@@ -435,8 +435,8 @@ class Trackable(object):
       found.
     """
     if cached_dependencies:
-      return cached_dependencies.get(name, None)
-    return self._self_unconditional_dependency_names.get(name, None)
+      return cached_dependencies.get(name)
+    return self._self_unconditional_dependency_names.get(name)
 
   def _add_variable_with_custom_getter(self,
                                        name,

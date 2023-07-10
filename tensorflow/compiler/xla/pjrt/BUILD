@@ -81,8 +81,10 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor:device_memory",

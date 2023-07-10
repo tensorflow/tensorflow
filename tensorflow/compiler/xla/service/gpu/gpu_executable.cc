@@ -571,8 +571,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
-  // computations to use the same GPU simultaneously.
+  // computations to use the same GPU simultaneously. We do not add locking for
+  // "recursive" invocations, which are done when holding a lock already.
   NonAtomicallyUpgradeableRWLock gpu_lock(&GetGpuMutex(executor));
+  std::optional<NonAtomicallyUpgradeableRWLock::WriterLock> exclusive_gpu_lock;
+  const gpu::GpuExecutableRunOptions* gpu_opts =
+      run_options->run_options().gpu_executable_run_options();
+  if (gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
+    exclusive_gpu_lock.emplace(&gpu_lock);
+  }
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {

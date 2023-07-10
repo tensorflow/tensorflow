@@ -835,61 +835,6 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       });
 }
 
-REGISTER_OP("RpcServer")
-    .Input("server_address: string")
-    .Output("server: resource")
-    .SetIsStateful();
-
-REGISTER_OP("RpcClient")
-    .Attr("shared_name: string = ''")
-    .Input("server_address: string")
-    .Attr("list_registered_methods: bool = false")
-    .Input("timeout_in_ms: int64")  // 0 indicates no timeout.
-                                    // Positive value indicates specified
-                                    // timeout.
-    .Output("client: resource")
-    .Output("method_specs: string")
-    .SetIsStateful();
-
-REGISTER_OP("RpcServerStart").Input("server: resource").SetIsStateful();
-
-REGISTER_OP("RpcServerRegister")
-    .Input("server: resource")
-    .Input("method_name: string")
-    .Input("captured_inputs: Tin")
-    .Attr("Tin: list(type) >=0 = []")
-    .Attr("f: func")
-    .Attr("input_specs: string = ''")
-    .Attr("output_specs: string")
-    .SetIsStateful();
-
-REGISTER_OP("DeleteRpcFutureResource")
-    .Input("handle: resource")
-    .Input("deleter: variant")
-    .SetShapeFn(shape_inference::NoOutputs);
-
-REGISTER_OP("RpcCall")
-    .Input("client: resource")
-    .Input("method_name: string")
-    .Input("args: Tin")
-    .Input("timeout_in_ms: int64")
-    .Attr("Tin: list(type) >= 0")
-    .Output("future: resource")
-    .Output("deleter: variant")
-    .SetIsStateful();
-
-REGISTER_OP("RpcCheckStatus")
-    .Input("status_or: resource")
-    .Output("error_code: int64")
-    .Output("error: string")
-    .SetIsStateful();
-
-REGISTER_OP("RpcGetValue")
-    .Input("status_or: resource")
-    .Attr("Tout: list(type) >= 0")
-    .Output("output: Tout")
-    .SetIsStateful();
-
 REGISTER_KERNEL_BUILDER(Name("RpcServer").Device(DEVICE_CPU), RpcServerOp);
 REGISTER_KERNEL_BUILDER(Name("RpcClient").Device(DEVICE_CPU), RpcClientOp);
 REGISTER_KERNEL_BUILDER(Name("RpcServerStart").Device(DEVICE_CPU),
@@ -904,5 +849,6 @@ REGISTER_KERNEL_BUILDER(Name("DeleteRpcFutureResource").Device(DEVICE_CPU),
                         DeleteRpcFutureResourceOp);
 
 REGISTER_INPUT_COLOCATION_EXEMPTION("RpcServerRegister");
+
 }  // namespace rpc
 }  // namespace tensorflow

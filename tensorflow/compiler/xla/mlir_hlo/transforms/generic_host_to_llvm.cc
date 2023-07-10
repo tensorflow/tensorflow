@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"      // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
@@ -122,7 +123,8 @@ class GenericHostToLLVMPass
     }
 
     //  Setup target.
-    target.addLegalDialect<LLVM::LLVMDialect, gpu::GPUDialect>();
+    target.addLegalDialect<LLVM::LLVMDialect, gpu::GPUDialect,
+                           NVVM::NVVMDialect>();
     target.addIllegalDialect<arith::ArithDialect, func::FuncDialect,
                              complex::ComplexDialect, math::MathDialect>();
     // Mark modules as legal.

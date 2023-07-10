@@ -106,7 +106,7 @@ export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_lang_filters=py --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
-export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py38,-no_oss_py39,-no_oss_py310"
+export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py39,-no_oss_py310"
 export TF_AUDITWHEEL_TARGET_PLAT="manylinux2014"
 
 if [ ${IS_NIGHTLY} == 1 ]; then
@@ -115,6 +115,8 @@ fi
 
 sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
+sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
+sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
 sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
 
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)

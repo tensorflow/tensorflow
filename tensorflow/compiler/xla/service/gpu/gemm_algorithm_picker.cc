@@ -57,14 +57,15 @@ namespace gpu {
 static se::RedzoneAllocator CreateRedzoneAllocator(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     const DebugOptions& debug_options, const AutotuneConfig& config) {
-  int64_t redzone_size = config.should_check_correctness()
-                             ? se::RedzoneAllocator::kDefaultRedzoneSize
-                             : 0;
-
+  // TODO(jlebar): The memory limit here should by rights be
+  // debug_options.xla_gpu_redzone_scratch_max_megabytes(), but tests OOM when
+  // we do that.  Are the tests wrong, or is the option named incorrectly?
   return se::RedzoneAllocator(
       stream, allocator, PtxOptsFromDebugOptions(debug_options),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/redzone_size);
+      /*redzone_size=*/config.should_check_correctness()
+          ? debug_options.xla_gpu_redzone_padding_bytes()
+          : 0);
 }
 #endif
 
@@ -147,7 +148,8 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       // Perform the comparison.
       TF_ASSIGN_OR_RETURN(
           bool outputs_match,
-          comparator.CompareEqual(stream, output_buffer, reference_buffer));
+          comparator.CompareEqual(stream, /*current=*/output_buffer,
+                                  /*expected=*/reference_buffer));
       if (!outputs_match) {
         LOG(ERROR) << "Results mismatch between different GEMM algorithms. "
                    << "This is likely a bug/unexpected loss of precision.";

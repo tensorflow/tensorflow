@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
 
@@ -83,6 +85,23 @@ bool IsOperationFoldable(Operation* op) {
 
   return true;
 }
+
+// TODO: b/289744814 - Refactor to have a single source of truth of TF Quant
+// specs.
+absl::flat_hash_set<int> GetQuantizableOperands(Operation* op) {
+  absl::flat_hash_set<int> quantizable_operands;
+  if (isa<TF::DepthwiseConv2dNativeOp, TF::Conv2DOp, TF::Conv3DOp, TF::MatMulOp,
+          TF::BatchMatMulOp>(op)) {
+    quantizable_operands.insert(1);
+  } else if (isa<TF::GatherOp>(op)) {
+    quantizable_operands.insert(0);
+  } else if (auto einsum_op = dyn_cast<TF::EinsumOp>(op)) {
+    if (IsEinsumSupportedByXlaDotV2(einsum_op.getEquationAttr())) {
+      quantizable_operands.insert(1);
+    }
+  }
+  return quantizable_operands;
+}
 }  // namespace
 
 SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
@@ -94,6 +113,33 @@ SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
     return op->getResults();
   }
   return results;
+}
+
+LogicalResult ConstantFoldQuantizableOperands::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  absl::flat_hash_set<int> quantizable_operands = GetQuantizableOperands(op);
+  if (quantizable_operands.empty()) return failure();
+
+  bool has_change = false;
+  for (auto operand_idx : quantizable_operands) {
+    Value operand = op->getOperand(operand_idx);
+    Operation* preceding_op = operand.getDefiningOp();
+    if (!preceding_op || isa<TF::ConstOp>(preceding_op)) continue;
+
+    int preceding_result_idx = -1;
+    for (auto preceding_result : preceding_op->getResults()) {
+      if (operand == preceding_result) {
+        preceding_result_idx = preceding_result.getResultNumber();
+        break;
+      }
+    }
+
+    has_change = has_change || IsOperationFoldable(preceding_op);
+    SmallVector<Value> folded_results = ConstantFoldOpIfPossible(preceding_op);
+    op->setOperand(operand_idx, folded_results[preceding_result_idx]);
+  }
+
+  return success(/*isSuccess=*/has_change);
 }
 
 }  // namespace quant

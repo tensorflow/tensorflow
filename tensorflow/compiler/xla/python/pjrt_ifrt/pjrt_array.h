@@ -66,9 +66,9 @@ class PjRtArray final
   static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
 
-  // Shorthand for a multi-shard array construction using OpaqueSharding.
+  // Shorthand for a multi-shard array construction using ConcreteSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
-  // so that OpaqueSharding can be replaced with a real Sharding.
+  // so that ConcreteSharding can be replaced with a real Sharding.
   static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 

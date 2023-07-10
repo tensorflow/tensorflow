@@ -908,7 +908,7 @@ ENTRY main {
 XLA_TEST_F(HloTestBase,
            SingleFusedDynamicUpdateSliceWithSameDynamicSliceAccess) {
   const char* hlo_string = R"(
-HloModule fusion
+HloModule fusion, input_output_alias={ {}: (0, {}) }
 
 fused_computation {
   param_0.1 = s32[6]{0} parameter(0)
@@ -935,7 +935,7 @@ ENTRY main {
 XLA_TEST_F(HloTestBase,
            SingleFusedDynamicUpdateSliceWithDynamicSliceAccessSlicesOfSizeOne) {
   const char* hlo_string = R"(
-HloModule fusion
+HloModule fusion, input_output_alias={ {}: (0, {}) }
 
 fused_computation {
   param_0.1 = s32[6]{0} parameter(0)

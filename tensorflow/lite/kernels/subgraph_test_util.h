@@ -130,6 +130,11 @@ class SubgraphBuilder {
   // Build a while subgraph with multiple inputs.
   void BuildMultiInputWhileSubgraph(Subgraph* subgraph, int num_inputs);
 
+  // Build a while subgraph with multiple inputs and one output which is not
+  // consumed.
+  void BuildMultiInputWhileSubgraphWithUnconsumedOutput(Subgraph* subgraph,
+                                                        int num_inputs);
+
   // Build a dynamic body subgraph with output tensor aliases.
   void BuildDynamicBodySubgraphWithAliases(Subgraph* subgraph);
 

@@ -37,8 +37,7 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
     auto element_type = dense_attr.getElementType();
 
     tensorflow::DataType dtype;
-    TF_RETURN_IF_ERROR(tensorflow::ToAbslStatus(
-        tensorflow::ConvertToDataType(element_type, &dtype)));
+    TF_RETURN_IF_ERROR(tensorflow::ConvertToDataType(element_type, &dtype));
 
     if (dtype == tensorflow::DT_STRING) {
       return absl::InvalidArgumentError(
@@ -89,8 +88,8 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
   // Handle dtype attrs
   if (auto type_attr = attr.dyn_cast<mlir::TypeAttr>()) {
     tensorflow::DataType dtype;
-    TF_RETURN_IF_ERROR(tensorflow::ToAbslStatus(
-        tensorflow::ConvertToDataType(type_attr.getValue(), &dtype)));
+    TF_RETURN_IF_ERROR(
+        tensorflow::ConvertToDataType(type_attr.getValue(), &dtype));
     std::string data(sizeof(dtype), '\0');
     std::memcpy(data.data(), &dtype, sizeof(dtype));
     return data;
@@ -133,8 +132,8 @@ absl::StatusOr<std::string> EncodeTensorflowAttribute(
     for (i = 0; i < array_attr.size(); ++i) {
       if (auto type_attr = array_attr[i].dyn_cast<mlir::TypeAttr>()) {
         tensorflow::DataType dtype;
-        TF_RETURN_IF_ERROR(tensorflow::ToAbslStatus(
-            tensorflow::ConvertToDataType(type_attr.getValue(), &dtype)));
+        TF_RETURN_IF_ERROR(
+            tensorflow::ConvertToDataType(type_attr.getValue(), &dtype));
         ctor.ConstructAt(i, dtype);
       } else {
         break;

@@ -39,6 +39,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//waymo/ml/compiler/triton:__subpackages__",
     ]),
     licenses = ["notice"],
 )

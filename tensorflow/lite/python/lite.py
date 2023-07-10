@@ -655,7 +655,11 @@ class TFLiteConverterBase:
     self.mlir_dump_dir = None
     self.mlir_dump_pass_regex = None
     self.mlir_dump_func_regex = None
-    self.mlir_enable_timing = False
+    self.mlir_enable_timing = None
+    self.mlir_print_ir_before = None
+    self.mlir_print_ir_after = None
+    self.mlir_print_ir_module_scope = None
+    self.mlir_elide_elementsattrs_if_larger = None
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -793,6 +797,12 @@ class TFLiteConverterBase:
         "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
         "mlir_dump_func_regex": self.mlir_dump_func_regex,
         "mlir_enable_timing": self.mlir_enable_timing,
+        "mlir_print_ir_before": self.mlir_print_ir_before,
+        "mlir_print_ir_after": self.mlir_print_ir_after,
+        "mlir_print_ir_module_scope": self.mlir_print_ir_module_scope,
+        "mlir_elide_elementsattrs_if_larger": (
+            self.mlir_elide_elementsattrs_if_larger
+        ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
     }
 

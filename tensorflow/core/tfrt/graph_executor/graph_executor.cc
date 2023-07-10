@@ -586,7 +586,13 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto import_start_time = absl::Now();
   mlir::DialectRegistry registry;
   RegisterMlirDialect(registry);
-  auto context = std::make_unique<mlir::MLIRContext>(registry);
+  // Disable multi-threading in lazy loading as the thread pool it uses is out
+  // of our control and this affects serving performance.
+  //
+  // TODO(chky): Consider using a custom thread pool with limited threads for
+  // compilation.
+  auto context = std::make_unique<mlir::MLIRContext>(
+      registry, mlir::MLIRContext::Threading::DISABLED);
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.

@@ -13,6 +13,13 @@ tf_gen_op_wrapper_py(
     name = "gen_sparse_csr_matrix_ops",
     out = "gen_sparse_csr_matrix_ops.py",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     visibility = ["//tensorflow/python/kernel_tests/linalg/sparse:__pkg__"],
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )

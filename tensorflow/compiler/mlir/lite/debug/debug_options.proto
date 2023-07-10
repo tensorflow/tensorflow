@@ -19,7 +19,7 @@ package tensorflow.converter;
 
 // Additional parameters that control the debug behavior of the Converter.
 //
-// Next ID: 5
+// Next ID: 9
 message DebugOptions {
   // If not empty, dumps MLIR to the specified directory. The initial state of
   // the MLIR after import will be dumped at the beginning of each pass manager
@@ -41,4 +41,21 @@ message DebugOptions {
 
   // If true, report the execution time of each MLIR pass.
   optional bool mlir_enable_timing = 4 [default = false];
+
+  // Prints MLIR before specified passes. Supports regular expressions for
+  // matching against the names of the desired passes.
+  optional string mlir_print_ir_before = 5 [default = ""];
+
+  // Prints MLIR after specified passes. Supports regular expressions for
+  // matching against the names of the desired passes. Currently only prints
+  // after a pass if the MLIR is mutated.
+  optional string mlir_print_ir_after = 6 [default = ""];
+
+  // If true, always print the top-level operation when printing IR for
+  // print_ir_[before|after].
+  optional bool mlir_print_ir_module_scope = 7 [default = true];
+
+  // Elide ElementsAttrs with \"...\" that have more elements than the given
+  // upper limit.
+  optional int64 mlir_elide_elementsattrs_if_larger = 8;
 }

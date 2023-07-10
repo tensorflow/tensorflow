@@ -1000,9 +1000,6 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
     attr.set_on_host(true);
   }
   const auto* dstd_info = dstd->tensorflow_accelerator_device_info();
-  if (dstd_info != nullptr && dstd_info->use_pjrt_tensor_buffer) {
-    attr.set_use_pjrt_allocator(true);
-  }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     *output = dst;

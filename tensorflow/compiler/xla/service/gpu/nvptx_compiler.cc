@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
@@ -139,7 +140,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_enable_scalar_multiply_reduction(true);
+  algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -203,7 +204,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
     AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
-    algebraic_simplifier_options.set_enable_scalar_multiply_reduction(true);
+    algebraic_simplifier_options
+        .set_enable_unconditional_reduce_of_concat_replacement(false);
     mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
         algebraic_simplifier_options);
     mha_fusion_pipeline.AddPass<HloDCE>();
@@ -211,21 +213,13 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
   }
 
-  if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                            PrimitiveType::BF16,
-                                            /*pad_to_multiple_of=*/8);
-  }
-  if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
-    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                            PrimitiveType::S8,
-                                            /*pad_to_multiple_of=*/4);
-
-    // Pad the dimensions of matrices in dot operations to multiples of 8.
-    pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                            PrimitiveType::F16,
-                                            /*pad_to_multiple_of=*/8);
+  for (const CublasPaddingRequirement& requirement :
+       CublasPaddingRequirements) {
+    if (cuda_compute_capability.IsAtLeast(requirement.min_compute_capability)) {
+      pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                              requirement.data_type,
+                                              requirement.multiple_of);
+    }
   }
   // Padding a gemm operand that's a constant results in pad(constant).  Run
   // constant-folding to simplify this into a new constant.

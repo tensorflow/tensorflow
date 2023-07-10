@@ -15,6 +15,7 @@
 """Python definitions for `Mesh` and `Layout`."""
 
 import collections
+import functools
 import itertools
 from typing import List, Dict, Optional, Union
 
@@ -61,6 +62,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   also the topology of the underlying devices. For example, we can group 8 TPUs
   as a 1-D array for data parallelism or a `2x4` grid for (2-way) data
   parallelism and (4-way) model parallelism.
+
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
 
   Note: the utilities `dtensor.create_mesh` and
   `dtensor.create_distributed_mesh` provide a simpler API to create meshes for
@@ -267,11 +271,15 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
     return mesh
 
+  @functools.cached_property
+  def _host_mesh(self) -> 'Mesh':
+    return Mesh.from_string(super().host_mesh().to_string())
+
   def host_mesh(self) -> 'Mesh':
     """Returns a host mesh."""
     # TODO(b/242201545): Find a way to get the super class to return correct
     # typed objects.
-    return Mesh.from_string(super().host_mesh().to_string())
+    return self._host_mesh
 
   # TODO(b/242201545): implement this in Mesh C++ class
   def local_device_locations(self) -> List[Dict[str, int]]:
@@ -343,6 +351,9 @@ class Layout(_pywrap_dtensor_device.Layout):
   sharding spec indicates which dimension of the mesh it is sharded over. A
   special sharding spec `UNSHARDED` indicates that axis is replicated on
   all the devices of that mesh.
+
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
 
   For example, let's consider a 1-D mesh:
 

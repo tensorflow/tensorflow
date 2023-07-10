@@ -48,7 +48,7 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-constexpr int64_t i32Limit = 4294967296;
+constexpr int64_t i32Limit = 2147483647;
 using shape::ShapeOfOp;
 
 bool IsSingleResultTFOperation(Operation *op) {

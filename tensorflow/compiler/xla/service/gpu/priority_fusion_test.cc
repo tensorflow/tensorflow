@@ -73,5 +73,40 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
+TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    square {
+      p = f32[16384]{0} parameter(0)
+      ROOT m = f32[16384]{0} multiply(p, p)
+    }
+
+    exp {
+      p = f32[16384]{0} parameter(0)
+      ROOT e = f32[16384]{0} exponential(p)
+    }
+
+    log {
+      p = f32[16384]{0} parameter(0)
+      ROOT l = f32[16384]{0} log(p)
+    }
+
+    ENTRY main {
+      p = f32[16384]{0} parameter(0)
+      s = f32[16384]{0} fusion(p), kind=kLoop, calls=square
+      e = f32[16384]{0} fusion(s), kind=kLoop, calls=exp
+      l = f32[16384]{0} fusion(s), kind=kInput, calls=log
+      ROOT t = (f32[16384], f32[16384]) tuple(l, e)
+    })")
+                    .value();
+
+  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(op::Parameter(0)),
+                              op::Fusion(op::Parameter(0))));
+}
+
 }  // namespace gpu
 }  // namespace xla

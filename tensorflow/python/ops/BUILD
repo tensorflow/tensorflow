@@ -1,3 +1,4 @@
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
@@ -777,6 +778,7 @@ py_strict_library(
         ":math_ops_gen",
         ":shape_util",
         "//tensorflow/core/config:flags_py",
+        "//tensorflow/dtensor/python:api",  # buildcleaner: keep
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:common_shapes",
@@ -794,6 +796,7 @@ py_strict_library(
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -4460,4 +4463,10 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
     ],
+)
+
+pytype_strict_library(
+    name = "weak_tensor_test_util",
+    srcs = ["weak_tensor_test_util.py"],
+    deps = ["//tensorflow/python/framework:ops"],
 )
