@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/status.h"
@@ -24,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -111,8 +108,8 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
 }
 
 absl::string_view TpuOpExecutable::fingerprint() const {
-  TpuProgramFingerprint fingerprint = TpuProgram_GetFingerprint(core_program_);
-  return absl::string_view(fingerprint.bytes, fingerprint.size);
+  // TODO(skye): the fingerprint can be plumbed through via core_program_
+  LOG(FATAL) << "TpuOpExecutable::fingerprint() unimplemented";
 }
 
 }  // namespace tensorflow
