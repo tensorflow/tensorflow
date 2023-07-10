@@ -583,6 +583,78 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
+  bool x_is_qtype =
+      x_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool y_is_qtype =
+      y_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool result_is_qtype =
+      result_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  if (x_is_qtype != result_is_qtype || y_is_qtype != result_is_qtype) {
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should all be in FP32, INT32 or quantized INT8");
+    return std::nullopt;
+  }
+
+  // If the output is I8 then we need to rescale to I32
+  // Then scale back to I8
+  if (result_is_qtype) {
+    auto x_qtype =
+        x_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto y_qtype =
+        y_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto result_qtype =
+        result_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+
+    uint32_t result_bits = result_qtype.getStorageTypeIntegralWidth();
+
+    if (result_bits == 8) {
+      ShapedType rescale_type = result_type.clone(rewriter.getI32Type());
+
+      // We need to make sure the inputs are rescaled correctly
+      // Following the behaviour defined here lite/kernels/squared_difference.cc
+      double in_x_scale = x_qtype.getScale();
+      double in_y_scale = y_qtype.getScale();
+      double result_scale = result_qtype.getScale();
+
+      double twice_max_input_scale = 2.0 * std::max(in_x_scale, in_y_scale);
+
+      const int32_t LEFT_SHIFT = 7;
+
+      double x_rescale_scale = in_x_scale / twice_max_input_scale;
+      double y_rescale_scale = in_y_scale / twice_max_input_scale;
+      double output_rescale_scale =
+          (twice_max_input_scale * twice_max_input_scale) /
+          ((static_cast<double>(1 << LEFT_SHIFT * 2)) * result_scale);
+
+      Value x_scaled = buildRescaleToInt32(
+          rewriter, op, x,
+          x_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
+          x_qtype.getZeroPoint());
+      Value y_scaled = buildRescaleToInt32(
+          rewriter, op, y,
+          y_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
+          y_qtype.getZeroPoint());
+
+      auto sub_op = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
+      auto mul_op = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), rescale_type, sub_op.getResult(),
+          sub_op.getResult(), 0);
+
+      // Convert the operator back to the original type
+      return buildRescaleFromInt32(rewriter, op, result_type, mul_op,
+                                   output_rescale_scale,
+                                   result_qtype.getZeroPoint());
+    }
+
+    (void)rewriter.notifyMatchFailure(
+        op, "Only FP32, INT32 or quantized INT8 is supported");
+    return std::nullopt;
+  }
+
+  // This will cover FP32/FP16/INT32 legalization
   auto sub_op =
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
