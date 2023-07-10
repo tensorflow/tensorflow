@@ -78,25 +78,6 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
   return -1;
 }
 
-// Check if the last dimensions worth up to cache line size
-// participate in transpose. If so, then we want to use max number of threads
-// per block for communication via shared memory. Use the default pipeline
-// otherwise.
-bool IsTransposeDimensionWithinCacheLine(mlir::mhlo::TransposeOp transpose,
-                                         GpuDeviceInfo gpu_device_info) {
-  const int64_t kCacheLineBits = 1024;
-  int64_t total_bytes =
-      transpose.getResult().getType().getElementTypeBitWidth();
-  auto perm = transpose.getPermutation().getValues<int64_t>();
-  auto result_shape = transpose.getResult().getType().getShape();
-  for (int64_t i = perm.size() - 1; total_bytes < kCacheLineBits && i >= 0;
-       --i) {
-    if (perm[i] != i) return true;
-    total_bytes *= result_shape[i];
-  }
-  return false;
-}
-
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
     LaunchDimensionsConfig dim_config, mlir::Operation* op) {
@@ -110,18 +91,6 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
     const int kWarpSchedulers = 4;
     int64_t block_size = std::min<int64_t>(
         gpu_device_info.threads_per_warp * kWarpSchedulers, num_elements);
-    auto fusion = mlir::dyn_cast_or_null<mlir::lmhlo::FusionOp>(op);
-    if (!fusion) {
-      return block_size;
-    }
-    for (mlir::Operation& op : fusion.getRegion().front()) {
-      auto transpose = mlir::dyn_cast<mlir::mhlo::TransposeOp>(op);
-      if (transpose &&
-          IsTransposeDimensionWithinCacheLine(transpose, gpu_device_info)) {
-        return std::min<int64_t>(gpu_device_info.threads_per_block_limit,
-                                 num_elements);
-      }
-    }
     VLOG(2) << "Block size: " << block_size;
     return block_size;
   }();
