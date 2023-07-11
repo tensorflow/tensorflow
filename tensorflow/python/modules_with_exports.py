@@ -37,6 +37,10 @@ from tensorflow.python import data
 # Distribute
 from tensorflow.python import distribute
 
+# DLPack
+from tensorflow.python.dlpack.dlpack import from_dlpack
+from tensorflow.python.dlpack.dlpack import to_dlpack
+
 # Eager
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
