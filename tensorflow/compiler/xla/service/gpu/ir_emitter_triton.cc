@@ -792,7 +792,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).empty()) {
     const HloInstruction* lhs_param0 =
         *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin();
-    const TensorIterationSpec::DimIterationSpec* lhs_nc_iter_spec =
+    const DotFusionAnalysis::DimIterationSpec* lhs_nc_iter_spec =
         analysis.IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
                           lhs_noncontracting_dim_idx);
     lhs_nc_split = lhs_nc_iter_spec->size() > 1;

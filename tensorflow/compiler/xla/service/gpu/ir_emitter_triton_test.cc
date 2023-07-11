@@ -25,14 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -44,8 +41,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-namespace m = ::xla::match;
 
 class TritonGemmNoTF32Test : public GpuCodegenTest {
  public:
@@ -718,153 +713,6 @@ ENTRY e {
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
-}
-
-TEST_F(TritonGemmTest, BinaryOperationWithSmallInputsIsFused) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = s8[7,3] parameter(0)
-  p1 = f32[3,16] parameter(1)
-  p2 = f32[3,16] parameter(2)
-  e = f32[3,16] exponential(p1)
-  a = f32[3,16] add(e, p2)
-  c = f32[7,3] convert(p0)
-  ROOT d = f32[7,16] dot(c, a),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
-
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, BinaryOperationWithLargeInputsIsNotFused) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = f16[333,1000] parameter(0)
-  p1 = f32[1000,333] parameter(1)
-  p1n = f32[1000,333] negate(p1)
-  p2 = f32[1000,333] parameter(2)
-  p2n = f32[1000,333] negate(p2)
-  s = f32[1000,333] subtract(p1n, p2n)
-  c = f32[333,1000] convert(p0)
-  ROOT d = f32[1000,1000] dot(s, c),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fused_computation
-; CHECK: negate
-; CHECK: negate
-; CHECK: ROOT
-; CHECK-SAME: subtract
-; CHECK: ENTRY
-; CHECK: kLoop
-; CHECK: kCustom
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, BinaryOperationOnLargeParametersIsFused) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = f16[1000,111] parameter(0)
-  p1 = f32[111,10000] parameter(1)
-  p2 = f32[111,10000] parameter(2)
-  s = f32[111,10000] subtract(p1, p2)
-  c = f32[1000,111] convert(p0)
-  ROOT d = f32[10000,1000] dot(s, c),
-    lhs_contracting_dims={0}, rhs_contracting_dims={1}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
-
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, LinkingLibdeviceTwiceWorks) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = s8[7,3] parameter(0)
-  c0 = f32[7,3] convert(p0)
-  e0 = f32[7,3] exponential(c0)
-  p1 = f32[3,16] parameter(1)
-  e1 = f32[3,16] exponential(p1)
-  d0 = f32[7,16] dot(c0, e1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  d1 = f32[7,16] dot(e0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT a = f32[7,16] add(d0, d1)
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: ROOT
-; CHECK-SAME: add
-)");
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
-
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Add(
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom),
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, BroadcastOfConstantIsNotFused) {
-  const std::string kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = f16[70,30] parameter(0)
-  p0c = f32[70,30] convert(p0)
-  constant_3663 = f32[] constant(4321)
-  bc0 = f32[30,5] broadcast(constant_3663)
-  p1 = f32[30,5] parameter(1)
-  a = f32[30,5] add(p1, bc0)
-  ROOT d = f32[70,5] dot(p0c, a),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK: constant
-; CHECK: broadcast
-; CHECK: fusion
-; CHECK-SAME: kind=kCustom
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
 
 TEST_F(TritonGemmTest, Naming) {

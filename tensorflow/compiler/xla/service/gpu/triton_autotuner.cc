@@ -418,11 +418,12 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
 std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability) {
   std::vector<AutotuneResult::TritonGemmKey> configs = {
-      GemmKey(32, 32, 256, 1, 1, 4),  GemmKey(64, 32, 32, 16, 1, 4),
-      GemmKey(32, 64, 64, 4, 1, 4),   GemmKey(16, 16, 256, 1, 1, 4),
-      GemmKey(16, 128, 32, 16, 1, 4), GemmKey(16, 64, 128, 1, 1, 4),
-      GemmKey(16, 128, 32, 8, 1, 4),  GemmKey(16, 16, 512, 1, 1, 4),
-      GemmKey(32, 16, 512, 1, 1, 4),  GemmKey(64, 32, 64, 1, 2, 8)};
+      GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
+      GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
+      GemmKey(16, 16, 256, 1, 1, 4), GemmKey(16, 128, 32, 16, 1, 4),
+      GemmKey(16, 64, 128, 1, 1, 4), GemmKey(16, 128, 32, 8, 1, 4),
+      GemmKey(16, 16, 512, 1, 1, 4), GemmKey(32, 16, 512, 1, 1, 4),
+      GemmKey(64, 32, 64, 1, 2, 8)};
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     absl::c_copy(
         std::vector<AutotuneResult::TritonGemmKey>{
