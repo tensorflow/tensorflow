@@ -1863,6 +1863,7 @@ xla_cc_test(
     srcs = ["softmax_rewriter_triton_test.cc"],
     deps = [
         ":softmax_rewriter_triton",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
