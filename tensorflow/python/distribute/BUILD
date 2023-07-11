@@ -2584,6 +2584,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/249822228)
         "noasan",  # TODO(b/237407459)
+        "nomsan",  # TODO(b/290745680)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
