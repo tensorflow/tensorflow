@@ -3178,6 +3178,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "noasan",
+        "nodebug",  # TODO(b/290684889): Fails in debug mode.
         "nomsan",
         # This test runs some fusions that are only supported on Ampere+.
         "requires-gpu-sm80",
