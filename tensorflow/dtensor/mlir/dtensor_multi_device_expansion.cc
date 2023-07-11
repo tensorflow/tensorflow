@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -92,29 +93,28 @@ mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
 
 // Returns the user of all the ops in the span iff it is a single return op.
 // Otherwise, returns nullptr; for example, if there are multiple return ops.
-template <typename Operation>
-mlir::func::ReturnOp GetReturnOpFromUsers(absl::Span<Operation> ops) {
-  mlir::func::ReturnOp return_op;
-
-  for (Operation op : ops) {
+template <typename Operations>
+mlir::LogicalResult GetReturnOpFromUsers(Operations&& ops,
+                                         mlir::func::ReturnOp* return_op) {
+  for (mlir::Operation* op : ops) {
     for (mlir::Operation* user : op->getUsers()) {
       // TODO(twelve): Determine whether we should follow identity ops.
       if (mlir::func::ReturnOp op =
               llvm::dyn_cast_or_null<mlir::func::ReturnOp>(user)) {
-        if (return_op) {
-          if (return_op != op) {
-            return nullptr;
+        if (*return_op) {
+          if (*return_op != op) {
+            return mlir::failure();
           }
         } else {
-          return_op = op;
+          *return_op = op;
         }
       } else {
-        return nullptr;
+        return mlir::failure();
       }
     }
   }
 
-  return return_op;
+  return mlir::success();
 }
 
 // Returns the devices for a given mesh.
@@ -131,6 +131,62 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
     mlir::OpBuilder& builder, mlir::func::FuncOp target_func,
     ExpandedArgumentMap& expanded_arguments, mlir::BlockArgument argument,
     const Mesh* target_mesh = nullptr);
+
+StatusOr<std::optional<std::vector<Layout>>> GetResourceLayouts(
+    mlir::Operation* op) {
+  if (op->hasAttr(kNewResourceArgLayouts)) {
+    auto attrs = op->getAttrOfType<mlir::ArrayAttr>(kNewResourceArgLayouts);
+    std::vector<Layout> layouts;
+    layouts.reserve(attrs.size());
+    for (mlir::Attribute attr : attrs) {
+      auto string_attr = attr.cast<mlir::StringAttr>();
+      auto layout = Layout::FromString(string_attr.str());
+      if (layout.ok()) {
+        layouts.emplace_back(std::move(layout.value()));
+      } else {
+        return layout.status();
+      }
+    }
+    return layouts;
+  } else {
+    return std::nullopt;
+  }
+}
+
+bool IsResource(mlir::Value value) {
+  return getElementTypeOrSelf(value.getType()).isa<mlir::TF::ResourceType>();
+}
+
+StatusOr<std::optional<Layout>> FindResourceLayout(mlir::BlockArgument arg) {
+  uint32_t arg_num = arg.getArgNumber();
+  for (mlir::Operation* user : arg.getUsers()) {
+    auto resource_layouts = GetResourceLayouts(user);
+    if (resource_layouts.ok()) {
+      const auto& opt = resource_layouts.value();
+      if (!opt || opt->empty()) {
+        continue;
+      }
+    } else {
+      return resource_layouts.status();
+    }
+
+    auto resource_indices = user->getAttrOfType<mlir::DenseIntElementsAttr>(
+        kNewResourceLayoutIndices);
+    if (!resource_indices) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("missing ", kNewResourceLayoutIndices));
+    }
+
+    for (auto [i, index] : llvm::enumerate(resource_indices)) {
+      uint64_t index_value = index.getZExtValue();
+      if (index_value == arg_num) {
+        return (resource_layouts.value())->at(i);
+      }
+    }
+  }
+
+  return std::nullopt;
+}
 
 mlir::tf_device::ClusterFuncOp ExtractDeviceClusterFromFunctionCall(
     mlir::TF::StatefulPartitionedCallOp op) {
@@ -350,10 +406,24 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
       mesh = *target_mesh;
     }
   } else {
-    TF_ASSIGN_OR_RETURN(const std::optional<Layout> layout,
+    TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                         ExtractLayoutFromOperand(arg));
     if (layout) {
       mesh = layout->mesh();
+
+      if (mesh->IsEmpty()) {
+        if (target_mesh) {
+          mesh = *target_mesh;
+        } else if (IsResource(arg)) {
+          TF_ASSIGN_OR_RETURN(layout, FindResourceLayout(arg));
+          if (layout) {
+            mesh = layout->mesh();
+          } else {
+            return absl::InvalidArgumentError(
+                "Could not find resource layout!");
+          }
+        }
+      }
     }
   }
   if (mesh.has_value()) {
@@ -401,19 +471,48 @@ mlir::FunctionType GetFunctionType(mlir::OpBuilder& builder,
   return builder.getFunctionType(input_types, result_types);
 }
 
+struct InferredResourceAttributes {
+  mlir::Attribute layouts;
+  mlir::Attribute indices;
+
+  InferredResourceAttributes(mlir::Attribute layouts_, mlir::Attribute indices_)
+      : layouts(layouts_), indices(indices_) {}
+};
+
 // Build a new main function that calls the multi-device/translated function.
-mlir::LogicalResult BuildOuterMainFunc(
-    mlir::ModuleOp module, mlir::func::FuncOp old_main_func,
-    mlir::func::FuncOp translated_func, mlir::func::ReturnOp return_op,
-    absl::Span<mlir::TF::StatefulPartitionedCallOp> call_ops) {
+template <typename Operations>
+mlir::LogicalResult BuildOuterMainFunc(mlir::ModuleOp module,
+                                       mlir::func::FuncOp old_main_func,
+                                       mlir::func::FuncOp translated_func,
+                                       mlir::func::ReturnOp return_op,
+                                       mlir::ArrayAttr num_local_outputs_attr,
+                                       Operations&& call_ops) {
+  using CallOp = typename std::decay_t<Operations>::value_type;
   llvm::SmallVector<mlir::Attribute, 4> output_layouts;
-  for (mlir::TF::StatefulPartitionedCallOp call_op : call_ops) {
+  std::optional<InferredResourceAttributes> resource_attrs;
+  for (CallOp call_op : call_ops) {
     // Then extract all their output layouts.
-    mlir::ArrayAttr layouts =
-        call_op->getAttr(kLayoutAttr).dyn_cast_or_null<mlir::ArrayAttr>();
+    mlir::Attribute layout_attr = call_op->getAttr(kLayoutAttr);
+    mlir::ArrayAttr layouts = layout_attr.dyn_cast_or_null<mlir::ArrayAttr>();
     if (!layouts) {
       call_op.emitOpError() << "Could not find op's layouts.";
       return mlir::failure();
+    }
+    // Set the resource layouts.
+    mlir::Attribute resource_layouts_attr =
+        call_op->getAttr(kNewResourceArgLayouts);
+    mlir::Attribute resource_indices_attr =
+        call_op->getAttr(kNewResourceLayoutIndices);
+    if (resource_indices_attr && resource_layouts_attr) {
+      if (resource_attrs) {
+        // TODO(twelve): Determine how to merge inferred resource attrs if there
+        //               are multiple sets of them. (when can that happen?)
+        call_op.emitOpError()
+            << "Multiple sets of inferred resource attributes!";
+        return mlir::failure();
+      } else {
+        resource_attrs.emplace(resource_layouts_attr, resource_indices_attr);
+      }
     }
     // Here, we assume that the output layouts and the results are in the same
     // ordering--this property should be guaranteed as long as all the results
@@ -442,25 +541,33 @@ mlir::LogicalResult BuildOuterMainFunc(
 
   // Get the type of the translated function.
   mlir::FunctionType func_type = translated_func.getFunctionType();
-  // Then build a call op targeting it (reflecting its result types).
-  auto expanded_call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
-      call_ops[0].getLoc(), func_type.getResults(), inputs,
-      translated_func.getSymName(),
-      /*config=*/builder.getStringAttr(""),
-      /*config_proto=*/builder.getStringAttr(""),
-      /*executor_type=*/builder.getStringAttr(""));
+  // Then build a call op targeting it (reflecting its result types)
+  auto expanded_call_op =
+      builder.create<CallOp>(call_ops[0].getLoc(), func_type.getResults(),
+                             inputs, translated_func.getSymName(),
+                             /*config=*/builder.getStringAttr(""),
+                             /*config_proto=*/builder.getStringAttr(""),
+                             /*executor_type=*/builder.getStringAttr(""));
 
   // Set the output layout attribute on the new call op.
   llvm::ArrayRef<mlir::Attribute> output_layouts_ref(output_layouts);
   mlir::ArrayAttr output_layouts_attr =
       builder.getArrayAttr(output_layouts_ref);
   expanded_call_op->setAttr(kLayoutAttr, output_layouts_attr);
+  expanded_call_op->setAttr(kNumLocalOutputsAttr, num_local_outputs_attr);
+
+  if (resource_attrs) {
+    expanded_call_op->setAttr(kNewResourceArgLayouts, resource_attrs->layouts);
+    expanded_call_op->setAttr(kNewResourceLayoutIndices,
+                              resource_attrs->indices);
+  }
 
   // Return all the values from the new call op.
   mlir::Operation::result_range outputs = expanded_call_op.getResults();
-  if (return_op) {
-    builder.create<mlir::func::ReturnOp>(return_op.getLoc(), outputs);
-  } else if (!outputs.empty()) {
+  if (return_op || outputs.empty()) {
+    mlir::Location loc = return_op ? return_op.getLoc() : main_func.getLoc();
+    builder.create<mlir::func::ReturnOp>(loc, outputs);
+  } else {
     call_ops[0]->emitOpError("Call had results, but they were not used.");
     return mlir::failure();
   }
@@ -542,9 +649,8 @@ struct DTensorMultiDeviceExpansion
     });
 
     // Ensure that all the call ops return results via the same op.
-    mlir::func::ReturnOp return_op = GetReturnOpFromUsers(
-        absl::Span<mlir::TF::StatefulPartitionedCallOp>(stateful_call_ops));
-    if (!return_op && !stateful_call_ops.empty()) {
+    mlir::func::ReturnOp return_op;
+    if (GetReturnOpFromUsers(stateful_call_ops, &return_op).failed()) {
       stateful_call_ops[0]->emitOpError(
           "Calls must be used by exactly one return op.");
       return;
@@ -581,15 +687,25 @@ struct DTensorMultiDeviceExpansion
     }
 
     std::vector<mlir::Value> results;
-    for (unsigned i = 0; i < return_op->getNumOperands(); ++i) {
-      ExpandedResultsMap::iterator search = expanded_results.find(i);
-      if (search == expanded_results.end()) {
-        results.emplace_back(return_op->getOperand(i));
-      } else {
-        std::vector<mlir::Value>& values = search->second;
-        results.insert(results.end(), values.begin(), values.end());
+    llvm::SmallVector<mlir::Attribute, 8> num_local_outputs;
+    if (return_op) {
+      for (unsigned i = 0; i < return_op->getNumOperands(); ++i) {
+        ExpandedResultsMap::iterator search = expanded_results.find(i);
+        int num_outputs;
+        if (search == expanded_results.end()) {
+          results.emplace_back(return_op->getOperand(i));
+          num_outputs = 1;
+        } else {
+          std::vector<mlir::Value>& values = search->second;
+          results.insert(results.end(), values.begin(), values.end());
+          num_outputs = values.size();
+        }
+        num_local_outputs.emplace_back(builder.getI64IntegerAttr(num_outputs));
       }
     }
+
+    mlir::ArrayAttr num_local_outputs_attr =
+        builder.getArrayAttr(num_local_outputs);
 
     // update the operands of the translated return op
     translated_terminator_op->setOperands(results);
@@ -598,9 +714,9 @@ struct DTensorMultiDeviceExpansion
         builder, translated_func, absl::Span<mlir::Value>(results)));
     UpdateEntryFuncAttr(builder, translated_func);
 
-    mlir::LogicalResult status = BuildOuterMainFunc(
-        module, main_func, translated_func, return_op,
-        absl::Span<mlir::TF::StatefulPartitionedCallOp>(stateful_call_ops));
+    mlir::LogicalResult status =
+        BuildOuterMainFunc(module, main_func, translated_func, return_op,
+                           num_local_outputs_attr, stateful_call_ops);
     if (mlir::failed(status)) {
       return;
     }

@@ -58,6 +58,8 @@ static constexpr char kNewResourceLayoutIndices[] =
 // Attribute carries layout for newly inferred layout of resource handle.
 static constexpr char kNewResourceArgLayouts[] = "_inferred_resource_layouts";
 
+static constexpr char kNumLocalOutputsAttr[] = "_num_local_outputs";
+
 // Attribute carries input layout information for shape op.
 static constexpr char kShapeOpInputLayout[] = "_shape_input_layout";
 
