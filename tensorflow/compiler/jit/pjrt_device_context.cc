@@ -211,7 +211,7 @@ void PjRtDevice_DeviceToDeviceCopy(
   }
 
   StatusOr<xla::PjRtClient*> pjrt_dst_client =
-      GetOrCreatePjRtClient(DeviceTyp(dst->device_type()));
+      GetOrCreatePjRtClient(DeviceType(dst->device_type()));
 
   if (!pjrt_dst_client.ok()) {
     done(pjrt_dst_client.status()) return;
