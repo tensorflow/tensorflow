@@ -5695,20 +5695,20 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
             PrecisionConfig::HIGHEST);
 }
 
-TEST_F(AlgebraicSimplifierTest, DotAttentionReorder) {
+TEST_F(AlgebraicSimplifierTest, DotAssociativeReorder) {
   const char* hlo_string = R"(
     HloModule module
 
     ENTRY test {
-        a = f32[1024,2] parameter(0)
-        b = f32[2,1024] parameter(1)
-        c = f32[1024,2] parameter(2)
-        inner_dot = f32[1024,1024] dot(a,b),
-                    lhs_contracting_dims={1},
-                    rhs_contracting_dims={0}
-        ROOT outer_dot = f32[1024,2] dot(inner_dot, c),
-                         lhs_contracting_dims={1},
-                         rhs_contracting_dims={0}
+        a = f32[2,3,4,5] parameter(0)
+        b = f32[6,7,5] parameter(1)
+        c = f32[4,7] parameter(2)
+        inner_dot = f32[2,3,4,6,7] dot(a,b),
+                    lhs_contracting_dims={3},
+                    rhs_contracting_dims={2}
+        ROOT outer_dot = f32[2,3,6] dot(inner_dot,c),
+                         lhs_contracting_dims={2,4},
+                         rhs_contracting_dims={0,1}
       }
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

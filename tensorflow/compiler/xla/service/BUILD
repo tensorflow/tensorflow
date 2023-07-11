@@ -2309,6 +2309,7 @@ cc_library(
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
     deps = [
+        ":hlo_cost_analysis",
         ":hlo_creation_utils",
         ":hlo_pass",
         ":pattern_matcher",
