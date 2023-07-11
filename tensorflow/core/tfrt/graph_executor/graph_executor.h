@@ -66,6 +66,8 @@ struct RequestInfo {
   WorkQueueInterface* request_queue = nullptr;
   // The task runner used by tensorflow::OpKernel.
   std::function<void(std::function<void()>)> runner;
+
+  tensorflow::CancellationManager cancellation_manager;
 };
 
 struct SymbolUids {

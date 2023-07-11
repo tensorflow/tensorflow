@@ -234,6 +234,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
   fallback_request_state.set_runtime_config(&options.runtime_config);
+  fallback_request_state.set_cancellation_manager(
+      &request_info->cancellation_manager);
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));

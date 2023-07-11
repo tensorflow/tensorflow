@@ -129,6 +129,7 @@ tf_cc_test(
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:test",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",

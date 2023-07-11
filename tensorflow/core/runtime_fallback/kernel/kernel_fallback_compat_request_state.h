@@ -138,7 +138,10 @@ class KernelFallbackCompatRequestState {
   std::function<void(std::function<void()>)>* runner() const { return runner_; }
 
   CancellationManager* cancellation_manager() const {
-    return default_cancellation_manager_;
+    return cancellation_manager_;
+  }
+  void set_cancellation_manager(CancellationManager* cancellation_manager) {
+    cancellation_manager_ = cancellation_manager;
   }
 
   RendezvousInterface* rendezvous() const { return rendezvous_.get(); }
@@ -192,7 +195,7 @@ class KernelFallbackCompatRequestState {
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;
-  CancellationManager* default_cancellation_manager_ = nullptr;
+  CancellationManager* cancellation_manager_ = nullptr;
 
   const tensorflow::DeviceMgr* device_manager_ = nullptr;
 
