@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -154,7 +155,7 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   """Main implementation of np.array()."""
   result_t = val
 
-  if not isinstance(result_t, ops.Tensor):
+  if not isinstance(result_t, tensor_lib.Tensor):
     dtype = np_utils.result_type_unary(result_t, dtype)
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
@@ -548,7 +549,7 @@ def _reduce(tf_fn,
       elif promote_int == _TO_FLOAT:
         a = math_ops.cast(a, np_dtypes.default_float_type())
 
-  if isinstance(axis, ops.Tensor) and axis.dtype not in (
+  if isinstance(axis, tensor_lib.Tensor) and axis.dtype not in (
       dtypes.int32, dtypes.int64):
     axis = math_ops.cast(axis, dtypes.int64)
 
@@ -1096,7 +1097,7 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('stack')
 def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+  if isinstance(arrays, (np_arrays.ndarray, tensor_lib.Tensor)):
     arrays = asarray(arrays)
     if axis == 0:
       return arrays
@@ -1880,10 +1881,17 @@ def _as_spec_tuple(slice_spec):
 
 def _getitem(self, slice_spec):
   """Implementation of ndarray.__getitem__."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     return array_ops.boolean_mask(tensor=self, mask=slice_spec)
 
   if not isinstance(slice_spec, tuple):
@@ -1895,10 +1903,17 @@ def _getitem(self, slice_spec):
 
 def _with_index_update_helper(update_method, a, slice_spec, updates):
   """Implementation of ndarray._with_index_*."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     slice_spec = nonzero(slice_spec)
 
   if not isinstance(slice_spec, tuple):
