@@ -524,7 +524,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   std::pair<StreamGroup*, bool> emplace_result =
       StreamGroupFactory::Global().Emplace(
-          tf_device_id_, /*stream_group_within_gpu=*/0, stream_group);
+          tf_device_id_, /*stream_group_within_gpu=*/stream_id_, stream_group);
   if (!emplace_result.second) {
     LOG(WARNING) << "StreamGroup for tf_device_id: " << tf_device_id_.value()
                  << " already exists. This usually only happens in unit tests.";
