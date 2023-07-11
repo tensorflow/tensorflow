@@ -31,6 +31,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -2145,8 +2146,8 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
 
   Value shape = tfl_reshape_op.getShape();
-  ShapedType shape_type = dyn_cast<ShapedType>(shape.getType());
-  ShapedType output_type = dyn_cast<ShapedType>(tfl_reshape_op.getType());
+  ShapedType shape_type = shape.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = tfl_reshape_op.getType().dyn_cast<ShapedType>();
 
   int64_t rank = ShapedType::kDynamic;
   if (output_type.hasRank()) rank = output_type.getRank();
@@ -2168,7 +2169,7 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   // Extract the dynamically shaped values for each dimension.
   SmallVector<Value> shape_vals;
   shape_vals.reserve(rank);
-  auto shape_ty = dyn_cast<ShapedType>(shape.getType());
+  auto shape_ty = shape.getType().dyn_cast<ShapedType>();
   for (int i = 0; i < rank; i++) {
     auto e_ty = shape_ty.getElementType();
     Value dim = rewriter.createOrFold<tosa::SliceOp>(
@@ -2180,12 +2181,39 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     shape_vals.push_back(dim);
   }
 
+  auto input = tfl_reshape_op.getInput();
+  auto reshape_type = output_type;
+  if (input.getType().getElementType().isa<ComplexType>()) {
+    input = llvm::cast<TypedValue<TensorType>>(
+      tosa::lowerComplexTensor(rewriter, op->getLoc(), input));
+
+    auto constant_type = RankedTensorType::get({},rewriter.getIntegerType(32));
+	// auto constant_attr = DenseI32ArrayAttr::get(rewriter.getContext(), {2});
+	auto constant_attr =
+          DenseElementsAttr::get(constant_type, llvm::ArrayRef({2}));
+    shape_vals.push_back(
+      CreateOpAndInfer<tosa::ConstOp>(
+        rewriter, op->getLoc(),
+        constant_type,
+        constant_attr)); 
+
+    reshape_type = tosa::lowerComplexTensorType(reshape_type);
+  }
+
   // Build the reshape operation with dynamic shapes.
   auto reshape =
-      buildReshapeWithDynamicDims(rewriter, op, tfl_reshape_op.getInput(),
-                                  tfl_reshape_op.getType(), shape_vals);
+      buildReshapeWithDynamicDims(rewriter, op, input,
+                                  reshape_type,
+                                  shape_vals);
 
   if (!reshape.has_value()) return failure();
+
+  if (output_type.getElementType().isa<ComplexType>()) {
+    *reshape = CreateOpAndInfer<UnrealizedConversionCastOp>(rewriter,
+                                                            op->getLoc(),
+                                                            output_type,
+                                                            *reshape).getResult(0);
+  }
 
   rewriter.replaceOp(op, {reshape.value()});
   return success();
@@ -4458,7 +4486,7 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
   auto rfft2d =
       CreateOpAndInfer<tosa::RFFT2dOp>(rewriter, loc, fp32_ty, fp32_ty, input);
 
-  auto output_shape = output_type.getShape();
+  auto output_shape = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   llvm::SmallVector<int64_t> new_shape{output_shape};
   new_shape.push_back(1);
   auto reshape_1 = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -4472,8 +4500,14 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
   auto concat = CreateOpAndInfer<tosa::ConcatOp>(rewriter, loc, fp32_ty, values,
                                                  rewriter.getI64IntegerAttr(3));
 
+  // The resulting shape of the concat operation may be inferred to more precise
+  // than what was specified by the original output type.
+  // Recompute the desired output type using the inferred shape of the concat
+  // operation.
+  auto concat_type = concat.getType().cast<RankedTensorType>();
+
   CreateReplaceOpAndInfer<mlir::UnrealizedConversionCastOp>(
-      rewriter, op, output_type, concat.getResult());
+      rewriter, op, tosa::interleavedToComplexType(concat_type), concat.getResult());
 
   return success();
 }

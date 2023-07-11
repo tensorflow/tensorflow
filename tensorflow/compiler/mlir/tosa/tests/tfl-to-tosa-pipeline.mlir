@@ -1029,6 +1029,18 @@ func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_reshape_complex
+// CHECK: %[[ARG0:.*]]: tensor<?x1x257x2xf32>
+// CHECK: %[[RESULT:.*]] = "tosa.reshape"(%[[ARG0]]) <{new_shape = array<i64: -1, 257, 2>}> : (tensor<?x1x257x2xf32>) -> tensor<?x257x2xf32>
+// CHECK: return %[[RESULT]]
+func.func @test_reshape_complex(%arg0: tensor<?x1x257xcomplex<f32>>) -> tensor<?x257xcomplex<f32>> {
+  %cst = "tfl.pseudo_const"() {value = dense<[-1, 257]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.reshape"(%arg0, %cst) : (tensor<?x1x257xcomplex<f32>>, tensor<2xi32>) -> tensor<?x257xcomplex<f32>>
+  func.return %1 : tensor<?x257xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}>
 // CHECK: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
@@ -2732,6 +2744,21 @@ func.func @test_rfft2d_crop_height_pad_width(%arg0: tensor<13x21x3xf32>) -> (ten
   %2 = "tfl.pseudo_const"() {value = dense<[2, 16]> : tensor<2xi32>} : () -> tensor<2xi32>
   %3 = "tfl.rfft2d"(%1, %2) : (tensor<13x21x16xf32>, tensor<2xi32>) -> tensor<13x2x9xcomplex<f32>>
   return %3 : tensor<13x2x9xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: test_rfft2d_dynamic_batch
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x1x512xf32>) -> tensor<?x1x257x2xf32>
+// CHECK-DAG: %[[REAL_PART:.*]], %[[IMAG_PART:.*]] = "tosa.rfft2d"(%arg0) : (tensor<?x1x512xf32>) -> (tensor<?x1x257xf32>, tensor<?x1x257xf32>)
+// CHECK-DAG: %[[REAL_EXPANDED:.*]] = "tosa.reshape"(%[[REAL_PART]]) <{new_shape = array<i64: -1, 1, 257, 1>}> : (tensor<?x1x257xf32>) -> tensor<?x1x257x1xf32>
+// CHECK-DAG: %[[IMAG_EXPANDED:.*]] = "tosa.reshape"(%[[IMAG_PART]]) <{new_shape = array<i64: -1, 1, 257, 1>}> : (tensor<?x1x257xf32>) -> tensor<?x1x257x1xf32>
+// CHECK-DAG: %[[RESULT:.*]] = "tosa.concat"(%[[REAL_EXPANDED]], %[[IMAG_EXPANDED]]) <{axis = 3 : i64}> : (tensor<?x1x257x1xf32>, tensor<?x1x257x1xf32>) -> tensor<?x1x257x2xf32>
+// CHECK-DAG: return %[[RESULT]] : tensor<?x1x257x2xf32>
+func.func @test_rfft2d_dynamic_batch(%arg0: tensor<?x1x512xf32>) -> (tensor<?x1x257xcomplex<f32>>) {
+  %0 = "tfl.pseudo_const"() {value = dense<[1, 512]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.rfft2d"(%arg0, %0) : (tensor<?x1x512xf32>, tensor<2xi32>) -> tensor<?x1x257xcomplex<f32>>
+  return %1 : tensor<?x1x257xcomplex<f32>>
 }
 
 // -----

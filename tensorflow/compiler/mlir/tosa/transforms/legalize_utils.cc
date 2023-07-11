@@ -118,11 +118,36 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(static_dims);
+  DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
+    tensorflow::ConvertMlirShapeToTF(static_dims));
   auto output_ty = tensorflow::GetTypeFromTFTensorShape(static_dims, e_ty);
   return rewriter
       .create<tosa::ReshapeOp>(op->getLoc(), output_ty, input_value, shape_attr)
       .getResult();
+}
+
+RankedTensorType lowerComplexTensorType(Type type) {
+  auto complex_tensor_type = type.cast<RankedTensorType>();
+  auto complex_type = complex_tensor_type.getElementType().cast<ComplexType>();
+  auto new_shape = llvm::to_vector(complex_tensor_type.getShape());
+  new_shape.push_back(2);
+  return RankedTensorType::get(new_shape, complex_type.getElementType());
+}
+
+Value lowerComplexTensor(PatternRewriter& rewriter, Location loc, Value complex_tensor) {
+  auto float_tensor_type = lowerComplexTensorType(complex_tensor.getType());
+  return rewriter.create<mlir::UnrealizedConversionCastOp>(
+      loc, float_tensor_type, complex_tensor)
+      .getResult(0);
+}
+
+RankedTensorType interleavedToComplexType(RankedTensorType type) {
+  auto new_shape = llvm::to_vector(type.getShape());
+  assert(new_shape.back() == 2);
+  new_shape.pop_back();
+
+  auto base_type = type.getElementType();
+  return RankedTensorType::get(new_shape, ComplexType::get(base_type));
 }
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
