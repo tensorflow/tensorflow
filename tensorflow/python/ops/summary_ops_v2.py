@@ -31,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -992,10 +993,14 @@ def graph_v1(param, step=None, name=None):
   Raises:
     TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
-  if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
-    raise TypeError("graph() needs a argument `param` to be tf.Tensor "
-                    "(e.g. tf.placeholder) in graph mode, but received "
-                    f"param={param} of type {type(param).__name__}.")
+  if not context.executing_eagerly() and not isinstance(
+      param, tensor_lib.Tensor
+  ):
+    raise TypeError(
+        "graph() needs a argument `param` to be tf.Tensor "
+        "(e.g. tf.placeholder) in graph mode, but received "
+        f"param={param} of type {type(param).__name__}."
+    )
   writer = _summary_state.writer
   if writer is None:
     return control_flow_ops.no_op()
@@ -1170,7 +1175,7 @@ def _serialize_graph(arbitrary_graph):
 def _choose_step(step):
   if step is None:
     return training_util.get_or_create_global_step()
-  if not isinstance(step, ops.Tensor):
+  if not isinstance(step, tensor_lib.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
 

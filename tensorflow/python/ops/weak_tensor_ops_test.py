@@ -18,6 +18,7 @@ from absl.testing import parameterized
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import array_ops
@@ -136,7 +137,7 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_unary_ops_return_normal_tensor(self, unary_api_specific_dtype):
     a = WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
     res = unary_api_specific_dtype(a)
-    self.assertIsInstance(res, ops.Tensor)
+    self.assertIsInstance(res, tensor.Tensor)
 
   # Test unary ops with optional dtype arg.
   def test_elementwise_unary_ops_optional_dtype(self):
@@ -148,25 +149,26 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # dtype specified in the argument.
     self.assertIsInstance(
-        array_ops.zeros_like(a, dtype=dtypes.int32), ops.Tensor
+        array_ops.zeros_like(a, dtype=dtypes.int32), tensor.Tensor
     )
     self.assertIsInstance(
-        array_ops.ones_like(a, dtype=dtypes.int32), ops.Tensor
+        array_ops.ones_like(a, dtype=dtypes.int32), tensor.Tensor
     )
-    self.assertIsInstance(array_ops.zeros_like(a, dtypes.int32), ops.Tensor)
-    self.assertIsInstance(array_ops.ones_like(a, dtypes.int32), ops.Tensor)
+    self.assertIsInstance(array_ops.zeros_like(a, dtypes.int32), tensor.Tensor)
+    self.assertIsInstance(array_ops.ones_like(a, dtypes.int32), tensor.Tensor)
     self.assertIsInstance(
         np_array_ops.arange(
             WeakTensor(constant_op.constant(5)), 0, 1, dtypes.float32
         ),
-        ops.Tensor,
+        tensor.Tensor,
     )
 
   # Test unary ops that require dtype arg.
   def test_unary_ops_explicit_dtype_return(self):
     a = WeakTensor(constant_op.constant([1, 2, 3], dtypes.float32))
-    self.assertIsInstance(math_ops.cast(a, dtypes.int32), ops.Tensor)
-    self.assertIsInstance(math_ops.saturate_cast(a, dtypes.int32), ops.Tensor)
+    self.assertIsInstance(math_ops.cast(a, dtypes.int32), tensor.Tensor)
+    self.assertIsInstance(
+        math_ops.saturate_cast(a, dtypes.int32), tensor.Tensor)
 
 
 def _get_test_input(op):

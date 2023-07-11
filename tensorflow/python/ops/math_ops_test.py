@@ -27,6 +27,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -784,9 +785,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
   def testWithPythonValue(self):
     # Test case for https://github.com/tensorflow/tensorflow/issues/39475
     x = math_ops.divide(5, 2)
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
     x = math_ops.divide(5, array_ops.constant(2.0))
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
@@ -1206,7 +1207,7 @@ class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = constant_op.constant(4)
     try:
       result = op(x, float_literal)
-      if isinstance(result, ops.Tensor):
+      if isinstance(result, tensor_lib.Tensor):
         result = self.evaluate(result)
     except TypeError:
       # Throwing a TypeError is OK

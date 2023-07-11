@@ -16,7 +16,7 @@
 
 import inspect
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import weak_tensor_ops_list
 from tensorflow.python.util import dispatch
@@ -24,8 +24,8 @@ from tensorflow.python.util import dispatch
 
 # This file must depend on math_ops so that e.g. `__add__` is
 # added to the Tensor class.
-for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-  tensor_oper = getattr(ops.Tensor, operator)
+for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
+  tensor_oper = getattr(tensor.Tensor, operator)
   setattr(WeakTensor, operator, tensor_oper)
 
 # List of unary ops that have support for WeakTensor.
