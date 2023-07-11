@@ -81,10 +81,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
   // integration.
-  opts.set_xla_gpu_cuda_graph_level(0);
+  opts.set_xla_gpu_cuda_graph_level(1);
   opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
-  opts.set_xla_gpu_cuda_graph_min_graph_size(2);
+  opts.set_xla_gpu_cuda_graph_min_graph_size(5);
   opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
