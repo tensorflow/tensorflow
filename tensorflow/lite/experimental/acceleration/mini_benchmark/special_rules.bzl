@@ -33,3 +33,9 @@ def minibenchmark_visibility_allowlist():
     return [
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance:__subpackages__",
     ]
+
+def register_selected_ops_deps():
+    """Return a list of dependencies for registering selected ops."""
+    return [
+        clean_dep("//tensorflow/lite/tools/benchmark:register_custom_op"),
+    ]

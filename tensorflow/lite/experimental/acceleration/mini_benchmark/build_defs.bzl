@@ -21,7 +21,7 @@ load(
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "add_suffix")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps")
 
-def embedded_binary(name, binary, array_variable_name, testonly = False):
+def embedded_binary(name, binary, array_variable_name, testonly = False, exec_properties = None):
     """Create a cc_library that embeds a binary as constant data.
 
     Args:
@@ -55,6 +55,7 @@ def embedded_binary(name, binary, array_variable_name, testonly = False):
         srcs = [cc_name],
         hdrs = [h_name],
         testonly = testonly,
+        exec_properties = exec_properties,
     )
 
 def validation_model(
@@ -173,6 +174,7 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
             ],
             "//conditions:default": [],
         }) + libjpeg_handle_deps(),
+        linkstatic = 1,
     )
 
 def cc_library_with_forced_in_process_benchmark_variant(

@@ -451,6 +451,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/tools:model_loader",
+        "//tensorflow/lite/tools/benchmark:register_custom_op",
     ],
 )
 
