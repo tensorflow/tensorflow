@@ -131,6 +131,7 @@ func.func @test_conv2d_grouped_convolution(%input: tensor<1x4x1x128xf32>, %weigh
 
 // -----
 
+
 // CHECK-LABEL: @test_conv2d_grouped_strided_convolution
 // CHECK-DAG: %[[INPUT_SLICE_1:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 0>}>
 // CHECK-DAG: %[[FILTER_SLICE_1:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 0, 0, 0, 0>}>
@@ -1025,6 +1026,18 @@ func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[3, -1]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x?xf32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_reshape_complex
+// CHECK: %[[ARG0:.*]]: tensor<?x1x257x2xf32>
+// CHECK: %[[RESULT:.*]] = "tosa.reshape"(%[[ARG0]]) <{new_shape = array<i64: -1, 257, 2>}> : (tensor<?x1x257x2xf32>) -> tensor<?x257x2xf32>
+// CHECK: return %[[RESULT]]
+func.func @test_reshape_complex(%arg0: tensor<?x1x257xcomplex<f32>>) -> tensor<?x257xcomplex<f32>> {
+  %cst = "tfl.pseudo_const"() {value = dense<[-1, 257]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.reshape"(%arg0, %cst) : (tensor<?x1x257xcomplex<f32>>, tensor<2xi32>) -> tensor<?x257xcomplex<f32>>
+  func.return %1 : tensor<?x257xcomplex<f32>>
 }
 
 // -----
@@ -2423,7 +2436,6 @@ func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
   func.return %1 : tensor<*xf32>
-}
 
 // -----
 

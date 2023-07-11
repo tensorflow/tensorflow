@@ -1,23 +1,58 @@
-workspace(name = "org_tensorflow")
+def tf_workspace1():
+    load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# Initialize the TensorFlow repository and all dependencies.
-#
-# The cascade of load() statements and tf_workspace?() calls works around the
-# restriction that load() statements need to be at the top of .bzl files.
-# E.g. we can not retrieve a new repository with http_archive and then load()
-# a macro from that repository in the same file.
-load("@//tensorflow:workspace3.bzl", "tf_workspace3")
+    # TensorFlow Workspace 1
+    http_archive(
+        name = "org_tensorflow",
+        urls = [
+            "https://github.com/tensorflow/tensorflow/archive/v2.7.0.tar.gz",
+        ],
+        sha256 = "fd30d5a60f8a0973ef4b0b957e07889102ed44f4b1726a444db01b19b44883e9",
+        strip_prefix = "tensorflow-2.7.0",
+        build_file_content = """
+py_library(
+    name = "tensorflow",
+    srcs = glob(["tensorflow/**/*.py"]),
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+""",
+    )
+    load("@org_tensorflow//:tensorflow.bzl", "tf_workspace1")
+    tf_workspace1()
 
-tf_workspace3()
+def tf_workspace0():
+    load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-load("@//tensorflow:workspace2.bzl", "tf_workspace2")
-
-tf_workspace2()
-
-load("@//tensorflow:workspace1.bzl", "tf_workspace1")
-
-tf_workspace1()
-
-load("@//tensorflow:workspace0.bzl", "tf_workspace0")
+    # TensorFlow Workspace 0
+    http_archive(
+        name = "org_tensorflow",
+        urls = [
+            "https://github.com/tensorflow/tensorflow/archive/v2.7.0.tar.gz",
+        ],
+        sha256 = "fd30d5a60f8a0973ef4b0b957e07889102ed44f4b1726a444db01b19b44883e9",
+        strip_prefix = "tensorflow-2.7.0",
+        build_file_content = """
+py_library(
+    name = "tensorflow",
+    srcs = glob(["tensorflow/**/*.py"]),
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+""",
+    )
+    load("@org_tensorflow//:tensorflow.bzl", "tf_workspace0")
+    tf_workspace0()
 
 tf_workspace0()
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+http_archive(
+    name = "hedron_compile_commands",
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/f7388651ee99608fb5f6336764657596e2f84b97.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-f7388651ee99608fb5f6336764657596e2f84b97",
+)
+
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()

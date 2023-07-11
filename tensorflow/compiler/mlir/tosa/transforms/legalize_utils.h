@@ -54,6 +54,18 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims);
 
+
+
+
+
+RankedTensorType lowerComplexTensorType(Type type);
+
+Value lowerComplexTensor(PatternRewriter& rewriter, Location loc, Value complex_tensor);
+
+RankedTensorType interleavedToComplexType(RankedTensorType type);
+
+
+
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
