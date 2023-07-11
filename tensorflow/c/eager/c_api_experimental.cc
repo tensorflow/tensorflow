@@ -939,3 +939,18 @@ void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,
   status->status = coord_agent->WaitAtBarrier(
       barrier_id, absl::Milliseconds(barrier_timeout_in_ms), {});
 }
+
+void TFE_InitializeLocalOnlyContext(TFE_Context* ctx, int keep_alive_secs,
+                                    const void* proto, size_t proto_len,
+                                    TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!server_def.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Invalid tensorflow.ServerDef protocol buffer");
+    return;
+  }
+  status->status =
+      tensorflow::unwrap(ctx)
+          ->GetDistributedManager()
+          ->InitializeLocalOnlyContext(server_def, keep_alive_secs);
+}
