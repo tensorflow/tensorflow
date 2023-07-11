@@ -376,7 +376,7 @@ py_strict_test(
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:client_testlib",
