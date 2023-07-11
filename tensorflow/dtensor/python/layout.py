@@ -221,6 +221,14 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         use_xla_spmd,
     )
 
+  @classmethod
+  def _new_object(cls, *args, **kwargs):
+    # Need to explicitly invoke the base class __init__ because
+    # Mesh.__init__ overrode it with a different signature.
+    self = _pywrap_dtensor_device.Mesh.__new__(cls)
+    super().__init__(self, *args, **kwargs)
+    return self
+
   def global_device_ids(self) -> np.ndarray:
     """Returns a global device list as an array."""
     return np.array(super().global_device_ids(), dtype=np.int64).reshape(
@@ -255,26 +263,25 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   @classmethod
   def from_proto(cls, proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
-    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_proto=proto)
-    return mesh
+    return cls._new_object(mesh_proto=proto)
 
   @classmethod
   def from_string(cls, mesh_str: str) -> 'Mesh':
-    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str=mesh_str)
-    return mesh
+    return cls._new_object(mesh_str=mesh_str)
 
   @classmethod
   def from_device(cls, device: str) -> 'Mesh':
     """Constructs a single device mesh from a device string."""
-    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
-    return mesh
+    return cls._new_object(single_device=device)
+
+  @classmethod
+  def _from_mesh(cls, mesh: _pywrap_dtensor_device.Mesh):
+    """Creates a copy from an existing pywrap mesh object."""
+    return cls._new_object(mesh=mesh)
 
   @functools.cached_property
   def _host_mesh(self) -> 'Mesh':
-    return Mesh.from_string(super().host_mesh().to_string())
+    return Mesh._from_mesh(super().host_mesh())
 
   def host_mesh(self) -> 'Mesh':
     """Returns a host mesh."""
@@ -426,6 +433,14 @@ class Layout(_pywrap_dtensor_device.Layout):
 
     super().__init__(sharding_specs=sharding_specs, mesh=mesh)
 
+  @classmethod
+  def _new_object(cls, *args, **kwargs):
+    # Need to explicitly invoke the base class __init__ because
+    # Layout.__init__ overrode it with a different signature.
+    self = _pywrap_dtensor_device.Layout.__new__(cls)
+    super().__init__(self, *args, **kwargs)
+    return self
+
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
 
@@ -436,10 +451,9 @@ class Layout(_pywrap_dtensor_device.Layout):
   def __reduce__(self):
     return Layout.from_string, (self.to_string(),)
 
-  # TODO(b/242201545): Find a way to return Mesh object from the pywrap module.
   @property
   def mesh(self):
-    return Mesh.from_proto(super().mesh.as_proto())
+    return Mesh._from_mesh(mesh=super().mesh)  # pylint: disable=protected-access
 
   @property
   def shape(self):
@@ -450,16 +464,13 @@ class Layout(_pywrap_dtensor_device.Layout):
       cls, mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
   ) -> 'Layout':
     """Returns a layout sharded on batch dimension."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(
+    return cls._new_object(
         # Watchout for the different ordering.
-        layout_obj,
         mesh=mesh,
         rank=rank,
         batch_dim=batch_dim,
         axis=axis,
     )
-    return layout_obj
 
   # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def delete(self, dims: List[int]) -> 'Layout':
@@ -474,18 +485,12 @@ class Layout(_pywrap_dtensor_device.Layout):
   @classmethod
   def from_proto(cls, layout_proto: layout_pb2.LayoutProto) -> 'Layout':
     """Creates an instance from a LayoutProto."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(
-        layout_obj, layout_proto=layout_proto
-    )
-    return layout_obj
+    return cls._new_object(layout_proto=layout_proto)
 
   @classmethod
   def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str=layout_str)
-    return layout_obj
+    return cls._new_object(layout_str=layout_str)
 
   @classmethod
   def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
@@ -495,9 +500,7 @@ class Layout(_pywrap_dtensor_device.Layout):
   @classmethod
   def from_single_device_mesh(cls, mesh: Mesh) -> 'Layout':
     """Constructs a single device layout from a single device mesh."""
-    layout = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(layout, mesh=mesh)
-    return layout
+    return cls._new_object(mesh=mesh)
 
   @classmethod
   def from_device(cls, device: str) -> 'Layout':
@@ -534,6 +537,4 @@ class Layout(_pywrap_dtensor_device.Layout):
   @classmethod
   def replicated(cls, mesh: Mesh, rank: int) -> 'Layout':
     """Returns a replicated layout of rank `rank`."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(layout_obj, mesh=mesh, rank=rank)
-    return layout_obj
+    return cls._new_object(mesh=mesh, rank=rank)
