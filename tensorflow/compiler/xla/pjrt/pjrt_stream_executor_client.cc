@@ -1751,29 +1751,29 @@ struct TupleHandle {
 };
 
 Status CheckCompatibleShapes(bool strict_shape_checking,
-                             const Shape& buffer_shape,
+                             const Shape& buffer_on_device_shape,
                              const Shape& execution_shape,
                              const TransferManager& transfer_manager,
                              int parameter_index) {
   // TODO(misard) Support casting of tuple parameters.
-  if (strict_shape_checking || buffer_shape.IsTuple()) {
-    if (!ShapeUtil::Equal(buffer_shape, execution_shape)) {
+  if (strict_shape_checking || buffer_on_device_shape.IsTuple()) {
+    if (!ShapeUtil::Compatible(buffer_on_device_shape, execution_shape)) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
           "shape %s",
           ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
-          ShapeUtil::HumanStringWithLayout(buffer_shape));
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   } else {
-    if (transfer_manager.GetByteSizeRequirement(buffer_shape) !=
+    if (transfer_manager.GetByteSizeRequirement(buffer_on_device_shape) !=
         transfer_manager.GetByteSizeRequirement(execution_shape)) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
           "shape %s",
           ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
-          ShapeUtil::HumanStringWithLayout(buffer_shape));
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   }
   return OkStatus();
