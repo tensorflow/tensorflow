@@ -212,6 +212,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
+    if clip_norm < 0:
+      raise ValueError('clip_norm should be a 0-D (scalar) Tensor > 0')
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
