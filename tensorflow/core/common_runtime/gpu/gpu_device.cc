@@ -1280,7 +1280,6 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
   ConcretePerOpGpuDevice* concrete_device =
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
-  DCHECK_EQ(stream_id, 0);
   const gpuStream_t* gpu_stream = reinterpret_cast<const gpuStream_t*>(
       stream_->compute->implementation()->GpuStreamMemberHack());
   concrete_device->Reinitialize(context, gpu_stream, tf_device_id_, allocator,
@@ -1301,7 +1300,6 @@ Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
     const int stream_id = gpu_dc->stream_id();
     VLOG(1) << "  eigen_gpu_device(" << dc << ") => stream[" << stream_id
             << "]";
-    CHECK_EQ(stream_id, 0);
     ReinitializeDevice(context, device, stream_id, allocator);
   } else {
     ReinitializeDevice(context, device, 0, allocator);
