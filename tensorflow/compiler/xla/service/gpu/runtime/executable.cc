@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -169,7 +170,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
-  // Options for the default XLA Runtim compilation pipeline.
+  // Options for the default XLA Runtime compilation pipeline.
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -412,6 +413,18 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
+
+#if GOOGLE_CUDA
+  // Instantiate all CUDA graphs before executing the main function.
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0) {
+    if (auto instantiated = graph_instances_.InstantiateAllGraphs(
+            run_options, executable, user_data, temp_buffer.opaque());
+        !instantiated.ok()) {
+      return InternalError("Failed to instantiate CUDA graphs: %s",
+                           instantiated.message());
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

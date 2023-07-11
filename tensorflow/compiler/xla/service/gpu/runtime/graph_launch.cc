@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -52,9 +53,21 @@ using xla::runtime::Arguments;
 using xla::runtime::AsyncTaskRunner;
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+using xla::runtime::FunctionRef;
+using xla::runtime::FunctionType;
 using xla::runtime::MemrefDesc;
-using xla::runtime::ScalarArg;
+using xla::runtime::MemrefType;
 using xla::runtime::StridedMemrefView;
+
+#if GOOGLE_CUDA
+using se::gpu::OwnedCudaGraph;
+
+// Captures Gpu graph by running given function in capture mode.
+static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
+    CustomCall::UserData user_data);
+#endif  // GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
 // CUDA graphs caching.
@@ -70,6 +83,86 @@ CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&mutex_);
   return &counts_[executor];
+}
+
+Status GraphInstances::InstantiateAllGraphs(
+    const ServiceExecutableRunOptions* run_options,
+    const Executable& executable, const CustomCall::UserData& user_data,
+    void* ptr) {
+  absl::MutexLock lock(&mutex_);
+
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // All Gpu graphs are already instantiated for a given executor.
+  if (instantiated_.contains(executor)) return OkStatus();
+
+  VLOG(3) << "Instantate all Gpu graphs in executable " << executable.name();
+
+  TraceMe trace("cuda.graph.instantiate_all");
+
+  // Initialize graph instances snapshot for a given executor.
+  StreamExecutorGraphInstances::Snapshot instances =
+      graphs_[executor].snapshot();
+
+  // Instantiate all Gpu graphs by calling graph capture functions with fake
+  // arguments. Once we'll execute them first time for real, they'll be updated
+  // with correct pointers.
+  for (unsigned ordinal = 1; ordinal < executable.num_functions(); ++ordinal) {
+    if (!absl::StartsWith(executable.function_name(ordinal),
+                          "xla.gpu.cuda.graph.capture"))
+      continue;
+
+    VLOG(3) << "Instantiate Gpu graph defined by capture function @"
+            << executable.function_name(ordinal) << " (ordinal = " << ordinal
+            << ")";
+
+    TraceMe trace_instantiation([&] {
+      return TraceMeEncode("cuda.graph.instantiate", {{"ordinal", ordinal}});
+    });
+
+    FunctionRef function_ref = executable.function_ref(ordinal);
+
+    const FunctionType& signature = executable.signature(ordinal);
+    assert(signature.num_results() == 0 && "unexpected number of results");
+    Arguments<MemrefDesc> args(signature.num_operands());
+
+    // Prepare arguments for the graph capture function.
+    for (size_t j = 0; j < signature.num_operands(); ++j) {
+      auto* memref = llvm::dyn_cast<MemrefType>(signature.operand(j));
+
+      if (!memref)
+        return absl::InternalError(absl::StrFormat(
+            "Unsupported capture function argument type #%d", j));
+
+      if (memref->sizes().size() != 1)
+        return absl::InternalError(
+            absl::StrFormat("Unsupported capture function memref rank #%d: %d",
+                            j, memref->sizes().size()));
+
+      std::array<int64_t, 1> sizes = {memref->size(0)};
+      std::array<int64_t, 1> strides = {1};
+
+      args.emplace_back<MemrefDesc>(memref->element_type(), ptr,
+                                    /*offset=*/0, sizes, strides);
+    }
+
+#if GOOGLE_CUDA
+    // Instantiate a Gpu graph with fake arguments.
+    auto instantiate = [&]() -> absl::StatusOr<GraphInstance> {
+      TF_ASSIGN_OR_RETURN(
+          auto g, CaptureGraph(run_options, function_ref, args, user_data));
+      TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+      return GraphInstance(0, std::move(e));
+    };
+
+    TF_ASSIGN_OR_RETURN(GraphInstance * instance,
+                        instances.GetOrCreate(ordinal, instantiate));
+    (void)instance;
+#endif  // GOOGLE_CUDA
+  }
+
+  instantiated_.insert(executor);
+  return OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,8 +192,6 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 
 #if GOOGLE_CUDA
 
-using se::gpu::OwnedCudaGraph;
-
 static bool InDebugMode() {
 #ifdef NDEBUG
   return false;
@@ -108,9 +199,26 @@ static bool InDebugMode() {
   return true;
 }
 
+// Forwards custom call arguments to an arguments container that can be passed
+// to an executable function.
+static absl::Status ForwardArguments(CustomCall::RemainingArgs fwd_args,
+                                     Arguments<MemrefDesc>& args) {
+  for (size_t i = 0; i < fwd_args.size(); ++i) {
+    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
+      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
+                                    memref->sizes, memref->strides);
+      continue;
+    }
+
+    return absl::InvalidArgumentError("Unsupported argument type");
+  }
+
+  return OkStatus();
+}
+
 static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
-    runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
+    runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
     CustomCall::UserData user_data) {
   // We capture graph on a borrowed stream because we do not want to
   // accidentally record any concurrent kernel launches from other XLA
@@ -162,29 +270,6 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // Graph capture function should not launch any async tasks.
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
-  // Graph capture functions can only have index arguments for launch
-  // dimensions, or memrefs for passing buffers. We need to re-package custom
-  // call arguments into a container that can be passed to an executable
-  // function.
-  Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
-
-  for (size_t i = 0; i < fwd_args.size(); ++i) {
-    // `index` argument passed as int64_t.
-    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
-      args.emplace_back<ScalarArg>(*idx);
-      continue;
-    }
-
-    // Pass `memref` argument as a MemrefDesc.
-    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
-      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
-                                    memref->sizes, memref->strides);
-      continue;
-    }
-
-    return absl::InvalidArgumentError("Unsupported argument type");
-  }
-
   // Create a graph from running the graph capture function.
   auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
     return function_ref(args, runtime::NoResultConverter{}, opts,
@@ -223,32 +308,15 @@ static absl::Status RunGraphWithoutCapture(
   // Graph capture function should not launch any async tasks.
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
-  Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
+  Arguments<MemrefDesc> args(fwd_args.size());
+  TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
 
-  for (size_t i = 0; i < fwd_args.size(); ++i) {
-    // `index` argument passed as int64_t.
-    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
-      args.emplace_back<ScalarArg>(*idx);
-      continue;
-    }
-
-    // Pass `memref` argument as a MemrefDesc.
-    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
-      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
-                                    memref->sizes, memref->strides);
-      continue;
-    }
-
-    return absl::InvalidArgumentError("Unsupported argument type");
-  }
-
-  auto status =
-      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
-          .status();
-  if (!status.ok()) {
+  auto executed =
+      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
+  if (!executed.ok()) {
     return InternalError("RunGraphWithoutCapture failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
-                         status.ToString());
+                         executed.status().ToString());
   }
   return absl::OkStatus();
 }
@@ -272,7 +340,7 @@ static absl::Status LaunchGraph(
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
     CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
-  VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
+  VLOG(1) << "Launch Cuda Graph: ordinal = " << capture.ordinal;
 
   // Get a reference to exported function that captures the cuda graph.
   runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
@@ -287,15 +355,13 @@ static absl::Status LaunchGraph(
                                 gemm_config, gpu_lock, region_status);
   };
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<std::atomic<uint64_t>> * get_count,
-      counts->GetOrCreate(
-          capture.ordinal,
-          []() -> absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>> {
-            return std::make_unique<std::atomic<uint64_t>>(0);
-          }));
-  uint64_t count = (*get_count)->fetch_add(1);
-  uint64_t instantiation_threshold =
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<std::atomic<uint64_t>> * get_count,
+                      counts->GetOrCreate(capture.ordinal, [] {
+                        return std::make_unique<std::atomic<uint64_t>>(0);
+                      }));
+
+  int64_t count = (*get_count)->fetch_add(1);
+  int64_t num_runs_to_instantiate =
       debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate();
 
   // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
@@ -306,23 +372,27 @@ static absl::Status LaunchGraph(
   bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
 #endif
 
-  if (count < instantiation_threshold || is_profiling) {
-    // Run captured graph directly.
+  if (count < num_runs_to_instantiate || is_profiling) {
+    VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphWithoutCapture(run_options, function_ref, fwd_args,
                                   user_data());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      GraphInstance * instance,
-      instances->GetOrCreate(
-          capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
-            TF_ASSIGN_OR_RETURN(auto g, CaptureGraph(run_options, function_ref,
-                                                     fwd_args, user_data()));
+  // Instantiate Gpu graph by running graph capture function.
+  auto instantiate = [&]() -> absl::StatusOr<GraphInstance> {
+    Arguments<MemrefDesc> args(fwd_args.size());
+    TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
 
-            TF_ASSIGN_OR_RETURN(auto e,
-                                se::gpu::InstantiateCudaGraph(std::move(g)));
-            return GraphInstance(ptrs_hash, std::move(e));
-          }));
+    TF_ASSIGN_OR_RETURN(
+        auto g, CaptureGraph(run_options, function_ref, args, user_data()));
+
+    TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+
+    return GraphInstance(ptrs_hash, std::move(e));
+  };
+
+  TF_ASSIGN_OR_RETURN(GraphInstance * instance,
+                      instances->GetOrCreate(capture.ordinal, instantiate));
 
   {
     // Lock graph instance for read only access. If we'll have to update the
@@ -343,9 +413,13 @@ static absl::Status LaunchGraph(
 
   // Otherwise we have to re-capture the graph and update the graph instance.
   VLOG(3) << "Update cached graph instance";
+
+  Arguments<MemrefDesc> args(fwd_args.size());
+  TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
+
   // Capture CUDA graph by running capture function.
   TF_ASSIGN_OR_RETURN(
-      auto g, CaptureGraph(run_options, function_ref, fwd_args, user_data()));
+      auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
   // At this point we have to grab a writer lock, because we might potentially
   // have concurrent execution of the cached graph instance.

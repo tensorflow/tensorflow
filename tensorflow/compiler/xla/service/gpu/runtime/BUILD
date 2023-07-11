@@ -349,6 +349,7 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
