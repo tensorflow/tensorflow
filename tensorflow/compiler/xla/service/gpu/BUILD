@@ -26,7 +26,7 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -78,7 +78,7 @@ cc_library(
     name = "gpu_executable_run_options",
     srcs = ["gpu_executable_run_options.cc"],
     hdrs = ["gpu_executable_run_options.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
@@ -117,7 +117,7 @@ cc_library(
     hdrs = [
         "launch_dimensions.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_device_info",
         "//tensorflow/compiler/xla:shape_util",
@@ -213,7 +213,7 @@ cc_library(
     name = "target_util",
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -245,7 +245,7 @@ cc_library(
     name = "gpu_device_info",
     srcs = ["gpu_device_info.cc"],
     hdrs = ["gpu_device_info.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -257,7 +257,7 @@ cc_library(
     testonly = 1,
     srcs = ["gpu_device_info_for_tests.cc"],
     hdrs = ["gpu_device_info_for_tests.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_device_info",
     ],
@@ -634,7 +634,7 @@ cc_library(
     name = "parallel_loop_emitter",
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":launch_dimensions",
         ":target_util",
@@ -986,7 +986,7 @@ cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":gpu_asm_opts_util",
         ":target_util",
@@ -1027,7 +1027,7 @@ cc_library(
     name = "cublas_cudnn",
     srcs = ["cublas_cudnn.cc"],
     hdrs = ["cublas_cudnn.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:statusor",
@@ -1373,7 +1373,7 @@ cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
@@ -2944,7 +2944,7 @@ cc_library(
     name = "gpu_asm_opts_util",
     srcs = ["gpu_asm_opts_util.cc"],
     hdrs = ["gpu_asm_opts_util.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     copts = tsl_copts(),
     deps = [
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -2957,7 +2957,7 @@ cc_library(
     name = "gpu_hlo_cost_analysis",
     srcs = ["gpu_hlo_cost_analysis.cc"],
     hdrs = ["gpu_hlo_cost_analysis.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
