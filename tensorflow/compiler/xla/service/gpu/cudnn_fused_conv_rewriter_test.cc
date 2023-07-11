@@ -215,11 +215,6 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseBiasWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestMatchWithAllTypes(R"(
@@ -243,12 +238,6 @@ TEST_F(CudnnFusedConvRewriterTest, TestElu) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
-
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestNotMatchWithAllTypes(R"(
