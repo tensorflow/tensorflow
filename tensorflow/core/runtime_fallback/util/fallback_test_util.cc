@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
 
 #include <atomic>
+#include <optional>
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -69,7 +70,10 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
   status = SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, eager_context->local_device_mgr(),
       eager_context->pflr(), runner_table, resource_array,
-      user_intra_op_threadpool);
+      user_intra_op_threadpool, /*model_metadata=*/std::nullopt,
+      /*runner=*/nullptr, /*cost_recorder=*/nullptr,
+      /*client_graph_resource_context=*/resource_context,
+      /*cancellation_manager=*/nullptr);
   TF_DCHECK_OK(status);
 
   status = SetUpTfJitRtRequestContext(&request_context_builder);

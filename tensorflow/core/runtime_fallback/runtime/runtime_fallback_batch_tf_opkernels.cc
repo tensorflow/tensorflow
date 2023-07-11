@@ -267,7 +267,11 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
 
   return SetUpKernelFallbackCompatRequestContext(
       builder, device_manager, pflr, runner_table, resource_array,
-      intra_op_threadpool, session_metadata, /*runner=*/nullptr);
+      intra_op_threadpool, session_metadata,
+      src_fallback_request_state->runner(),
+      src_fallback_request_state->cost_recorder(),
+      src_fallback_request_state->client_graph_resource_context(),
+      src_fallback_request_state->cancellation_manager());
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(

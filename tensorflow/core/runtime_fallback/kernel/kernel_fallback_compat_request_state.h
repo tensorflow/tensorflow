@@ -235,11 +235,12 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     FallbackResourceArray* resource_array,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const std::optional<SessionMetadata>& model_metadata = std::nullopt,
-    std::function<void(std::function<void()>)>* runner = nullptr,
-    tfrt_stub::CostRecorder* cost_recorder = nullptr,
-    tfrt::ResourceContext* client_graph_resource_context = nullptr);
+    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
+    const std::optional<SessionMetadata>& model_metadata,
+    std::function<void(std::function<void()>)>* runner,
+    tfrt_stub::CostRecorder* cost_recorder,
+    tfrt::ResourceContext* client_graph_resource_context,
+    tensorflow::CancellationManager* cancellation_manager);
 
 }  // namespace tfd
 }  // namespace tensorflow
