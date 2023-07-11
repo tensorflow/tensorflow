@@ -3670,7 +3670,10 @@ cuda_py_strict_test(
     srcs = ["nn_test.py"],
     main = "nn_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "notap",  # TODO(b/290819913)
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
