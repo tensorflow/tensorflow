@@ -212,6 +212,8 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::RunBackend(
   options.set_xla_gpu_dump_autotune_results_to("");
   options.set_xla_gpu_load_autotune_results_from("");
   options.set_xla_gpu_dump_llvmir(false);
+  // Avoid using Gpu graphs as we don't want to measure graph construction time.
+  options.set_xla_gpu_cuda_graph_level(0);
   // Avoid using another thread pool.
   options.set_xla_gpu_force_compilation_parallelism(1);
   module->config().set_debug_options(options);
