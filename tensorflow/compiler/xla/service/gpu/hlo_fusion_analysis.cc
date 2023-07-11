@@ -693,7 +693,7 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
       // For multi-output fusions, reduce the block size further to decrease
       // register pressure when multiple outputs are computed by each thread.
       int64_t max_block_size =
-          std::max(MinThreadsXRowReduction(),
+          std::max(MinThreadsXRowReduction(first_reduce->GetModule()->config()),
                    static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
       return std::min(max_block_size,
                       RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
@@ -710,7 +710,8 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
   const int64_t shmem_budget = device_info_->shared_memory_per_block;
-  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
+  bool reduction_is_race_free = ReductionIsRaceFree(
+      first_reduce->GetModule()->config(), reduction_dimensions);
   bool vectorize =
       // Vectorization might cause us to run out of budget.
       (shmem_usage * 2 <= shmem_budget) &&
