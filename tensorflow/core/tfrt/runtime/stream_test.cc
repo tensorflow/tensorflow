@@ -105,7 +105,7 @@ TEST(StreamTest, MultipleWriters) {
          {{"c", AsTensor<int32_t>({300})}}};
 
     for (const auto& p : expected) {
-      tsl::Env::Default()->SchedClosure([&, p]() {
+      tsl::Env::Default()->SchedClosure([callback_id, step_id, p]() {
         // The stream callback may be dropped early, and in that case we ignore
         // the error.
         GetGlobalStreamCallbackRegistry()
