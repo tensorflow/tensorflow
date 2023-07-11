@@ -120,11 +120,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":gpu_device_info",
-        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-        "//tensorflow/tsl/platform:logging",
-        "@llvm-project//mlir:IR",
     ],
 )
 

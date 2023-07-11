@@ -17,12 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <ostream>
-#include <string>
 
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -80,7 +76,7 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config, mlir::Operation* op) {
+    LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -205,12 +201,11 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    bool use_experimental_block_size, LaunchDimensionsConfig dim_config,
-    mlir::Operation* op) {
-  if (use_experimental_block_size && op != nullptr) {
+    bool use_experimental_block_size, LaunchDimensionsConfig dim_config) {
+  if (use_experimental_block_size) {
     VLOG(2) << "Experimental block size is enabled";
     return CalculateLaunchDimensionsImplExperimental(shape, gpu_device_info,
-                                                     dim_config, op);
+                                                     dim_config);
   }
   return CalculateLaunchDimensionsImpl(shape, gpu_device_info, dim_config);
 }
