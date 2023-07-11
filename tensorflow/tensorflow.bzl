@@ -1314,32 +1314,6 @@ generate_op_reg_offsets = rule(
     implementation = _generate_op_reg_offsets_impl,
 )
 
-# Generates a Python library target wrapping the ops registered in "deps".
-#
-# Args:
-#   name: used as the name of the generated target and as a name component of
-#     the intermediate files.
-#   out: name of the python file created by this rule. If None, then
-#     "ops/gen_{name}.py" is used.
-#   hidden: Optional list of ops names to make private in the Python module.
-#     It is invalid to specify both "hidden" and "op_allowlist".
-#   visibility: passed to py_library.
-#   deps: list of dependencies for the intermediate tool used to generate the
-#     python target. NOTE these `deps` are not applied to the final python
-#     library target itself.
-#   require_shape_functions: Unused. Leave this as False.
-#   hidden_file: optional file that contains a list of op names to make private
-#     in the generated Python module. Each op name should be on a line by
-#     itself. Lines that start with characters that are invalid op name
-#     starting characters are treated as comments and ignored.
-#   generated_target_name: name of the generated target (overrides the
-#     "name" arg)
-#   op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
-#   op_allowlist: if not empty, only op names in this list will be wrapped. It
-#     is invalid to specify both "hidden" and "op_allowlist".
-#   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
-#     specified ops.
-
 def tf_gen_op_wrapper_py(
         name,
         out = None,
@@ -1358,6 +1332,38 @@ def tf_gen_op_wrapper_py(
         copts = [],
         extra_py_deps = None,
         py_lib_rule = native.py_library):
+    """Generates a Python library target wrapping the ops registered in "deps".
+
+    Args:
+        name: used as the name of the generated target and as a name component of
+            the intermediate files.
+        out: name of the python file created by this rule. If None, then
+            "ops/gen_{name}.py" is used.
+        hidden: Optional list of ops names to make private in the Python module.
+            It is invalid to specify both "hidden" and "op_allowlist".
+        visibility: passed to py_library.
+        deps: list of dependencies for the intermediate tool used to generate the
+            python target. NOTE these `deps` are not applied to the final python
+            library target itself.
+        require_shape_functions: Unused. Leave this as False.
+        hidden_file: optional file that contains a list of op names to make private
+            in the generated Python module. Each op name should be on a line by
+            itself. Lines that start with characters that are invalid op name
+            starting characters are treated as comments and ignored.
+        generated_target_name: name of the generated target (overrides the
+            "name" arg)
+        op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
+        op_allowlist: if not empty, only op names in this list will be wrapped. It
+            is invalid to specify both "hidden" and "op_allowlist".
+        cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
+            specified ops.
+        api_def_srcs: undocumented.
+        compatible_with: undocumented.
+        testonly: undocumented.
+        copts: undocumented.
+        extra_py_deps: undocumented.
+        py_lib_rule: undocumented.
+    """
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
