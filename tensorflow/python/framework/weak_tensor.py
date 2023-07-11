@@ -24,7 +24,7 @@ from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 
 _ALLOWED_WEAK_DTYPES = (
     dtypes.int32,
@@ -62,7 +62,7 @@ class WeakTensor(extension_type.ExtensionType):
 
   # __name__ is required for serialization in SavedModel.
   __name__ = "tf.WeakTensor"
-  tensor: ops.Tensor
+  tensor: tensor_lib.Tensor
 
   def __validate__(self):
     if self.tensor.dtype not in _ALLOWED_WEAK_DTYPES:

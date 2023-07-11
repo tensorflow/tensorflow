@@ -22,9 +22,8 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type_field
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -46,12 +45,12 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       # Without default values:
       ('x', int),
       ('f', float),
-      ('t', ops.Tensor),
+      ('t', tensor.Tensor),
       # With default values:
       ('x', int, 33),
       ('y', float, 33.8),
-      ('t', ops.Tensor, [[1, 2], [3, 4]]),
-      ('t', ops.Tensor, lambda: constant_op.constant([[1, 2], [3, 4]])),
+      ('t', tensor.Tensor, [[1, 2], [3, 4]]),
+      ('t', tensor.Tensor, lambda: constant_op.constant([[1, 2], [3, 4]])),
       ('r', ragged_tensor.RaggedTensor,
        lambda: ragged_factory_ops.constant([[1, 2], [3]])),
       ('seq', typing.Tuple[typing.Union[int, float], ...], (33, 12.8, 9, 0)),
@@ -75,7 +74,7 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       default = converted_default
     self.assertEqual(field.name, name)
     self.assertEqual(field.value_type, value_type)
-    if isinstance(default, (ops.Tensor, ragged_tensor.RaggedTensor)):
+    if isinstance(default, (tensor.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(field.default, default)
     else:
       self.assertEqual(field.default, default)
@@ -91,13 +90,13 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       ('seq', _TUPLE[typing.Union[int, float], ...], [33, 12.8, 'zero'],
        (r'default value for seq\[2\]: expected '
         r"typing.Union\[int, float\], got 'str'")),
-      ('t', tensor_spec.TensorSpec(None, dtypes.int32),
+      ('t', tensor.TensorSpec(None, dtypes.int32),
        lambda: constant_op.constant(0.0),
        'Unsupported type annotation TensorSpec.*'),
       ('x', dict, {}, "In field 'x': Unsupported type annotation 'dict'"),
       ('y', typing.Union[int, list], 3,
        "In field 'y': Unsupported type annotation 'list'"),
-      ('z', typing.Mapping[ops.Tensor, int], {},
+      ('z', typing.Mapping[tensor.Tensor, int], {},
        "In field 'z': Mapping had a key 'Tensor' with type 'type'"),
   ])
   def testConstructionError(self, name, value_type, default, error):
@@ -150,7 +149,7 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
       dict(tp=type(None)),
       dict(tp=dtypes.DType),
       dict(tp=tensor_shape.TensorShape),
-      dict(tp=ops.Tensor),
+      dict(tp=tensor.Tensor),
       dict(tp='A', allow_forward_references=True),
       # Generic types
       dict(tp=typing.Union[int, float]),
@@ -185,7 +184,7 @@ class ValidateFieldPyTypeTest(test_util.TensorFlowTestCase,
           error="Unsupported type annotation 'dict'"),
       dict(tp='A', error='Unresolved forward reference .*'),
       dict(tp=typing.Union[int, 'A'], error='Unresolved forward reference .*'),
-      dict(tp=typing.Mapping[ops.Tensor, int],
+      dict(tp=typing.Mapping[tensor.Tensor, int],
            error="Mapping had a key 'Tensor' with type 'type'"),
       dict(
           tp=typing.Mapping[tensor_shape.TensorShape, int],
@@ -223,8 +222,8 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       ('foo', str),
       (None, None),
       (True, bool),
-      ([1, 2, 3], ops.Tensor),
-      (lambda: constant_op.constant([1, 2, 3]), ops.Tensor),
+      ([1, 2, 3], tensor.Tensor),
+      (lambda: constant_op.constant([1, 2, 3]), tensor.Tensor),
       (lambda: ragged_factory_ops.constant([[1, 2], [3]]),
        ragged_tensor.RaggedTensor),
       ([1, 2, 3], typing.Tuple[int, ...], (1, 2, 3)),
@@ -252,7 +251,7 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
     if expected is None:
       expected = value
     converted = extension_type_field._convert_value(value, value_type, ('x',))
-    if isinstance(converted, (ops.Tensor, ragged_tensor.RaggedTensor)):
+    if isinstance(converted, (tensor.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(converted, expected)
     else:
       self.assertEqual(converted, expected)
@@ -263,7 +262,7 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
       ('foo', str),
       (None, None),
       (True, bool),
-      (tensor_spec.TensorSpec([5]), ops.Tensor),
+      (tensor.TensorSpec([5]), tensor.Tensor),
       (ragged_tensor.RaggedTensorSpec([5, None]), ragged_tensor.RaggedTensor),
       ([1, 2, 3], typing.Tuple[int, ...], (1, 2, 3)),
       ((1, 2, 3), typing.Tuple[int, int, int], (1, 2, 3)),
@@ -292,7 +291,7 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
     converted = extension_type_field._convert_value(
         value, value_type, ('x',),
         extension_type_field._ConversionContext.SPEC)
-    if isinstance(converted, (ops.Tensor, ragged_tensor.RaggedTensor)):
+    if isinstance(converted, (tensor.Tensor, ragged_tensor.RaggedTensor)):
       self.assertAllEqual(converted, expected)
     else:
       self.assertEqual(converted, expected)
@@ -321,14 +320,14 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
             'y', typing.Tuple[typing.Union[int, bool], ...]),
         extension_type_field.ExtensionTypeField(
             'y', _TUPLE[typing.Union[int, bool], ...]),
-        extension_type_field.ExtensionTypeField('z', ops.Tensor)
+        extension_type_field.ExtensionTypeField('z', tensor.Tensor)
     ]
     field_values = {'x': 1, 'y': [1, True, 3], 'z': [[1, 2], [3, 4], [5, 6]]}
     extension_type_field.convert_fields(fields, field_values)
     self.assertEqual(set(field_values), set(['x', 'y', 'z']))
     self.assertEqual(field_values['x'], 1)
     self.assertEqual(field_values['y'], (1, True, 3))
-    self.assertIsInstance(field_values['z'], ops.Tensor)
+    self.assertIsInstance(field_values['z'], tensor.Tensor)
     self.assertAllEqual(field_values['z'], [[1, 2], [3, 4], [5, 6]])
 
   def testConvertFieldsForSpec(self):
@@ -338,18 +337,18 @@ class FieldValueConverterTest(test_util.TensorFlowTestCase,
             'y', typing.Tuple[typing.Union[int, bool], ...]),
         extension_type_field.ExtensionTypeField(
             'y', _TUPLE[typing.Union[int, bool], ...]),
-        extension_type_field.ExtensionTypeField('z', ops.Tensor)
+        extension_type_field.ExtensionTypeField('z', tensor.Tensor)
     ]
     field_values = {
         'x': 1,
         'y': [1, True, 3],
-        'z': tensor_spec.TensorSpec([5, 3])
+        'z': tensor.TensorSpec([5, 3])
     }
     extension_type_field.convert_fields_for_spec(fields, field_values)
     self.assertEqual(set(field_values), set(['x', 'y', 'z']))
     self.assertEqual(field_values['x'], 1)
     self.assertEqual(field_values['y'], (1, True, 3))
-    self.assertEqual(field_values['z'], tensor_spec.TensorSpec([5, 3]))
+    self.assertEqual(field_values['z'], tensor.TensorSpec([5, 3]))
 
 
 if __name__ == '__main__':

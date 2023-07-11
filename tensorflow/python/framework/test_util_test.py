@@ -41,6 +41,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -1191,9 +1192,9 @@ class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,
         if run_eagerly:
           self.assertTrue(isinstance(t, ops.EagerTensor) for t in results)
         else:
-          self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+          self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
       else:
-        self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+        self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
 
 
 class SyncDevicesTest(test_util.TensorFlowTestCase):
