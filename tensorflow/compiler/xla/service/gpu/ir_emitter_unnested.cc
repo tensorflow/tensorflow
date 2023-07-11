@@ -2637,6 +2637,10 @@ Status IrEmitterUnnested::EmitScatter(
           index.GetType());
 
       int64_t operand_dim = desc.dim_numbers.getScatterDimsToOperandDims()[i];
+      if (operand_dim > rank) {
+        return absl::OutOfRangeError(
+            "The provided scatter_dims_to_operand_dims was out of range.");
+      }
       TF_ASSIGN_OR_RETURN(
           llvm::Value* const loaded_scatter_index,
           desc.scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(
