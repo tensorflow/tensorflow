@@ -31,6 +31,11 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Compiler
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
+from tensorflow.python.compiler.mlir import mlir
+
 # Data
 from tensorflow.python import data
 

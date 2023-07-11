@@ -77,13 +77,6 @@ from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.ops import gen_debug_ops
 
-# XLA JIT compiler APIs.
-from tensorflow.python.compiler.xla import jit
-from tensorflow.python.compiler.xla import xla
-
-# MLIR APIs.
-from tensorflow.python.compiler.mlir import mlir
-
 # Update dispatch decorator docstrings to contain lists of registered APIs.
 # (This should come after any imports that register APIs.)
 from tensorflow.python.util import dispatch
