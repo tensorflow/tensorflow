@@ -34,8 +34,7 @@ class NextPluggableDeviceFactory : public DeviceFactory {
       const std::string& compilation_device_name)
       : api_(TfnpdApi()),
         device_type_(device_type),
-        compilation_device_name_(compilation_device_name),
-        jit_device_type_(DeviceType(compilation_device_name)) {}
+        compilation_device_name_(compilation_device_name) {}
 
   Status ListPhysicalDevices(std::vector<string>* devices) override;
 
@@ -43,13 +42,14 @@ class NextPluggableDeviceFactory : public DeviceFactory {
                        const std::string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 
-  const DeviceType& jit_device_type() const { return jit_device_type_; }
+  const std::string& compilation_device_name() const {
+    return compilation_device_name_;
+  }
 
  private:
   const TFNPD_Api* api_;
   const std::string device_type_;
   const std::string compilation_device_name_;
-  const DeviceType jit_device_type_;
 };
 
 }  // namespace tensorflow

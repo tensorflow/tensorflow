@@ -177,13 +177,16 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
   // Register GPU JIT devices for NextPluggableDevice if its jit_device_type is
   // `XLA_GPU_JIT`.
-  if (DeviceFactory::IsPluggableDevice(device_name)) {
+  if (DeviceFactory::IsPluggableDevice(device_name) &&
+      registry.compilation_devices_.find(device_name) ==
+          registry.compilation_devices_.end()) {
     mutex_lock lock(registry.mutex_);
     NextPluggableDeviceFactory* device_factory =
         dynamic_cast<NextPluggableDeviceFactory*>(
             DeviceFactory::GetFactory(device_name));
     if (device_factory != nullptr &&
-        device_factory->jit_device_type() == DeviceType(DEVICE_GPU_XLA_JIT)) {
+        DeviceType(device_factory->compilation_device_name()) ==
+            DeviceType(DEVICE_GPU_XLA_JIT)) {
       DeviceRegistration& registration =
           registry.compilation_devices_[device_name];
       registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
