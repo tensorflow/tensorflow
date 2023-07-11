@@ -515,7 +515,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   std::pair<StreamGroup*, bool> emplace_result =
       StreamGroupFactory::Global().Emplace(
-          tf_device_id_, /*stream_group_within_gpu=*/0, stream_group);
+          tf_device_id_, /*stream_group_within_gpu=*/stream_id_, stream_group);
   if (!emplace_result.second) {
     LOG(WARNING) << "StreamGroup for tf_device_id: " << tf_device_id_.value()
                  << " already exists. This usually only happens in unit tests.";
@@ -523,7 +523,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   stream_ = emplace_result.first;
 #else
   stream_ = StreamGroupFactory::Global().GetOrCreate(
-      tf_device_id_, 0, executor_, options.config.gpu_options());
+      tf_device_id_, stream_id_, executor_, options.config.gpu_options());
 #endif  // TF_GPU_USE_PJRT
 
   // Get an allocator that allocates pinned memory on host.
@@ -533,7 +533,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   Allocator* host_memory_allocator = GetAllocator(attr);
 
   device_context_ =
-      new GPUDeviceContext(0, stream_->compute,
+      new GPUDeviceContext(stream_id_, stream_->compute,
 #if TENSORFLOW_USE_ROCM
                            stream_->nccl,
 #endif
