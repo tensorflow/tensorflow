@@ -46,7 +46,6 @@ cc_library(
     name = "tf_jitrt_passes",
     srcs = [
         "tf_jitrt_buffer_forwarding.cc",
-        "tf_jitrt_clustering_pass.cc",
         "tf_jitrt_copy_removal.cc",
         "tf_jitrt_fission.cc",
         "tf_jitrt_fusion.cc",

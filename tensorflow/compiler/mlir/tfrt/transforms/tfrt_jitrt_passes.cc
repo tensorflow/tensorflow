@@ -378,13 +378,6 @@ std::unique_ptr<Pass> CreateOutlineJitRtClustersPass() {
 
 void TfrtJitRtStubImpl::AddTfrtJitRtPasses(const TfrtPipelineOptions &options,
                                            mlir::OpPassManager &pm) {
-  // Outline auto-fusion clusters into tf_device.cluster_operations and then
-  // convert them to functions. We currently support only tfrt fallback tensors
-  // as operands, so we disable these passes if we can have native ops after
-  // lowering.
-  pm.addNestedPass<mlir::func::FuncOp>(CreateTfJitRtClusteringPass(
-      options.auto_fusion_oplist, options.auto_fusion_min_cluster_size));
-
   // Sink small constants into the outlined clusters to reduce the number of
   // arguments for each of the execute operations.
   auto is_compilable_const = [](mlir::tf_device::ClusterOp cluster,
