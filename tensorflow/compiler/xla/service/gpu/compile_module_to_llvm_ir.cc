@@ -321,18 +321,18 @@ Status CompileModuleToLlvmIrImpl(
   {
     HloPassPipeline pipeline("remat-pipeline");
 
-    HloRematerialization::RematerializationSizes sizes;
-    pipeline.AddPass<HloRematerialization>(
+    HloRematerialization::Options options(
         [pointer_size](const Shape& shape) {
           return GetSizeOfShape(shape, pointer_size);
         },
         // Assume 75% of the total device memory is available for XLA.
         /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
-        /*sizes=*/&sizes,
         HloRematerialization::RematerializationPass::kPostFusion,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         /*compact_shape_function=*/nullptr,
         HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+    HloRematerialization::RematerializationSizes sizes;
+    pipeline.AddPass<HloRematerialization>(options, sizes);
 
     TF_ASSIGN_OR_RETURN(bool changed, pipeline.Run(hlo_module));
     if (changed) {
