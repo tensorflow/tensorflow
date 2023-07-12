@@ -404,7 +404,7 @@ static absl::Status ConvImpl(
     TF_ASSIGN_OR_RETURN(
         AutotuneResult best_algo,
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
-            gpu_conv_config, run_options, debug_options, buffers,
+            config, gpu_conv_config, run_options, *debug_options, buffers,
             result_buffer));
 
     // Set algorithm in the convolution runner state.

@@ -43,7 +43,7 @@ struct DeviceConfig {
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  se::DeviceMemoryAllocator* allocator;  // may be null
+  se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
 };
 
 struct DevicelessConfig {
@@ -164,6 +164,12 @@ struct AutotunerUtil {
   static StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
+
+  // Creates a RedzoneAllocator from a given config. If `force_stream` is
+  // provided, than it is used for checking redzones.
+  static StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
+      const AutotuneConfig& config, const DebugOptions& opts,
+      se::Stream* force_stream = nullptr);
 
   // Functions to save/load XLA's autotuning results.
   //

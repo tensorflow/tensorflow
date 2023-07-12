@@ -54,7 +54,8 @@ ENTRY main {
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(GpuConvRewriter(), m.get()));
   changed = false;
-  DebugOptions opts;
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+
   AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));

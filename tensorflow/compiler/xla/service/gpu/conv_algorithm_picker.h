@@ -96,8 +96,9 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   // Run autotuning on allocated buffers and pick the best algorithm.
   StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
-      GpuConvConfig conv_config, const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options,
+      const AutotuneConfig& config, GpuConvConfig conv_config,
+      const ServiceExecutableRunOptions* run_options,
+      const DebugOptions& debug_options,
       std::vector<se::DeviceMemoryBase> buffers,
       se::DeviceMemoryBase result_buffer);
 

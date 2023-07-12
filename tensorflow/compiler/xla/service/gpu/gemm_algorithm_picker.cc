@@ -53,22 +53,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-static se::RedzoneAllocator CreateRedzoneAllocator(
-    se::Stream* stream, se::DeviceMemoryAllocator* allocator,
-    const DebugOptions& debug_options, const AutotuneConfig& config) {
-  // TODO(jlebar): The memory limit here should by rights be
-  // debug_options.xla_gpu_redzone_scratch_max_megabytes(), but tests OOM when
-  // we do that.  Are the tests wrong, or is the option named incorrectly?
-  return se::RedzoneAllocator(
-      stream, allocator, PtxOptsFromDebugOptions(debug_options),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/config.should_check_correctness()
-          ? debug_options.xla_gpu_redzone_padding_bytes()
-          : 0);
-}
-#endif
-
 // Returns the index (into `algorithms`) of the fastest algorithm.
 template <typename AlgoT>
 StatusOr<AutotuneResult> GetBestAlgorithm(
@@ -256,8 +240,9 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  se::RedzoneAllocator buffer_allocator =
-      CreateRedzoneAllocator(stream, allocator, debug_options, autotune_config);
+  TF_ASSIGN_OR_RETURN(
+      se::RedzoneAllocator buffer_allocator,
+      AutotunerUtil::CreateRedzoneAllocator(autotune_config, debug_options));
 
   int64_t rng_state = 0;
   TF_ASSIGN_OR_RETURN(

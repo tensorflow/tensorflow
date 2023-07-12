@@ -148,12 +148,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     const DebugOptions& debug_opts = fusion.parent()->config().debug_options();
 
-    se::RedzoneAllocator rz_allocator(
-        stream, allocator, PtxOptsFromDebugOptions(debug_opts),
-        /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-        /*redzone_size=*/config_.should_check_correctness()
-            ? debug_opts.xla_gpu_redzone_padding_bytes()
-            : 0);
+    TF_ASSIGN_OR_RETURN(
+        se::RedzoneAllocator rz_allocator,
+        AutotunerUtil::CreateRedzoneAllocator(config_, debug_opts));
 
     se::DeviceMemoryBase reference_buffer;
     if (config_.should_check_correctness()) {

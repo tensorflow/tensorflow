@@ -262,7 +262,6 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -306,7 +305,6 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
-#endif
 
 }  // anonymous namespace
 
@@ -371,15 +369,10 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
     result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
   } else if (stream_exec->platform_kind() == se::PlatformKind::kCuda) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-    // Right now Redzone allocator is available in Cuda target only.
-    auto hlo_module_config = instr->GetModule()->config();
-    se::RedzoneAllocator input_output_allocator(
-        stream, allocator,
-        PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
-        /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-        ShouldCheckConv(hlo_module_config)
-            ? hlo_module_config.debug_options().xla_gpu_redzone_padding_bytes()
-            : 0);
+    DebugOptions debug_opts = instr->GetModule()->config().debug_options();
+    TF_ASSIGN_OR_RETURN(
+        se::RedzoneAllocator input_output_allocator,
+        AutotunerUtil::CreateRedzoneAllocator(config_, debug_opts));
 
     TF_ASSIGN_OR_RETURN(
         AutotuneRuntimeArguments runtime_arguments,
@@ -510,19 +503,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         "Disqualified for implicit RELU.");
   }
 
-  const int64_t rz_space_limit =
-      runtime_arguments.hlo_module_config.debug_options()
-          .xla_gpu_redzone_scratch_max_megabytes() *
-      (1LL << 20);
-  se::RedzoneAllocator scratch_allocator(
-      stream, allocator,
-      PtxOptsFromDebugOptions(
-          runtime_arguments.hlo_module_config.debug_options()),
-      /*memory_limit=*/rz_space_limit,
-      ShouldCheckConv(runtime_arguments.hlo_module_config)
-          ? runtime_arguments.hlo_module_config.debug_options()
-                .xla_gpu_redzone_padding_bytes()
-          : 0);
+  TF_ASSIGN_OR_RETURN(
+      se::RedzoneAllocator scratch_allocator,
+      AutotunerUtil::CreateRedzoneAllocator(
+          config_, runtime_arguments.hlo_module_config.debug_options(),
+          stream));
+
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
 
@@ -837,23 +823,20 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
 StatusOr<AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
-    const GpuConvConfig conv_config,
+    const AutotuneConfig& config, const GpuConvConfig conv_config,
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
+    const DebugOptions& debug_options,
     const std::vector<se::DeviceMemoryBase> buffers,
     const se::DeviceMemoryBase result_buffer) {
 #if GOOGLE_CUDA
   Shape output_shape = conv_config.output_shape;
   HloModuleConfig hlo_module_config;
-  hlo_module_config.set_debug_options(*debug_options);
+  hlo_module_config.set_debug_options(debug_options);
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* allocator = run_options->allocator();
-  se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromDebugOptions(*debug_options),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      ShouldCheckConv(hlo_module_config)
-          ? debug_options->xla_gpu_redzone_padding_bytes()
-          : 0);
+  TF_ASSIGN_OR_RETURN(
+      se::RedzoneAllocator input_output_allocator,
+      AutotunerUtil::CreateRedzoneAllocator(config, debug_options, stream));
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
       {output_shape,  hlo_module_config,       buffers,
