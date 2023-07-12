@@ -148,7 +148,8 @@ class ArrayOpTest(test.TestCase):
     t = array_ops.constant([[1, 2, 3], [4, 5, 6]])
     paddings = array_ops.constant([[1, 1,], [2, 2]])
     self.assertAllEqual(
-      array_ops._wrap_pad(t, paddings), array_ops.constant([[2, 3, 1, 2, 3, 1, 2],
+      array_ops._wrap_pad(t, paddings), array_ops.constant([
+                                    [2, 3, 1, 2, 3, 1, 2],
                                     [2, 3, 1, 2, 3, 1, 2],
                                     [5, 6, 4, 5, 6, 4, 5],
                                     [5, 6, 4, 5, 6, 4, 5]] )
