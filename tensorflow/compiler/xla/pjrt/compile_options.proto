@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 14.
+// Next id: 15.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -78,6 +78,16 @@ message ExecutableBuildOptionsProto {
   // single element of the output tuple. One value per element of the tuple
   // means that each value is attached to one of the output elements.
   repeated bool allow_spmd_sharding_propagation_to_output = 12;
+
+  // Opaque profile data for any feedback directed optimizations.
+  bytes fdo_profile = 14;
+}
+
+message OptionOverrideProto {
+  oneof value {
+    string string_field = 1;
+    bool bool_field = 2;
+  }
 }
 
 message CompileOptionsProto {
@@ -88,4 +98,11 @@ message CompileOptionsProto {
   bool compile_portable_executable = 4;
   int64 profile_version = 5;
   bytes serialized_multi_slice_config = 6;
+  map<string, OptionOverrideProto> env_option_overrides = 7;
+}
+
+// Helper for serializing opaque executables alongside CompileOptions.
+message ExecutableAndOptionsProto {
+  bytes serialized_executable = 1;
+  CompileOptionsProto compile_options = 2;
 }

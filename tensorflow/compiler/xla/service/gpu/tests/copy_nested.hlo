@@ -11,14 +11,14 @@
 // CHECK:         %[[VAL_5:.*]] = icmp uge i32 %[[VAL_4]], 6000000
 // CHECK:         br i1 %[[VAL_5]], label %[[VAL_6:.*]], label %[[VAL_7:.*]]
 // CHECK:       loop.loop_body:                                   ; preds = %[[VAL_1]]
-// CHECK:         %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 655360
+// CHECK:         %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 516096
 // CHECK:         store i32 %[[VAL_8]], ptr %[[VAL_0]], align 4
 // CHECK:         %[[VAL_9:.*]] = icmp eq i32 %[[VAL_4]], 0
 // CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
 // CHECK:         %[[VAL_11:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_12:.*]] = mul nuw nsw i32 %[[VAL_10]], 128
 // CHECK:         %[[VAL_13:.*]] = add nuw nsw i32 %[[VAL_12]], %[[VAL_11]]
-// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 163840
+// CHECK:         %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 129024
 // CHECK:         call void @llvm.assume(i1 %[[VAL_14]])
 // CHECK:         %[[VAL_15:.*]] = mul nuw nsw i32 %[[VAL_13]], 4
 // CHECK:         %[[VAL_16:.*]] = add nuw nsw i32 %[[VAL_15]], %[[VAL_4]]

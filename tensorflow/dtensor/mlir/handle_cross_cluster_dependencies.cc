@@ -91,7 +91,7 @@ mlir::LogicalResult CloneOpToCluster(mlir::Operation* const_op,
   StatusOr<Layout> layout = Layout::FromString(layout_attr);
   if (!layout.ok())
     return copy_to_mesh.emitOpError(llvm::formatv(
-        kInvalidLayoutMsg, layout_attr, layout.status().error_message()));
+        kInvalidLayoutMsg, layout_attr, layout.status().message()));
 
   mlir::OpBuilder builder(&cluster.GetBody().front());
   mlir::Operation* cloned_op = builder.clone(*const_op);
@@ -240,9 +240,8 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
   const std::string layout_attr = copy_to_mesh.getLayout().str();
   auto layout_or_status = Layout::FromString(layout_attr);
   if (!layout_or_status.ok())
-    return copy_to_mesh.emitOpError(
-        llvm::formatv(kInvalidLayoutMsg, layout_attr,
-                      layout_or_status.status().error_message()));
+    return copy_to_mesh.emitOpError(llvm::formatv(
+        kInvalidLayoutMsg, layout_attr, layout_or_status.status().message()));
 
   // Create send op that sends data from input cluster to target cluster.
   const Layout& target_layout = layout_or_status.value();

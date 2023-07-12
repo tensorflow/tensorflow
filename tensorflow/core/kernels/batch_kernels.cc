@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batch_kernels.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -59,8 +60,8 @@ constexpr int64_t kBatchThreadPoolSize = 128;
 }  // namespace
 
 // Per-model inflight batches parameters.
-const int64_t kMinInflightBatches = 16;
-const int64_t kInitialInflightBatches = 16;
+const int64_t kMinInflightBatches = 1;
+const int64_t kInitialInflightBatches = 2;
 const int64_t kBatchesToAverageOver = 10;
 const int64_t kMaxInflightBatches = 64;
 
@@ -255,6 +256,14 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   OP_REQUIRES_OK(c, c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
   OP_REQUIRES_OK(c, c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
   OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_batch_size",
+                               &low_priority_max_batch_size_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_batch_timeout_micros",
+                               &low_priority_batch_timeout_micros_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_allowed_batch_sizes",
+                               &low_priority_allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
+                               &low_priority_max_enqueued_batches_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -309,16 +318,30 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
 
   if (adaptive_batch_scheduler_options_ != absl::nullopt) {
-    creator = [this](BatchResource** r) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       serving::AdaptiveSharedBatchScheduler<
           serving::BatchResourceBase::BatchTask>::Options
           adaptive_shared_batch_scheduler_options;
       adaptive_shared_batch_scheduler_options.thread_pool_name =
           "adaptive_batch_threads";
-      adaptive_shared_batch_scheduler_options.num_batch_threads =
-          adaptive_batch_scheduler_options_->max_in_flight_batches_limit;
       adaptive_shared_batch_scheduler_options.thread_pool =
           GetOrCreateBatchThreadsPool();
+
+      // When we explicitly specify 'thread_pool', you'd think ASBS would ignore
+      // 'num_batch_threads', but in fact ASBS still uses num_batch_threads as
+      // the max number of in-flight batches.  It makes no sense to have more
+      // in-flight batches than threads (it would result in strictly bad
+      // batching decisions), so we cap this parameter (which otherwise comes
+      // from the saved model) to the actual number of batch threads (which
+      // comes from a process-wide environment variable).
+      //
+      // We have to apply the same capping to min_ and initial_
+      // in_flight_batches_limit below to produce valid configurations.
+      adaptive_shared_batch_scheduler_options.num_batch_threads = std::min(
+          NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+          adaptive_batch_scheduler_options_->max_in_flight_batches_limit);
+
       // adaptive_shared_batch_scheduler_options.full_batch_scheduling_boost_micros
       // is 0 (default value) intentionally, so tasks are scheduled in a FIFO
       // way.
@@ -332,9 +355,13 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
       // the batch processing latency (which varies on a model basis).
       // If a non-zero value is not set properly, it harms tail latency.
       adaptive_shared_batch_scheduler_options.min_in_flight_batches_limit =
-          adaptive_batch_scheduler_options_->min_in_flight_batches_limit;
-      adaptive_shared_batch_scheduler_options.initial_in_flight_batches_limit =
-          adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
+          std::min(
+              NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+              adaptive_batch_scheduler_options_->min_in_flight_batches_limit);
+      adaptive_shared_batch_scheduler_options
+          .initial_in_flight_batches_limit = std::min(
+          NumBatchThreadsFromEnvironmentWithDefault(kBatchThreadPoolSize),
+          adaptive_batch_scheduler_options_->initial_in_flight_batches_limit);
       adaptive_shared_batch_scheduler_options.batches_to_average_over =
           adaptive_batch_scheduler_options_->batches_to_average_over;
       if (adaptive_batch_scheduler_options_
@@ -353,16 +380,23 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };
   } else {
-    creator = [this](BatchResource** r) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,
           max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
           allowed_batch_sizes_, enable_large_batch_splitting_, &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };

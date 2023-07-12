@@ -16,19 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 
+#include <memory>
 #include <vector>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -52,6 +53,7 @@ Status ConvertFunctionToBef(
 // needed. The nested functions will also be exported.
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::ModelRuntimeContext& model_context,
                           tfrt_stub::FallbackState* fallback_state = nullptr);
 
 Status ConvertTfMlirToRuntimeExecutable(
@@ -59,7 +61,11 @@ Status ConvertTfMlirToRuntimeExecutable(
     absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
+    tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state = nullptr);
+
+std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
+    const TfrtCompileOptions& options);
 
 }  // namespace tensorflow
 

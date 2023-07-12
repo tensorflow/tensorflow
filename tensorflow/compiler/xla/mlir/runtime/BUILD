@@ -1,5 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package_group(
@@ -38,7 +38,7 @@ build_test(
 xla_cc_binary(
     name = "xla-runtime-opt",
     srcs = ["xla-runtime-opt.cc"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
@@ -48,6 +48,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",

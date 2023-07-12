@@ -34,11 +34,26 @@ InterpreterValue null(InterpreterState&, deallocation::NullOp) {
   return {r};
 }
 
+InterpreterValue own(InterpreterState&, deallocation::OwnOp,
+                     const InterpreterValue& alloc) {
+  return alloc;
+}
+
+void freeAlloc(InterpreterState& state, deallocation::FreeOp op,
+               const InterpreterValue& alloc) {
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize -= alloc.buffer()->getByteSize();
+    ++stats->numDeallocations;
+  }
+  alloc.buffer()->deallocate(op);
+}
+
 SmallVector<InterpreterValue> retain(InterpreterState& state,
-                                     deallocation::RetainOp,
+                                     deallocation::RetainOp op,
                                      ArrayRef<InterpreterValue> values,
                                      ArrayRef<InterpreterValue> owned) {
-  SmallVector<InterpreterValue> result(values.size());
+  SmallVector<InterpreterValue> result(values.size(), null(state, {}));
+
   llvm::SmallBitVector used(owned.size());
   for (auto [index, v] : llvm::enumerate(values)) {
     for (auto [ownedIndex, o] : llvm::enumerate(owned)) {
@@ -56,15 +71,17 @@ SmallVector<InterpreterValue> retain(InterpreterState& state,
         stats->heapSize -= owned[i].buffer()->getByteSize();
         ++stats->numDeallocations;
       }
-      owned[i].buffer()->deallocate();
+      owned[i].buffer()->deallocate(op);
     }
   }
   return result;
 }
 
 REGISTER_MLIR_INTERPRETER_OP(getBuffer);
+REGISTER_MLIR_INTERPRETER_OP(own);
 REGISTER_MLIR_INTERPRETER_OP(null);
 REGISTER_MLIR_INTERPRETER_OP(retain);
+REGISTER_MLIR_INTERPRETER_OP(freeAlloc);
 
 }  // namespace
 }  // namespace interpreter

@@ -21,7 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 namespace tensorflow {
+
+class BackendCompiler;
 
 enum class TfrtDeviceInfraTarget {
   kCpu,             // CPU only, no device support.
@@ -36,6 +40,7 @@ enum class TfrtDeviceInfraTarget {
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
+  std::string saved_model_dir;
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
   std::string variable_device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -46,6 +51,10 @@ struct TfrtCompileOptions {
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
+
+  // Graph rewrite options that will be applied on GraphDef before converting to
+  // MLIR.
+  GraphOptions graph_options;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -59,6 +68,11 @@ struct TfrtCompileOptions {
   // The target device infrastructure to use. This will trigger target specific
   // compiler passes and runtime initialization.
   TfrtDeviceInfraTarget device_target = TfrtDeviceInfraTarget::kCpu;
+
+  // The custom compiler for device compilation. Instead of using the enum above
+  // to choose predefined device target, users can use this `backend_compiler`
+  // to inject their customized implementation.
+  BackendCompiler* backend_compiler = nullptr;
 
   // If true, use the fused TPU compile_and_execute kernel, which performs all
   // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
@@ -96,6 +110,9 @@ struct TfrtCompileOptions {
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, get_resource_op will be fused during hoisting.
+  bool fuse_get_resource_ops_in_hoisting = true;
 
   // If true, the compiler will try to sink in the invariant ops (e.g. const
   // ops, var handle ops, etc.) to the nested function (e.g. batch function) to

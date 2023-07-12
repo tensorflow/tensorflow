@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -82,7 +82,7 @@ void UpdateProfileSummary(const MemoryAggregationStats& stats,
 
 // Generate memory profile proto by processing host trace XPlane.
 MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   MemoryProfile memory_profile;
   // Iterate over all XEvents in the XPlane, and add the XStats to a new
   // MemoryProfileSnapshot if the EventType is kMemoryAllocation or

@@ -175,7 +175,8 @@ class ShapeInference {
 
   // Infers the shape of a collective permute start operation.
   static StatusOr<Shape> InferCollectivePermuteStartShape(
-      absl::Span<const Shape* const> operand_shapes);
+      absl::Span<const Shape* const> operand_shapes,
+      absl::Span<const Shape> context_shapes);
 
   // Infers the shape of a collective permute operation.
   static StatusOr<Shape> InferCollectivePermuteDoneShape(
@@ -369,6 +370,8 @@ class ShapeInference {
   static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& operand_shape,
                                                     const Shape& val_shape,
                                                     int64_t dimension);
+
+  static StatusOr<Shape> InferTopKShape(const Shape& operand_shape, int64_t k);
 
   // Helper function for creating a Window proto from user-supplied data.
   // Returns error if the user-supplied data was invalid.

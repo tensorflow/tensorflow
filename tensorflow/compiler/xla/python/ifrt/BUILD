@@ -1,3 +1,4 @@
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package_group(
@@ -18,11 +19,11 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
         ":internal",
     ],
-    licenses = ["notice"],
 )
 
 exports_files([
@@ -35,9 +36,11 @@ cc_library(
         "array.cc",
         "client.cc",
         "compiler.cc",
+        "device.cc",
         "dtype.cc",
         "executable.cc",
         "future.cc",
+        "host_callback.cc",
         "index.cc",
         "index_domain.cc",
         "shape.cc",
@@ -53,6 +56,7 @@ cc_library(
         "dtype.h",
         "executable.h",
         "future.h",
+        "host_callback.h",
         "index.h",
         "index_domain.h",
         "shape.h",
@@ -61,13 +65,17 @@ cc_library(
         "value.h",
     ],
     deps = [
+        ":serdes",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -83,6 +91,7 @@ xla_cc_test(
     srcs = ["array_test.cc"],
     deps = [
         ":ifrt",
+        ":mock",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -137,7 +146,10 @@ xla_cc_test(
     srcs = ["sharding_test.cc"],
     deps = [
         ":ifrt",
-        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -151,7 +163,13 @@ cc_library(
     deps = [
         ":ifrt",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -211,32 +229,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "executable_impl_test_lib",
-    testonly = 1,
-    srcs = ["executable_impl_test_lib.cc"],
-    deps = [
-        ":ifrt",
-        ":test_util",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
-    alwayslink = 1,
-)
-
-xla_cc_test(
-    name = "executable_test_no_impl",
-    srcs = [],
-    deps = [
-        ":executable_impl_test_lib",
-        ":no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "tuple_impl_test_lib",
     testonly = 1,
     srcs = ["tuple_impl_test_lib.cc"],
@@ -259,4 +251,61 @@ xla_cc_test(
         ":no_impl_test_main",
         ":tuple_impl_test_lib",
     ],
+)
+
+cc_library(
+    name = "mock",
+    testonly = True,
+    srcs = ["mock.cc"],
+    hdrs = ["mock.h"],
+    deps = [
+        ":ifrt",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/pjrt:pjrt_device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:ref_count",
+    ],
+)
+
+cc_library(
+    name = "serdes",
+    srcs = ["serdes.cc"],
+    hdrs = ["serdes.h"],
+    deps = [
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "serdes_test",
+    srcs = ["serdes_test.cc"],
+    deps = [
+        ":serdes",
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "serdes_proto",
+    srcs = ["serdes.proto"],
 )

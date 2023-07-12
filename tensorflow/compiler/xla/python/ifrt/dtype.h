@@ -41,12 +41,14 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS4 = 21,
     kS8 = 2,
     kS16 = 3,
     kS32 = 4,
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU4 = 22,
     kU8 = 6,
     kU16 = 7,
     kU32 = 8,
@@ -71,9 +73,12 @@ class DType {
     kToken = 17,
 
     kF8E4M3FN = 19,
+    kF8E4M3B11FNUZ = 23,
+    kF8E4M3FNUZ = 24,
     kF8E5M2 = 20,
+    kF8E5M2FNUZ = 25,
 
-    // Next = 21
+    // Next = 26
 
     // String is not support in XLA. DType.Kind needs to match xla.PrimitiveType
     // enum, so choose a large enum to avoid collision.

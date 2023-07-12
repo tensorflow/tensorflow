@@ -35,6 +35,8 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
 from tensorflow.python.framework import composite_tensor
@@ -76,18 +78,6 @@ from tensorflow.python.util.tf_export import tf_export
 # symbols can be removed once all internal uses are updated.
 StructuredFunctionWrapper = structured_function.StructuredFunctionWrapper
 
-# Loaded lazily due to a circular dependency (roughly
-# tf.function->wrap_function->dataset->autograph->tf.function).
-# TODO(b/133251390): Use a regular import.
-wrap_function = lazy_loader.LazyLoader(
-    "wrap_function", globals(),
-    "tensorflow.python.eager.wrap_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->def_function->func_graph->autograph->dataset_ops
-# TODO(kathywu): Use a regular import.
-def_function = lazy_loader.LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
 # TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
@@ -630,7 +620,7 @@ class DatasetV2(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
 
-    return _NumpyIterator(self)
+    return NumpyIterator(self)
 
   @property
   def _flat_shapes(self):
@@ -1445,9 +1435,29 @@ class DatasetV2(
     # [1, 0, 2]
     ```
 
+    ### Fully shuffling all the data
+
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    is equivalent to setting the `buffer_size` equal to the number of elements
+    in the dataset, resulting in uniform shuffle.
+
+    Note: `shuffle(dataset.cardinality())` loads the full dataset into memory so
+    that it can be shuffled. This will cause a memory overflow (OOM) error if
+    the dataset is too large, so full-shuffle should only be used for datasets
+    that are known to fit in the memory, such as datasets of filenames or other
+    small datasets.
+
+    ```python
+    dataset = tf.data.Dataset.range(20)
+    dataset = dataset.shuffle(dataset.cardinality())
+    # [18, 4, 9, 2, 17, 8, 5, 10, 0, 6, 16, 3, 19, 7, 14, 11, 15, 13, 12, 1]
+    ```
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample.
+        elements from this dataset from which the new dataset will sample. To
+        uniformly shuffle the entire dataset, use
+        `buffer_size=dataset.cardinality()`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
@@ -1712,6 +1722,10 @@ class DatasetV2(
           implementation creates a `tf.train.Checkpoint` object internally, so
           users should not set the `checkpoint` argument in `checkpoint_args`.
 
+    Returns:
+      An operation which when executed performs the save. When writing
+      checkpoints, returns None. The return value is useful in unit tests.
+
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
@@ -1719,7 +1733,7 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import save_op
-    save_op._save(self, path, compression, shard_func, checkpoint_args)
+    return save_op._save(self, path, compression, shard_func, checkpoint_args)
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
@@ -4652,7 +4666,8 @@ nested_structure_coder.register_codec(
 )
 
 
-class _NumpyIterator(tracking_base.Trackable):
+@tf_export("data.NumpyIterator")
+class NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4687,6 +4702,27 @@ class _NumpyIterator(tracking_base.Trackable):
   def _restore_from_tensors(self, restored_tensors):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
+
+  # TODO(b/284309865): Remove once `_save` is no longer used anywhere.
+  def _save(self):
+    # pylint: disable=protected-access
+    return self.save()
+
+  def save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  # TODO(b/284309865): Remove once `_restore` is no longer used anywhere.
+  def _restore(self, state):
+    return self.restore(state)
+
+  def restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
+
+
+# TODO(b/284309865): Remove once `_NumpyIterator` is no longer used anywhere.
+_NumpyIterator = NumpyIterator
 
 
 class _VariantTracker(resource_lib.CapturableResource):

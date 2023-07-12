@@ -27,7 +27,7 @@ recommended you explore the following example applications that can help you get
 started.
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/image_classifier)
+[TensorFlow Lite Task Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/task_library/image_classifier.md)
 to integrate image classification models in just a few lines of code. You can
 also build your own custom inference pipeline using the
 [TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
@@ -159,7 +159,7 @@ on metrics such as performance, accuracy, and model size. For example, you might
 need a faster model for building a bar code scanner while you might prefer a
 slower, more accurate model for a medical imaging app.
 
-Note that the <a href=https://www.tensorflow.org/lite/guide/hosted_models#image_classification>image classification models</a> provided accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel. The <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
+Note that the <a href=https://www.tensorflow.org/lite/guide/hosted_models#image_classification>image classification models</a> provided accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel. The <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android_java">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
 
 <h3>Uses and limitations</h3>
 

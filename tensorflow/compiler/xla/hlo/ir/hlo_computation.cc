@@ -15,16 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
 #include <queue>
-#include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,25 +28,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -235,10 +226,10 @@ HloInstruction* HloComputation::ReplaceParameter(
   HloInstruction* new_instruction =
       AddInstructionInternal(std::move(instruction));
   HloInstruction* old_instruction = param_instructions_[param_no];
-  CHECK(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
+  TF_CHECK_OK(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   param_instructions_[param_no] = new_instruction;
-  CHECK(RemoveInstruction(old_instruction).ok());
+  TF_CHECK_OK(RemoveInstruction(old_instruction));
   return new_instruction;
 }
 
@@ -282,7 +273,6 @@ bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
-
   if (!ignore_control_dependency && instruction->HasControlDependencies()) {
     return false;
   }
@@ -546,6 +536,15 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
   return dependencies;
 }
 
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
+    HloInstruction& postorder_root) const {
+  std::vector<HloInstruction*> post_order;
+  absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  ComputeInstructionPostOrder(&postorder_root, ComputeChannelDependencies(),
+                              visited, post_order);
+  return post_order;
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   return MakeInstructionPostOrder(ComputeChannelDependencies());
 }
@@ -796,6 +795,8 @@ void HloComputation::AppendInstructionsIntoCalledComputation(
     absl::Span<HloInstruction* const> instructions_to_append,
     HloInstruction* caller) {
   HloInstruction* root = instructions_to_append.front();
+  TF_CHECK_OK(caller->CopyAllControlDepsFrom(root));
+  TF_CHECK_OK(root->DropAllControlDeps());
   TF_CHECK_OK(root->ReplaceAllUsesWith(caller));
   if (root == root_instruction()) {
     set_root_instruction(caller);
@@ -824,8 +825,8 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 HloInstruction* HloComputation::CreateCallInstruction(
     absl::Span<HloInstruction* const> instructions_to_call) {
   HloInstruction* root = instructions_to_call.front();
-  HloInstruction* call_instruction =
-      AddInstruction(HloInstruction::CreateCall(root->shape(), root));
+  HloInstruction* call_instruction = AddInstruction(
+      HloInstruction::CreateCall(root->shape(), root), root->name());
   AppendInstructionsIntoCalledComputation(instructions_to_call,
                                           call_instruction);
   return call_instruction;
@@ -833,7 +834,8 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    absl::string_view async_execution_thread) {
+    absl::string_view async_execution_thread, bool replace,
+    bool override_names) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -845,6 +847,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* root = builder.AddInstruction(
       instruction->CloneWithNewOperands(instruction->shape(), parameters));
+  if (override_names) {
+    root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
+  }
   HloComputation* async_computation =
       parent_->AddEmbeddedComputation(builder.Build(root));
   std::vector<Shape> start_shapes = {
@@ -859,11 +864,19 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
       root->shape(), async_start, async_computation,
       /*async_group_id=*/std::nullopt, async_execution_thread));
+  if (override_names) {
+    async_start->SetAndSanitizeName(absl::StrCat(root->name(), ".call-start"));
+    async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+  }
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  TF_RETURN_IF_ERROR(async_done->CopyAllControlDepsFrom(instruction));
+  if (replace) {
+    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  }
   return async_done;
 }
 
@@ -1295,6 +1308,16 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
+  return CloneInContext(*context, replacements, extra_parameters, suffix,
+                        new_root);
+}
+
+std::unique_ptr<HloComputation> HloComputation::CloneInContext(
+    HloCloneContext& context,
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<HloInstruction>>* replacements,
+    absl::Span<const HloInstruction* const> extra_parameters,
+    const std::string& suffix, const HloInstruction* new_root) const {
   if (new_root == nullptr) {
     new_root = root_instruction();
   }
@@ -1368,10 +1391,10 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
       CHECK_NE(replaced_operand, nullptr)
           << "replacements map tried to eliminate a used instruction "
           << operand->ToString() << ", used by " << instr->ToString();
-      new_operands.push_back(context->GetInstruction(replaced_operand));
+      new_operands.push_back(context.GetInstruction(replaced_operand));
     }
     std::unique_ptr<HloInstruction> new_instr =
-        instr->CloneWithNewOperands(instr->shape(), new_operands, context);
+        instr->CloneWithNewOperands(instr->shape(), new_operands, &context);
     if (instr->opcode() == HloOpcode::kParameter &&
         instr->parameter_replicated_at_leaf_buffers().has_value()) {
       new_instr->set_parameter_replicated_at_leaf_buffers(
@@ -1382,7 +1405,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
 
   // To make clone behavior match uncloned behavior, we reorder instructions to
   // match the order in instructions_.
-  SortClonedInstructions(*context, replace, *this, instructions_, instructions);
+  SortClonedInstructions(context, replace, *this, instructions_, instructions);
 
   Builder builder(suffix.empty() ? std::string(name())
                                  : absl::StrCat(name(), ".", suffix));
@@ -1390,27 +1413,27 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/context->GetInstruction(replace(new_root)));
+      /*root_instruction=*/context.GetInstruction(replace(new_root)));
 
   // Clone control dependencies.
   for (auto instr : postorder) {
-    HloInstruction* new_instr = context->GetInstruction(instr);
+    HloInstruction* new_instr = context.GetInstruction(instr);
     for (auto successor : instr->control_successors()) {
       auto replaced_successor = replace(successor);
       // successor may not have been remapped, because it might have been
       // removed by the replacements map.
       if (replaced_successor != nullptr) {
         TF_CHECK_OK(new_instr->AddControlDependencyTo(
-            context->GetInstruction(replaced_successor)));
+            context.GetInstruction(replaced_successor)));
       }
     }
   }
 
   // To make clone behavior match uncloned behavior, we reorder the user and
   // control lists, kept by cloned instructions.
-  SortClonedInstructionUsersAndControlLists(*context, replace, instructions_);
+  SortClonedInstructionUsersAndControlLists(context, replace, instructions_);
 
-  context->MapComputation(this, result.get());
+  context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
 
   return result;

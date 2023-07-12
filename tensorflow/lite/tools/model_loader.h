@@ -34,16 +34,22 @@ namespace tools {
 // Class to load the Model.
 class ModelLoader {
  public:
+  enum class Type : int {
+    kPathModelLoader = 0,
+    kBufferModelLoader = 1,
+    kMmapModelLoader = 2,
+    kPipeModelLoader = 3,
+  };
+
   virtual ~ModelLoader() = default;
 
   // Return whether the model is loaded successfully.
   virtual bool Init();
 
-  const FlatBufferModel* GetModel() const { return model_.get(); }
+  // Return the concrete type of the class.
+  virtual Type type() const = 0;
 
-  // Return whether the FlatBufferModel is created from FlatbufferBuilder
-  // directly.
-  virtual bool IsLoadedFromFlatbufferBuilder() = 0;
+  const FlatBufferModel* GetModel() const { return model_.get(); }
 
  protected:
   // Interface for subclass to create model_. Init() calls InitInternal(). If
@@ -60,7 +66,7 @@ class PathModelLoader : public ModelLoader {
   explicit PathModelLoader(absl::string_view model_path)
       : ModelLoader(), model_path_(model_path) {}
 
-  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+  Type type() const override { return Type::kPathModelLoader; }
 
  protected:
   bool InitInternal() override;
@@ -81,7 +87,7 @@ class BufferModelLoader : public ModelLoader {
 
   ~BufferModelLoader() override = default;
 
-  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+  Type type() const override { return Type::kBufferModelLoader; }
 
  protected:
   bool InitInternal() override;
@@ -110,7 +116,7 @@ class MmapModelLoader : public ModelLoader {
     }
   }
 
-  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+  Type type() const override { return Type::kMmapModelLoader; }
 
  protected:
   bool InitInternal() override;
@@ -137,7 +143,7 @@ class PipeModelLoader : public ModelLoader {
 
   ~PipeModelLoader() override { std::free(model_buffer_); }
 
-  bool IsLoadedFromFlatbufferBuilder() override { return true; }
+  Type type() const override { return Type::kPipeModelLoader; }
 
  protected:
   // Reads the serialized Model from read_pipe_fd. Returns false if the number
@@ -166,7 +172,7 @@ class PipeModelLoader : public ModelLoader {
 // "buffer:%buffer_handle%:%buffer_size%". This model loader does not own the
 // buffer_handle, and the caller needs to ensure the buffer_handle out-lives the
 // model loader.
-std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path);
+std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(const std::string& path);
 
 }  // namespace tools
 }  // namespace tflite

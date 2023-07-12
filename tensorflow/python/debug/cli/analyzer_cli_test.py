@@ -37,7 +37,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import while_loop as while_loop_tf
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -612,11 +612,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       v_name = "simple_mul_add/v"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2], name="u_init")
-      u = variables.VariableV1(u_init, name=u_name)
+      u = variable_v1.VariableV1(u_init, name=u_name)
       cls._u_line_number = line_number_above()
 
       v_init = constant_op.constant(v_init_val, shape=[2, 1], name="v_init")
-      v = variables.VariableV1(v_init, name=v_name)
+      v = variable_v1.VariableV1(v_init, name=v_name)
       cls._v_line_number = line_number_above()
 
       w = math_ops.matmul(u, v, name="simple_mul_add/matmul")
@@ -625,7 +625,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       x = math_ops.add(w, w, name="simple_mul_add/add")
       cls._x_line_number = line_number_above()
 
-      a = variables.VariableV1([1, 3, 3, 7], name="a")
+      a = variable_v1.VariableV1([1, 3, 3, 7], name="a")
 
       u.initializer.run()
       v.initializer.run()
@@ -1411,7 +1411,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
+        ["L%d         u = variable_v1.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1428,7 +1428,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates v.
     index = self._findSourceLine(out, self._v_line_number)
     self.assertEqual(
-        ["L%d         v = variables.VariableV1(v_init, name=v_name)" %
+        ["L%d         v = variable_v1.VariableV1(v_init, name=v_name)" %
          self._v_line_number,
          "    simple_mul_add/v"],
         out.lines[index : index + 2])
@@ -1465,7 +1465,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
+        ["L%d         u = variable_v1.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u/read:0",
          "    simple_mul_add/u:0"],
@@ -1487,7 +1487,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
+        ["L%d         u = variable_v1.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1510,7 +1510,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
+        ["L%d         u = variable_v1.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    (... Omitted 2 of 3 op(s) ...) +5"],
@@ -1625,7 +1625,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     with session.Session(config=no_rewrite_session_config()) as sess:
       with ops.device("CPU:0"):
-        x = variables.VariableV1([1, 3, 3, 7], name="x")
+        x = variable_v1.VariableV1([1, 3, 3, 7], name="x")
         _, idx = array_ops.unique(x, name="x_unique")
         idx_times_two = math_ops.multiply(idx, 2, name="idx_times_two")
         self.evaluate(x.initializer)
@@ -1731,7 +1731,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
-      x = variables.VariableV1(x_init, name="control_deps/x")
+      x = variable_v1.VariableV1(x_init, name="control_deps/x")
 
       y = math_ops.add(x, x, name="control_deps/y")
       y = control_flow_ops.with_dependencies(

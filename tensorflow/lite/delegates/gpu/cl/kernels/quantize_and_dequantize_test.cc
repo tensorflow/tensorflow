@@ -29,22 +29,22 @@ namespace {
 
 TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits8) {
   auto status = QuantAndDequant_Dim2Bits8Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits8_NegativeRange) {
   auto status = QuantAndDequant_Dim3Bits8_NegativeRangeTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, QuantAndDequant_Dim3Bits16) {
   auto status = QuantAndDequant_Dim3Bits16Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, QuantAndDequant_Dim2Bits16_NegativeRange) {
   auto status = QuantAndDequant_Dim2Bits16_NegativeRangeTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

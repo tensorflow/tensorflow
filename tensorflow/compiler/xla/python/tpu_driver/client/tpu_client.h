@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 
+#include <array>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,6 +48,41 @@ inline const char* TpuPlatform() {
   return kTpuPlatform;
 }
 
+class TpuDeviceDescription : public PjRtDeviceDescription {
+ public:
+  TpuDeviceDescription(int id, int process_index,
+                       const std::array<int, 3>& coords, int core_on_chip);
+
+  const std::array<int, 3>& coords() const { return coords_; }
+  int core_on_chip() const { return core_on_chip_; }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  absl::string_view ToString() const override { return to_string_; }
+
+  int id() const override { return id_; }
+
+  int process_index() const override { return process_index_; }
+
+  absl::string_view device_kind() const override { return device_kind_; }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  const int id_;
+  const int process_index_;
+  const std::array<int, 3> coords_;
+  // Index of the core of the same chip.
+  int core_on_chip_;
+  const std::string device_kind_ = "Cloud TPU";
+  std::string debug_string_;
+  std::string to_string_;
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
+};
+
 class PyTpuClient;
 
 class TpuDevice : public PjRtDevice {
@@ -52,12 +90,12 @@ class TpuDevice : public PjRtDevice {
   TpuDevice(int id, int process_index, const std::array<int, 3>& coords,
             int core_on_chip);
 
-  const std::array<int, 3>& coords() const { return coords_; }
-  int core_on_chip() const { return core_on_chip_; }
+  const TpuDeviceDescription& description() const override {
+    return description_;
+  }
 
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
+  const std::array<int, 3>& coords() const { return description().coords(); }
+  int core_on_chip() const { return description().core_on_chip(); }
 
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
@@ -68,13 +106,7 @@ class TpuDevice : public PjRtDevice {
 
   bool IsAddressable() const override { return false; }
 
-  int id() const override { return id_; }
-
-  int process_index() const override { return process_index_; }
-
   int local_hardware_id() const override { return -1; }
-
-  absl::string_view device_kind() const override { return device_kind_; }
 
   Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented("Infeed not yet implemented via this API");
@@ -89,21 +121,8 @@ class TpuDevice : public PjRtDevice {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
  private:
-  const int id_;
-  const int process_index_;
-  const std::array<int, 3> coords_;
-  const std::string device_kind_ = "Cloud TPU";
-  std::string debug_string_;
-  std::string to_string_;
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
-  // Index of the core of the same chip.
-  int core_on_chip_;
+  TpuDeviceDescription description_;
   PyTpuClient* tpu_client_;
 };
 
@@ -141,8 +160,8 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
     return id_to_device_;
   }
   int process_index() const { return process_index_; }
-  const absl::string_view platform_name() const { return platform_name_; }
-  const absl::string_view platform_version() const { return platform_version_; }
+  absl::string_view platform_name() const { return platform_name_; }
+  absl::string_view platform_version() const { return platform_version_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
     return Unimplemented("ChooseCompactLayoutForShape not implemented.");
@@ -188,6 +207,7 @@ struct TpuSharedBuffer final {
 
   ~TpuSharedBuffer() {
     std::vector<tpu_driver::Event*> events;
+    events.reserve(wait_for_use.size());
     for (const auto& e : wait_for_use) {
       events.push_back(e.get());
     }
@@ -234,9 +254,7 @@ class PyTpuBuffer {
 
   const Shape& on_host_shape() const { return on_host_shape_; }
   std::shared_ptr<PjRtDevice> device() const { return device_; }
-  const absl::string_view platform_name() const {
-    return client_->platform_name();
-  }
+  absl::string_view platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyTpuClient> client() const { return client_; }
 
   // Returns the buffer's value as a tuple DAG of Python arrays. If the value
@@ -317,13 +335,13 @@ class PyTpuBuffer {
 // until the computation finishes.
 class PyTpuToken {
  public:
-  PyTpuToken() {}
+  PyTpuToken() = default;
   Status Await() { return OkStatus(); }
 };
 
 class PyShardedTpuToken {
  public:
-  PyShardedTpuToken() {}
+  PyShardedTpuToken() = default;
   Status Await() { return OkStatus(); }
   PyTpuToken GetPyToken(int i) { return PyTpuToken(); }
 };
@@ -426,7 +444,7 @@ class PyTpuExecutable {
   };
 
   ExecuteResult ExecuteHelper(
-      absl::Span<const std::vector<PyTpuBuffer*>> all_core_arguments,
+      absl::Span<const std::vector<PyTpuBuffer*>> maybe_tupled_args,
       absl::Span<PyTpuBuffer* const> this_core_arguments, int replica,
       int partition, const RunId& run_id);
 

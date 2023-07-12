@@ -162,6 +162,10 @@ class Executable {
   bool IsAsync(unsigned ordinal) const;
   bool IsAsync() const { return IsAsync(0); }
 
+  // Returns the name of the exported function with the given ordinal.
+  std::string_view function_name(unsigned ordinal) const;
+  std::string_view function_name() const { return function_name(0); }
+
   // Returns the number of results of the exported function with given ordinal.
   unsigned num_results(unsigned ordinal) const;
   unsigned num_results() const { return num_results(0); }
@@ -298,6 +302,10 @@ class Executable {
   static LogicalResult Call(ExecutionContext* ctx, CustomCall& call,
                             void** args, void** attrs, void** rets);
 
+  bool RequiresBlas(int ordinal) const {
+    return functions_[ordinal].requires_blas;
+  }
+
  private:
   friend class JitCompiler;  // see `mlir/runtime/transforms/jit_compiler.h`
 
@@ -310,13 +318,14 @@ class Executable {
     Function(std::string_view name, ExecutionEngine::ExportedFunctionPtr fptr,
              FunctionType signature, FunctionType runtime_signature,
              ArgumentsMemoryLayout arguments_memory_layout,
-             ResultsMemoryLayout results_memory_layout)
+             ResultsMemoryLayout results_memory_layout, bool requires_blas)
         : name(name),
           fptr(std::move(fptr)),
           signature(std::move(signature)),
           runtime_signature(std::move(runtime_signature)),
           arguments_memory_layout(std::move(arguments_memory_layout)),
-          results_memory_layout(std::move(results_memory_layout)) {}
+          results_memory_layout(std::move(results_memory_layout)),
+          requires_blas(requires_blas) {}
     Function(const Function&) = delete;
     Function(Function&&) = default;
 
@@ -355,6 +364,10 @@ class Executable {
 
     // Memory layout for returning function results.
     ResultsMemoryLayout results_memory_layout;
+
+    // If this flag is true, then this function is outlined for cuda graph, and
+    // cuBlas should be initiated when capturing the cuda graph.
+    bool requires_blas;
   };
 
   Executable(std::string_view name,
@@ -401,6 +414,10 @@ class FunctionRef {
   absl::StatusOr<ExecutionReference> operator()(
       ArgumentsRef arguments, const ResultConverter& results,
       const Executable::ExecuteOpts& opts, bool verify_arguments = true) const;
+
+  bool RequiresBlas() const { return executable_->RequiresBlas(ordinal_); }
+
+  unsigned ordinal() const { return ordinal_; }
 
  private:
   const Executable* executable_;

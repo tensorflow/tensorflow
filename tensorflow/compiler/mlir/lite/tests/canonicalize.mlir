@@ -326,3 +326,21 @@ func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor
   // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
   func.return %0 : tensor<1x4x4x4xf32>
 }
+
+// -----
+
+func.func @trivial_dynamic_update_slice(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x14xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x14xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  // CHECK: return %arg1
+  func.return %1 : tensor<2x7x14xf32>
+}
+
+// -----
+
+func.func @trivial_dynamic_update_slice_wrong_update_shape(%arg0: tensor<2x7x14xf32>, %arg1: tensor<2x7x7xf32>) -> tensor<2x7x14xf32> {
+  %0 = arith.constant dense<0> : tensor<3xi32>
+  %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<2x7x14xf32>, tensor<2x7x7xf32>, tensor<3xi32>) -> tensor<2x7x14xf32>
+  // CHECK: "tfl.dynamic_update_slice"
+  func.return %1 : tensor<2x7x14xf32>
+}

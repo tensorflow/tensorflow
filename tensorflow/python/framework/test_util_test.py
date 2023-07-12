@@ -41,6 +41,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -1128,26 +1129,6 @@ class GraphAndEagerNoVariableSharing(test_util.TensorFlowTestCase):
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
-  def test_no_reference_cycle_decorator(self):
-
-    class ReferenceCycleTest(object):
-
-      def __init__(inner_self):  # pylint: disable=no-self-argument
-        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
-
-      @test_util.assert_no_garbage_created
-      def test_has_cycle(self):
-        a = []
-        a.append(a)
-
-      @test_util.assert_no_garbage_created
-      def test_has_no_cycle(self):
-        pass
-
-    with self.assertRaises(AssertionError):
-      ReferenceCycleTest().test_has_cycle()
-
-    ReferenceCycleTest().test_has_no_cycle()
 
   @test_util.run_in_graph_and_eager_modes
   def test_no_leaked_tensor_decorator(self):
@@ -1211,9 +1192,9 @@ class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,
         if run_eagerly:
           self.assertTrue(isinstance(t, ops.EagerTensor) for t in results)
         else:
-          self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+          self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
       else:
-        self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+        self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
 
 
 class SyncDevicesTest(test_util.TensorFlowTestCase):

@@ -82,7 +82,7 @@ LogicalResult LiftVariablesFromSession(
       /*target_tensor_names=*/{}, &resource_tensors);
   if (!status.ok()) {
     return module.emitOpError()
-           << "failed to run the provided session: " << status.error_message();
+           << "failed to run the provided session: " << status.message();
   }
 
   const DeviceMgr* device_manager;

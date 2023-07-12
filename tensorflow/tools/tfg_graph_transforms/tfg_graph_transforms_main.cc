@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_registry.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/utils.h"
 
@@ -67,6 +67,24 @@ llvm::cl::opt<DataFormat> data_format(
            clEnumValN(DataFormat::GraphDef, "graphdef", "GraphDef format")),
     llvm::cl::init(DataFormat::SavedModel),
     llvm::cl::cat(tfg_graph_transform_category));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> experimental_image_format(
+    "experimental_image_format",
+    llvm::cl::desc("Whether to expect use the experimental SavedModel image "
+                   "format. Only applies to SavedModel inputs and outputs. "
+                   "When enabled, the output filename may have a different "
+                   "extension than the one provided."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<int> experimental_image_format_max_proto_size(
+    "experimental_image_format_max_proto_size",
+    llvm::cl::desc(
+        "Sets the maximum chunk size in bytes allowed for protos (2GB by "
+        "default). This flag should only be used for testing purposes and can "
+        "be removed at any time."),
+    llvm::cl::init(0));
 
 // Validate CL options and returns false in case of an error.
 bool CheckCLParams() {
@@ -106,7 +124,11 @@ tensorflow::Status RunOptimizationPasses(
     const mlir::PassPipelineCLParser& passPipeline, mlir::ModuleOp module,
     mlir::MLIRContext* context) {
   mlir::PassManager pm(context);
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (failed(mlir::applyPassManagerCLOptions(pm))) {
+    return tensorflow::errors::InvalidArgument(
+        "Could not initialize MLIR pass manager CL options");
+  }
 
   auto error_handler = [&](const llvm::Twine& msg) {
     emitError(mlir::UnknownLoc::get(pm.getContext())) << msg;
@@ -129,15 +151,21 @@ tensorflow::Status RunOptimizationPasses(
 // Import model to the TFG MLIR module.
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
-    mlir::MLIRContext* mlir_context) {
+    bool experimental_image_format, mlir::MLIRContext* mlir_context) {
   tensorflow::GraphDebugInfo debug_info;
 
   switch (data_format) {
     case DataFormat::SavedModel: {
       tensorflow::SavedModel saved_model;
-      TF_RETURN_IF_ERROR(
-          mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
-              input_file, saved_model));
+      if (experimental_image_format) {
+        TF_RETURN_IF_ERROR(
+            mlir::tfg::graph_transforms::ReadSavedModelImageFormat(
+                input_file, saved_model));
+      } else {
+        TF_RETURN_IF_ERROR(
+            mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+                input_file, saved_model));
+      }
       return mlir::tfg::ImportSavedModelToMlir(mlir_context, debug_info,
                                                saved_model);
     }
@@ -154,13 +182,22 @@ tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
 tensorflow::Status ExportTFGModule(mlir::ModuleOp module_op,
                                    DataFormat data_format,
                                    const std::string& input_file,
-                                   const std::string& output_file) {
+                                   const std::string& output_file,
+                                   bool experimental_image_format,
+                                   int experimental_image_format_max_size) {
   switch (data_format) {
     case DataFormat::SavedModel: {
       tensorflow::SavedModel original_saved_model;
-      TF_RETURN_IF_ERROR(
-          mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
-              input_file, original_saved_model));
+      if (experimental_image_format) {
+        TF_RETURN_IF_ERROR(
+            mlir::tfg::graph_transforms::ReadSavedModelImageFormat(
+                input_file, original_saved_model));
+      } else {
+        TF_RETURN_IF_ERROR(
+            mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+                input_file, original_saved_model));
+      }
+
       tensorflow::SavedModel final_saved_model;
 
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -168,9 +205,18 @@ tensorflow::Status ExportTFGModule(mlir::ModuleOp module_op,
                                             &final_saved_model),
           "while converting TFG to SavedModel");
 
-      VLOG(1) << "Serializing resulting SavedModel to " << output_file;
-      return mlir::tfg::graph_transforms::SerializeProto<
-          tensorflow::SavedModel>(final_saved_model, output_file);
+      if (experimental_image_format) {
+        VLOG(1) << "Serializing resulting SavedModel to " << output_file
+                << " (filename might not exactly match since "
+                   "`experimental_image_format` has been enabled)";
+        return mlir::tfg::graph_transforms::WriteSavedModelImageFormat(
+            &final_saved_model, output_file,
+            experimental_image_format_max_proto_size);
+      } else {
+        VLOG(1) << "Serializing resulting SavedModel to " << output_file;
+        return mlir::tfg::graph_transforms::SerializeProto<
+            tensorflow::SavedModel>(final_saved_model, output_file);
+      }
     }
     case DataFormat::GraphDef: {
       tensorflow::GraphDef new_graphdef;
@@ -208,11 +254,11 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context(registry);
 
   // Import model to the TFG MLIR module.
-  auto module_ref_status = ImportModel(data_format, input_file, &context);
+  auto module_ref_status =
+      ImportModel(data_format, input_file, experimental_image_format, &context);
 
   if (!module_ref_status.ok()) {
-    LOG(QFATAL) << "Model import failed: "
-                << module_ref_status.status().ToString();
+    LOG(QFATAL) << "Model import failed: " << module_ref_status.status();
   }
   auto module_ref = std::move(module_ref_status.value());
 
@@ -221,16 +267,16 @@ int main(int argc, char** argv) {
   tensorflow::Status pass_pipeline_status =
       RunOptimizationPasses(pass_pipeline, *module_ref, &context);
   if (!pass_pipeline_status.ok()) {
-    LOG(QFATAL) << pass_pipeline_status.ToString() << "\n";
+    LOG(QFATAL) << pass_pipeline_status << "\n";
   }
 
   // Export MLIR TFG module to the resulting model proto.
-  tensorflow::Status export_status =
-      ExportTFGModule(*module_ref, data_format, input_file, output_file);
+  tensorflow::Status export_status = ExportTFGModule(
+      *module_ref, data_format, input_file, output_file,
+      experimental_image_format, experimental_image_format_max_proto_size);
 
   if (!export_status.ok()) {
-    LOG(QFATAL) << "Export of TFG module failed: " << export_status.ToString()
-                << "\n";
+    LOG(QFATAL) << "Export of TFG module failed: " << export_status << "\n";
   }
 
   return EXIT_SUCCESS;

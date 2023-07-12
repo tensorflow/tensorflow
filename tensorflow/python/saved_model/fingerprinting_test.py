@@ -86,11 +86,12 @@ class FingerprintingTest(test.TestCase):
     fingerprint_def = self._read_fingerprint(
         file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
 
-    # We cannot check this value due to non-determinism in serialization.
+    # We cannot check this value due to non-determinism in saving.
     self.assertGreater(fingerprint_def.saved_model_checksum, 0)
     self.assertEqual(fingerprint_def.graph_def_program_hash,
                      14830488309055091319)
-    self.assertEqual(fingerprint_def.signature_def_hash, 1050878586713189074)
+    self.assertEqual(fingerprint_def.signature_def_hash, 12089566276354592893)
+    self.assertEqual(fingerprint_def.saved_object_graph_hash, 0)
     # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
     # check its value here.
     self.assertGreater(fingerprint_def.checkpoint_hash, 0)
@@ -134,34 +135,29 @@ class FingerprintingTest(test.TestCase):
     fingerprint = fingerprinting.read_fingerprint(save_dir)
 
     fingerprint_def = self._read_fingerprint(
-        file_io.join(save_dir, constants.FINGERPRINT_FILENAME)
-    )
+        file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
 
-    self.assertEqual(
-        fingerprint.saved_model_checksum, fingerprint_def.saved_model_checksum
-    )
-    self.assertEqual(
-        fingerprint.graph_def_program_hash,
-        fingerprint_def.graph_def_program_hash,
-    )
-    self.assertEqual(
-        fingerprint.signature_def_hash, fingerprint_def.signature_def_hash
-    )
-    self.assertEqual(
-        fingerprint.saved_object_graph_hash,
-        fingerprint_def.saved_object_graph_hash,
-    )
-    self.assertEqual(
-        fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
-    )
-    self.assertEqual(
-        fingerprint.version.producer, fingerprint_def.version.producer
-    )
+    self.assertEqual(fingerprint, fingerprint_def)
 
-  def test_read_fingerprint_api_invalid(self):
+  def test_read_fingerprint_file_not_found(self):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")
+
+  def test_write_fingerprint(self):
+    save_dir = os.path.join(self.get_temp_dir(), "model_and_fingerprint")
+    save.save_and_return_nodes(
+        self._create_model_with_data(), save_dir,
+        experimental_skip_checkpoint=True)  # checkpoint data won't be loaded
+
+    fingerprint_def = fingerprinting.read_fingerprint(save_dir)
+
+    # We cannot check this value due to non-determinism in serialization.
+    self.assertGreater(fingerprint_def.saved_model_checksum, 0)
+    self.assertEqual(fingerprint_def.graph_def_program_hash,
+                     8947653168630125217)
+    self.assertEqual(fingerprint_def.signature_def_hash, 15354238402988963670)
+    self.assertEqual(fingerprint_def.checkpoint_hash, 0)
 
   def test_valid_singleprint(self):
     save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")
@@ -172,7 +168,7 @@ class FingerprintingTest(test.TestCase):
     # checkpoint_hash is non-deterministic and not included
     self.assertRegex(singleprint,
                      "/".join(["8947653168630125217",  # graph_def_program_hash
-                               "13520770727385282311",  # signature_def_hash
+                               "15354238402988963670",  # signature_def_hash
                                "1613952301283913051"  # saved_object_graph_hash
                                ]))
 

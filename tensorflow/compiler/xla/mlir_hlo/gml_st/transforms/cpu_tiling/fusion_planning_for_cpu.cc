@@ -22,11 +22,9 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
@@ -152,26 +150,6 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
-// Duplicates the op so each copy has only one use as init parameter.
-template <typename OpTy>
-LogicalResult duplicateInitOps(OpTy op, PatternRewriter& rewriter) {
-  // Nothing to do, because the op has 0 or 1 users.
-  if (std::distance(op->user_begin(), op->user_end()) <= 1) return failure();
-
-  bool modified = false;
-  for (auto& use : llvm::make_early_inc_range(op->getUses())) {
-    Operation* ownerOp = use.getOwner();
-
-    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
-    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
-
-    auto newOp = cast<OpTy>(rewriter.clone(*op));
-    use.set(newOp->getResult(0));
-    modified = true;
-  }
-  return success(modified);
-}
-
 // Add attributes with tile sizes for parallel and reduction dimensions.
 // Attribute is empty if there is nothing to tile across respective dimensions.
 struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
@@ -218,23 +196,20 @@ struct FusionPlanningForCpuPass
 
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
     // Cleanup passes to prepare ops for better clustering.
     {
-      RewritePatternSet patterns(context);
-      // Duplicate linalg.fill and tensor.empty that used as init parameters.
-      patterns.add(duplicateInitOps<linalg::FillOp>);
-      patterns.add(duplicateInitOps<tensor::EmptyOp>);
+      RewritePatternSet patterns(ctx);
+      populateDuplicateInitOpsPatterns(patterns);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
 
     // Move ops to gml_st.fusion clusters.
     {
-      RewritePatternSet patterns(context);
+      RewritePatternSet patterns(ctx);
       patterns.add(fusionPattern<linalg::MapOp>);
       patterns.add(fusionPattern<linalg::MatmulOp>);
       patterns.add(fusionPattern<linalg::ReduceOp>);
@@ -256,12 +231,11 @@ struct FusionPlanningForCpuPass
 
     // Add attributes with tile sizes.
     {
-      RewritePatternSet patterns(context);
-      patterns.add<ComputeTileSizesPattern>(context, vectorSize);
+      RewritePatternSet patterns(ctx);
+      patterns.add<ComputeTileSizesPattern>(ctx, vectorSize);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
   }
 };
@@ -270,14 +244,13 @@ struct InlineFusionClustersPass
     : public impl::InlineFusionClustersPassBase<InlineFusionClustersPass> {
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
-    RewritePatternSet patterns(context);
+    RewritePatternSet patterns(ctx);
     patterns.add(inlineFusionCluster);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 

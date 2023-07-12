@@ -31,12 +31,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
-// cannot include curand.h here
-//   because it triggers the #error in cuda/cuda_gpu_executor.cc
-//     (because curand.h includes cuda_runtime.h)
-// so explicitly adding the lone typedef we need from that file
-typedef struct curandGenerator_st* curandGenerator_t;
-
 #endif
 
 namespace stream_executor {
@@ -78,7 +72,6 @@ using GpuFuncCachePreference = CUfunc_cache;
 using GpuSharedMemConfig = CUsharedconfig;
 using GpuComplexType = cuComplex;
 using GpuDoubleComplexType = cuDoubleComplex;
-using GpuRngHandle = curandGenerator_t;
 
 #endif
 

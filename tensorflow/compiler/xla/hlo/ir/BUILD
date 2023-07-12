@@ -53,6 +53,7 @@ cc_library(
         "hlo_sharding_metadata.h",
     ],
     deps = [
+        ":tile_assignment",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
@@ -71,6 +72,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:mapped_ptr_container_sorter",
@@ -105,7 +107,7 @@ cc_library(
     srcs = ["hlo_module_group.cc"],
     hdrs = ["hlo_module_group.h"],
     deps = [
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        ":hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -117,10 +119,23 @@ cc_library(
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tile_assignment",
+    srcs = ["tile_assignment.cc"],
+    hdrs = ["tile_assignment.h"],
+    deps = [
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:printer",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
 )

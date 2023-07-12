@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
 #include <optional>
 
 #include "llvm/ADT/SmallVector.h"
@@ -38,7 +41,7 @@ namespace tosa {
 
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
                              Value value, llvm::SmallVector<Value>& dims) {
-  auto value_ty = value.getType().dyn_cast<ShapedType>();
+  auto value_ty = dyn_cast<ShapedType>(value.getType());
   if (!value_ty || !value_ty.hasRank()) return failure();
 
   dims.resize(value_ty.getRank());
@@ -156,7 +159,7 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, double input_scale,
                           int64_t input_zp) {
   // Output is always int32 type
-  auto input_type = input_val.getType().dyn_cast<mlir::ShapedType>();
+  auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
@@ -175,7 +178,7 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
                             ShapedType output_type, Value input_val,
                             double output_scale, int64_t output_zp) {
   // Input should be int32 type
-  auto input_type = input_val.getType().dyn_cast<mlir::ShapedType>();
+  auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   (void)input_type;
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
@@ -196,9 +199,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                Value conv_val, ShapedType input_type,
                                ShapedType weight_type, ShapedType output_type) {
   auto input_qtype =
-      input_type.getElementType().dyn_cast<mlir::quant::UniformQuantizedType>();
-  auto output_qtype = output_type.getElementType()
-                          .dyn_cast<mlir::quant::UniformQuantizedType>();
+      dyn_cast<mlir::quant::UniformQuantizedType>(input_type.getElementType());
+  auto output_qtype =
+      dyn_cast<mlir::quant::UniformQuantizedType>(output_type.getElementType());
 
   double input_scale = input_qtype.getScale();
 
@@ -211,8 +214,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool double_round = scale32;
 
   if (auto weight_per_tensor_qtype =
-          weight_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>()) {
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              weight_type.getElementType())) {
     // Per-tensor quantization
     double weight_scale = weight_per_tensor_qtype.getScale();
 
@@ -233,8 +236,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     return rescale_op.getResult();
 
   } else if (auto weight_per_channel_qtype =
-                 weight_type.getElementType()
-                     .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+                 dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(
+                     weight_type.getElementType())) {
     // Per-channel quantization
     SmallVector<int32_t> multiplier_arr;
     SmallVector<int32_t> shift_arr;
@@ -285,6 +288,13 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
+
+    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    if (transformed >= max) {
+      table.push_back(INT8_MAX);
+      continue;
+    }
+
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
@@ -710,7 +720,10 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    auto ety = op.getValue().getType().getElementType();
+    if (op.getType().getElementType().isa<QuantizedType>()) {
+      return;
+    }
+    auto ety = op.getValue().getShapedType().getElementType();
     auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });

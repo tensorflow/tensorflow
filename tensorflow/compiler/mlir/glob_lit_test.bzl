@@ -58,12 +58,14 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
+        deps = ["@pypi_lit//:pkg"],
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,
     )
 
 def glob_lit_tests(
+        name = None,
         exclude = [],
         test_file_exts = _default_test_file_exts,
         default_size = _default_size,
@@ -78,6 +80,7 @@ def glob_lit_tests(
     """Creates all plausible Lit tests (and their inputs) under this directory.
 
     Args:
+      name: str, name of the test_suite rule to generate for running all tests.
       exclude: [str], paths to exclude (for tests and inputs).
       test_file_exts: [str], extensions for files that are tests.
       default_size: str, the test size for targets not in "size_override".
@@ -103,7 +106,10 @@ def glob_lit_tests(
 
     # Run tests individually such that errors can be attributed to a specific
     # failure.
+    all_tests = []
     for curr_test in tests:
+        all_tests.append(curr_test + ".test")
+
         # Instantiate this test with updated parameters.
         _run_lit_test(
             name = curr_test + ".test",
@@ -113,4 +119,12 @@ def glob_lit_tests(
             driver = driver,
             features = features,
             exec_properties = exec_properties,
+        )
+
+    # TODO: remove this check after making it a required param.
+    if name:
+        native.test_suite(
+            name = name,
+            tests = all_tests,
+            tags = ["manual"],
         )

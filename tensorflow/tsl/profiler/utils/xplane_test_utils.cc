@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -88,7 +89,7 @@ void CreateXEvent(
     XStatValueVisitor stat_value_visitor(
         &event_builder,
         plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(stat_type)));
-    absl::visit(stat_value_visitor, stat_value);
+    std::visit(stat_value_visitor, stat_value);
   }
 }
 

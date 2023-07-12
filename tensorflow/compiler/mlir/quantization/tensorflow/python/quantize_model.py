@@ -17,8 +17,8 @@ import collections.abc
 import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
-from absl import logging
 
+from absl import logging
 import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
@@ -51,11 +51,12 @@ _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 
 # Default minimum number of elements in the weights for them to be quantized
-# during dynamic range quantization (DRQ).
+# during dynamic range quantization (DRQ) and weight-only quantization.
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
 
 # Name of the saved model assets directory.
 _ASSETS_DIR = 'assets'
+_ASSETS_EXTRA_DIR = 'assets.extra'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -464,6 +465,7 @@ def _run_graph_for_calibration(
     signature_keys: Sequence[str],
     tags: Collection[str],
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    force_graph_mode_calibration: bool,
 ) -> None:
   """Runs the graph for calibration using representative datasets.
 
@@ -478,6 +480,8 @@ def _run_graph_for_calibration(
       `signature_keys` contains more than one signature key,
       `representative_datsaet` should be a mapping that maps each signature keys
       to the corresponding representative dataset.
+    force_graph_mode_calibration: If set to true, it forces calibration in graph
+      model instead of eager mode when the context is in eager mode.
 
   Raises:
     ValueError iff:
@@ -498,11 +502,13 @@ def _run_graph_for_calibration(
     representative_dataset_map = {signature_keys[0]: representative_dataset}
 
   try:
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not force_graph_mode_calibration:
+      logging.info('Calibration step is executed in eager mode.')
       _run_graph_for_calibration_eager_mode(
           float_model_dir, tags, representative_dataset_map
       )
     else:
+      logging.info('Calibration step is executed in graph mode.')
       _run_graph_for_calibration_graph_mode(
           float_model_dir, tags, representative_dataset_map
       )
@@ -512,6 +518,40 @@ def _run_graph_for_calibration(
     ) from ex
 
   logging.info('Calibration step complete.')
+
+
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  for assets_dir_name in [_ASSETS_DIR, _ASSETS_EXTRA_DIR]:
+    src_assets_path = file_io.join(src_path, assets_dir_name)
+    if not file_io.file_exists_v2(src_assets_path):
+      # Do nothing if the source assets path does not exist.
+      continue
+
+    dst_assets_path = file_io.join(dst_path, assets_dir_name)
+    file_io.create_dir_v2(dst_assets_path)
+
+    for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+      for asset_file_name in files:
+        src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+        # Construct the destination assets file path.
+        curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+        dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+        file_io.copy_v2(src_asset_file, dst_asset_file)
+        logging.info(
+            'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+        )
 
 
 def _run_static_range_qat(
@@ -536,11 +576,18 @@ def _run_static_range_qat(
     signature_def_map: Signature def key -> SignatureDef mapping.
   """
   logging.info('Running static-range quantization for QAT model.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       list(signature_def_keys),
       set(tags),
       quant_opts.SerializeToString(),
+      dict(function_aliases),
   )
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -558,6 +605,8 @@ def _run_static_range_qat(
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -591,39 +640,6 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
             node_id.decode('utf-8'),
             function_def.signature.name,
         )
-
-
-def _copy_assets(src_path: str, dst_path: str) -> None:
-  """Copies the assets directory of the saved model.
-
-  Clones the contents of the assets/ directory from the source saved model
-  directory to the destination saved model directory. Nothing will be copied if
-  there are no assets directory in the source directory.
-
-  Args:
-    src_path: Source saved model directory.
-    dst_path: Destination saved model directory. This directory must exist.
-  """
-  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
-  if not file_io.file_exists_v2(src_assets_path):
-    # Do nothing if the source assets path does not exist.
-    return
-
-  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
-  file_io.create_dir_v2(dst_assets_path)
-
-  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
-    for asset_file_name in files:
-      src_asset_file = file_io.join(curr_dir, asset_file_name)
-
-      # Construct the destination assets file path.
-      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
-      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
-
-      file_io.copy_v2(src_asset_file, dst_asset_file)
-      logging.info(
-          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
-      )
 
 
 def _get_saver_def_or_none(
@@ -724,6 +740,7 @@ def _run_static_range_ptq(
       signature_def_keys,
       tags,
       representative_dataset,
+      quant_opts.force_graph_mode_calibration,
   )
   _add_calibration_statistics(graph_def)
 
@@ -1002,17 +1019,20 @@ def _populate_quantization_options_default_values(
     quantization_options: An instance of QuantizationOptions.
   """
   if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
-    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+    quantization_options.op_set = quant_opts_pb2.OpSet.XLA
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
 
-  if quantization_options.enable_per_channel_quantization and (
-      quantization_options.op_set != quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+  # TODO(b/281595329): Implement static range quantization per-channel support
+  if quantization_options.enable_per_channel_quantization and not (
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      or quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform '
-        'Quantized opset only.'
+        'Quantized opset and Weight-only.'
     )
 
   if (

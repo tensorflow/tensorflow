@@ -20,10 +20,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -49,6 +47,10 @@ class SingleOpModel;  // Class for friend declarations.
 
 namespace internal {
 class CommonOpaqueConversionUtil;  // Class for friend declarations.
+}
+
+namespace async {
+class AsyncSubgraph;  // Class for friend declarations.
 }
 
 namespace impl {
@@ -270,6 +272,10 @@ class Subgraph {
   // Returns status of success or failure.
   TfLiteStatus AllocateTensors();
 
+  // Returns the number of times each tensor is consumed. Subgraph output
+  // tensors are considered as consumed.
+  std::vector<int> GetInputTensorsCount();
+
   // Invoke the subgraph (run the whole graph in dependency order).
   //
   // NOTE: It is possible that the interpreter is not in a ready state
@@ -338,7 +344,9 @@ class Subgraph {
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
-  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() const {
+    return subgraphs_;
+  }
 
   // Returns the location of this object within subgraphs_, or
   // kInvalidSubgraphIndex if subgraphs_ is nullptr or *this is not
@@ -394,7 +402,7 @@ class Subgraph {
   // the TfLite library and allow users to plug-in their own memory planner
   // debugger, we have utilized weak symbols to meet these two requirements. By
   // default, there is no debugging info dumped. However, if the TfLite-provided
-  // lite:simple_memory_arena_debug_dump (i.e. containing the strong defintion)
+  // lite:simple_memory_arena_debug_dump (i.e. containing the strong definition)
   // is linked to the program, calling this function will output memory usage
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
@@ -457,20 +465,59 @@ class Subgraph {
   }
 
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
-  // index. If an invalid subgraph index is given, then returns nullptr.
-  TfLiteContext* GetSubgraphContext(int subgraph_index);
+  // index and switches to the delegate context for this subgraph. If an invalid
+  // subgraph index is given, returns kTfLiteError.
+  // NOTE: This function is expected to be paired with ReleaseSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  TfLiteStatus AcquireSubgraphContext(int subgraph_index,
+                                      TfLiteContext** acquired_context);
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to acquire the subgraph context.
+  static TfLiteStatus AcquireSubgraphContext(struct TfLiteContext* context,
+                                             int subgraph_index,
+                                             TfLiteContext** acquired_context);
+
+  // Releases the subgraph context by switching back to the TFLite kernel
+  // context for this specified subgraph.
+  // NOTE: This function is expected to be used after AcquireSubgraphContext()
+  // once the delegate preparation is done and/or the delegate context functions
+  // are no longer needed.
+  TfLiteStatus ReleaseSubgraphContext(int subgraph_index);
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to release the subgraph context.
+  static TfLiteStatus ReleaseSubgraphContext(struct TfLiteContext* context,
+                                             int subgraph_index);
 
   // Marks the subgraph with the given index as "delegation-skippable". Returns
   // kTfLiteOk if the given subgraph index is valid and is successfully marked
-  // as delegation-skippable.
+  // as delegation-skippable, and an error status if the subgraph index is
+  // invalid.
   // If a subgraph is delegation-skippable, then the subgraph will be handled by
   // a TfLiteDelegate (and that the delegate is supposed to be already aware of
   // this state), and therefore, TfLiteInterpreter can skip invoking
   // `ModifyGraphWithDelegate` on this subgraph.
-  // NOTE: This function is expected to be called only when the subgraph will be
-  // skipped by the interpreter (e.g. the subgraph is part of the list of callee
-  // subgraphs of the same control flow node, and all of those callees are
-  // supported by the same delegate at once).
+  // NOTE: This function is expected to be called only when the subgraph that
+  // `subgraph_index` is pointing to should be skipped by
+  // interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list
+  // of callee subgraphs of the same control flow node, and all of those callees
+  // are supported by the same delegate at once).
+  //
+  // For example, this function can be used when the delegate is handling
+  // control flow ops like while op. E.g. A while op has condition subgraph
+  // indexed at `i` and body subgraph indexed at `j`. The op can be delegated
+  // when the following condition satisfied:
+  //   1. The delegate supports while op
+  //   2. Both condition subgraph `i` and body subgraph `j` can be fully
+  //      delegated by the delegate.
+  // Then if the delegate decides to support the while node along with both body
+  // and condition subgraphs, it should mark subgraphs `i` and `j` skippable so
+  // those two subgraphs won't be delegated separately again after being
+  // absorbed by the parent subgraph.
+  // WARNING: It is the delegate's responsibility to define when to skip
+  // subgraph->ModifyGraphWithDelegate, to check any edge cases (i.e. multiple
+  // references to the subgraph that `subgraph_index` is pointing to), and to
+  // mark that subgraph as skippable using this function.
   TfLiteStatus MarkSubgraphAsDelegationSkippable(int subgraph_index);
 
   // Returns whether this subgraph is delegation-skippable.
@@ -485,9 +532,34 @@ class Subgraph {
   // be skipped by the interpreter.
   void MarkAsDelegationSkippable() { is_delegation_skippable_ = true; }
 
+  // Loads metadata of a TF Lite node's custom initialization data.
+  // Specifically:
+  // * Loads into the supplied 'fd' the file descriptor of the file that stores
+  //   the 'node's custom  initialization data.  This output parameter will be
+  //   loaded if the TF Lite runtime has access to the file descriptor, though
+  //   this is not always the case, e.g. if a client provides a tflite::Model
+  //   directly to the TF Lite runtime.  If 'fd' can be loaded then 'kTfLiteOk'
+  //   will be returned, otherwise 'kTfLiteError' is returned.
+  // * Loads into the supplied 'custom_initial_data_offset_in_file' pointer the
+  //   offset of the 'node's custom init data in the file associated with 'fd'.
+  //   This output parameter will be set to -1 if the 'node' does not have
+  //   custom init data set.
+  // * Loads into the supplied 'custom_initial_data_size' the size of the
+  //   custom initialization data.  This output parameter will be set to -1 if
+  //   the 'node' does not have custom init data set.
+  //
+  // Returns 'kTfLiteOk' when 'fd' has been loaded successfully and
+  // 'kTfLiteError' otherwise.  Note that this means that 'kTfLiteOk' can be
+  // returned, even if the 'node' does not have custom init data set.
+  TfLiteStatus GetNodeInitDataMmapInfo(
+      const TfLiteNode* node, int* fd,
+      int64_t* custom_initial_data_offset_in_file,
+      int64_t* custom_initial_data_size) const;
+
  private:
 #ifndef DOXYGEN_SKIP
   friend class tflite::impl::InterpreterBuilder;
+  friend class tflite::async::AsyncSubgraph;
   friend class TestDelegate;
 #endif  // DOXYGEN_SKIP
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
@@ -549,11 +621,16 @@ class Subgraph {
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Prevent 'context_' from accessing functions that are only available to
-  // delegated kernels.
-  void SwitchToKernelContext();
+  // delegated kernels. Returns kTfLiteError if the counter violation happens,
+  // i.e. if trying to switch to kernel context when it's already at kernel
+  // context.
+  TfLiteStatus SwitchToKernelContext();
 
-  // Add delegate-only functions to 'context_'.
-  void SwitchToDelegateContext();
+  // Add delegate-only functions to 'context_'. Also increment the
+  // `delegate_context_switch_count_` for each call. Returns kTfLiteError if the
+  // count violation happens, i.e. if the counter goes below 0. This is not
+  // expected to happen unless another function arbitrarily modify the counter.
+  TfLiteStatus SwitchToDelegateContext();
 
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'. If registration_external is valid, use the 'init' callback from
@@ -635,6 +712,10 @@ class Subgraph {
 
   // WARNING: This is an experimental API and subject to change.
   // Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
+  // If the delegate has the 'opaque_delegate_builder' field set,
+  // then the 'registration.registration_external' must be non-null,
+  // and the subgraph takes ownership of the registration_external.
+  // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   static TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
       TfLiteContext* context, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
@@ -642,6 +723,9 @@ class Subgraph {
   // Update the execution graph to replace some of the nodes with stub
   // nodes. Specifically any node index that has `nodes[index]==1` will be
   // slated for replacement with a delegate kernel specified by registration.
+  // If the delegate has the 'opaque_delegate_builder' field set,
+  // then the 'registration.registration_external' must be non-null,
+  // and the subgraph takes ownership of the registration_external.
   // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
@@ -853,6 +937,27 @@ class Subgraph {
   // sits inside the associated TFLite interpreter instance.
   TfLiteExternalContext** external_contexts_;
 
+  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
+  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
+  // pointers are deleted in the 'Subgraph' destructor.
+  //
+  // The intended usage of this container is to provide (friend) classes
+  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
+  // and then tie the lifetime of these objects to a subgraph.
+  //
+  // WARNING: This field needs to precede 'nodes_and_registration_', to ensure
+  // that it outlives that field, since that field might contain references to
+  // the TfLiteRegistrationExternal objects contained in this fielld.
+  //
+  // LINT.IfChange
+  // Ideally we could include c_api.h and use
+  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
+  // dependency cycle.
+  std::unordered_set<  // NOLINT
+      std::unique_ptr<const TfLiteRegistrationExternal>>
+      registration_externals_;
+  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
+
   // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
   // function pointers to actual implementation.
   // Nodes should appear in the order in which they are instantiated at runtime.
@@ -922,7 +1027,7 @@ class Subgraph {
 
   // In the future, we'd like a TfLiteIntArray compatible representation.
   // TODO(aselle): replace execution_plan_ with this.
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
+  IntArrayUniquePtr plan_cache_;
 
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
@@ -995,23 +1100,6 @@ class Subgraph {
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
 
-  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
-  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
-  // pointers are deleted in the 'Subgraph' destructor.
-  //
-  // The intended usage of this container is to provide (friend) classes
-  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
-  // and then tie the lifetime of these objects to a subgraph.
-  //
-  // LINT.IfChange
-  // Ideally we could include c_api.h and use
-  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
-  // dependency cycle.
-  std::unordered_set<  // NOLINT
-      std::unique_ptr<const TfLiteRegistrationExternal>>
-      registration_externals_;
-  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
-
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;
 
@@ -1028,6 +1116,16 @@ class Subgraph {
   // therefore, TfLiteInterpreter can skip invoking `ModifyGraphWithDelegate` on
   // this subgraph.
   bool is_delegation_skippable_ = false;
+
+  // Count how many times the context has been switched to the delegate context.
+  // Incremented during Acquire(), and decremented during Release().
+  // Initialized to 1 initially because SwitchToKernelContext() is called once
+  // during the Subgraph initialization.
+  int delegate_context_switch_count_ = 1;
+
+  /// The allocator used for holding memory of the model. Note that this will
+  /// be null if the client provides a tflite::Model directly.
+  const Allocation* allocation_ = nullptr;
 };
 
 }  // namespace tflite

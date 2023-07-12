@@ -24,20 +24,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -219,11 +215,6 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseBiasWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestMatchWithAllTypes(R"(
@@ -247,12 +238,6 @@ TEST_F(CudnnFusedConvRewriterTest, TestElu) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
-
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestNotMatchWithAllTypes(R"(
@@ -935,11 +920,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   const std::string module_str = R"(
     HloModule Test
 
@@ -962,7 +942,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  // elu fusion is only active on Ampere+.
+  CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0)};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1024,9 +1005,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
                         .WithComparisonDirection(ComparisonDirection::kGt),
                     gte_pattern,
                     m::Op()
-                        .WithPredicate([](const HloInstruction* instr) {
-                          return instr->opcode() == HloOpcode::kExpm1;
-                        })
+                        .WithPredicate(HloPredicateIsOp<HloOpcode::kExpm1>)
                         .WithOperand(0, gte_pattern)),
           m::Minimum())));
   TF_ASSERT_OK_AND_ASSIGN(auto config,

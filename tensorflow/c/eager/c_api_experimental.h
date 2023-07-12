@@ -612,6 +612,11 @@ TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
 
+// Get GraphDebugInfo containing stack traces mapping to node names
+TF_CAPI_EXPORT extern void TFE_ContextGetGraphDebugInfo(
+    TFE_Context* ctx, const char* function_name, TF_Buffer* buf,
+    TF_Status* status);
+
 // Extracts a TF_Function from the context.
 // Must call TF_DeleteFunction on the returned value.
 TF_CAPI_EXPORT extern TF_Function* TFE_ContextGetFunction(TFE_Context* ctx,
@@ -741,6 +746,12 @@ TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
                                              const char* barrier_id,
                                              int64_t barrier_timeout_in_ms,
                                              TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_InitializeLocalOnlyContext(TFE_Context* ctx,
+                                                          int keep_alive_secs,
+                                                          const void* proto,
+                                                          size_t proto_len,
+                                                          TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

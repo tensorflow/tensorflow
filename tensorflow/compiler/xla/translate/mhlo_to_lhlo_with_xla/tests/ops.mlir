@@ -710,7 +710,8 @@ func.func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi
 // CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
 // CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
-// CHECK: }) {backend_config = ""} : () -> ()
+// CHECK: }) 
+// CHECK-SAME: : () -> ()
 func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
@@ -732,7 +733,8 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
-// CHECK: }) {backend_config = ""} : () -> ()
+// CHECK: }) 
+// CHECK-SAME: : () -> ()
 func.func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
   %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tuple<tensor<f32>>
   %1 = "mhlo.get_tuple_element"(%0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
@@ -765,6 +767,25 @@ func.func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tens
       "mhlo.return"(%fmax, %imax) : (tensor<f32>, tensor<i32>) -> ()
     }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
   func.return %result0, %result1 : tensor<1xf32>, tensor<1xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK:   mhlo.reduce_window
+// CHECK:   (%[[VAL1:.*]]: tensor<f32>, %[[VAL2:.*]]: tensor<i32>, %[[VAL3:.*]]: tensor<f32>, %[[VAL4:.*]]: tensor<i32>)
+// CHECK:     %[[VAL5:.*]] = mhlo.add %[[VAL1]], %[[VAL3]] : tensor<f32>
+// CHECK:     %[[VAL6:.*]] = mhlo.subtract %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
+// CHECK:     mhlo.return %[[VAL5]], %[[VAL6:.*]] : tensor<f32>, tensor<i32>
+// CHECK:   })
+func.func @main(%arg0 : tensor<3x8xf32>, %arg1 : tensor<3x8xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<2x7xf32>, tensor<2x7xi32>) {
+  %result0, %result1 = "mhlo.reduce_window"(%arg0, %arg1, %arg2, %arg3) ({
+    ^bb0(%fa: tensor<f32>, %ia: tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):
+      %7 = mhlo.add %fa, %fb : tensor<f32>
+      %8 = mhlo.subtract %ia, %ib : tensor<i32>
+      mhlo.return %7, %8 : tensor<f32>, tensor<i32>
+    }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<0> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<2> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x7xf32>, tensor<2x7xi32>)
+  func.return %result0, %result1 : tensor<2x7xf32>, tensor<2x7xi32>
 }
 
 // -----

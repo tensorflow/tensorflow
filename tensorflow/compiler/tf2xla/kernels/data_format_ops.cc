@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -35,13 +36,13 @@ class DataFormatDimMapOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4 or src_format.size() == 5,
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
                 errors::InvalidArgument(
                     absl::StrCat("Source format must of length 4 or 5, "
                                  "received src_format = ",
                                  src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4 or dst_format.size() == 5,
+        context, dst_format.size() == 4 || dst_format.size() == 5,
         errors::InvalidArgument(absl::StrCat(
             "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <utility>
 
@@ -64,13 +65,60 @@ void LowerComplexPass::runOnOperation() {
     return signalPassFailure();
 }
 
+class ConvertComplexDot : public OpRewritePattern<DotOp> {
+ public:
+  using OpRewritePattern<DotOp>::OpRewritePattern;
+
+  // Will decompose mlir::DotOp with complex parameters down to
+  // four Dot operations in the following fashion:
+  //   result.real = lhs.real <DOT> rhs.real - lhs.imag <DOT> rhs.imag
+  //   result.imag = lhs.imag <DOT> rhs.real + lhs.real <DOT> rhs.imag
+  //   result = complex(result.real, result.imag)
+  LogicalResult matchAndRewrite(DotOp dot,
+                                PatternRewriter &rewriter) const override {
+    auto precision = dot.getPrecisionConfigAttr();
+    auto lhs = dot.getLhs();
+    auto rhs = dot.getRhs();
+    ShapedType lhsType = lhs.getType();
+    ShapedType rhsType = rhs.getType();
+    if (!isa<ComplexType>(lhsType.getElementType()) ||
+        !isa<ComplexType>(rhsType.getElementType())) {
+      return rewriter.notifyMatchFailure(dot, "lhs/rhs types are not complex");
+    }
+
+    Location loc = dot.getLoc();
+    Value lhsReal = rewriter.createOrFold<mhlo::RealOp>(loc, lhs);
+    Value lhsImag = rewriter.createOrFold<mhlo::ImagOp>(loc, lhs);
+    Value rhsReal = rewriter.createOrFold<mhlo::RealOp>(loc, rhs);
+    Value rhsImag = rewriter.createOrFold<mhlo::ImagOp>(loc, rhs);
+    auto resultType = dot.getType();
+    Type newType = hlo::createRealType(resultType);
+
+    Value realComponent = rewriter.create<mhlo::SubtractOp>(
+        loc,
+        rewriter.create<mhlo::DotOp>(loc, newType, lhsReal, rhsReal, precision),
+        rewriter.create<mhlo::DotOp>(loc, newType, lhsImag, rhsImag,
+                                     precision));
+    Value imagComponent = rewriter.create<mhlo::AddOp>(
+        loc,
+        rewriter.create<mhlo::DotOp>(loc, newType, lhsReal, rhsImag, precision),
+        rewriter.create<mhlo::DotOp>(loc, newType, lhsImag, rhsReal,
+                                     precision));
+    Value result = rewriter.create<mhlo::ComplexOp>(
+        loc, resultType, realComponent, imagComponent);
+    rewriter.replaceOp(dot, result);
+    return success();
+  }
+};
+
 }  // end anonymous namespace
 }  // end namespace mhlo
 }  // end namespace mlir
 
-void mlir::mhlo::populateComplexLoweringPatterns(MLIRContext* /*context*/,
-                                                 RewritePatternSet* patterns) {
+void mlir::mhlo::populateComplexLoweringPatterns(MLIRContext *context,
+                                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
+  patterns->insert<mlir::mhlo::ConvertComplexDot>(context);
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

@@ -1,4 +1,5 @@
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -7,7 +8,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
@@ -17,7 +18,7 @@ package(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
         "//tensorflow/tsl/profiler:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -60,6 +61,7 @@ cc_library(
         ":inputstream_interface",
         ":random_inputstream",
         "//tensorflow/tsl/platform:env",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = True,
 )
@@ -254,6 +256,21 @@ cc_library(
     ],
 )
 
+tsl_cc_test(
+    name = "buffered_file_test",
+    size = "small",
+    srcs = ["buffered_file_test.cc"],
+    deps = [
+        ":buffered_file",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "zlib_compression_options",
     srcs = ["zlib_compression_options.cc"],
@@ -371,7 +388,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -389,7 +406,7 @@ filegroup(
         "table_builder.h",
         "table_options.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -405,7 +422,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -415,7 +432,7 @@ filegroup(
         "block_builder.h",
         "format.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 tsl_cc_test(

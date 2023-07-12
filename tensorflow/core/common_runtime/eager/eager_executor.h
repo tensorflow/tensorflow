@@ -16,13 +16,17 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_EXECUTOR_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -49,9 +53,9 @@ class EagerClient;
 // device to another.
 class EagerNode {
  public:
-  EagerNode() {}
+  EagerNode() = default;
 
-  virtual ~EagerNode() {}
+  virtual ~EagerNode() = default;
 
   // Prepares the node when adding it into EagerExecutor. If any errors happens,
   // EagerExecutor will abort the node immediately.
@@ -267,7 +271,7 @@ class EagerExecutor {
   const bool enable_streaming_enqueue_;
 
   // Callbacks to run on destruction.
-  std::unordered_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
+  absl::flat_hash_map<intptr_t, std::vector<std::function<void()>>> cleanups_;
 
   // Limit the number of in-flight nodes. When the number of in-flight eager
   // async nodes reach this number, enqueuing to the eager async queue is

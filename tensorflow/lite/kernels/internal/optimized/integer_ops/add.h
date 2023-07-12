@@ -497,7 +497,7 @@ inline void BroadcastAddDispatch(const ArithmeticParams& params,
                                  const RuntimeShape& output_shape,
                                  int8* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return reference_integer_ops::BroadcastAdd4DSlow(
+    return reference_integer_ops::BroadcastAdd6DSlow(
         params, input1_shape, input1_data, input2_shape, input2_data,
         output_shape, output_data);
   }

@@ -226,8 +226,22 @@ func.func @ag_start(%arg : memref<10x10xf32>, %out: memref<20x10xf32>) {
   %0 = "lmhlo_gpu.all_gather_start"(%arg, %out)
     {
       replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
-      all_gather_dimension = 0
+      all_gather_dimension = 0,
+      is_sync = false
     }
     : (memref<10x10xf32>, memref<20x10xf32>) -> (!mhlo.token)
+  func.return
+}
+
+// CHECK-LABEL: func @ag_start_mixed
+func.func @ag_start_mixed(%arg0 : memref<10x10xf32>, %arg1 : memref<10x10xf16>,
+                    %out0: memref<20x10xf32>, %out1: memref<20x10xf16>) {
+  %0 = "lmhlo_gpu.all_gather_start"(%arg0, %arg1, %out0, %out1)
+    {
+      replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      all_gather_dimension = 0,
+      is_sync = true
+    }
+    : (memref<10x10xf32>, memref<10x10xf16>, memref<20x10xf32>, memref<20x10xf16>) -> (!mhlo.token)
   func.return
 }

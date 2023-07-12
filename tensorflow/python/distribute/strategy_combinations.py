@@ -22,7 +22,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
@@ -39,7 +39,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -105,7 +104,7 @@ def _get_tpu_strategy_creator(steps_per_run,
       if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
         remote.connect_to_cluster(resolver)
         _did_connect_to_cluster = True
-      _topology = tpu_strategy_util.initialize_tpu_system(resolver)
+      _topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     device_assignment = None
     if use_single_core:
@@ -351,7 +350,7 @@ _four_worker_pool = _deferred_pool_runner(
 # pylint: disable=g-long-lambda
 default_strategy = combinations.NamedDistribution(
     "Default",
-    distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
+    distribute_lib._get_default_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = combinations.NamedDistribution(
     "OneDeviceCPU", lambda: OneDeviceStrategy("/cpu:0"), required_gpus=None)

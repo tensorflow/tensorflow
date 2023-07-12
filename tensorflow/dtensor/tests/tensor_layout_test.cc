@@ -136,6 +136,11 @@ TEST(MeshTest, ToStringMeshWithXLASPMD) {
   EXPECT_THAT(mesh.ToString(), ContainsRegex(Mesh::kUseXLASPMDString));
 }
 
+TEST(MeshTest, FromStringInvalidSingleDeviceMesh) {
+  EXPECT_THAT(Mesh::FromString("/job:localhost/device:CPU:0"),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
 TEST(MeshTest, FromStringSingleDeviceMesh) {
   TF_ASSERT_OK_AND_ASSIGN(
       Mesh mesh, Mesh::FromString("/job:localhost/task:0/device:CPU:0"));
@@ -590,8 +595,7 @@ TEST_F(LayoutTest, TruncateBeginning) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:x, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_THAT(layout.Truncate(/*split_point=*/1),
-              IsOkAndHolds(expected_layout));
+  EXPECT_EQ(layout.Truncate(/*split_point=*/1), expected_layout);
 }
 
 TEST_F(LayoutTest, TruncateEnd) {
@@ -601,8 +605,7 @@ TEST_F(LayoutTest, TruncateEnd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto expected_layout,
       Layout::FromString("sharding_specs:y, mesh:CPU|x=2,y=2|*CPU"));
-  EXPECT_THAT(layout.Truncate(/*split_point=*/1, /*end=*/true),
-              IsOkAndHolds(expected_layout));
+  EXPECT_EQ(layout.Truncate(/*split_point=*/1, /*end=*/true), expected_layout);
 }
 
 TEST_F(LayoutTest, Concatenate) {
@@ -646,14 +649,14 @@ TEST_F(LayoutTest, EmptyMeshDeviceType) {
 
 TEST_F(LayoutTest, ConvertMeshDeviceType) {
   TF_ASSERT_OK_AND_ASSIGN(Mesh mesh,
-                          Mesh::FromString("mesh:|x=2,batch=1|*TPU"));
+                          Mesh::FromString("mesh_name|x=2,batch=1|*TPU"));
   TF_ASSERT_OK_AND_ASSIGN(Mesh cpu_mesh, mesh.ToDeviceType("CPU"));
   EXPECT_TRUE(cpu_mesh.is_cpu_mesh());
 
   std::string expected_task_name = "/job:localhost/replica:0/task:0/";
   TF_ASSERT_OK_AND_ASSIGN(
       Mesh expected_mesh,
-      Mesh::FromString("mesh:|x=2,batch=1|0,1|0,1|" + expected_task_name +
+      Mesh::FromString("|x=2,batch=1|0,1|0,1|" + expected_task_name +
                        "device:CPU:0," + expected_task_name + "device:CPU:1"));
   EXPECT_EQ(cpu_mesh, expected_mesh);
 }

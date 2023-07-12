@@ -27,14 +27,14 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
@@ -566,7 +566,7 @@ class CompositeTensorDataAdapter(DataAdapter):
       return _is_scipy_sparse(v)
 
     def _is_tensor_or_composite(v):
-      if isinstance(v, (ops.Tensor, np.ndarray)):
+      if isinstance(v, (tensor.Tensor, np.ndarray)):
         return True
       return _is_composite(v)
 
@@ -1161,10 +1161,10 @@ class DataHandler(object):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
-        distribution_strategy=ds_context.get_strategy(),
+        distribution_strategy=distribute_lib.get_strategy(),
         model=model)
 
-    strategy = ds_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
 
     self._current_step = 0
     self._step_increment = self._steps_per_execution_value - 1
@@ -1460,7 +1460,7 @@ def expand_1d(data):
 
   def _expand_single_1d_tensor(t):
     # Leaves `CompositeTensor`s as-is.
-    if (isinstance(t, ops.Tensor) and
+    if (isinstance(t, tensor.Tensor) and
         isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
       return array_ops.expand_dims_v2(t, axis=-1)
     return t
@@ -1669,9 +1669,9 @@ def _get_tensor_types():
   try:
     import pandas as pd  # pylint: disable=g-import-not-at-top
 
-    return (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+    return (tensor.Tensor, np.ndarray, pd.Series, pd.DataFrame)
   except ImportError:
-    return (ops.Tensor, np.ndarray)
+    return (tensor.Tensor, np.ndarray)
 
 
 def _is_scipy_sparse(x):

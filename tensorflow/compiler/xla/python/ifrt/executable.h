@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -66,6 +67,14 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
 
+  using CostAnalysisValue = xla::PjRtValueType;
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different implementations and platforms.
+  virtual StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
+  GetCostAnalysis() const = 0;
+
   static char ID;  // NOLINT
 };
 
@@ -110,6 +119,13 @@ class LoadedExecutable
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different implementations and platforms.
+  virtual StatusOr<
+      absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>
+  GetCostAnalysis() const = 0;
 
   // `LoadedExecutable` methods.
 
@@ -159,7 +175,6 @@ class LoadedExecutable
   // TODO(hyeontaek): Move the following XLA-specific methods to
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
 
-  virtual const DeviceAssignment& device_assignment() const = 0;
   using LogicalDeviceIds = ::xla::PjRtLoadedExecutable::LogicalDeviceIds;
   virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const = 0;

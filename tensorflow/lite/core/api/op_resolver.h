@@ -28,6 +28,13 @@ namespace tflite {
 /// Abstract interface that returns TfLiteRegistrations given op codes or custom
 /// op names. This is the mechanism that ops being referenced in the flatbuffer
 /// model are mapped to executable function pointers (TfLiteRegistrations).
+///
+/// The lifetime of the TfLiteRegistration object whose address is
+/// returned by FindOp must exceed the lifetime of any InterpreterBuilder or
+/// Interpreter created with this OpResolver.
+/// Likewise the lifetime of the TfLiteRegistrationExternal object referenced
+/// from the TfLiteRegistration object, if any, must exceed the lifetime of
+/// any InterpreterBuilder or Interpreter created with this OpResolver.
 class OpResolver {
  public:
   /// Finds the op registration for a builtin operator by enum code.

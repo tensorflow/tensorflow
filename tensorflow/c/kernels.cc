@@ -36,6 +36,9 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 using tensorflow::errors::InvalidArgument;
@@ -660,12 +663,12 @@ TF_Buffer* TF_OpKernelConstruction_GetAttrFunction(TF_OpKernelConstruction* ctx,
   tensorflow::NameAttrList function;
   auto cc_status = cc_ctx->GetAttr(attr_name, &function);
   if (!cc_status.ok()) {
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   TF_Buffer* buffer = TF_NewBuffer();
   cc_status = tensorflow::MessageToBuffer(function, buffer);
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
   if (!cc_status.ok())
     return nullptr;
   else
@@ -753,10 +756,19 @@ int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
 
 int TF_GetDeviceId(TF_OpKernelContext* ctx) {
   // TensorFlow always sets device in OpKernelContext.
-  auto* device =
-      reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->device();
-  if (!device->parsed_name().has_id) return -1;
-  return device->parsed_name().id;
+  const tensorflow::DeviceBase* device_base =
+      reinterpret_cast<tensorflow::OpKernelContext*>(ctx)->device();
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  if (!device_base->parsed_name().has_id) return -1;
+  return device_base->parsed_name().id;
+#else
+  const auto* device = reinterpret_cast<const tensorflow::Device*>(
+      device_base->UnderlyingDevice());
+  const tsl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
+      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
+  if (!id.ok()) return -1;
+  return *id;
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
@@ -791,8 +803,6 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              int num_dims, size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
@@ -818,8 +828,6 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<int> input_indices_array(
       candidate_input_indices, num_candidate_input_indices);
   tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
@@ -847,8 +855,6 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   if (attributes && !attributes->struct_size) {

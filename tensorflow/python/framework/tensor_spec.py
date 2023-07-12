@@ -20,7 +20,6 @@ from tensorflow.python.framework import tensor
 # should not be added - use `framework.tensor` directly instead.
 
 # TODO(tristenallen) - Remove once existing references are updated.
-sanitize_spec_name = tensor.sanitize_spec_name
 DenseSpec = tensor.DenseSpec
 TensorSpec = tensor.TensorSpec
 BoundedTensorSpec = tensor.BoundedTensorSpec

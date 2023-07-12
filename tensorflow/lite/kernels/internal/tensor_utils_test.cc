@@ -464,7 +464,7 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       input_offsets.data(), scratch.data(), row_sums, &compute_row_sums,
       &context);
 
-  const std::vector<float_t> expected_output = {
+  const std::vector<float> expected_output = {
       -228, 1548,  937, -166, -1164, -1578, -278,  303, 839,  -820,  132,
       1733, -1858, 58,  -425, -587,  -228,  1548,  937, -166, -1164, -1578,
       -278, 303,   839, -820, 132,   1733,  -1858, 58,  -425, -587,

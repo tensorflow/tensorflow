@@ -2,7 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,7 +20,7 @@ cc_library(
         "op_version.h",
         "runtime_version.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
@@ -46,6 +46,7 @@ tf_cc_test(
     deps = [
         ":versioning",
         "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -61,7 +62,7 @@ cc_library(
     hdrs = [
         "op_signature.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api",
@@ -100,7 +101,7 @@ cc_library(
     hdrs = [
         "gpu_compatibility.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
         "//tensorflow/lite:builtin_op_data",

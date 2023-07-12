@@ -30,7 +30,7 @@ py_strict_test(
         ":function_type",
         ":type_dispatch",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -45,7 +45,6 @@ pytype_strict_library(
         ":function_type",
         "//tensorflow/core/function/polymorphism:type_dispatch",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python/types",
     ],
 )
 
@@ -60,9 +59,9 @@ py_strict_test(
         ":function_cache",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -77,7 +76,8 @@ pytype_strict_library(
         "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/core/function/trace_type:serialization",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
+        "//tensorflow/python/types:trace",
         "@absl_py//absl/logging",
     ],
 )
@@ -114,7 +114,7 @@ py_strict_test(
         "//tensorflow/core/function/trace_type:serialization",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",
     ],
 )

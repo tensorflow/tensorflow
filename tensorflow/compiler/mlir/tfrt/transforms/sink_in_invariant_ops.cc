@@ -45,113 +45,124 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Clone the sinkable op associated with the func op to the func op
-void CloneOpIntoFuncOp(
-    const llvm::DenseMap<mlir::func::FuncOp,
-                         llvm::DenseMap<int32_t, mlir::Operation *>>
-        &func_op_operands_to_sink) {
-  for (auto &iter : func_op_operands_to_sink) {
-    auto func = iter.first;
-    mlir::OpBuilder builder(func);
-    builder.setInsertionPointToStart(&func.getBody().front());
-
-    for (auto &operand_iter : iter.second) {
-      auto *cloned_op = operand_iter.second->clone();
-      func.getArgument(operand_iter.first)
-          .replaceAllUsesWith(*cloned_op->getResults().begin());
-      builder.insert(cloned_op);
-      builder.setInsertionPointAfter(cloned_op);
-    }
-  }
-}
-
 // TODO(b/262610234): Generalize the sinking conditions.
 // Check if the op qualifies to sink to the callee.
 bool IsSinkCandidate(mlir::Operation *op) {
   return op && llvm::isa<mlir::TF::VarHandleOp, mlir::TF::ConstOp,
-                         mlir::TF::HashTableOp>(op);
+                         mlir::TF::HashTableV2Op>(op);
 }
 
 // Check if the op is allowed to be sinked. We are being conservative here to
 // whilelist very limited set of ops here.
-bool AllowSinkTo(mlir::Operation *op) {
-  return llvm::isa<mlir::TF::BatchFunctionOp, mlir::TF::IfOp,
-                   mlir::TF::StatefulPartitionedCallOp>(op);
+struct AllowSinkHelper {
+  explicit AllowSinkHelper(mlir::Operation *op, int arg_index) {
+    if (llvm::isa<mlir::TF::BatchFunctionOp,
+                  mlir::TF::StatefulPartitionedCallOp>(op)) {
+      allow_sink_to = true;
+      callee_arg_index = arg_index;
+      return;
+    }
+
+    if (llvm::isa<mlir::TF::IfOp>(op) && arg_index > 0) {
+      allow_sink_to = true;
+      callee_arg_index = arg_index - 1;
+      return;
+    }
+  }
+
+  bool allow_sink_to = false;
+  int callee_arg_index = 0;
+};
+
+llvm::SmallVector<mlir::Value> FindValueInCallees(
+    const mlir::SymbolTable &symbol_table,
+    const mlir::SymbolUserMap &symbol_users, mlir::Operation *caller,
+    int arg_index) {
+  llvm::SmallVector<mlir::Value> values;
+  llvm::SmallDenseSet<llvm::StringRef> callees;
+  for (const auto &named_attr : caller->getAttrs()) {
+    if (auto symbol_attr =
+            named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+      auto symbol = symbol_attr.getValue();
+
+      auto callee = symbol_table.lookup<mlir::func::FuncOp>(symbol);
+      if (!callee) continue;
+
+      // One callee invoked by multiple caller is skipped for simplicity.
+      // Consider adding support if more usage are observed from production.
+      if (llvm::ArrayRef<mlir::Operation *> users =
+              symbol_users.getUsers(callee);
+          users.size() > 1)
+        continue;
+
+      // Invoked by same caller multiple times, only process the first one.
+      if (!callees.insert(symbol).second) continue;
+
+      values.push_back(callee.getArgument(arg_index));
+    }
+  }
+  return values;
 }
 
-// There are following cases:
-// #1, sink v1
-// @func1 { v1 = VarHandleOp, v2 = CallerOp{ f=@func2 }(v1) }
-// @func2(arg0) { v2 = ReadVariableOp }
-//
-// #2, copy v1 to callee, still keep in func1
-// @func1 { v1 = VarHandleOp, v2 = ReadVariableOp, v3 = CallerOp{ f=@func2 }(v1)
-// }
-// @func2(arg0) { v2 = ReadVariableOp(arg0) }
-//
-// #3, sink v1 and v2
-// @func1 { v1 = VarHandleOp, v2 = ReadVariableOp, v3 = CallerOp{ f=@func2 }(v2)
-// }
-// @func2(arg0) { v2 = OtherOp(arg0) }
-//
-// #4, copy v1 and v2 to func2, keep in func1
-// @func1 { v1 = VarHandleOp, v2 = ReadVariableOp, v3 = OtherOp(v2), v4 =
-// CallerOp{ f=@func2 }(v2) }
-// @func2(arg0) { v2 = OtherOp(arg0) }
-//
-// We only support #1 for now as that's the most common pattern from production.
-// If we implement #2 and #4 in the future, should consider dedupe in the
-// tfrt_resource_init because multiple resource handle will be created on the
-// same resource.
+void FindSinkTarget(
+    const mlir::SymbolTable &symbol_table,
+    const mlir::SymbolUserMap &symbol_users, mlir::OpResult original,
+    mlir::Value value,
+    llvm::DenseMap<mlir::OpOperand *, llvm::SmallDenseSet<mlir::OpResult>>
+        &targets) {
+  for (mlir::OpOperand &use : value.getUses()) {
+    auto *user = use.getOwner();
 
+    AllowSinkHelper helper(user, use.getOperandNumber());
+
+    if (helper.allow_sink_to) {
+      auto values = FindValueInCallees(symbol_table, symbol_users, user,
+                                       helper.callee_arg_index);
+      for (auto value : values) {
+        FindSinkTarget(symbol_table, symbol_users, original, value, targets);
+      }
+    } else if (value != original) {
+      targets[&use].insert(original);
+    }
+  }
+}
+
+// Sink in invariant ops like tf.Const, tf.VarHandleOp and tf.HashTableV2 ops
+// into sinkable calls like tf.BatchFunction and tf.If. If there are nested
+// calls, the invariant ops will only be copied at the target.
 void SinkInInvariantOps(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   mlir::SymbolTableCollection symbol_table_collection;
   mlir::SymbolUserMap symbol_users(symbol_table_collection, module);
 
-  // Maps from function op, to the operand index to erase, to the caller op.
-  llvm::DenseMap<mlir::func::FuncOp, llvm::DenseMap<int32_t, mlir::Operation *>>
-      func_op_operands_to_sink;
-
   // TODO(b/263191534): Replace with CallOpInterface to handle callees.
   // Identify the invariant Op, Caller, Callee FuncOp to update.
+
+  llvm::DenseMap<mlir::OpOperand *, llvm::SmallDenseSet<mlir::OpResult>>
+      targets;
   module.walk([&](mlir::Operation *op) {
-    if (!AllowSinkTo(op)) return;
-
-    auto track_callee = [&](mlir::func::FuncOp &func_op) {
-      auto diff = op->getNumOperands() - func_op.getNumArguments();
-      for (int i = 0; i < func_op.getNumArguments(); ++i) {
-        auto arg_op = op->getOperand(diff + i).getDefiningOp();
-        if (!IsSinkCandidate(arg_op)) continue;
-        func_op_operands_to_sink[func_op][i] = arg_op;
-      }
-    };
-
-    llvm::DenseSet<llvm::StringRef> callees;
-    for (const auto &named_attr : op->getAttrs()) {
-      if (auto symbol_attr =
-              named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
-        auto symbol = symbol_attr.getValue();
-
-        auto callee = symbol_table.lookup<mlir::func::FuncOp>(symbol);
-        if (!callee) continue;
-
-        // One callee invoked by multiple caller is skipped for simplicity.
-        // Consider adding support if more usage are observed from production.
-        if (const llvm::ArrayRef<mlir::Operation *> users =
-                symbol_users.getUsers(callee);
-            users.size() > 1)
-          continue;
-
-        // Invoked by same caller multiple times, only process the first one.
-        if (callees.count(symbol)) continue;
-        track_callee(callee);
-        callees.insert(symbol);
+    if (IsSinkCandidate(op)) {
+      for (auto value : op->getOpResults()) {
+        FindSinkTarget(symbol_table, symbol_users, value, value, targets);
       }
     }
   });
 
-  CloneOpIntoFuncOp(func_op_operands_to_sink);
+  // Clone the sinkable op associated with the func op to the func op
+  mlir::OpBuilder builder(module);
+  for (const auto &p : targets) {
+    if (p.second.size() != 1) continue;
+
+    auto *use = p.first;
+
+    builder.setInsertionPointToStart(use->getOwner()->getBlock());
+
+    mlir::OpResult original = *p.second.begin();
+    auto *new_op = builder.clone(*original.getDefiningOp());
+
+    use->get().replaceAllUsesWith(
+        new_op->getResult(original.getResultNumber()));
+  }
 }
 
 class SinkInInvariantOpsPass

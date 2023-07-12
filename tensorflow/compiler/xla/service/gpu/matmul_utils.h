@@ -100,14 +100,16 @@ struct GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       std::optional<int64_t> algorithm, int64_t compute_precision);
 
-  // As above with additional `c_shape` parameter.
+  // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
+  // which are only necessarily for F8 gemms.
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
-      const Shape& output_shape, double alpha_real, double alpha_imag,
-      double beta, std::optional<int64_t> algorithm, int64_t compute_precision);
+      const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
+      double alpha_imag, double beta, std::optional<int64_t> algorithm,
+      int64_t compute_precision);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -137,7 +139,8 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 // If `algorithm` is provided, it overrides the one specified in `config`.
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, se::Stream* stream,
+               se::DeviceMemoryBase output_buffer, bool deterministic_ops,
+               se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
 
@@ -180,6 +183,10 @@ class MatmulPlan {
       }
     }
 
+    Shape bias_shape;
+    if (op.getBias() != nullptr) {
+      bias_shape = GetShape(op.getBias());
+    }
     TF_ASSIGN_OR_RETURN(
         GemmConfig config,
         GemmConfig::For(
@@ -187,6 +194,7 @@ class MatmulPlan {
             dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
             dot_dims.getRhsBatchingDimensions(),
             dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+            op.getBias() == nullptr ? nullptr : &bias_shape,
             GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
             op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
             op.getAlgorithm(), compute_precision));

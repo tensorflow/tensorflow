@@ -116,8 +116,7 @@ class PyLoadedExecutable
       std::shared_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
       std::shared_ptr<Traceback> traceback,
-      std::optional<std::string> fingerprint,
-      std::vector<pybind11::capsule> host_callbacks);
+      std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
@@ -138,6 +137,13 @@ class PyLoadedExecutable
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
+  }
+
+  StatusOr<absl::flat_hash_map<
+      std::string,
+      std::variant<std::string, int64_t, std::vector<int64_t>, float>>>
+  GetCostAnalysis() const {
+    return ifrt_loaded_executable_->GetCostAnalysis();
   }
 
   void Delete() {
@@ -211,9 +217,6 @@ class PyLoadedExecutable
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
-
-  // The python callbacks implemented using send/recv support.
-  std::vector<pybind11::capsule> host_callbacks_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

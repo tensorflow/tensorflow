@@ -124,9 +124,8 @@ class PermuterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_NE(
-            instances_[di]->status_.error_message().find("Deliberate failure"),
-            string::npos);
+        ASSERT_NE(instances_[di]->status_.message().find("Deliberate failure"),
+                  string::npos);
         continue;
       }
       TF_EXPECT_OK(instances_[di]->status_);

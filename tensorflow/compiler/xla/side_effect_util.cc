@@ -52,4 +52,13 @@ const char kXlaShardingStrategyDiv[] = "div";
 
 const char kXlaPadValueAttr[] = "_xla_pad_value";
 
+const char kXlaQuantizationHighValueAttr[] = "_xla_quantization_high_value";
+
+const char kXlaQuantizationLowValueAttr[] = "_xla_quantization_low_value";
+
+const char kXlaQuantizationNumBucketsValueAttr[] =
+    "_xla_quantization_num_buckets_value";
+
+const char kXlaTableId[] = "_xla_table_id";
+
 }  // namespace xla

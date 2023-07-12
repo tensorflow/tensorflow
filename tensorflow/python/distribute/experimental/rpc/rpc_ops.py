@@ -287,7 +287,7 @@ class GrpcServer(Server):
     """Method for registering functions."""
 
     if isinstance(func, def_function.Function):
-      if func._function_spec.arg_names:  # pylint: disable=protected-access
+      if func.function_spec.arg_names:
         if func.input_signature is None:
           raise ValueError("Input signature not specified for the function.")
       concrete_fn = func.get_concrete_function()
@@ -443,7 +443,8 @@ class StatusOrResult(object):
     self._status_or = status_or
     self._output_specs = output_specs
     self._deleter = deleter
-    self._error_code, self._error_message = None, None
+    self._error_code: dtypes.int64 = None
+    self._error_message: dtypes.string = None
 
   def _check_status(self):
     if self._error_code is None:

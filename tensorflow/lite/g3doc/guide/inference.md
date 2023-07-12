@@ -232,7 +232,8 @@ primitive types. In particular, the shape of a string Tensor dictates the number
 and arrangement of strings in the Tensor, with each element itself being a
 variable length string. In this sense, the (byte) size of the Tensor cannot be
 computed from the shape and type alone, and consequently strings cannot be
-provided as a single, flat `ByteBuffer` argument.
+provided as a single, flat `ByteBuffer` argument. You can see some examples in
+this [page](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter).
 
 If other data types, including boxed types like `Integer` and `Float`, are used,
 an `IllegalArgumentException` will be thrown.
@@ -615,16 +616,15 @@ running inference in different languages.
 All the examples assume that the input shape is defined as `[1/None, 10]`, and
 need to be resized to `[3, 10]`.
 
-<section class="tabs">
-
-###### C++ {.new-tab}
+C++ example:
 
 ```c++
 // Resize input tensors before allocate tensors
 interpreter->ResizeInputTensor(/*tensor_index=*/0, std::vector<int>{3,10});
 interpreter->AllocateTensors();
 ```
-###### Python {.new-tab}
+
+Python example:
 
 ```python
 # Load the TFLite model in TFLite Interpreter

@@ -16,6 +16,8 @@ limitations under the License.
 // TFRT kernels for calling directly into current TF kernels, bypassing the
 // current TF runtime.
 
+#include <string>
+
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/attr_util.h"
@@ -56,7 +58,7 @@ static void TFDForwardKernel(tfrt::RemainingArguments arguments,
   Status s = FillOpAttrs(attributes, &opattrs);
   if (!s.ok()) {
     frame->ReportError("TFDForwardKernel: Error while parsing attributes: ",
-                       s.error_message());
+                       s.message());
   }
 
   tfrt::OpAttrsRef opattrsref(opattrs);

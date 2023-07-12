@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -45,8 +45,9 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
         /*hlo_module_id=*/0, tf_op_name);
     if (tf_op_metrics->category().empty()) {
-      tf_op_metrics->set_category(
-          tf_op_type == kUnknownOp ? "Unknown" : std::string(tf_op_type));
+      tf_op_metrics->set_category(tf_op_type == tsl::profiler::kUnknownOp
+                                      ? "Unknown"
+                                      : std::string(tf_op_type));
     }
     tf_op_metrics->set_is_eager(device_op_metrics.is_eager());
     // The occurrences of a TF-op is the maximum among the occurrences of all
@@ -125,10 +126,12 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
                                                      device_op_metrics);
       }
     } else if (device_op_metrics.provenance().empty()) {
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
-          device_op_metrics.name(), kUnknownOp, device_op_metrics);
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(device_op_metrics.name(),
+                                                   tsl::profiler::kUnknownOp,
+                                                   device_op_metrics);
     } else {
-      TfOp tf_op = ParseTfOpFullname(device_op_metrics.provenance());
+      tsl::profiler::TfOp tf_op =
+          tsl::profiler::ParseTfOpFullname(device_op_metrics.provenance());
       builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
                                                    device_op_metrics);
     }

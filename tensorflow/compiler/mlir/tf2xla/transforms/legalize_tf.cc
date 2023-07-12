@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -137,7 +138,7 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
                                         Builder *b) {
   IntegerAttr intAttr = attr.dyn_cast_or_null<IntegerAttr>();
   if (auto elementAttr = attr.dyn_cast_or_null<ElementsAttr>()) {
-    SmallVector<uint64_t, 1> index(elementAttr.getType().getRank(), 0);
+    SmallVector<uint64_t, 1> index(elementAttr.getShapedType().getRank(), 0);
     intAttr = elementAttr.getValues<IntegerAttr>()[index];
   }
 
@@ -148,6 +149,21 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
     axis += rank;
   }
   return b->getI64IntegerAttr(axis);
+}
+
+// Returns a PrecisionConfig as an array attribute based on whether TF32
+// execution is enabled
+static ArrayAttr GetPrecisionConfig(Builder *builder) {
+  mlir::mhlo::Precision precision = tsl::tensor_float_32_execution_enabled()
+                                        ? mhlo::Precision::DEFAULT
+                                        : mlir::mhlo::Precision::HIGHEST;
+  llvm::SmallVector<mlir::Attribute, 2> attr_vec;
+  const int num_inputs = 2;
+  for (int i = 0; i < num_inputs; i++) {
+    attr_vec.push_back(
+        mlir::mhlo::PrecisionAttr::get(builder->getContext(), precision));
+  }
+  return builder->getArrayAttr(attr_vec);
 }
 
 // If `value` is an IntegerAttr, returns the integer value for the HLO axis
@@ -568,7 +584,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
 // Returns interior padding to use in HLO Pad op based on the TensorFlow padding
 // in TensorFlow PadV2 op.
 static DenseIntElementsAttr GetInteriorPadding(ElementsAttr tf_padding) {
-  auto length = tf_padding.getType().getShape()[0];
+  auto length = tf_padding.getShapedType().getShape()[0];
   auto element_type = IntegerType::get(tf_padding.getContext(), 64);
   return DenseIntElementsAttr::get<int64_t>(
       tensorflow::GetTypeFromTFTensorShape({length}, element_type), 0);
@@ -1082,6 +1098,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     auto batch_group_count_attr = rewriter.getNamedAttr(
         "batch_group_count", rewriter.getI64IntegerAttr(1));
 
+    auto precision_config_attr = rewriter.getNamedAttr(
+        "precision_config", GetPrecisionConfig(&rewriter));
+
     Value paddings_op = rewriter.create<tensor::FromElementsOp>(
         op.getLoc(),
         tensorflow::GetTypeFromTFTensorShape(2 * num_spatial_dims,
@@ -1105,9 +1124,9 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
                                                filter_ty.getElementType()),
           operands[1]);
     }
-    NamedAttribute attrs[] = {rhs_dilations_attr, window_strides_attr,
+    NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
-                              batch_group_count_attr};
+                              batch_group_count_attr, precision_config_attr};
     rewriter.replaceOpWithNewOp<mhlo::DynamicConvOp>(op, op.getType(), operands,
                                                      llvm::ArrayRef(attrs));
     return success();
@@ -1246,6 +1265,9 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     auto paddings_attr = rewriter.getNamedAttr(
         "padding", DenseElementsAttr::get<int64_t>(paddings_ty, paddings));
 
+    auto precision_config_attr = rewriter.getNamedAttr(
+        "precision_config", GetPrecisionConfig(&rewriter));
+
     SmallVector<Value, 2> operands(op.getOperands());
     // Reshape the filter to {spatial_dims...., 1,in_channels *
     // channel_multiplier}
@@ -1264,7 +1286,8 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     }
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
-                              batch_group_count_attr, paddings_attr};
+                              batch_group_count_attr, paddings_attr,
+                              precision_config_attr};
     rewriter.replaceOpWithNewOp<ConvolutionOp>(op, op.getType(), operands,
                                                llvm::ArrayRef(attrs));
     return success();
@@ -1905,10 +1928,13 @@ class ConvertMatrixDiagPartV3Op
     // two dimensions (M, N in the matrix-diag-part docs) are where we go
     // through entry by entry.
     ArrayRef<int64_t> input_shape = input_type.getShape();
+    int input_shape_size = input_shape.size();
     Shape slice_sizes(input_shape.begin(), input_shape.end());
     int slice_dimensions = slice_sizes.size();
-    slice_sizes[slice_dimensions - 2] = 1;
-    slice_sizes[slice_dimensions - 1] = 1;
+    slice_sizes[slice_dimensions - 2] =
+        std::min((int64_t)1, input_shape[input_shape_size - 2]);
+    slice_sizes[slice_dimensions - 1] =
+        std::min((int64_t)1, input_shape[input_shape_size - 1]);
 
     // Dimensions of the input we won't see in the output (M and N).
     SmallVector<int64_t, 2> collapsed_dims(
@@ -3160,9 +3186,9 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
         /*rhs_contracting_dimensions=*/rhs_contracting_dimensions);
     // TODO(silvasean): Emit shape checks for contracting dimensions.
     // (The batch dimensions are checked by the broadcasting logic)
-    rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
-                                              dimension_numbers,
-                                              /*precision_config=*/nullptr);
+    rewriter.replaceOpWithNewOp<DotGeneralOp>(
+        op, op.getType(), lhs, rhs, dimension_numbers,
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
     return success();
   }
 };
@@ -4728,7 +4754,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
       rewriter.create<ReturnOp>(loc, reducer.getResult());
     }
 
-    rewriter.replaceOp(op, {result});
+    rewriter.replaceOp(op, result);
 
     return success();
   }
@@ -4958,7 +4984,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
             /*outputSpatialDimensions=*/spatial_dims),
         rewriter.getI64IntegerAttr(feature_group_count),
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
-        /*precision_config=*/ArrayAttr());
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
 
     rewriter.replaceOp(op, {result});
 
@@ -5165,7 +5191,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
             /*outputSpatialDimensions=*/output_spatial_dimensions),
         /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
         rewriter.getI64IntegerAttr(batch_group_count),
-        /*precision_config=*/ArrayAttr());
+        /*precision_config=*/GetPrecisionConfig(&rewriter));
 
     rewriter.replaceOp(op, {result});
 

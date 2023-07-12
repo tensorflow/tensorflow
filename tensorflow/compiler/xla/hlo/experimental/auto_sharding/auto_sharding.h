@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/tsl/platform/errors.h"
 namespace xla {
 
 class DummyAutoSharding : public HloModulePass {
@@ -159,7 +158,23 @@ struct AutoShardingOption {
   std::vector<double> device_mesh_beta;
   // Load the strategy vector instead of solving one.
   bool load_strategy = false;
+  // Explore other mesh shapes with the same number of devices as the provided
+  // one for a potentially better auto-sharding solution.
+  bool try_multiple_mesh_shapes = false;
+
+  // Timeout for the solver. If the solver fails to find an optimal solution
+  // before the timeout, we rely on the heuristic-based sharding implemented in
+  // sharding_propagation.cc.
+  int64_t solver_timeout_in_seconds = 3600;
+
+  // Static estimate for iteration count of a while loop, used in the cost model
+  int64_t loop_iteration_count_estimate = 100;
+
   std::vector<int64_t> strategy_vector;
+  // If greater than zero, tensors with size smaller than or equal to this limit
+  // will always be replicated if they don't have a different user-specified
+  // sharding.
+  int64_t small_tensor_byte_size = 0;
 
   std::string ToString() {
     std::vector<std::string> lines;
@@ -172,6 +187,8 @@ struct AutoShardingOption {
           absl::StrCat("memory_budget_per_device: ",
                        memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
     }
+    lines.push_back(
+        absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
     lines.push_back(
         absl::StrCat("force_all_gather_cost: ", force_all_gather_cost));
 
@@ -234,11 +251,11 @@ struct AutoShardingOption {
 
   Status CheckAndSetup() {
     if (device_mesh_shape.empty()) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           "device_mesh_shape is empty and it needs to be specified.");
     }
     if (device_mesh_shape.size() > 3) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("Not supported: the length of device_mesh_shape is "
                        "greater than 3, actual length: ",
                        device_mesh_shape.size()));
@@ -246,13 +263,13 @@ struct AutoShardingOption {
     // All values in device_mesh_shape must be greater than 0.
     if (absl::c_any_of(device_mesh_shape,
                        [](const int64_t i) { return i <= 0; })) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("device_mesh_shape values need to be larger than 0: "
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
     if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 2) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("the auto-sharding pass currently does not support ",
                        "more than two shardable dims: device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
@@ -282,7 +299,7 @@ struct AutoShardingOption {
 
     if (device_mesh_shape.size() != device_mesh_alpha.size() ||
         device_mesh_shape.size() != device_mesh_beta.size()) {
-      return tsl::errors::OutOfRange(absl::StrCat(
+      return absl::OutOfRangeError(absl::StrCat(
           "Sizes do not match: length of device_mesh_shape is ",
           device_mesh_shape.size(), ", length of device_mesh_alpha is ",
           device_mesh_alpha.size(), ", length of device_mesh_beta is ",
@@ -304,7 +321,7 @@ struct AutoShardingOption {
     } else {
       // Checks whether device_mesh_shape and device_mesh_ids are compatible.
       if (total_devices != device_mesh_ids.size()) {
-        return tsl::errors::OutOfRange(absl::StrCat(
+        return absl::OutOfRangeError(absl::StrCat(
             "Expect the product of device_mesh_shape to be the same as the "
             "size of device_mesh_ids, but we have total devices = ",
             total_devices,
@@ -315,16 +332,21 @@ struct AutoShardingOption {
   }
 };
 
-class AutoSharding : public HloModulePass {
- public:
-  explicit AutoSharding(const AutoShardingOption& option);
-  ~AutoSharding() override = default;
-  absl::string_view name() const override { return "auto_sharding"; }
+enum class AutoShardingResult {
+  kModuleUnchanged,
+  kModuleChangedShardingPerformed,
+  kModuleUnchangedNoShardingPerfomed
+};
 
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
+class AutoShardingImplementation {
+ public:
+  explicit AutoShardingImplementation(const AutoShardingOption& option);
+  ~AutoShardingImplementation() = default;
+
+  // using HloPassInterface::Run;
+  StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Removes SPMD annotations (if there are) to test AutoSharding on manually
   // annotated graphs.
@@ -340,8 +362,42 @@ class AutoSharding : public HloModulePass {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
+  // Returns the optimal objective value that the ILP solver computes
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
  private:
   AutoShardingOption option_;
+
+  // Stores the optimal value of the objective the solver found. This is used to
+  // chose the best mesh shape when the try_multiple_mesh_shapes option is on.
+  double solver_optimal_objective_value_ = -1.0;
+};
+
+class AutoSharding : public HloModulePass {
+ public:
+  explicit AutoSharding(const AutoShardingOption& option);
+  ~AutoSharding() override = default;
+  absl::string_view name() const override { return "auto_sharding"; }
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
+  std::vector<int64_t> GetChosenDeviceMeshShape() { return chosen_mesh_shape_; }
+
+ private:
+  AutoShardingOption option_;
+  // Stores the optimal value of the objective the solver found.
+  double solver_optimal_objective_value_ = -1.0;
+  // Stores the optimal mesh shape found.
+  std::vector<int64_t> chosen_mesh_shape_;
 };
 
 namespace spmd {
@@ -427,7 +483,6 @@ bool HasReduceScatterOpportunity(
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
 }  // namespace spmd
 }  // namespace xla
 

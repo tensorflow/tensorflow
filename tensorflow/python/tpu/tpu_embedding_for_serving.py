@@ -17,11 +17,12 @@
 from typing import Any, Iterable, Optional, Text, Union, Dict
 from absl import logging
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import embedding_ops
@@ -112,7 +113,7 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       RuntimeError: If created under TPUStrategy.
     """
     super(TPUEmbeddingForServing, self).__init__(feature_config, optimizer)
-    self._strategy = distribution_strategy_context.get_strategy()
+    self._strategy = distribute_lib.get_strategy()
     if isinstance(self._strategy,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)):
       raise RuntimeError("Serving on TPU is not yet supported.")
@@ -292,7 +293,7 @@ def cpu_embedding_lookup(
     table = tables[feature.table]
 
     if weight is not None:
-      if isinstance(inp, ops.Tensor):
+      if isinstance(inp, tensor.Tensor):
         raise ValueError(
             "Weight specified for {}, but input is dense.".format(path))
       elif type(weight) is not type(inp):
@@ -303,7 +304,7 @@ def cpu_embedding_lookup(
         raise ValueError("Weight specified for {}, but this is a sequence "
                          "feature.".format(path))
 
-    if isinstance(inp, ops.Tensor):
+    if isinstance(inp, tensor.Tensor):
       if feature.max_sequence_length > 0:
         raise ValueError("Feature {} is a sequence feature but a dense tensor "
                          "was passed.".format(path))
@@ -324,7 +325,7 @@ def cpu_embedding_lookup(
 def _embedding_lookup_for_sparse_tensor(
     inp: sparse_tensor.SparseTensor,
     weight: Optional[sparse_tensor.SparseTensor], table: tf_variables.Variable,
-    feature: tpu_embedding_v2_utils.FeatureConfig) -> ops.Tensor:
+    feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
   """Embedding lookup for sparse tensor based on its feature config.
 
   Args:
@@ -380,7 +381,7 @@ def _embedding_lookup_for_sparse_tensor(
 def _embedding_lookup_for_ragged_tensor(
     inp: ragged_tensor.RaggedTensor,
     weight: Optional[ragged_tensor.RaggedTensor], table: tf_variables.Variable,
-    feature: tpu_embedding_v2_utils.FeatureConfig) -> ops.Tensor:
+    feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
   """Embedding lookup for ragged tensor based on its feature config.
 
   Args:

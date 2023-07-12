@@ -18,6 +18,7 @@ import threading
 import warnings
 
 from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.data.ops import iterator_autograph
 from tensorflow.python.data.ops import optional_ops
@@ -29,17 +30,17 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -76,11 +77,6 @@ GET_NEXT_CALL_ERROR_MESSAGE = (
 
 # Collection of all IteratorResources in the `Graph`.
 GLOBAL_ITERATORS = "iterators"
-
-
-autograph_ctx = lazy_loader.LazyLoader(
-    "autograph_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
 
 
 def _device_stack_is_empty():
@@ -223,7 +219,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -297,7 +293,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -784,6 +780,26 @@ class OwnedIterator(IteratorBase):
       except AttributeError:
         return structure.from_compatible_tensor_list(self._element_spec, ret)
 
+  def _save(self):
+    external_state_policy = None
+    if (
+        self._dataset
+        and self._dataset.options().experimental_external_state_policy
+    ):
+      external_state_policy = (
+          self._dataset.options().experimental_external_state_policy.value
+      )
+    state_variant = gen_dataset_ops.serialize_iterator(
+        self._iterator_resource, external_state_policy
+    )
+    return parsing_ops.serialize_tensor(state_variant)
+
+  def _restore(self, state):
+    state_variant = parsing_ops.parse_tensor(state, dtypes.variant)
+    return gen_dataset_ops.deserialize_iterator(
+        self._iterator_resource, state_variant
+    )
+
   @property
   def _type_spec(self):
     return IteratorSpec(self.element_spec)
@@ -914,7 +930,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec([], dtypes.resource),)
+    return (tensor.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
     return (value._iterator_resource,)  # pylint: disable=protected-access

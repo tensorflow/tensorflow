@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/c/tsl_status.h"
 
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "tensorflow/tsl/c/tsl_status_internal.h"

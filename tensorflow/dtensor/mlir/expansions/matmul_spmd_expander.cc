@@ -134,15 +134,12 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
             left->value(), right->value(), left_shape, right_shape,
             /*dims_to_ignore=*/2, left_splits, right_splits));
 
-    TF_ASSIGN_OR_RETURN(left_layout,
-                        (*left)->Truncate(left_shape.size() - 2, /*end=*/true));
-    TF_ASSIGN_OR_RETURN(
-        right_layout, (*right)->Truncate(right_shape.size() - 2, /*end=*/true));
+    left_layout = (*left)->Truncate(left_shape.size() - 2, /*end=*/true);
+    right_layout = (*right)->Truncate(right_shape.size() - 2, /*end=*/true);
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     // There are no batch dims for MatMul op, so get an 'empty' layout that
     // we can concat later.
-    TF_ASSIGN_OR_RETURN(batch_layout,
-                        (*left)->Truncate(/*split_point=*/0, /*end=*/false));
+    batch_layout = (*left)->Truncate(/*split_point=*/0, /*end=*/false);
     left_layout = left->value();
     right_layout = right->value();
   } else {
@@ -159,21 +156,19 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
   // Input layouts are [batch...],a,b;[batch...],b,c
   // Output layout is [batch...],a,c
-  const auto& batch_sharding_specs = batch_layout.sharding_specs();
-  std::vector<ShardingSpec> output_dims(batch_sharding_specs.begin(),
-                                        batch_sharding_specs.end());
+  const auto& batch_sharding_specs = batch_layout.sharding_spec_strs();
+  std::vector<std::string> output_dims(batch_sharding_specs.begin(),
+                                       batch_sharding_specs.end());
   if (Layout::IsShardedDimension(left_layout.sharding_spec(0)) &&
       left_layout.sharding_spec(0) == right_layout.sharding_spec(1)) {
     // If a and c above are the same and sharded, we should output a replicated
     // layout during propagation. This is so we don't create an illegal layout.
     output_dims.resize(output_dims.size() + 2);
-    output_dims[output_dims.size() - 2].set_sharding_spec(
-        Layout::kUnshardedDim);
-    output_dims[output_dims.size() - 1].set_sharding_spec(
-        Layout::kUnshardedDim);
+    output_dims[output_dims.size() - 2] = Layout::kUnshardedDim;
+    output_dims[output_dims.size() - 1] = Layout::kUnshardedDim;
   } else {
-    output_dims.emplace_back(left_layout.dim(0));
-    output_dims.emplace_back(right_layout.dim(1));
+    output_dims.emplace_back(left_layout.sharding_spec(0));
+    output_dims.emplace_back(right_layout.sharding_spec(1));
   }
 
   return Layout::GetLayout(output_dims, left_layout.mesh());
@@ -417,13 +412,11 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // output->rank() == std::max(left_shape.size(), right_shape.size()) due to
   // broadcasting one of these truncations is just a copy of output and the
   // other may be shorter.
-  TF_ASSIGN_OR_RETURN(Layout left, output_layout.Truncate(
-                                       output_layout.rank() - left_shape.size(),
-                                       /*end=*/true));
-  TF_ASSIGN_OR_RETURN(
-      Layout right,
+  Layout left = output_layout.Truncate(output_layout.rank() - left_shape.size(),
+                                       /*end=*/true);
+  Layout right =
       output_layout.Truncate(output_layout.rank() - right_shape.size(),
-                             /*end=*/true));
+                             /*end=*/true);
 
   // Make sure necessary dimensions are replicated.
   //

@@ -1,6 +1,6 @@
 # DTensor Internal experimental code.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_oss")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,12 +16,7 @@ cc_library(
         "collective_lowering.cc",
         "dtensor_mlir_passes_internal.cc",
         "update_tpu_metadata.cc",
-    ] + if_oss(
-        [
-            "dtensor_embedding_stub.cc",
-            "dtensor_embedding_v2_stub.cc",
-        ],
-    ) + if_google(
+    ] + if_google(
         [
             "collective_lowering_google.cc",
             "update_tpu_metadata_google.cc",

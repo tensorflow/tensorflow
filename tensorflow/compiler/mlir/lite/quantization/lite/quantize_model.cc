@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 
 #include <string>
+#include <unordered_set>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -124,7 +125,7 @@ TfLiteStatus QuantizeModel(
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   if (failed(pm.run(module.get()))) {
-    const std::string& err = statusHandler.ConsumeStatus().error_message();
+    const std::string err(statusHandler.ConsumeStatus().message());
     error_reporter->Report("Failed to quantize: %s", err.c_str());
     return kTfLiteError;
   }

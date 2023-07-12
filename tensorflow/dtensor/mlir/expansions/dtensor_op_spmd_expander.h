@@ -40,7 +40,7 @@ class RelayoutSPMDExpander : public SPMDExpanderBase {
 
 // Converts layout of gradient tensor to the layout of the original Relayout's
 // input tensor, using the same expansion logic as RelayoutOp.
-class RelayoutGradSPMDExpander : public SPMDExpanderBase {
+class RelayoutLikeSPMDExpander : public SPMDExpanderBase {
  public:
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
 

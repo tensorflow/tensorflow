@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -159,7 +159,8 @@ class CommonTestUtilities : public OpsTestBase {
     ASSERT_EQ(offset_backprop.shape(), mkl_offset_backprop.shape());
 
     test::ExpectClose(output, mkl_output, 1e-5);
-    test::ExpectClose(scale_backprop, mkl_scale_backprop, 1e-5);
+    test::ExpectClose(scale_backprop, mkl_scale_backprop, /*atol=*/1e-5,
+                      /*rtol=*/1e-5);
     test::ExpectClose(offset_backprop, mkl_offset_backprop, 1e-5);
   }
 
@@ -427,4 +428,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormOpTest,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

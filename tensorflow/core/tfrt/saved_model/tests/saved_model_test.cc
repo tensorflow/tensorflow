@@ -22,9 +22,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
+#include "tensorflow/core/tfrt/graph_executor/test_config.pb.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
@@ -114,6 +118,50 @@ TEST(SavedModelTest, BasicV2) {
 
   ASSERT_EQ(output.NumElements(), 1);
   EXPECT_EQ(output.flat<int32_t>()(0), 6);
+}
+
+TEST_P(SavedModelTest, OnlineCostAnalysis) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.enable_online_cost_analysis = true;
+  options.enable_lazy_loading = true;
+  options.lazy_loading_use_graph_executor = true;
+  // This is an example feature that should continue to work with online cost
+  // analysis enabled.
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
+
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  TF_CHECK_OK(saved_model.status());
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+
+  outputs.clear();
+  TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
 }
 
 TEST(SavedModelTest, BasicInlineExecution) {
@@ -662,8 +710,7 @@ TEST(SavedModelTest, WrongShape) {
   auto status = test.GetSavedModel()->Run(run_options, "serving_default",
                                           inputs, &outputs);
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("input shape is wrong"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("input shape is wrong"));
 }
 
 TEST(SavedModelTest, RefTypeTensorInput) {
@@ -833,7 +880,7 @@ TEST(SavedModelTest, Error) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(), "You must feed a value for placeholder tensor"));
+      status.message(), "You must feed a value for placeholder tensor"));
 }
 
 struct PowTestParam {
@@ -931,9 +978,6 @@ TEST(SavedModelTest, WhileLoopV1) {
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_grappler = true;
 
-  // TODO(chky): Implement while op in MLRT.
-  if (options.graph_execution_options.enable_mlrt) return;
-
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
   TF_ASSERT_OK(saved_model.status());
@@ -1000,8 +1044,7 @@ TEST(SavedModelTest, DeadlineExceeded) {
   auto status = (*saved_model)->Run(run_options, "toy", inputs, &outputs);
 
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("Deadline exceeded"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Deadline exceeded"));
 }
 
 TEST(SavedModelTest, DisableCompilation) {
@@ -1035,12 +1078,122 @@ TEST(SavedModelTest, DisableCompilation) {
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
                            "execution but the compiled graph is not found"));
 
   run_options.disable_compilation = false;
   TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
+}
+
+TEST(SavedModelTest, CustomModelConfig) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+
+  TestConfig1 test_config;
+  runtime->AddCreateRuntimeResourceFn(
+      [&test_config](ModelRuntimeContext& model_context) {
+        test_config = model_context.graph_execution_options()
+                          .runtime_config.Get<TestConfig1>()
+                          .value();
+        EXPECT_TRUE(model_context.meta_graph_def());
+        return absl::OkStatus();
+      });
+
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.enable_lazy_loading = true;
+
+  TestConfig1 expected_test_config;
+  expected_test_config.set_tag("test config");
+  ASSERT_OK(options.graph_execution_options.runtime_config.Add<TestConfig1>(
+      expected_test_config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto saved_model, SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                       /*tags=*/{"serve"}));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  tfrt::SavedModel::RunOptions run_options;
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+
+  EXPECT_EQ(test_config.tag(), "test config");
+}
+
+struct TestContext {
+  std::string signature_name = "unknown_signature";
+};
+
+class TestCompiler : public BackendCompiler {
+ public:
+  absl::Status CompileTensorflow(ModelRuntimeContext& model_context,
+                                 mlir::ModuleOp module) const override {
+    auto** test_context =
+        model_context.resource_context().GetResourceOrDie<TestContext*>(
+            "test_context");
+
+    for (auto func : module.getOps<mlir::func::FuncOp>()) {
+      if (func.isPublic()) {
+        (*test_context)->signature_name = func.getSymName().str();
+        break;
+      }
+    }
+
+    return absl::OkStatus();
+  }
+};
+
+TEST(SavedModelTest, CustomCompiler) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+
+  TestContext test_context;
+
+  runtime->AddCreateRuntimeResourceFn(
+      [&test_context](ModelRuntimeContext& model_context) {
+        model_context.resource_context().CreateResource<TestContext*>(
+            "test_context", &test_context);
+        return absl::OkStatus();
+      });
+
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.enable_lazy_loading = true;
+  options.lazy_loading_use_graph_executor = true;
+
+  TestCompiler test_compiler;
+
+  options.graph_execution_options.compile_options.backend_compiler =
+      &test_compiler;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto saved_model, SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                       /*tags=*/{"serve"}));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  tfrt::SavedModel::RunOptions run_options;
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+
+  EXPECT_EQ(test_context.signature_name, "input1:0^result1:0^");
 }
 
 }  // namespace

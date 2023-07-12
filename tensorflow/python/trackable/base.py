@@ -121,7 +121,7 @@ class CheckpointInitialValueCallable(object):
 
 
 @tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
-class CheckpointInitialValue(ops.Tensor):
+class CheckpointInitialValue(object):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
   When supplied as an initial value, objects of this type let a `Variable`
@@ -146,11 +146,10 @@ class CheckpointInitialValue(ops.Tensor):
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
     self._checkpoint_position = checkpoint_position
 
-  def __getattr__(self, attr):
-    try:
-      return getattr(self.wrapped_value, attr)
-    except AttributeError:
-      return self.__getattribute__(attr)
+  def __tf_tensor__(self, dtype=None, name=None):
+    del dtype
+    del name
+    return self.wrapped_value
 
   @property
   def checkpoint_position(self):
@@ -421,19 +420,23 @@ class Trackable(object):
     """
     return self._self_unconditional_deferred_dependencies
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """Look up a dependency by name.
 
     May be overridden to include conditional dependencies.
 
     Args:
       name: The local name of the dependency.
+      cached_dependencies: Optional dict containing all computed dependencies
+        returned by `self._trackable_children()`.
 
     Returns:
       A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
-    return self._self_unconditional_dependency_names.get(name, None)
+    if cached_dependencies:
+      return cached_dependencies.get(name)
+    return self._self_unconditional_dependency_names.get(name)
 
   def _add_variable_with_custom_getter(self,
                                        name,

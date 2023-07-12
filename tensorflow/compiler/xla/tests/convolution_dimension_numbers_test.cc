@@ -61,7 +61,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
       CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+  ASSERT_THAT(dimension_numbers_status.status().message(),
               ::testing::HasSubstr("input are not unique"));
 }
 
@@ -70,7 +70,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
       CreateConvDimensionNumbers(0, 1, 2, 3, 0, 1, 2, 3, 0, 2, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+  ASSERT_THAT(dimension_numbers_status.status().message(),
               ::testing::HasSubstr("weight are not unique"));
 }
 
@@ -79,7 +79,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
   auto dimension_numbers_status =
       CreateConvDimensionNumbers(0, 1, 2, 3, 0, 2, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+  ASSERT_THAT(dimension_numbers_status.status().message(),
               ::testing::HasSubstr("output are not unique"));
 }
 

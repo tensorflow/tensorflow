@@ -49,7 +49,9 @@ absl::Status MergeCode(CompiledNodeAttributes* attr,
         if (known_names.find(n) == known_names.end()) {
           return n;
         }
-        return absl::StrCat(n, index++);
+        std::string ret = absl::StrCat(n, index++);
+        known_names.insert(ret);
+        return ret;
       },
       &attr->code));
   std::move(attr->code.objects.begin(), attr->code.objects.end(),

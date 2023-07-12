@@ -2628,3 +2628,193 @@ func.func @fetch_with_resource_operand(
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
+
+// -----
+
+// Tests about we create the dependency PwStreamResults `start` and `end`
+// within in XlaCallModule
+func.func @_pws_program(%arg0: tensor<i32> {tf_saved_model.index_path = ["arg0"]}) -> (tensor<i32> {tf_saved_model.index_path = ["result0"]}, tensor<i32> {tf_saved_model.index_path = ["result1"]}) attributes {pws.program_id = 4722582128360897113 : i64, tf.entry_function = {}} {
+  // expected-remark@above {{ID: 7}}
+  "tf.PwStreamResults"(%arg0) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _has_manual_control_dependencies = true, _model_name = "test", device = "/device/CPU", names = ["begin"]} : (tensor<i32>) -> ()
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Successors: {4}}}
+  %0:2 = "tf_device.cluster"() ({
+  // expected-remark@above {{Predecessors: {0}}}
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Successors: {5}}}
+    %1 = "tf.XlaSharding"(%arg0) {_XlaSharding = "", sharding = "", unspecified_dims = []} : (tensor<i32>) -> tensor<i32>
+    // expected-remark@above {{ID: 1}}
+    %2:2 = "tf.XlaCallModule"(%1) {Sout = [#tf_type.shape<>, #tf_type.shape<>], dim_args_spec = [], function_list = [@__inference_callable_flat_tf_150], module = "ML\EFR\00__inference_callable_flat_tf_15\00", platforms = [], version = 5 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    // expected-remark@above {{ID: 2}}
+    tf_device.return %2#0, %2#1 : tensor<i32>, tensor<i32>
+    // expected-remark@above {{ID: 3}}
+  }) {_tpu_replicate = "cluster_0", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> (tensor<i32>, tensor<i32>)
+  "tf.PwStreamResults"(%arg0) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _model_name = "test", device = "/device/CPU", names = ["end"]} : (tensor<i32>) -> ()
+  // expected-remark@above {{Predecessors: {4}}}
+  // expected-remark@above {{ID: 5}}
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+// expected-remark@below {{ID: 2}}
+func.func private @__inference_callable_flat_tf_150(%arg0: tensor<i32> {tf._user_specified_name = "args_tf_flat_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_tf_flat_1"}) attributes {tf._XlaMustCompile = false, tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>], tf._original_func_name = "__inference_callable_flat_tf_15", tf.signature.is_stateful} {
+  "tf.PwStreamResults"(%arg0, %arg1) {_callback_id = -2694175233261920887 : i64, _controller_address = "[2002:afb:afb::]:10004", _model_name = "test", names = ["foo", "bar"]} : (tensor<i32>, tensor<i32>) -> ()
+  // expected-remark@above {{ID: 0}}
+  return
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {0}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops on same device.
+func.func @xla_launch_ordering_effect (
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops for unspecified
+// devices.
+func.func @xla_launch_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `XlaLaunch` ops on
+// different devices.
+func.func @xla_launch_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>, device = "CPU:0"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 1, 0>, device = "CPU:1"} : (tensor<f32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<f32>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `XlaLaunch` ops on different
+// devices that access the same resource.
+func.func @xla_launch_ordering_effect (
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<!tf_type.resource>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 0, 1>, device = "CPU:0"} : (tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.XlaLaunch"(%input) {function = @func, operand_segment_sizes = array<i32: 0, 0, 1>, device = "CPU:0"} : (tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 1}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 0}}
+  // expected-remark@above {{Sinks: {}}}
+}

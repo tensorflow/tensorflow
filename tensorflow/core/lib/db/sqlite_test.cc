@@ -216,7 +216,7 @@ TEST_F(SqliteTest, PrepareFailed) {
   SqliteStatement stmt;
   Status s = db_->Prepare("SELECT", &stmt);
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(string::npos, s.error_message().find("SELECT"));
+  EXPECT_NE(string::npos, s.message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
 }
 
@@ -224,9 +224,8 @@ TEST_F(SqliteTest, BindFailed) {
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a) VALUES (123)");
   stmt.BindInt(1, 123);
   Status s = stmt.StepOnce();
-  EXPECT_NE(string::npos,
-            s.error_message().find("INSERT INTO T (a) VALUES (123)"))
-      << s.error_message();
+  EXPECT_NE(string::npos, s.message().find("INSERT INTO T (a) VALUES (123)"))
+      << s.message();
 }
 
 TEST_F(SqliteTest, SnappyExtension) {

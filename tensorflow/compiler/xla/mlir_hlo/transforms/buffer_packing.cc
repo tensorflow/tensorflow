@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <iterator>
 #include <list>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "analysis/userange_analysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -42,7 +48,7 @@ size_t computeUserangeSize(const UseInterval &interval) {
 /// Compute the byte size of a given Value.
 size_t computeByteSize(const Value &v) {
   auto type = v.getType().cast<ShapedType>();
-  return type.getSizeInBits() / 8;
+  return type.getNumElements() * type.getElementTypeBitWidth() / 8;
 }
 
 /// Compute the 64 byte alinged segments of a given Value.

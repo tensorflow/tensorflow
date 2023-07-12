@@ -56,11 +56,8 @@ static absl::Status CholeskyImpl(const ServiceExecutableRunOptions* run_options,
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                              operand.dtype, &params, stream);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
+  return RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                     operand.dtype, &params, stream);
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return absl::InternalError("Cholesky is not supported without GPU");
 #endif

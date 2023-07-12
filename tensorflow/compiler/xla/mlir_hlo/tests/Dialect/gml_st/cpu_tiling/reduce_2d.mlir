@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline \
-// RUN: | FileCheck %s --dump-input=always
+// RUN: | FileCheck %s
 
 func.func @col_reduce_static(%input: tensor<100x10xf32>,
                         %output: tensor<10xf32>) -> tensor<10xf32> {
@@ -15,7 +15,7 @@ func.func @col_reduce_static(%input: tensor<100x10xf32>,
 //       CHECK:   scf.for
 //       CHECK:     vector.multi_reduction
 //  CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-//  CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+//  CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
 //       CHECK:   vector.transfer_write
 
 // -----
@@ -39,12 +39,12 @@ func.func @row_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
 
 // CHECK:        scf.for
-// CHECK:          vector.multi_reduction
-// CHECK-SAME:       : vector<4x1xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK:          arith.mulf
+// CHECK-SAME:       : vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
 // CHECK:        vector.transfer_write
 
 // CHECK:      scf.for
@@ -76,7 +76,7 @@ func.func @col_reduce_dynamic(%input: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          vector.multi_reduction
 // CHECK-SAME:       : vector<4x4xf32> to vector<4xf32>
-// CHECK-NEXT:     scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK-NEXT:     scf.yield %{{.*}} : vector<4xf32>
 
 // CHECK:        scf.for
 // CHECK:          arith.mulf %{{.*}} : f32

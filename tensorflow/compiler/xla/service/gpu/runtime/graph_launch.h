@@ -18,14 +18,15 @@ limitations under the License.
 
 #include <atomic>
 #include <memory>
-#include <optional>
-#include <string_view>
-#include <tuple>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
@@ -83,9 +84,20 @@ class GraphInstances {
  public:
   StreamExecutorGraphInstances* operator()(se::StreamExecutor* executor);
 
+  // Instantiates all Gpu graphs defined by the given executable using user
+  // provided run options. This guarantees that once we start execution, all Gpu
+  // graphs are ready, and will only require cheap update operation and will not
+  // require allocating new resources (we avoid non deterministic OOM errors).
+  Status InstantiateAllGraphs(const ServiceExecutableRunOptions* run_options,
+                              const runtime::Executable& executable,
+                              const runtime::CustomCall::UserData& user_data,
+                              void* ptr);
+
  private:
   mutable absl::Mutex mutex_;
   absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_
+      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_set<se::StreamExecutor*> instantiated_
       ABSL_GUARDED_BY(mutex_);
 };
 

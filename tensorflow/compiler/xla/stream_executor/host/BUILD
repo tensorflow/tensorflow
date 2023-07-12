@@ -2,12 +2,13 @@
 #   Host-platform specific StreamExecutor support code.
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = set_external_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -70,21 +71,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "host_timer",
-    srcs = [
-        "host_timer.cc",
-    ],
-    hdrs = [
-        "host_timer.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
-        "//tensorflow/compiler/xla/stream_executor:timer",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-    ],
-)
-
 # TODO(22689637): Rename this target.
 cc_library(
     name = "host_gpu_executor",
@@ -97,10 +83,8 @@ cc_library(
     deps = [
         ":host_platform_id",
         ":host_stream",
-        ":host_timer",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:kernel",
-        "//tensorflow/compiler/xla/stream_executor:rng",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/tsl/platform:errors",

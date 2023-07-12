@@ -28,14 +28,21 @@ namespace tensorflow {
 namespace {
 
 static bool Initialized = [] {
+  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  rollout_config.enabled_for_xla_launch_ = true;
+  rollout_config.enabled_for_compile_on_demand_ = true;
+
   tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
-  tensorflow::GetXlaOpsCommonFlags()->tf_xla_use_device_api = true;
   return true;
 }();
 
 class DeviceContextTest : public ::testing::Test {
  public:
   void SetDevice(const string& device_type) {
+    auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    rollout_config.AllowForDeviceInXlaLaunch(DeviceType(device_type));
+    rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(device_type));
+
     auto device_factory = DeviceFactory::GetFactory(device_type);
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;

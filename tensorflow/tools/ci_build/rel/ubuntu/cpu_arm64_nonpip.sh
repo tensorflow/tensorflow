@@ -19,6 +19,36 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
+# Strip leading and trailing whitespaces
+str_strip () {
+  echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Clean up bazel build & test flags with proper configuration.
+update_bazel_flags() {
+  # Add git tag override flag if necessary.
+  GIT_TAG_STR=" --action_env=GIT_TAG_OVERRIDE"
+  if [[ -z "${GIT_TAG_OVERRIDE}" ]] && \
+    ! [[ ${TF_BUILD_FLAGS} = *${GIT_TAG_STR}* ]]; then
+    TF_BUILD_FLAGS+="${GIT_TAG_STR}"
+  fi
+  # Clean up whitespaces
+  TF_BUILD_FLAGS=$(str_strip "${TF_BUILD_FLAGS}")
+  TF_TEST_FLAGS=$(str_strip "${TF_TEST_FLAGS}")
+  # Cleaned bazel flags
+  echo "Bazel build flags (cleaned):\n" "${TF_BUILD_FLAGS}"
+  echo "Bazel test flags (cleaned):\n" "${TF_TEST_FLAGS}"
+}
+
+DEFAULT_PROJECT_NAME="tensorflow"
+PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
+
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tmpfs
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tensorflow
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
+
 # Update bazel
 install_bazelisk
 
@@ -27,6 +57,9 @@ python_version=$(python3 -c 'import sys; print("python"+str(sys.version_info.maj
 
 # Setup virtual environment
 setup_venv_ubuntu ${python_version}
+
+# Need to use the python from the venv
+export PYTHON_BIN_PATH=$(which python3)
 
 # Env vars used to avoid interactive elements of the build.
 export HOST_C_COMPILER=(which gcc)
@@ -62,22 +95,32 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS_EXTENDED.sh
 
 # Export optional variables for running the tests
-export TF_BUILD_FLAGS="--config=nonccl --config=mkl_aarch64_threadpool \
-    --copt=-mtune=generic --copt=-march=armv8-a --copt=-O3 --copt=-flax-vector-conversions"
-export TF_TEST_FLAGS="${TF_BUILD_FLAGS} --test_env=TF_ENABLE_ONEDNN_OPTS=1 \
-    --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 \
-    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium"
+export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
+export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
+    --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 \
+    --test_lang_filters=py --test_size_filters=small,medium \
+    --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
-export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-requires-gpu"
+export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py39,-no_oss_py310"
+
+if [ ${IS_NIGHTLY} == 1 ]; then
+  ./tensorflow/tools/ci_build/update_version.py --nightly
+fi
+
+sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
+sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
+sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
+sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
+sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
+
+update_bazel_flags
 
 bazel test ${TF_TEST_FLAGS} \
-    --repo_env=PYTHON_BIN_PATH="$(which python)" \
+    --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
-    --local_test_jobs=64 \
-    --verbose_failures \
+    --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \
     --build_tests_only \
-    -k \
     -- ${TF_TEST_TARGETS}
 
 # Remove virtual environment

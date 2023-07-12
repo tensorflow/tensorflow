@@ -32,6 +32,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_onednn_v3",
+)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -105,6 +109,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@ml_dtypes//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
@@ -124,7 +129,7 @@ PACKAGE_STATIC_DEPS = [
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@triton//:__subpackages__",
-] + tsl_async_value_deps()
+] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"])
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],
@@ -225,6 +230,14 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -1016,6 +1029,7 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
+        "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
@@ -1025,12 +1039,20 @@ package_group(
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
+        "//third_party/py/gldm/...",
         "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
+        "//waymo/ml/cn/...",
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = [
+        "//third_party/py/courier/...",
+        "//third_party/py/tensorfn/...",
+    ],
+)
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
@@ -1144,6 +1166,9 @@ tf_cc_shared_library(
         ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end(google-only)
         ],
     }),
     linkstatic = 1,
@@ -1350,6 +1375,7 @@ tf_cc_shared_library(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/framework:full_type_util",
         "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",
@@ -1442,7 +1468,6 @@ check_deps(
             "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
             "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
             "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
             "//tensorflow/compiler/xla/stream_executor:cuda_platform",
         ],
     ),
@@ -1689,6 +1714,8 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
+        "@pypi_keras_nightly//:pkg",
+        "@pypi_tb_nightly//:pkg",
     ],
 )
 # copybara:comment_end

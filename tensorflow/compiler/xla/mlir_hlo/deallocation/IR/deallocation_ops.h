@@ -24,6 +24,10 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+#define GET_TYPEDEF_CLASSES
+#include "deallocation/IR/deallocation_typedefs.h.inc"
+#undef GET_TYPEDEF_CLASSES
+
 #define GET_OP_CLASSES
 #include "deallocation/IR/deallocation_dialect.h.inc"
 #include "deallocation/IR/deallocation_ops.h.inc"

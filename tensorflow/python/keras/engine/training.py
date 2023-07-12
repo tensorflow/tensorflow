@@ -26,7 +26,7 @@ from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import backprop
@@ -38,6 +38,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
@@ -293,8 +294,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._maybe_create_attribute('optimizer', None)
 
     # Model must be created under scope of DistStrat it will be trained with.
-    if ds_context.has_strategy():
-      self._distribution_strategy = ds_context.get_strategy()
+    if distribute_lib.has_strategy():
+      self._distribution_strategy = distribute_lib.get_strategy()
     else:
       self._distribution_strategy = None
 
@@ -724,7 +725,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @property
   def distribute_strategy(self):
     """The `tf.distribute.Strategy` this model was created under."""
-    return self._distribution_strategy or ds_context.get_strategy()
+    return self._distribution_strategy or distribute_lib.get_strategy()
 
   @property
   def run_eagerly(self):
@@ -2651,8 +2652,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                       (invalid_kwargs,))
 
     # Model must be created and compiled with the same DistStrat.
-    if self.built and ds_context.has_strategy():
-      strategy = ds_context.get_strategy()
+    if self.built and distribute_lib.has_strategy():
+      strategy = distribute_lib.get_strategy()
       for v in self.variables:
         if not strategy.extended.variable_created_in_scope(v):
           raise ValueError(
@@ -2908,7 +2909,8 @@ def _multi_worker_concat(v, strategy):
 
 
 def _is_scalar(x):
-  return isinstance(x, (ops.Tensor, variables.Variable)) and x.shape.rank == 0
+  return isinstance(
+      x, (tensor_lib.Tensor, variables.Variable)) and x.shape.rank == 0
 
 
 def write_scalar_summaries(logs, step):

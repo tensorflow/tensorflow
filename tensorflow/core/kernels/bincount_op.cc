@@ -432,7 +432,7 @@ class SparseBincountOp : public OpKernel {
         OP_REQUIRES(
             ctx, bin < out.dimension(1),
             errors::InvalidArgument("Index out ouf bound. `bin` (", bin,
-                                    ") must be less then the dimension size (",
+                                    ") must be less than the dimension size (",
                                     out.dimension(1), ")."));
         if (bin < size) {
           if (binary_output_) {

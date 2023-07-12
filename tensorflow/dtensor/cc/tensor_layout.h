@@ -48,6 +48,10 @@ namespace dtensor {
 // standards.
 bool IsDynamicSize(int64_t size);
 
+// Returns true if `shape` is a dynamic shape based on either MLIR and TF
+// standards.
+bool IsDynamicShape(const std::vector<int64_t>& shape);
+
 // The location of a device in a mesh.
 //
 // Each device has a unique location in the mesh, which is indicated by the
@@ -160,6 +164,8 @@ class Mesh {
     return local_device_ids_.empty() && !global_device_ids_.empty();
   }
 
+  StatusOr<Mesh> host_mesh() const { return ToDeviceType("CPU"); }
+
   // Device information methods.
   std::string device_type() const;
   // Takes an index in the flattened list of devices and returns a location
@@ -217,6 +223,7 @@ class Mesh {
   int64 size() const;
   bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
+  absl::string_view single_device() const { return single_device_; }
 
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
@@ -287,6 +294,9 @@ class Layout {
   // the layout for the given dimension.
   static constexpr const char* kMatch = "match";
 
+  Layout() = default;
+  Layout(const Layout& other) = default;
+
   inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // Returns empty layout.
@@ -316,7 +326,6 @@ class Layout {
   static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
                                  int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
-  static StatusOr<Layout> SingleDeviceOnMesh(const Mesh& mesh);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
   void set_mesh(Mesh mesh) { mesh_ = mesh; }
@@ -331,16 +340,8 @@ class Layout {
   static bool IsShardedDimension(const absl::string_view name) {
     return !IsUnshardedDimension(name);
   }
-  static bool IsUnshardedSpec(const ShardingSpec& spec) {
-    return IsUnshardedDimension(spec.sharding_spec());
-  }
-  static bool IsShardedSpec(const ShardingSpec& spec) {
-    return !IsUnshardedDimension(spec.sharding_spec());
-  }
   static StatusOr<Layout> GetLayout(
       const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh);
-  static StatusOr<Layout> GetLayout(
-      const std::vector<ShardingSpec>& sharding_specs, const Mesh& mesh);
   static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh);
 
   // Makes a new layout from this one dropping the given dimensions.
@@ -352,10 +353,14 @@ class Layout {
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  StatusOr<Layout> Truncate(int64 split_point, bool end = false) const;
+  Layout Truncate(int64 split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
+
+  // Minimally pads replicated axes on the left, or removes axes on the right,
+  // such that the result layout has the provided rank.
+  StatusOr<Layout> EnsureRank(int64_t rank) const;
 
   bool IsFullyReplicated() const;
   bool IsLastDimReplicated() const;
@@ -366,8 +371,11 @@ class Layout {
   bool IsEmpty() const;
 
   // Compute global shape using the layout and provided local_shape.
+  // Optionally take a second parameter `local_shapes` that represents the shape
+  // of all local tensors.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      absl::Span<const int64_t> local_shape) const;
+      absl::Span<const int64_t> local_shape,
+      const std::vector<std::vector<int64_t>>* local_shapes = nullptr) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;
@@ -375,14 +383,8 @@ class Layout {
       const PartialTensorShape& global_shape) const;
 
   int64 rank() const { return sharding_specs_.size(); }
-  size_t num_shards_for_dim(const ShardingSpec& dim) const;
   size_t num_shards_for_dim(int) const;
   std::vector<int32> num_shards() const;
-
-  const ShardingSpec& dim(int64 idx) const { return sharding_specs_[idx]; }
-  absl::Span<const ShardingSpec> sharding_specs() const {
-    return sharding_specs_;
-  }
 
   // Computes the corresponding shard vector to this layout.
   ShardVector GetShardVector() const;
@@ -410,7 +412,7 @@ class Layout {
   }
 
  private:
-  std::vector<ShardingSpec> sharding_specs_;
+  std::vector<std::string> sharding_specs_;
   Mesh mesh_;
 };
 
@@ -419,6 +421,9 @@ class Layout {
 // dimension returns an error rather than a layout.
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
+
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
 
 }  // namespace dtensor
 }  // namespace tensorflow
