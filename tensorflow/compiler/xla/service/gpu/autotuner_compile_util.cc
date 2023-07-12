@@ -103,15 +103,34 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
 
 }  // namespace
 
+AutotunerCompileUtil::AutotunerCompileUtil(Compiler* compiler,
+                                           se::StreamExecutor& stream_executor,
+                                           se::Stream& stream,
+                                           se::DeviceMemoryAllocator& allocator,
+                                           const DebugOptions& opts)
+    : compiler_(compiler),
+      stream_executor_(stream_executor),
+      stream_(stream),
+      allocator_(allocator),
+      opts_(opts) {
+  // Avoid dumping compilation steps.
+  opts_.set_xla_dump_to("");
+  opts_.set_xla_gpu_dump_autotune_results_to("");
+  opts_.set_xla_gpu_load_autotune_results_from("");
+  opts_.set_xla_gpu_dump_llvmir(false);
+  // Avoid using another thread pool.
+  opts_.set_xla_gpu_force_compilation_parallelism(1);
+  // Avoid using GPU graphs as we don't want to measure graph construction time.
+  opts_.set_xla_gpu_cuda_graph_level(0);
+}
+
 StatusOr<std::optional<absl::Duration>>
 AutotunerCompileUtil::GenerateAndProfileExecutable(
-    const HloComputation& hlo_computation, const AutotuneResult& config,
-    const AutotuneCacheKey& cache_key, se::Stream* stream,
-    absl::Span<se::DeviceMemoryBase const> input_buffers,
-    se::DeviceMemoryBase output_buffer, ExtractModuleFn extractor) {
-  TF_ASSIGN_OR_RETURN(
-      Executable * executable,
-      Compile(hlo_computation, config, cache_key, std::move(extractor)));
+    const AutotuneResult& config, const AutotuneCacheKey& cache_key,
+    se::Stream* stream, absl::Span<se::DeviceMemoryBase const> input_buffers,
+    ShapedBuffer output_buffer, GenerateModuleFn extractor) {
+  TF_ASSIGN_OR_RETURN(Executable * executable,
+                      Compile(config, cache_key, std::move(extractor)));
 
   if (!executable) {
     return {std::nullopt};
@@ -134,17 +153,29 @@ AutotunerCompileUtil::GenerateAndProfileExecutable(
   TF_ASSIGN_OR_RETURN(absl::Duration timer_duration,
                       timer.GetElapsedDuration());
   ScopedShapedBuffer result = execution_output.ConsumeResult();
-  TF_RET_CHECK(output_buffer.size() == result.root_buffer().size());
+
   // TODO(cheshire): Copying should not be required. Instead, we can add a new
   // aliased parameter.
-  stream->ThenMemcpy(&output_buffer, result.root_buffer(),
-                     result.root_buffer().size());
+  Shape shape = result.on_device_shape();
+  TF_RET_CHECK(shape == output_buffer.on_device_shape());
+  if (shape.IsTuple()) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      TF_RET_CHECK(!shape.tuple_shapes(i).IsTuple());
+      stream->ThenMemcpy(output_buffer.buffers().mutable_element(ShapeIndex{i}),
+                         result.buffer(ShapeIndex{i}),
+                         ShapeUtil::ByteSizeOf(shape.tuple_shapes(i)));
+    }
+  } else {
+    stream->ThenMemcpy(output_buffer.buffers().mutable_element(ShapeIndex{}),
+                       result.buffer(ShapeIndex{}),
+                       ShapeUtil::ByteSizeOf(shape));
+  }
   return std::make_optional(timer_duration);
 }
 
 StatusOr<Executable*> AutotunerCompileUtil::Compile(
-    const HloComputation& hlo_computation, const AutotuneResult& res,
-    const AutotuneCacheKey& cache_key, ExtractModuleFn extractor) {
+    const AutotuneResult& res, const AutotuneCacheKey& cache_key,
+    GenerateModuleFn extractor) {
   CompilationKey key{cache_key, res};
   {
     absl::MutexLock lock(&executable_cache_mutex);
@@ -156,15 +187,14 @@ StatusOr<Executable*> AutotunerCompileUtil::Compile(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      CompileNoCache(hlo_computation, std::move(extractor)));
+                      CompileNoCache(std::move(extractor)));
   absl::MutexLock lock(&executable_cache_mutex);
   auto [it, inserted] = executable_cache.emplace(key, std::move(executable));
   return it->second.get();
 }
 
 StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
-    const HloComputation& original_computation,
-    ExtractModuleFn module_extractor) {
+    GenerateModuleFn module_extractor) {
   StatusOr<std::unique_ptr<HloModule>> new_hlo_module = module_extractor();
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an expected failure.
@@ -172,15 +202,25 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
   } else if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
-  return RunBackend(original_computation, std::move(*new_hlo_module));
+  (*new_hlo_module)->config().set_debug_options(opts_);
+
+  StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
+      std::move(*new_hlo_module), &stream_executor_, &allocator_);
+  if (out.status().code() == absl::StatusCode::kResourceExhausted) {
+    // Being out of shared memory budget is an expected failure.
+    return std::unique_ptr<Executable>();
+  }
+  return out;
 }
 
 /*static*/ StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
-    se::Stream& stream, se::DeviceMemoryAllocator& allocator) {
+    se::Stream& stream, se::DeviceMemoryAllocator& allocator,
+    const DebugOptions& opts) {
   se::StreamExecutor& stream_executor = *stream.parent();
   TF_ASSIGN_OR_RETURN(Compiler * compiler,
                       Compiler::GetForPlatform(stream_executor.platform()));
-  return AutotunerCompileUtil(compiler, stream_executor, stream, allocator);
+  return AutotunerCompileUtil(compiler, stream_executor, stream, allocator,
+                              opts);
 }
 
 StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
@@ -200,30 +240,6 @@ StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
                           &service_run_options, std::move(arguments)));
 
   return std::move(output);
-}
-
-StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::RunBackend(
-    const HloComputation& original_computation,
-    std::unique_ptr<HloModule> module) {
-  DebugOptions options =
-      original_computation.parent()->config().debug_options();
-  // Avoid dumping compilation steps.
-  options.set_xla_dump_to("");
-  options.set_xla_gpu_dump_autotune_results_to("");
-  options.set_xla_gpu_load_autotune_results_from("");
-  options.set_xla_gpu_dump_llvmir(false);
-  // Avoid using Gpu graphs as we don't want to measure graph construction time.
-  options.set_xla_gpu_cuda_graph_level(0);
-  // Avoid using another thread pool.
-  options.set_xla_gpu_force_compilation_parallelism(1);
-  module->config().set_debug_options(options);
-  StatusOr<std::unique_ptr<Executable>> out =
-      compiler_->RunBackend(std::move(module), &stream_executor_, &allocator_);
-  if (out.status().code() == absl::StatusCode::kResourceExhausted) {
-    // Being out of shared memory budget is an expected failure.
-    return std::unique_ptr<Executable>();
-  }
-  return out;
 }
 
 /*static*/ void AutotunerCompileUtil::ClearCompilationCache() {
