@@ -16,18 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
 
-#include "absl/container/inlined_vector.h"
+#include <array>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 
@@ -36,14 +38,19 @@ limitations under the License.
 namespace ApiConverter {
 
 absl::Span<const float> MakeSpan(const FloatList& src_list);
-void CreateVector(const absl::Span<const float> src, FloatList* dst);
+void CreateVector(absl::Span<const float> src, FloatList* dst);
 void Destroy(FloatList* float_list);
 
 absl::Span<const int64_t> MakeSpan(const Int64List& src_list);
-void CreateVector(const absl::Span<const int64_t> src, Int64List* dst);
+void CreateVector(absl::Span<const int64_t> src, Int64List* dst);
+
+absl::Span<const int> MakeSpan(const IntList& src_list);
+void CreateVector(absl::Span<const int> src, IntList* dst);
 
 absl::Span<const bool> MakeSpan(const BoolList& src_list);
-void CreateVector(const absl::Span<const bool> src, BoolList* dst);
+void CreateVector(absl::Span<const bool> src, BoolList* dst);
+
+void CreateVector(absl::Span<const xla::DimLevelType> src, IntList* dst);
 
 // se::DeviceMemoryBase
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
@@ -52,20 +59,20 @@ void ToC(const stream_executor::DeviceMemoryBase& base,
 stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
 void Destroy(SE_DeviceMemoryBase*);
 
-// xla::Shape
-xla::Shape FromC(const XLA_Shape* c_shape);
-void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
-void Destroy(XLA_Shape* c_shape);
+// xla::Tile
+xla::Tile FromC(const XLA_Tile* c_tile);
+void ToC(const xla::Tile& xla_tile, XLA_Tile* c_tile);
+void Destroy(XLA_Tile* c_tile);
 
 // xla::Layout
 xla::Layout FromC(const XLA_Layout* c_layout);
 void ToC(const xla::Layout& xla_layout, XLA_Layout* c_layout);
 void Destroy(XLA_Layout* c_layout);
 
-// xla::Tile
-xla::Tile FromC(const XLA_Tile* c_tile);
-void ToC(const xla::Tile& xla_tile, XLA_Tile* c_tile);
-void Destroy(XLA_Tile* c_tile);
+// xla::Shape
+xla::Shape FromC(const XLA_Shape* c_shape);
+void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
+void Destroy(XLA_Shape* c_shape);
 
 // xla::ShapeIndex
 XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape);
