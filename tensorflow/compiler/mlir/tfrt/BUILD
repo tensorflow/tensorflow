@@ -365,13 +365,10 @@ cc_library(
     srcs = ["transforms/gpu_passes.cc"],
     hdrs = ["transforms/gpu_passes.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -471,7 +468,6 @@ cc_library(
     deps = [
         ":tf_to_tfrt",
         ":tfrt_compile_options",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -683,7 +679,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_sync_opdefs",
-        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
