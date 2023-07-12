@@ -984,8 +984,8 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     compatible_with = get_compatible_with_portable(),
+    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
-        ":gpu_asm_opts_util",
         ":target_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -996,12 +996,14 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:ArithDialect",
-    ],
+    ] + if_cuda_is_configured([
+        ":gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+    ]),
 )
 
 xla_cc_test(
