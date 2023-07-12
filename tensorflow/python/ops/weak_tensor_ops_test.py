@@ -307,6 +307,60 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       math_ops.abs(MyTensor(constant_op.constant(1.0)))
 
+  def testWeakTensorDunderMethods(self):
+    x = _get_weak_tensor([1, 2, 3])
+
+    self.assertIsInstance(abs(x), WeakTensor)
+    self.assertIsInstance(~x, WeakTensor)
+    self.assertIsInstance(-x, WeakTensor)
+
+  @parameterized.parameters(
+      ("T", WeakTensor),
+      ("ndim", int),
+      ("size", None),
+      ("data", WeakTensor),
+  )
+  def testNumpyAttributesOnWeakTensor(self, np_attribute, result_type):
+    a = weak_tensor_test_util.get_weak_tensor(([1, 2, 3]))
+    b = constant_op.constant([1, 2, 3])
+
+    self.assertTrue(hasattr(a, np_attribute))
+    wt_np_attr = getattr(a, np_attribute)
+    t_np_attr = getattr(b, np_attribute)
+    if result_type is None:
+      # The result type may differ depending on which machine test runs on
+      # (e.g. size)
+      self.assertEqual(type(wt_np_attr), type(t_np_attr))
+    else:
+      self.assertIsInstance(wt_np_attr, result_type)
+    self.assertAllEqual(wt_np_attr, t_np_attr)
+
+  @parameterized.parameters(
+      ("__pos__", WeakTensor),
+      ("__round__", WeakTensor, 2),
+      ("tolist", list),
+      ("flatten", WeakTensor),
+      ("transpose", WeakTensor),
+      ("reshape", WeakTensor, (3, 1)),
+      ("ravel", WeakTensor),
+      ("clip", tensor.Tensor, 1.1, 2.2),
+      ("astype", tensor.Tensor, dtypes.float32),
+      ("max", WeakTensor),
+      ("mean", WeakTensor),
+      ("min", WeakTensor),
+  )
+  def testNumpyMethodsOnWeakTensor(self, np_method, result_type, *args):
+    a = weak_tensor_test_util.get_weak_tensor(([1, 2, 3]))
+    b = constant_op.constant([1, 2, 3])
+    self.assertTrue(hasattr(a, np_method))
+
+    wt_np_method_call = getattr(a, np_method)
+    t_np_method_call = getattr(b, np_method)
+    wt_np_result = wt_np_method_call(*args)
+    t_np_result = t_np_method_call(*args)
+    self.assertIsInstance(wt_np_result, result_type)
+    self.assertAllEqual(wt_np_result, t_np_result)
+
 
 # TODO(b/289333658): Add tf.constant(x) with no dtype arg as a "weak" input
 # after adding WeakTensor construction logic to tf.constant.

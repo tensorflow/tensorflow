@@ -88,8 +88,9 @@ def weak_tensor_unary_op_wrapper(op):
     # unsupported input type (e.g. CompositeTensor).
     except NotImplementedError:
       logging.warning(
-          "The new dtype semantics do not support this input dtype. Falling"
-          " back to old semantics."
+          "The new dtype semantics do not support"
+          f" {op.__module__}.{op.__name__}({type(x)}). Falling back to old"
+          " semantics."
       )
       return op(**bound_kwargs)
     bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
@@ -136,8 +137,9 @@ def weak_tensor_binary_op_wrapper(op):
     # unsupported input type (e.g. CompositeTensor).
     except NotImplementedError:
       logging.warning(
-          "The new dtype semantics do not support this input dtype. Falling"
-          " back to old semantics."
+          "The new dtype semantics do not support"
+          f" {op.__module__}.{op.__name__}({type(x)}, {type(y)}). Falling back"
+          " to old semantics."
       )
       return op(**bound_kwargs)
 
@@ -475,3 +477,7 @@ weak_tensor.WeakTensor.__floordiv__ = math_ops.floordiv
 weak_tensor.WeakTensor.__mod__ = gen_math_ops.floor_mod
 weak_tensor.WeakTensor.__pow__ = math_ops.pow
 weak_tensor.WeakTensor.__matmul__ = math_ops.matmul
+
+# Add/Update NumPy methods in Tensor and WeakTensor.
+np_math_ops.enable_numpy_methods_on_tensor()
+np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)  # pylint: disable=protected-access

@@ -1412,39 +1412,44 @@ def _tensor_size(self):
 
 
 def _tensor_tolist(self):
-  if isinstance(self, ops.EagerTensor):
-    return self._numpy().tolist()  # pylint: disable=protected-access
+  if ops.is_symbolic_tensor(self):
+    raise ValueError('Symbolic Tensors do not support the tolist API.')
 
-  raise ValueError('Symbolic Tensors do not support the tolist API.')
+  return self._numpy().tolist()  # pylint: disable=protected-access
+
+
+def _enable_numpy_methods(tensor_class):
+  """A helper method for adding additional NumPy methods."""
+  t = property(_tensor_t)
+  setattr(tensor_class, 'T', t)
+
+  ndim = property(_tensor_ndim)
+  setattr(tensor_class, 'ndim', ndim)
+
+  size = property(_tensor_size)
+  setattr(tensor_class, 'size', size)
+
+  setattr(tensor_class, '__pos__', _tensor_pos)
+  setattr(tensor_class, 'tolist', _tensor_tolist)
+
+  # TODO(b/178540516): Make a custom `setattr` that changes the method's
+  #   docstring to the TF one.
+  setattr(tensor_class, 'transpose', np_array_ops.transpose)
+  setattr(tensor_class, 'flatten', np_array_ops.flatten)
+  setattr(tensor_class, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
+  setattr(tensor_class, 'ravel', np_array_ops.ravel)
+  setattr(tensor_class, 'clip', clip)
+  setattr(tensor_class, 'astype', math_ops.cast)
+  setattr(tensor_class, '__round__', np_array_ops.around)
+  setattr(tensor_class, 'max', np_array_ops.amax)
+  setattr(tensor_class, 'mean', np_array_ops.mean)
+  setattr(tensor_class, 'min', np_array_ops.amin)
+
+  # TODO(wangpeng): Remove `data` when all uses of it are removed
+  data = property(lambda self: self)
+  setattr(tensor_class, 'data', data)
 
 
 def enable_numpy_methods_on_tensor():
   """Adds additional NumPy methods on tf.Tensor class."""
-  t = property(_tensor_t)
-  setattr(tensor.Tensor, 'T', t)
-
-  ndim = property(_tensor_ndim)
-  setattr(tensor.Tensor, 'ndim', ndim)
-
-  size = property(_tensor_size)
-  setattr(tensor.Tensor, 'size', size)
-
-  setattr(tensor.Tensor, '__pos__', _tensor_pos)
-  setattr(tensor.Tensor, 'tolist', _tensor_tolist)
-
-  # TODO(b/178540516): Make a custom `setattr` that changes the method's
-  #   docstring to the TF one.
-  setattr(tensor.Tensor, 'transpose', np_array_ops.transpose)
-  setattr(tensor.Tensor, 'flatten', np_array_ops.flatten)
-  setattr(tensor.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
-  setattr(tensor.Tensor, 'ravel', np_array_ops.ravel)
-  setattr(tensor.Tensor, 'clip', clip)
-  setattr(tensor.Tensor, 'astype', math_ops.cast)
-  setattr(tensor.Tensor, '__round__', np_array_ops.around)
-  setattr(tensor.Tensor, 'max', np_array_ops.amax)
-  setattr(tensor.Tensor, 'mean', np_array_ops.mean)
-  setattr(tensor.Tensor, 'min', np_array_ops.amin)
-
-  # TODO(wangpeng): Remove `data` when all uses of it are removed
-  data = property(lambda self: self)
-  setattr(tensor.Tensor, 'data', data)
+  _enable_numpy_methods(tensor.Tensor)
