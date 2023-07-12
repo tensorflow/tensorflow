@@ -3433,9 +3433,6 @@ def tf_grpc_cc_dependencies():
 def get_compatible_with_portable():
     return []
 
-def get_compatible_with_cloud():
-    return []
-
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 

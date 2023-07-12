@@ -31,9 +31,6 @@ internal_hlo_deps = _internal_hlo_deps
 tsl_grpc_cc_dependencies = _tsl_grpc_cc_dependencies
 tsl_pybind_extension = _tsl_pybind_extension
 
-def get_compatible_with_cloud():
-    return []
-
 def tsl_gpu_cc_test(
         name,
         srcs = [],
