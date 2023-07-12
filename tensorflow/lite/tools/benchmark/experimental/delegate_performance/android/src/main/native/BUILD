@@ -1,9 +1,8 @@
 # Description:
 #  Holds the native layer of the app.
 
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_deps", "latency_benchmark_extra_deps")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "jni_binary_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,11 +10,11 @@ package(
     licenses = ["notice"],
 )
 
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libdelegate_performance_benchmark.so",
     srcs = ["delegate_performance_benchmark_jni.cc"],
+    tflite_deps = [":accuracy_benchmark"],
     deps = [
-        ":accuracy_benchmark",
         ":latency_benchmark",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
@@ -46,7 +45,7 @@ cc_library(
     ] + latency_benchmark_extra_deps(),
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "accuracy_benchmark",
     srcs = ["accuracy_benchmark.cc"],
     hdrs = ["accuracy_benchmark.h"],
@@ -54,6 +53,7 @@ cc_library(
         ":status_codes",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:gpu_plugin",
         "//tensorflow/lite/acceleration/configuration:stable_delegate_plugin",
         "//tensorflow/lite/acceleration/configuration:xnnpack_plugin",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
@@ -65,18 +65,10 @@ cc_library(
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
         "@flatbuffers",
-    ] + select({
-        # On Android, as the validation runs in a separate process as a
-        # different binary, any TFLite delegates to be validated need to
-        # include corresponding delegate plugins.
-        clean_dep("//tensorflow:android"): [
-            "//tensorflow/lite/acceleration/configuration:gpu_plugin",
-        ],
-        "//conditions:default": [],
-    }) + accuracy_benchmark_extra_deps(),
+    ] + accuracy_benchmark_extra_deps(),
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "benchmark_native",
-    srcs = ["libdelegate_performance_benchmark.so"],
+    tflite_jni_binaries = [":libdelegate_performance_benchmark.so"],
 )
