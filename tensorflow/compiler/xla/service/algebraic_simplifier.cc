@@ -1130,8 +1130,26 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
         ReplaceWithNewInstruction(bitcast, std::move(new_bitcast)));
     bitcast = new_bitcast_ptr;
   }
+
   // All bitcasts can be eliminated (assuming layout constraints are satisfied).
-  ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
+  HloInstruction* new_bitcast = bitcast->mutable_operand(0);
+  if (ReplaceInstructionIfCompatible(bitcast, new_bitcast)) {
+    bitcast = new_bitcast;
+  }
+
+  // Check whether we can potentially simplify the bitcast into a broadcast
+  // operand.
+  if (bitcast->opcode() == HloOpcode::kBitcast &&
+      bitcast->operand(0)->opcode() == HloOpcode::kBroadcast) {
+    // DeduceTransposeDimensionsForBitcast() checks whether the bitcast is a
+    // transpose and returns the dimensions attribute if it is.
+    auto dimensions = ShapeUtil::DeduceTransposeDimensionsForBitcast(
+        bitcast->operand(0)->shape(), bitcast->shape());
+    if (dimensions.has_value()) {
+      return SimplifyTransposeOfBroadcast(bitcast, dimensions.value());
+    }
+  }
+
   return OkStatus();
 }
 
@@ -2230,6 +2248,84 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
         dot, HloInstruction::CreateReshape(dot->shape(), new_dot)));
   }
   return true;
+}
+
+// transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the relative
+// order of the dimensions of `x` unchanged.
+//
+// To understand the permutations logic here, consider a simple case.
+//
+//  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
+//  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
+//
+// We want to transform this into
+//
+//  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
+Status AlgebraicSimplifierVisitor::SimplifyTransposeOfBroadcast(
+    HloInstruction* transpose, absl::Span<const int64_t> dimensions) {
+  HloInstruction* broadcast = transpose->mutable_operand(0);
+  if (broadcast->opcode() != HloOpcode::kBroadcast ||
+      !absl::c_is_sorted(broadcast->dimensions())) {
+    return OkStatus();
+  }
+
+  // The algorithm to compute bcast'.dimensions() is:
+  //
+  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
+  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
+  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
+  //    index 0 after the transpose.
+  //
+  // We also need to check that bcast'.dimensions() is "sorted the same" as
+  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
+  // broadcast op.  For now we cowardly refuse to consider broadcasts except
+  // where their dimensions() are sorted, so we need only check that
+  // bcast'.dimensions() is sorted.
+  //
+  // No one-user requirement on the transpose because having two different
+  // broadcasts of x should be cheap -- certainly cheaper than using the
+  // fully-materialized broadcasted+transposed value.
+
+  auto inv_perm = InversePermutation(dimensions);
+  absl::InlinedVector<int64_t, 8> new_bcast_dims;
+  for (int64_t dim : broadcast->dimensions()) {
+    new_bcast_dims.push_back(inv_perm[dim]);
+  }
+  if (!absl::c_is_sorted(new_bcast_dims)) {
+    return OkStatus();
+  }
+  // We don't want to create broadcasts that create implicit transposes. Check
+  // whether the relative order of the layout of the broadcasted dimensions is
+  // the same as the broadcast operand layout.
+  if (options_.is_layout_sensitive()) {
+    std::vector<int64_t> perm1(new_bcast_dims.size());
+    absl::c_iota(perm1, 0);
+    std::vector<int64_t> perm2 = perm1;
+    Layout operand_layout = broadcast->mutable_operand(0)->shape().layout();
+    absl::c_sort(perm1, [&](int a, int b) {
+      return operand_layout.minor_to_major(a) <
+             operand_layout.minor_to_major(b);
+    });
+    Layout transpose_layout = transpose->shape().layout();
+    // Extract the part of the layout that corresponds to the broadcasted
+    // dimensions.
+    std::vector<int64_t> extracted_layout;
+    extracted_layout.reserve(new_bcast_dims.size());
+    for (int64_t dim : transpose_layout.minor_to_major()) {
+      if (absl::c_binary_search(new_bcast_dims, dim)) {
+        extracted_layout.push_back(dim);
+      }
+    }
+    absl::c_sort(perm2, [&](int a, int b) {
+      return extracted_layout[a] < extracted_layout[b];
+    });
+    if (perm1 != perm2) {
+      return OkStatus();
+    }
+  }
+  return ReplaceInstruction(
+      transpose, MakeBroadcastHlo(broadcast->mutable_operand(0), new_bcast_dims,
+                                  transpose->shape()));
 }
 
 StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
@@ -6975,47 +7071,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     }
   }
 
-  // transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the
-  // relative order of the dimensions of `x` unchanged.
-  //
-  // To understand the permutations logic here, consider a simple case.
-  //
-  //  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
-  //  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
-  //
-  // We want to transform this into
-  //
-  //  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
-  //
-  // The algorithm to compute bcast'.dimensions() is:
-  //
-  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
-  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
-  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
-  //    index 0 after the transpose.
-  //
-  // We also need to check that bcast'.dimensions() is "sorted the same" as
-  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
-  // broadcast op.  For now we cowardly refuse to consider broadcasts except
-  // where their dimensions() are sorted, so we need only check that
-  // bcast'.dimensions() is sorted.
-  //
-  // No one-user requirement on the transpose because having two different
-  // broadcasts of x should be cheap -- certainly cheaper than using the
-  // fully-materialized broadcasted+transposed value.
-  if (operand->opcode() == HloOpcode::kBroadcast &&
-      absl::c_is_sorted(operand->dimensions())) {
-    auto inv_perm = InversePermutation(transpose->dimensions());
-    absl::InlinedVector<int64_t, 8> new_bcast_dims;
-    for (int64_t dim : operand->dimensions()) {
-      new_bcast_dims.push_back(inv_perm[dim]);
-    }
-    if (absl::c_is_sorted(new_bcast_dims)) {
-      return ReplaceInstruction(
-          transpose, MakeBroadcastHlo(operand->mutable_operand(0),
-                                      new_bcast_dims, transpose->shape()));
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      SimplifyTransposeOfBroadcast(transpose, transpose->dimensions()));
 
   return OkStatus();
 }
