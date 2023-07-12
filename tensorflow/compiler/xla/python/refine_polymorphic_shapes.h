@@ -24,12 +24,18 @@ namespace xla {
 
 // Refines the dynamic shapes for a module whose "main" has static shapes
 // and all the intermediate dynamic shapes depend only on the input static
-// shapes.
-absl::Status RefinePolymorphicShapes(mlir::ModuleOp module);
+// shapes. Upon refinement, validates that the module does not contain remaining
+// dynamic shapes.
+// If `enable_shape_assertions` is false, then the shape assertions
+// are removed from the module, otherwise they are removed only if the
+// assertions hold, and result in an error otherwise.
+absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
+                                     bool enable_shape_assertions);
 
 // Like the above but with serialized input and output modules.
 absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
-                                     llvm::raw_ostream &os);
+                                     llvm::raw_ostream &os,
+                                     bool enable_shape_assertions);
 
 // Validates that the module has only static shapes.
 absl::Status ValidateStaticShapes(mlir::ModuleOp module);

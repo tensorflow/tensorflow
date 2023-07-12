@@ -748,7 +748,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
