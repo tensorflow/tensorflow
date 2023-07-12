@@ -244,13 +244,8 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   }
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-  se::StreamExecutor* executor = autotune_config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = autotune_config.GetAllocator();
-  if (allocator == nullptr) {
-    allocator = executor->GetAllocator();
-  }
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(executor->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
   GemmBackendConfig gemm_config =
       gemm->backend_config<GemmBackendConfig>().value();
   const DebugOptions& debug_options =

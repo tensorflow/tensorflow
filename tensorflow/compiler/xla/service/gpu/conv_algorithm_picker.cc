@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
 
 #include <algorithm>
 #include <limits>
@@ -360,18 +360,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec.
-  se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
-  se::DeviceMemoryAllocator* allocator;
-  optional<se::StreamExecutorMemoryAllocator> se_allocator;
-  if (device_allocator != nullptr) {
-    allocator = device_allocator;
-  } else {
-    se_allocator.emplace(stream_exec);
-    allocator = &*se_allocator;
-  }
+  se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
 
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(stream_exec->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related

@@ -474,21 +474,9 @@ StatusOr<bool> TritonAutotuner::Run(
     return false;
   }
 
-  std::optional<AutotunerCompileUtil> autotuner_compile_util;
-  if (!config_.IsDeviceless()) {
-    se::StreamExecutor* stream_exec = config_.GetExecutor();
-    se::DeviceMemoryAllocator* allocator = config_.GetAllocator()
-                                               ? config_.GetAllocator()
-                                               : stream_exec->GetAllocator();
-    TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                        allocator->GetStream(stream_exec->device_ordinal()));
-    TF_ASSIGN_OR_RETURN(
-        AutotunerCompileUtil util,
-        AutotunerCompileUtil::Create(*stream, *allocator,
-                                     module->config().debug_options()));
-    autotuner_compile_util.emplace(util);
-  }
-
+  TF_ASSIGN_OR_RETURN(
+      std::optional<AutotunerCompileUtil> autotuner_compile_util,
+      AutotunerCompileUtil::Create(config_, module->config().debug_options()));
   return TritonAutotunerVisitor{config_, thread_pool_, autotuner_compile_util}
       .RunOnModule(module, execution_threads);
 }

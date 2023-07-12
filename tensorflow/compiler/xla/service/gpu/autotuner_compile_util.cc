@@ -103,12 +103,14 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
 
 }  // namespace
 
-AutotunerCompileUtil::AutotunerCompileUtil(Compiler* compiler,
+AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
+                                           Compiler* compiler,
                                            se::StreamExecutor& stream_executor,
                                            se::Stream& stream,
                                            se::DeviceMemoryAllocator& allocator,
                                            const DebugOptions& opts)
-    : compiler_(compiler),
+    : config_(config),
+      compiler_(compiler),
       stream_executor_(stream_executor),
       stream_(stream),
       allocator_(allocator),
@@ -213,14 +215,19 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
   return out;
 }
 
-/*static*/ StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
-    se::Stream& stream, se::DeviceMemoryAllocator& allocator,
-    const DebugOptions& opts) {
-  se::StreamExecutor& stream_executor = *stream.parent();
+/*static*/ StatusOr<std::optional<AutotunerCompileUtil>>
+AutotunerCompileUtil::Create(const AutotuneConfig& config,
+                             const DebugOptions& opts) {
+  if (config.IsDeviceless()) {
+    return std::nullopt;
+  }
+  se::StreamExecutor* stream_exec = config.GetExecutor();
+  se::DeviceMemoryAllocator* allocator = config.GetAllocator();
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
   TF_ASSIGN_OR_RETURN(Compiler * compiler,
-                      Compiler::GetForPlatform(stream_executor.platform()));
-  return AutotunerCompileUtil(compiler, stream_executor, stream, allocator,
-                              opts);
+                      Compiler::GetForPlatform(stream_exec->platform()));
+  return AutotunerCompileUtil(config, compiler, *stream_exec, *stream,
+                              *allocator, opts);
 }
 
 StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(

@@ -123,7 +123,13 @@ class AutotuneConfig {
 
   se::DeviceMemoryAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return std::get<DeviceConfig>(config_).allocator;
+    auto& cf = std::get<DeviceConfig>(config_);
+    return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
+  }
+
+  StatusOr<se::Stream*> GetStream() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
 
   se::CudaComputeCapability GetCudaComputeCapability() const {

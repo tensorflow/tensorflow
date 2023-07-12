@@ -55,9 +55,11 @@ class AutotunerCompileUtil {
       absl::AnyInvocable<StatusOr<std::unique_ptr<HloModule>>()>;
 
   // Generates a compile util for a platform associated with the `stream`.
-  static StatusOr<AutotunerCompileUtil> Create(
-      se::Stream& stream, se::DeviceMemoryAllocator& allocator,
-      const DebugOptions& opts);
+  //
+  // Returns an empty optional if the AutotuneConfig is deviceless, as
+  // autotuning is impossible in that case.
+  static StatusOr<std::optional<AutotunerCompileUtil>> Create(
+      const AutotuneConfig& config, const DebugOptions& opts);
 
   // Generates an executable first, given the module generator function in
   // `extractor`.
@@ -86,8 +88,9 @@ class AutotunerCompileUtil {
   static void ClearCompilationCache();
 
  private:
-  AutotunerCompileUtil(Compiler* compiler, se::StreamExecutor& stream_executor,
-                       se::Stream& stream, se::DeviceMemoryAllocator& allocator,
+  AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,
+                       se::StreamExecutor& stream_executor, se::Stream& stream,
+                       se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
 
   StatusOr<std::unique_ptr<Executable>> CompileNoCache(
@@ -96,6 +99,7 @@ class AutotunerCompileUtil {
   StatusOr<ExecutionOutput> Execute(Executable& executable,
                                     std::vector<ExecutionInput> arguments);
 
+  AutotuneConfig config_;
   Compiler* compiler_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"

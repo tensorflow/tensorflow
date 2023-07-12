@@ -38,7 +38,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
 #endif
 
 namespace xla {

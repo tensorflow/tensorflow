@@ -81,7 +81,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
     ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
+        "//tensorflow/compiler/xla/service/gpu:conv_algorithm_picker",
     ]),
 )
 
