@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -73,7 +75,20 @@ using ExpandedArgumentMap =
     absl::flat_hash_map<int,
                         absl::flat_hash_map<Mesh, std::vector<mlir::Value>>>;
 
-using ExpandedResultsMap = absl::flat_hash_map<int, std::vector<mlir::Value>>;
+struct ExpandedResults {
+  std::optional<Layout> layout;
+  std::vector<mlir::Value> results;
+
+  template <typename Value>
+  void insert(Value&& value) {
+    using T = std::decay_t<Value>;
+    if constexpr (std::is_same_v<T, mlir::Value>) {
+      results.emplace_back(std::forward<Value>(value));
+    } else {
+      results.insert(results.end(), value.begin(), value.end());
+    }
+  }
+};
 
 mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
                                             mlir::func::FuncOp func,
@@ -218,11 +233,11 @@ void AddMetadataToTPUCluster(const Mesh& mesh_config, int64_t num_devices,
 // into a cluster func that has partitioned inputs and outputs ops;
 // it will be rewritten by TPURewritePass into per-device TPUExecute ops.
 template <typename Operation>
-mlir::LogicalResult ExpandTPUOperation(mlir::func::FuncOp target_func,
-                                       mlir::func::ReturnOp return_op,
-                                       ExpandedArgumentMap& expanded_arguments,
-                                       ExpandedResultsMap& expanded_results,
-                                       const Mesh& target_mesh, Operation op) {
+mlir::LogicalResult ExpandTPUOperation(
+    mlir::func::FuncOp target_func, mlir::func::ReturnOp return_op,
+    ExpandedArgumentMap& expanded_arguments,
+    std::vector<ExpandedResults>& expanded_results, const Mesh& target_mesh,
+    Operation op) {
   const absl::Span<const std::string> devices = GetDevices(target_mesh);
   const std::size_t num_devices = devices.size();
 
@@ -288,9 +303,7 @@ mlir::LogicalResult ExpandTPUOperation(mlir::func::FuncOp target_func,
         const std::size_t result_number = search - results.begin();
         const mlir::Operation::result_range replicated_results =
             replications.at(result_number);
-        expanded_results[i].insert(expanded_results[i].end(),
-                                   replicated_results.begin(),
-                                   replicated_results.end());
+        expanded_results[i].insert(replicated_results);
       }
     }
   }
@@ -302,11 +315,11 @@ mlir::LogicalResult ExpandTPUOperation(mlir::func::FuncOp target_func,
 // de/multiplexes the per-device inputs/outputs for each "expanded" op.
 // Only usable on CPU/GPU devices, which do not require additional rewriting.
 template <typename Operation>
-mlir::LogicalResult ExpandOperation(mlir::func::FuncOp target_func,
-                                    mlir::func::ReturnOp return_op,
-                                    ExpandedArgumentMap& expanded_arguments,
-                                    ExpandedResultsMap& expanded_results,
-                                    const Mesh& target_mesh, Operation op) {
+mlir::LogicalResult ExpandOperation(
+    mlir::func::FuncOp target_func, mlir::func::ReturnOp return_op,
+    ExpandedArgumentMap& expanded_arguments,
+    std::vector<ExpandedResults>& expanded_results, const Mesh& target_mesh,
+    Operation op) {
   mlir::OpBuilder builder(target_func.getBody());
   const absl::Span<const std::string> devices = GetDevices(target_mesh);
   const std::size_t num_devices = devices.size();
@@ -355,8 +368,8 @@ mlir::LogicalResult ExpandOperation(mlir::func::FuncOp target_func,
             llvm::find(results, operand);
         const std::size_t result_number = search - results.begin();
         for (const Operation& replication : replications) {
-          expanded_results[i].emplace_back(
-              replication->getResult(result_number));
+          expanded_results[i].insert(
+              (mlir::Value)replication->getResult(result_number));
         }
       }
     }
@@ -479,46 +492,39 @@ struct InferredResourceAttributes {
       : layouts(layouts_), indices(indices_) {}
 };
 
-// Build a new main function that calls the multi-device/translated function.
 template <typename Operations>
-mlir::LogicalResult BuildOuterMainFunc(mlir::ModuleOp module,
-                                       mlir::func::FuncOp old_main_func,
-                                       mlir::func::FuncOp translated_func,
-                                       mlir::func::ReturnOp return_op,
-                                       mlir::ArrayAttr num_local_outputs_attr,
-                                       Operations&& call_ops) {
-  using CallOp = typename std::decay_t<Operations>::value_type;
-  llvm::SmallVector<mlir::Attribute, 4> output_layouts;
-  std::optional<InferredResourceAttributes> resource_attrs;
-  for (CallOp call_op : call_ops) {
-    // Then extract all their output layouts.
-    mlir::Attribute layout_attr = call_op->getAttr(kLayoutAttr);
-    mlir::ArrayAttr layouts = layout_attr.dyn_cast_or_null<mlir::ArrayAttr>();
-    if (!layouts) {
-      call_op.emitOpError() << "Could not find op's layouts.";
-      return mlir::failure();
-    }
+mlir::LogicalResult GetInferredResourceAttributes(
+    const Operations& call_ops,
+    std::optional<InferredResourceAttributes>* resource_attrs) {
+  for (auto call_op : call_ops) {
     // Set the resource layouts.
     mlir::Attribute resource_layouts_attr =
         call_op->getAttr(kNewResourceArgLayouts);
     mlir::Attribute resource_indices_attr =
         call_op->getAttr(kNewResourceLayoutIndices);
     if (resource_indices_attr && resource_layouts_attr) {
-      if (resource_attrs) {
+      if (resource_attrs->has_value()) {
         // TODO(twelve): Determine how to merge inferred resource attrs if there
         //               are multiple sets of them. (when can that happen?)
         call_op.emitOpError()
             << "Multiple sets of inferred resource attributes!";
         return mlir::failure();
       } else {
-        resource_attrs.emplace(resource_layouts_attr, resource_indices_attr);
+        resource_attrs->emplace(resource_layouts_attr, resource_indices_attr);
       }
     }
-    // Here, we assume that the output layouts and the results are in the same
-    // ordering--this property should be guaranteed as long as all the results
-    // have been expanded (produced by ExpandOperation).
-    output_layouts.insert(output_layouts.end(), layouts.begin(), layouts.end());
   }
+  return mlir::success();
+}
+
+// Build a new main function that calls the multi-device/translated function.
+template <typename Operations>
+mlir::LogicalResult BuildOuterMainFunc(
+    mlir::ModuleOp module, mlir::func::FuncOp old_main_func,
+    mlir::func::FuncOp translated_func, mlir::func::ReturnOp return_op,
+    const std::vector<ExpandedResults>& expanded_results,
+    mlir::ArrayAttr num_local_outputs_attr, Operations&& call_ops) {
+  using CallOp = typename std::decay_t<Operations>::value_type;
 
   mlir::SymbolTable symbol_table(module);
   mlir::Block* module_body = module.getBody();
@@ -550,11 +556,18 @@ mlir::LogicalResult BuildOuterMainFunc(mlir::ModuleOp module,
                              /*executor_type=*/builder.getStringAttr(""));
 
   // Set the output layout attribute on the new call op.
-  llvm::ArrayRef<mlir::Attribute> output_layouts_ref(output_layouts);
-  mlir::ArrayAttr output_layouts_attr =
-      builder.getArrayAttr(output_layouts_ref);
-  expanded_call_op->setAttr(kLayoutAttr, output_layouts_attr);
+  std::vector<std::optional<Layout>> output_layouts;
+  std::transform(expanded_results.begin(), expanded_results.end(),
+                 std::back_inserter(output_layouts),
+                 [](const ExpandedResults& result) { return result.layout; });
+  SetLayoutOnOp(expanded_call_op, builder, output_layouts);
+
   expanded_call_op->setAttr(kNumLocalOutputsAttr, num_local_outputs_attr);
+
+  std::optional<InferredResourceAttributes> resource_attrs;
+  if (failed(GetInferredResourceAttributes(call_ops, &resource_attrs))) {
+    return mlir::failure();
+  }
 
   if (resource_attrs) {
     expanded_call_op->setAttr(kNewResourceArgLayouts, resource_attrs->layouts);
@@ -584,6 +597,25 @@ mlir::LogicalResult BuildOuterMainFunc(mlir::ModuleOp module,
   symbol_table.insert(main_func, module_body->begin());
 
   return mlir::success();
+}
+
+Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
+                            std::vector<ExpandedResults>& expanded_results) {
+  if (!return_op || (return_op.getNumOperands() == 0)) {
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> layouts,
+                      ExtractLayoutFromOp(op));
+  mlir::Operation::operand_range operands = return_op.getOperands();
+  for (auto [layout_index, result] : llvm::enumerate(op->getResults())) {
+    auto search = std::find(operands.begin(), operands.end(), result);
+    if (search == operands.end()) {
+      continue;
+    }
+    std::size_t result_index = std::distance(operands.begin(), search);
+    expanded_results[result_index].layout = layouts[layout_index];
+  }
+  return OkStatus();
 }
 
 struct DTensorMultiDeviceExpansion
@@ -656,11 +688,14 @@ struct DTensorMultiDeviceExpansion
       return;
     }
 
-    ExpandedResultsMap expanded_results;
+    std::vector<ExpandedResults> expanded_results(
+        return_op ? return_op->getNumOperands() : 0);
     for (const mlir::TF::StatefulPartitionedCallOp& stateful_call_op :
          stateful_call_ops) {
+      const Status status =
+          ExtractResultLayouts(stateful_call_op, return_op, expanded_results);
       const StatusOr<std::optional<Mesh>> mesh =
-          ExtractDeviceMeshFromOp(stateful_call_op);
+          status.ok() ? ExtractDeviceMeshFromOp(stateful_call_op) : status;
       if (!(mesh.ok() && *mesh)) {
         stateful_call_op->emitOpError("Failed to retrieve op mesh or layout.");
         return;
@@ -690,13 +725,12 @@ struct DTensorMultiDeviceExpansion
     llvm::SmallVector<mlir::Attribute, 8> num_local_outputs;
     if (return_op) {
       for (unsigned i = 0; i < return_op->getNumOperands(); ++i) {
-        ExpandedResultsMap::iterator search = expanded_results.find(i);
+        std::vector<mlir::Value>& values = expanded_results[i].results;
         int num_outputs;
-        if (search == expanded_results.end()) {
+        if (values.empty()) {
           results.emplace_back(return_op->getOperand(i));
           num_outputs = 1;
         } else {
-          std::vector<mlir::Value>& values = search->second;
           results.insert(results.end(), values.begin(), values.end());
           num_outputs = values.size();
         }
@@ -714,9 +748,9 @@ struct DTensorMultiDeviceExpansion
         builder, translated_func, absl::Span<mlir::Value>(results)));
     UpdateEntryFuncAttr(builder, translated_func);
 
-    mlir::LogicalResult status =
-        BuildOuterMainFunc(module, main_func, translated_func, return_op,
-                           num_local_outputs_attr, stateful_call_ops);
+    mlir::LogicalResult status = BuildOuterMainFunc(
+        module, main_func, translated_func, return_op, expanded_results,
+        num_local_outputs_attr, stateful_call_ops);
     if (mlir::failed(status)) {
       return;
     }
