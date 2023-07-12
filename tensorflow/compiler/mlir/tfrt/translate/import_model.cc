@@ -166,7 +166,13 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
   }
 
-  if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
+  if (options.backend_compiler != nullptr) {
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
+    }
+    TF_RETURN_IF_ERROR(
+        options.backend_compiler->CompileTensorflow(model_context, module));
+  } else if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
     VLOG(1) << "Running MLIR TPU bridge for tpurt";
     if (VLOG_IS_ON(1)) {
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
@@ -212,12 +218,6 @@ Status ConvertTfMlirToRuntimeExecutable(
         TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
       }
     }
-  } else if (options.backend_compiler != nullptr) {
-    if (VLOG_IS_ON(1)) {
-      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
-    }
-    TF_RETURN_IF_ERROR(
-        options.backend_compiler->CompileTensorflow(model_context, module));
   }
 
   if (VLOG_IS_ON(1)) {

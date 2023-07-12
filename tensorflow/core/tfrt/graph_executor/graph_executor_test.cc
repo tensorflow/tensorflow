@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -256,14 +257,16 @@ TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr,
-      /*enable_online_cost_analysis=*/true);
+      /*enable_online_cost_analysis=*/true,
+      /*stream_callback_id=*/std::nullopt);
   GraphExecutor::LoadedClientGraph loaded_client_graph_1(
       "name1", /*symbol_uids=*/{},
       /*graph_executor=*/nullptr,
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr,
-      /*enable_online_cost_analysis=*/true);
+      /*enable_online_cost_analysis=*/true,
+      /*stream_callback_id=*/std::nullopt);
 
   // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a
   // cost recorder for once.
