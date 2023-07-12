@@ -210,6 +210,13 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+// ---------------------------------- Plugin -----------------------------------
+
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  args->num_attributes = 0;
+  return nullptr;
+}
+
 // ---------------------------------- Client -----------------------------------
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
