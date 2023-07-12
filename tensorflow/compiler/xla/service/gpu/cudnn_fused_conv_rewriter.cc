@@ -674,6 +674,15 @@ StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
 
 StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
                              se::CudaComputeCapability cc) {
+  // TODO(jlebar): Disabled due to bugs in cudnn 8.9.0.  In particular, the
+  // following convolution gets 0 algorithms available, so it fails to run.
+  //
+  // (f16[2,256,768,16]{3,2,1,0}, u8[0]{0})
+  //   custom-call(f16[2,256,768,3]{3,2,1,0} %a, f16[16,3,3,3]{3,2,1,0} %b,
+  //   f16[16]{0} %c), window={size=3x3 pad=1_1x1_1},
+  //   dim_labels=b01f_o01i->b01f, operand_precision={highest,highest}
+  return false;
+
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;

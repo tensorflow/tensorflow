@@ -285,7 +285,9 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
     })");
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
+// TODO(jlebar): leaky-relu fusion is disabled because some convolutions have 0
+// algorithm choices.  See the cc file.
+TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestLeakyRelu) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP()
@@ -1148,7 +1150,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
 
-TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
+// TODO(jlebar): leaky-relu fusion is disabled because some convolutions have 0
+// algorithm choices.  See the cc file.
+TEST_F(CudnnFusedConvRewriterHloTest, DISABLED_FuseLeakyRelu) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
