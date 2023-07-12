@@ -66,6 +66,10 @@ namespace data {
 class AutoScaler {
  public:
   AutoScaler() = default;
+  // Updates the metric value with the current estimated optimal number of
+  // workers. Returns an error if there are no previously reported processing
+  // and target processing times.
+  tsl::Status UpdateOptimalNumberOfWorkersMetric();
   // Returns the estimated optimal number of workers according to the current
   // observed workload. If there are no previously reported processing and
   // target processing times, returns nullopt.

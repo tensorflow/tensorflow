@@ -918,7 +918,7 @@ void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
     const std::vector<HloInstruction*>& instructions, int num_devices,
     AutoShardingSolverOption& solver_option) {
   int64_t batch_size = INT_MAX;
-  for (auto iter : batch_dim_map) {
+  for (const auto& iter : batch_dim_map) {
     batch_size = std::min(batch_size, FindInstruction(instructions, iter.first)
                                           ->shape()
                                           .dimensions(iter.second));
@@ -2285,10 +2285,17 @@ AutoShardingSolverResult CallSolver(
   const AutoShardingSolverResult result = CallORToolsSolver(request);
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
   LOG(INFO) << "Total Communication Cost: "
-            << evaluation.total_communication_cost;
-  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost;
-  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost;
-  LOG(INFO) << "Total Cost: " << evaluation.total_cost;
+            << evaluation.total_communication_cost
+            << " (lower bound: " << evaluation.lower_bound_communication_cost
+            << ")";
+  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
+            << " (lower bound: " << evaluation.lower_bound_computation_cost
+            << ")";
+  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
+            << " (lower bound: " << evaluation.lower_bound_resharding_cost
+            << ")";
+  LOG(INFO) << "Total Cost: " << evaluation.total_cost
+            << " (lower bound: " << evaluation.lower_bound_cost << ")";
   return result;
 }
 

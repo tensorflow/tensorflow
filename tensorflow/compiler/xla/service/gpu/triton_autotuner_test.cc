@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -68,8 +69,9 @@ ENTRY entry {
 })")
                                                   .value();
 
-  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
-      *module->entry_computation()->root_instruction()->operand(0));
+  std::unique_ptr<HloModule> extracted_module =
+      AutotunerUtil::ExtractInstructionIntoNewModule(
+          *module->entry_computation()->root_instruction()->operand(0));
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -106,10 +108,11 @@ ENTRY entry {
                                                   .value();
 
   std::unique_ptr<HloModule> extracted_module =
-      ExtractComputationIntoNewModule(*module->entry_computation()
-                                           ->root_instruction()
-                                           ->operand(0)
-                                           ->fused_instructions_computation());
+      AutotunerUtil::ExtractComputationIntoNewModule(
+          *module->entry_computation()
+               ->root_instruction()
+               ->operand(0)
+               ->fused_instructions_computation());
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.

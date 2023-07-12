@@ -805,7 +805,7 @@ class IteratorContext {
 
   bool is_restoring() { return params_.is_restoring; }
 
-  const std::shared_ptr<model::Model>& model() { return params_.model; }
+  const std::shared_ptr<model::Model>& model() const { return params_.model; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 

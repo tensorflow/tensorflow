@@ -26,6 +26,21 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "dataflow_analysis",
+    srcs = ["dataflow_analysis.cc"],
+    hdrs = ["dataflow_analysis.h"],
+    compatible_with = [],
+    deps = [
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+    ],
+)
+
+cc_library(
     name = "passes",
     srcs = [
         "add_concurrent_regions.cc",
@@ -44,6 +59,7 @@ cc_library(
     # TODO(ezhulenev): Do not depend on NCCL thunks in compiler passes.
     compatible_with = [],
     deps = [
+        ":dataflow_analysis",
         ":passes_inc_gen",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:xla_proto_cc",

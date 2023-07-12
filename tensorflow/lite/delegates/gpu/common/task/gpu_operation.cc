@@ -680,6 +680,9 @@ absl::Status FuseElemWithElemInternal(
     }
   }
   elem1.elementwise_code_ =
+      absl::StrReplaceAll(elem1.elementwise_code_,
+                          {{"interm_value", "interm_value" + unique_postfix}});
+  elem1.elementwise_code_ =
       absl::StrReplaceAll(elem1.elementwise_code_, replacements_new);
 
   OperationDef new_definition = elem0.definition_;

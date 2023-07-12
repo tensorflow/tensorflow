@@ -16,7 +16,7 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.lite.kernels.variants.py import register_list_ops
+from tensorflow.lite.kernels.variants.py import register_list_ops_py
 from tensorflow.lite.python import interpreter as _interpreter
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import googletest
@@ -48,13 +48,31 @@ def make_from_stack(shape: tf.TensorShape) -> Callable:
   return from_stack
 
 
-class RegisterListOpsTest(parameterized.TestCase):
+def make_reserve_set_get(shape: tf.TensorShape, get_empty: bool) -> Callable:
+  @tf.function(input_signature=[tf.TensorSpec(shape=shape, dtype=tf.float32)])
+  def reserve_set_get(x: tf.Tensor) -> tf.Tensor:
+    l = list_ops.tensor_list_reserve(
+        element_shape=shape,
+        element_dtype=tf.float32,
+        num_elements=2,
+    )
+
+    l = list_ops.tensor_list_set_item(l, 0, x)
+    return list_ops.tensor_list_get_item(
+        l, 1 if get_empty else 0, tf.float32, shape
+    )
+
+  return reserve_set_get
+
+
+class ListOpsTest(parameterized.TestCase):
   """Checks for tfl custom TensorList kernels.
 
   * Validate conversion through python api with
     `legalize_custom_tensor_list_ops = True`.
   * Validate python bindings for registration through
     `InterpreterWithCustomOps`.
+  * Check tensorflow and tensorflow lite output the same data.
   """
 
   def _get_interpreter_from_c_func(self, func):
@@ -73,13 +91,29 @@ class RegisterListOpsTest(parameterized.TestCase):
     # Instantiate interpreter with custom tensor list ops.
     interpreter = _interpreter.InterpreterWithCustomOps(
         model_content=tfl_model,
-        custom_op_registerers=[register_list_ops.TFLRegisterListOps],
+        custom_op_registerers=[register_list_ops_py.TFLRegisterListOps],
     )
     return interpreter
 
   @parameterized.named_parameters(
       ("ReserveSetStackStatic", make_reserve_set_stack(tf.TensorShape([2, 2]))),
       ("FromStackStatic", make_from_stack(tf.TensorShape([2, 2]))),
+      (
+          "ReserveSetStackGetStatic_GetEmpty1D",
+          make_reserve_set_get(tf.TensorShape([2]), True),
+      ),
+      (
+          "ReserveSetStackGetStatic_GetEmpty2D",
+          make_reserve_set_get(tf.TensorShape([2, 3]), True),
+      ),
+      (
+          "ReserveSetStackGetStatic_GetPresent1D",
+          make_reserve_set_get(tf.TensorShape([2]), False),
+      ),
+      (
+          "ReserveSetStackGetStatic_GetPresent2D",
+          make_reserve_set_get(tf.TensorShape([2, 3]), False),
+      ),
   )
   def test_register_and_invoke_static_shape(self, tf_func):
     interpreter = self._get_interpreter_from_c_func(tf_func)
@@ -113,7 +147,17 @@ class RegisterListOpsTest(parameterized.TestCase):
       (
           "FromStackDynamic",
           make_reserve_set_stack(tf.TensorShape(None)),
-          [2, 2],
+          [2, 3],
+      ),
+      (
+          "ReserveSetStackGetDynamic_GetEmpty",
+          make_reserve_set_get(tf.TensorShape(None), True),
+          [3, 2],
+      ),
+      (
+          "ReserveSetStackGetDynamic_GetPresent",
+          make_reserve_set_get(tf.TensorShape(None), False),
+          [4],
       ),
   )
   def test_register_list_ops_and_invoke_dynamic_shape(
@@ -139,6 +183,55 @@ class RegisterListOpsTest(parameterized.TestCase):
     )
 
     tf_out = tf_func(input_tensor)
+
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
+  @parameterized.named_parameters(
+      ("ZeroElements_ScalarStackShape", [], 0),
+      ("NonZeroElements_ScalarStackShape", [], 2),
+      ("NonZeroElements_ZeroStackShape", [0], 2),
+      ("ZeroElements_ZeroStackShape", [0], 0),
+      ("ZeroElements_2DZeroStackShape", [0, 2], 0),
+      ("NonZeroElements_2DZeroStackShape", [0, 2], 2),
+  )
+  def test_stack_empty_list(
+      self, stack_element_shape: list[int], num_elements: int
+  ):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=tf.TensorShape(None), dtype=tf.int32)
+        ]
+    )
+    def reserve_stack(stack_element_shape) -> tf.Tensor:
+      l = list_ops.tensor_list_reserve(
+          element_shape=tf.TensorShape(None),
+          element_dtype=tf.float32,
+          num_elements=num_elements,
+      )
+      return list_ops.tensor_list_stack(
+          l, element_shape=stack_element_shape, element_dtype=tf.float32
+      )
+
+    interpreter = self._get_interpreter_from_c_func(reserve_stack)
+
+    input_index = interpreter.get_input_details()[0]["index"]
+
+    interpreter.resize_tensor_input(input_index, [len(stack_element_shape)])
+
+    interpreter.allocate_tensors()
+
+    input_tensor = np.array(stack_element_shape, dtype=np.int32)
+    interpreter.set_tensor(input_index, input_tensor)
+
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
+
+    tf_out = reserve_stack(input_tensor)
 
     self.assertEqual(tf_out.dtype, output_tensor.dtype)
     self.assertEqual(tf_out.shape, output_tensor.shape)

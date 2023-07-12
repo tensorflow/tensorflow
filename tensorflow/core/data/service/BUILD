@@ -1120,6 +1120,7 @@ cc_library(
     srcs = ["auto_scaler.cc"],
     hdrs = ["auto_scaler.h"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
@@ -1134,8 +1135,10 @@ tf_cc_test(
     srcs = ["auto_scaler_test.cc"],
     deps = [
         ":auto_scaler",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/time",
     ],

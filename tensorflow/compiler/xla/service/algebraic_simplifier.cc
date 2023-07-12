@@ -3256,6 +3256,18 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   }
 
   {
+    // Mul(Negate(A), Negate(B)) => Mul(A, B)
+    HloInstruction *a, *b;
+    if (Match(multiply,
+              m::Multiply(m::Negate(m::Op(&a)), m::Negate(m::Op(&b))))) {
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(0, a));
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(1, b));
+      MarkAsChanged();
+      return OkStatus();
+    }
+  }
+
+  {
     HloInstruction* abs_operand;
     if (lhs == rhs && Match(lhs, m::Abs(m::Op(&abs_operand))) &&
         !ShapeUtil::ElementIsComplex(abs_operand->shape())) {
@@ -3365,42 +3377,6 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
                 multiply->shape(), HloOpcode::kMultiply, a,
                 multiply->AddInstruction(HloInstruction::CreateBroadcast(
                     multiply->shape(), new_mul, dims))));
-      }
-    }
-  }
-
-  {
-    HloInstruction *in, *filter, *constant, *convolution, *broadcast;
-    // Mul(Conv(in, filter), Broadcast(constant)) =>
-    // Conv(in, Mul(filter, Broadcast(constant)))
-    // where Broadcast(constant) broadcasts a 1D tensor to the output feature
-    // dimension. We conservatively only consider the case where filter is a
-    // constant and multiply can be constant-folded. If it's not a constant, the
-    // transformation would still be correct. But if the multiply cannot be
-    // fused, it might be slower to do it on the filter than on the output.
-    if (options_.enable_scalar_multiply_reduction() &&
-        Match(multiply,
-              m::MultiplyAnyOrder(
-                  m::Convolution(&convolution, m::Op(&in), m::Constant(&filter))
-                      .WithOneUser(),
-                  m::Broadcast(&broadcast, m::Constant(&constant).WithShape(
-                                               m::Shape().WithRank(1)))))) {
-      const ConvolutionDimensionNumbers& dnums =
-          convolution->convolution_dimension_numbers();
-
-      if (broadcast->dimensions().size() == 1 &&
-          broadcast->dimensions()[0] == dnums.output_feature_dimension()) {
-        auto new_bcast =
-            multiply->AddInstruction(HloInstruction::CreateBroadcast(
-                filter->shape(), constant,
-                {dnums.kernel_output_feature_dimension()}));
-        auto new_multiply =
-            multiply->AddInstruction(HloInstruction::CreateBinary(
-                filter->shape(), HloOpcode::kMultiply, filter, new_bcast));
-        auto new_conv = convolution->CloneWithNewOperands(convolution->shape(),
-                                                          {in, new_multiply});
-        TF_RETURN_IF_ERROR(
-            ReplaceWithNewInstruction(multiply, std::move(new_conv)));
       }
     }
   }
@@ -5991,24 +5967,38 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
   // Convert Reduce(concat({a,b,...})) to
   //  map(reduce(a),map(reduce(b),...,))
+  // provided that the shapes of a,b,... have the same dimensions, or
+  // enable_unconditional_reduce_of_concat_replacement() is true.
   //
   // This should make fusion easier or use less memory bandwidth in the unfused
   // case.
   if (arg->opcode() == HloOpcode::kConcatenate &&
       absl::c_linear_search(reduce->dimensions(),
                             arg->concatenate_dimension())) {
-    HloInstruction* old_reduce = nullptr;
-    for (HloInstruction* operand : arg->operands()) {
-      HloInstruction* new_reduce = reduce->AddInstruction(
-          HloInstruction::CreateReduce(reduce_result_shape, operand, init_value,
-                                       reduce->dimensions(), function));
-      if (old_reduce != nullptr) {
-        new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
-            reduce_result_shape, {old_reduce, new_reduce}, function));
+    bool same_shapes = true;
+    for (int64_t i = 1; i < arg->operand_count(); ++i) {
+      if (!Shape::Equal().IgnoreLayout()(arg->operand(i)->shape(),
+                                         arg->operand(0)->shape())) {
+        same_shapes = false;
+        break;
       }
-      old_reduce = new_reduce;
     }
-    return ReplaceInstruction(reduce, old_reduce);
+    if (options_.enable_unconditional_reduce_of_concat_replacement() ||
+        same_shapes || reduce->shape().rank() == 0) {
+      HloInstruction* old_reduce = nullptr;
+      for (HloInstruction* operand : arg->operands()) {
+        HloInstruction* new_reduce =
+            reduce->AddInstruction(HloInstruction::CreateReduce(
+                reduce_result_shape, operand, init_value, reduce->dimensions(),
+                function));
+        if (old_reduce != nullptr) {
+          new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
+              reduce_result_shape, {old_reduce, new_reduce}, function));
+        }
+        old_reduce = new_reduce;
+      }
+      return ReplaceInstruction(reduce, old_reduce);
+    }
   }
 
   HloInstruction *dot, *lhs, *rhs;

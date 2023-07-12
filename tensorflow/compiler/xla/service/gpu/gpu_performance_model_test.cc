@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -93,6 +94,12 @@ ENTRY e {
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the kernel launch overhead.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 2, 1);
+
+  GpuPerformanceModel::RecordEstimatedRunTime(root, &analysis_, device_info_);
+  double recorded_cycles = root->backend_config<FusionBackendConfig>()
+                               ->reification_cost()
+                               .end_to_end_cycles();
+  EXPECT_NEAR(recorded_cycles, 8.1, 0.1);
 }
 
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
@@ -120,6 +127,12 @@ ENTRY e {
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 175, 30);
+
+  GpuPerformanceModel::RecordEstimatedRunTime(root, &analysis_, device_info_);
+  double recorded_cycles = root->backend_config<FusionBackendConfig>()
+                               ->reification_cost()
+                               .end_to_end_cycles();
+  EXPECT_NEAR(recorded_cycles, 220284, 100);
 }
 
 TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
@@ -268,6 +281,12 @@ ENTRY e {
   GpuPerformanceModel::RunTimes t =
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 312, 31);
+
+  GpuPerformanceModel::RecordEstimatedRunTime(root, &analysis_, device_info_);
+  double recorded_cycles = root->backend_config<FusionBackendConfig>()
+                               ->reification_cost()
+                               .end_to_end_cycles();
+  EXPECT_NEAR(recorded_cycles, 439452, 100);
 }
 
 TEST_F(GpuPerformanceModelTest, F64Log) {

@@ -391,7 +391,7 @@ ENTRY e {
     calls=triton_fusion
 })"));
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_FALSE(IsProducerConsumerFusible(*root->operand(0), *root));
+  EXPECT_FALSE(IsFusibleAsMultiOutputFusionRoot(*root));
 }
 
 TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionCompatible) {
@@ -946,7 +946,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerMultiOutputFusible(*producer));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*consumer));
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
@@ -970,7 +972,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerMultiOutputFusible(*producer));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*consumer));
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
@@ -1009,7 +1013,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerMultiOutputFusible(*producer));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*consumer));
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
@@ -1041,8 +1047,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  // Not fusible as multioutput fusion root
-  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerMultiOutputFusible(*producer));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*consumer));
+  EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
@@ -1073,7 +1080,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_FALSE(IsProducerMultiOutputFusible(*producer));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*consumer));
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionInPlaceOperation) {
@@ -1100,7 +1109,9 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionInPlaceOperation) {
   EXPECT_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
   const HloInstruction* transpose = tuple->operand(1);
   EXPECT_EQ(transpose->opcode(), HloOpcode::kFusion);
-  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*dus, *transpose));
+  EXPECT_FALSE(IsProducerMultiOutputFusible(*dus));
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*transpose));
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*dus, *transpose));
 }
 
 TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {

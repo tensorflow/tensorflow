@@ -1493,7 +1493,7 @@ def run_in_graph_and_eager_modes(func=None,
     def decorated(self, *args, **kwargs):
       logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
-        with context.graph_mode():
+        with context.graph_mode(), self.subTest("graph_mode"):
           with self.test_session(use_gpu=use_gpu, config=config):
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
@@ -1519,7 +1519,11 @@ def run_in_graph_and_eager_modes(func=None,
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
-      with graph_for_eager_test.as_default(), context.eager_mode():
+      with (
+          graph_for_eager_test.as_default(),
+          context.eager_mode(),
+          self.subTest("eager_mode"),
+      ):
         self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
@@ -2396,6 +2400,9 @@ class EagerSessionWarner:
         "tf.disable_eager_execution() in the main() function of this test "
         "file.")
 
+# TODO(b/286583977): Set it to True and remove.
+_ENABLE_AUTO_BOTH_MODES = False
+
 
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
@@ -2456,6 +2463,12 @@ class TensorFlowTestCase(googletest.TestCase):
       self.skipTest("Not a test.")
 
     self._test_start_time = time.time()
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    if _ENABLE_AUTO_BOTH_MODES:
+      run_all_in_graph_and_eager_modes(cls)
 
   def tearDown(self):
     # If a subclass overrides setUp and doesn't call the parent class's setUp,

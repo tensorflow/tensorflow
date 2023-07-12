@@ -53,5 +53,6 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/training:saver",
+        "@pypi_h5py//:pkg",
     ],
 )

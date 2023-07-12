@@ -388,3 +388,42 @@ func.func @remove_stop_gradient_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK: func @remove_stop_gradient_op
 // CHECK: return %arg0 : tensor<*xf32>
+
+// -----
+
+func.func @conv2d_with_large_weight_and_mul(%arg0: tensor<?x?x?x3xf32>) -> (tensor<?x?x?x256xf32>) {
+  %cst = "tf.Const"() {value = dense<2.000000e+00> : tensor<48x48x3x1xf32>} : () -> tensor<48x48x3x1xf32>
+  %cst_0 = "tf.Const"() {value = dense<0.400000e+00> : tensor<256xf32>} : () -> tensor<256xf32>
+  %cst_1 = "tf.Const"() {value = dense<0.500000e+00> : tensor<256xf32>} : () -> tensor<256xf32>
+  %w = "tf.AddV2"(%cst, %cst_1) : (tensor<48x48x3x1xf32>, tensor<256xf32>) -> tensor<48x48x3x256xf32>
+  %0 = "tf.Conv2D"(%arg0, %w) {data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<?x?x?x3xf32>, tensor<48x48x3x256xf32>) -> tensor<?x?x?x256xf32>
+  %1 = "tf.BiasAdd"(%0, %cst_0) {data_format = "NHWC"} : (tensor<?x?x?x256xf32>, tensor<256xf32>) -> tensor<?x?x?x256xf32>
+  %2 = "tf.Mul"(%1, %cst_1) : (tensor<?x?x?x256xf32>, tensor<256xf32>) -> tensor<?x?x?x256xf32>
+  func.return %2 : tensor<?x?x?x256xf32>
+}
+// CHECK: func @conv2d_with_large_weight_and_mul
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<1.250000e+00> : tensor<48x48x3x256xf32>} : () -> tensor<48x48x3x256xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<2.000000e-01> : tensor<256xf32>} : () -> tensor<256xf32>
+// CHECK-NEXT: %[[CONV2D:.*]] = "tf.Conv2D"(%arg0, %[[CONST]])
+// CHECK-NEXT: %[[BIASADD:.*]] = "tf.BiasAdd"(%[[CONV2D]], %[[CONST_0]])
+// CHECK-NEXT: return %[[BIASADD]]
+
+// -----
+
+func.func @depthwise_conv2d_with_large_weight_and_add(%arg0: tensor<*xf32>) -> (tensor<?x?x?x3xf32>) {
+  %cst = "tf.Const"() {value = dense<2.000000e+00> : tensor<48x48x3x1xf32>} : () -> tensor<48x48x3x1xf32>
+  %cst_0 = "tf.Const"() {value = dense<0.400000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+  %cst_1 = "tf.Const"() {value = dense<0.400000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+  %cst_2 = "tf.Const"() {value = dense<0.500000e+00> : tensor<256xf32>} : () -> tensor<256xf32>
+  %w = "tf.AddV2"(%cst, %cst_2) : (tensor<48x48x3x1xf32>, tensor<256xf32>) -> tensor<48x48x3x256xf32>
+  %0 = "tf.DepthwiseConv2dNative"(%arg0, %w) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<48x48x3x256xf32>) -> tensor<?x?x?x3xf32>
+  %1 = "tf.BiasAdd"(%0, %cst_0) {data_format = "NHWC"} : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+  %2 = "tf.AddV2"(%1, %cst_1) : (tensor<?x?x?x3xf32>, tensor<3xf32>) -> tensor<?x?x?x3xf32>
+  func.return %2 : tensor<?x?x?x3xf32>
+}
+// CHECK: func @depthwise_conv2d_with_large_weight_and_add
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<2.500000e+00> : tensor<48x48x3x256xf32>} : () -> tensor<48x48x3x256xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<8.000000e-01> : tensor<3xf32>} : () -> tensor<3xf32>
+// CHECK-NEXT: %[[DEPTHWISE_CONV2D:.*]] = "tf.DepthwiseConv2dNative"(%arg0, %[[CONST]])
+// CHECK-NEXT: %[[BIASADD:.*]] = "tf.BiasAdd"(%[[DEPTHWISE_CONV2D]], %[[CONST_0]])
+// CHECK-NEXT: return %[[BIASADD]]

@@ -97,6 +97,10 @@ message CollectiveBackendConfig {
   bool is_sync = 1;
 }
 
+message ReificationCost {
+  double end_to_end_cycles = 1;  // Total execution time of the reified op.
+}
+
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -112,10 +116,13 @@ message FusionBackendConfig {
   // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
-  // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
-  // cudnn.
+
+  // Cost model prediction.
+  ReificationCost reification_cost = 3;
 }
 
+// Backend config for a fused Multi-Headed Attention (fMHA) that runs through
+// cudnn.
 message CudnnfMHABackendConfig {
   // Opaque algorithm number and tuning knobs chosen for this fMHA.
   stream_executor.dnn.AlgorithmProto algorithm = 8;

@@ -447,11 +447,20 @@ cc_library(
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core/util/tensor_bundle:naming",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
-    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    ] + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_google([
+        "//tensorflow/tools/proto_splitter/cc:util",
+    ]),
     alwayslink = True,
 )
 
@@ -467,6 +476,7 @@ cc_library(
     deps = if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status:statusor",
         "//tensorflow/core:protos_all_cc",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )

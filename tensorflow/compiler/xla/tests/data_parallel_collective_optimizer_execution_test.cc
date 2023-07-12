@@ -38,13 +38,21 @@ StatusOr<bool> RunOptimizer(
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
     DataParallelCollectiveOptimizer::PipeliningDirection pipelining_direction =
         DataParallelCollectiveOptimizer::PipeliningDirection::kForward) {
+  DataParallelCollectiveOptimizer::Config config = {
+      /*level_to_operate_on=*/level_to_operate_on,
+      /*max_pipelining_per_loop=*/INT64_MAX,
+      /*last_run=*/last_run,
+      /*process_different_sized_ops=*/true,
+      /*/
+      /*direction=*/
+      pipelining_direction,
+      /*should_process=*/should_process,
+  };
+
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  pass.AddPass<DataParallelCollectiveOptimizer>(
-      level_to_operate_on, last_run,
-      /*process_different_sized_ops=*/true, pipelining_direction,
-      should_process);
+  pass.AddPass<DataParallelCollectiveOptimizer>(config);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
   pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 
+#include <queue>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -24,6 +25,31 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+bool OnlyElementwiseOpsReachableFromParams(HloComputation* fused_computation) {
+  std::queue<const HloInstruction*> q;
+  absl::flat_hash_set<const HloInstruction*> visited;
+  for (auto param : fused_computation->parameter_instructions()) {
+    q.push(param);
+    visited.insert(param);
+  }
+  while (!q.empty()) {
+    const HloInstruction* hlo = q.front();
+    q.pop();
+    for (auto user : hlo->users()) {
+      if ((!user->IsElementwiseOnOperand(user->operand_index(hlo)) ||
+           user->opcode() == HloOpcode::kCopy) &&
+          user->opcode() != HloOpcode::kBitcast &&
+          user->opcode() != HloOpcode::kTuple) {
+        return false;
+      }
+      if (visited.insert(user).second) {
+        q.push(user);
+      }
+    }
+  }
+  return true;
+}
 
 StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
   bool changed = false;
@@ -37,9 +63,16 @@ StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     std::vector<HloInstruction*> copies;
     std::vector<HloInstruction*> other_users;
     HloComputation* fused_computation = hlo->fused_instructions_computation();
+    if (!OnlyElementwiseOpsReachableFromParams(fused_computation)) {
+      continue;
+    }
     HloInstruction* root = fused_computation->root_instruction();
     if (IsReductionFromOrToContiguousDimensions(*root) ||
-        root->opcode() == HloOpcode::kScatter) {
+        root->opcode() == HloOpcode::kScatter ||
+        (hlo->IsMultiOutputFusion() &&
+         absl::c_all_of(root->operands(), [](const HloInstruction* slice) {
+           return slice->opcode() == HloOpcode::kSlice;
+         }))) {
       continue;
     }
     for (auto user : hlo->users()) {

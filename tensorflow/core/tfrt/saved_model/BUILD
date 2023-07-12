@@ -25,6 +25,7 @@ package_group(
         # copybara:uncomment "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
+        "//tensorflow/core/tfrt/saved_model/utils/...",
     ],
 )
 

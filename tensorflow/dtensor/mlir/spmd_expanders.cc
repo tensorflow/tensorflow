@@ -250,6 +250,7 @@ REGISTER_SPMD(BroadcastGradientArgs, TF::BroadcastGradientArgsOp,
 REGISTER_SPMD(AssignVariable, TF::AssignVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignAddVariable, TF::AssignAddVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignSubVariable, TF::AssignSubVariableOp, ResourceSPMDExpander);
+REGISTER_SPMD(SummaryWriter, TF::SummaryWriterOp, ResourceSPMDExpander);
 REGISTER_SPMD(ReadVariable, TF::ReadVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarHandle, TF::VarHandleOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarIsInitialized, TF::VarIsInitializedOp, ResourceSPMDExpander);

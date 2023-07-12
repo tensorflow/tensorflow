@@ -86,36 +86,33 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
     return "fusing the producer would break read coalescing";
   }
 
-  if (NoFusionPossible fusible =
-          !IsProducerConsumerFusible(*producer, *consumer)) {
-    return !fusible;
+  if (auto fusible = IsProducerConsumerFusible(*producer, *consumer);
+      !fusible) {
+    return fusible;
   }
 
   if (CreatesHeavyComputation(*producer, *consumer)) {
     return "the fusion would create a heavy computation";
   }
 
-  if (NoFusionPossible fusible =
-          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    return !fusible;
-  }
-  return {};
+  return InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 
 FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                                 int64_t operand_index) {
-  if (NoFusionPossible fusible =
-          !ShouldFuseInexpensiveChecks(consumer, operand_index)) {
-    return !fusible;
+  if (auto fusible = ShouldFuseInexpensiveChecks(consumer, operand_index);
+      !fusible) {
+    return fusible;
   }
 
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer, device_info_,
-                              /*is_consumer_producer_fusion=*/true)) {
-    return !too_large;
+  if (auto fits_budget =
+          FusionFitsInBudget(*consumer, *producer, device_info_,
+                             /*is_consumer_producer_fusion=*/true);
+      !fits_budget) {
+    return fits_budget;
   }
 
   if (consumer->opcode() != HloOpcode::kFusion) {

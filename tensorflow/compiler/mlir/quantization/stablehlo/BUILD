@@ -84,22 +84,37 @@ cc_library(
     name = "bridge_passes",
     srcs = [
         "passes/bridge/convert_mhlo_quant_to_int.cc",
+        "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
     ],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
-        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
     ],
     deps = [
         ":bridge_passes_inc_gen",
         ":math_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_utils",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -109,6 +124,8 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
     ],
+    # Force link to ensure ConvertTFQuantOpsToMHLOPass is registered.
+    alwayslink = True,
 )
 
 tf_cc_test(
@@ -118,7 +135,7 @@ tf_cc_test(
     ],
     deps = [
         ":bridge_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",

@@ -296,7 +296,7 @@ static absl::Status LaunchGraph(
           }));
   uint64_t count = (*get_count)->fetch_add(1);
   uint64_t instantiation_threshold =
-      debug_options->xla_gpu_cuda_graph_instantiation_threshold();
+      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate();
 
   // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
   // back on regular execution if we detect tracing activity.

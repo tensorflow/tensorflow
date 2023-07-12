@@ -89,11 +89,13 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
           arrays.size());
     }
     return arrays[0];
-  } else if (!llvm::isa<const OpaqueSharding>(sharding.get()) &&
-             !llvm::isa<const ShardingParamSharding>(sharding.get())) {
+  } else if (!llvm::isa<const OpaqueSharding, const ConcreteSharding,
+                        const ConcreteEvenSharding,
+                        const ShardingParamSharding>(sharding.get())) {
     return InvalidArgument(
-        "Only SingleDeviceSharding, OpaqueSharding and ShardingParamSharding "
-        "are supported: sharding=%s",
+        "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
+        "ConcreteEvenSharding, and ShardingParamSharding are supported: "
+        "sharding=%s",
         sharding->DebugString());
   }
   if (sharding->devices().size() != arrays.size()) {

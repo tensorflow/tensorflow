@@ -455,14 +455,6 @@ class DTensorDevice {
       int num_outputs, DTensorOperationLoweringContext& lowering_context,
       const ExecutionFunctions** execution_functions, TF_Status* status);
 
-  // Execute a given function.
-  void ExecuteFunctionAndWait(
-      TFE_Context* context, const TranslatedFunction* function_ptr,
-      const Mesh& target_mesh,
-      const parallel_device::ParallelDevice* parallel_device,
-      const std::vector<std::vector<TFE_TensorHandle*>>& parallel_inputs,
-      const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status);
-
   // Execute regular operation with ParallelExecutor
   void ParallelExecuteRegularOperation(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
@@ -476,14 +468,6 @@ class DTensorDevice {
                                const DTensorOperation& doperation,
                                const TFE_OpAttrs* attributes, int* num_outputs,
                                TFE_TensorHandle** outputs, TF_Status* status);
-
-  // Executes special functions for embedding.
-  void ExecuteEPUFunctions(TFE_Context* context,
-                           std::vector<TensorWithLayoutTf*> inputs,
-                           const ExecutionFunctions* execution_functions,
-                           const TFE_OpAttrs* attributes, uint64 step_id,
-                           absl::flat_hash_set<std::string>* executed_fn_names,
-                           TF_Status* status);
 
   // Executes a multi-device function.
   void ExecuteMultiDeviceOperation(
@@ -1334,7 +1318,7 @@ bool DTensorDevice::IsSparseDTensor(TFE_Context* context,
 std::unordered_map<std::string, int> DTensorDevice::GetStats(
     TFE_Context* context, TF_Status* status) const {
   const auto fm_stats = function_manager_->GetStats();
-
+  mutex_lock lock(mu_);
   const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
   std::unordered_map<std::string, int> result{
       {"function_manager.hit", fm_stats.hits},
@@ -1730,12 +1714,6 @@ void DTensorDevice::ModuleToExecutionFunctions(
   Graph* graph = lowering_context.graph.get();
   VLOG(4) << DumpGraphToFile("after_dtensor_mlir_pass", *graph, flib_def);
 
-  if (flib_def->Contains(kLoadEmbeddingFn)) {
-    Status s = InsertFunctionForTPUEmbeddingCheckpoint(status, graph, inputs,
-                                                       kLoadEmbeddingFn);
-    RETURN_C_STATUS_IF_NOT_OK(s, status);
-  }
-
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
   // for each mesh and relevant input and output information.
@@ -1815,42 +1793,6 @@ void DTensorDevice::ModuleToExecutionFunctions(
             }
           })
       .IgnoreError();
-}
-
-void DTensorDevice::ExecuteFunctionAndWait(
-    TFE_Context* context, const TranslatedFunction* function_ptr,
-    const Mesh& target_mesh,
-    const parallel_device::ParallelDevice* parallel_device,
-    const std::vector<std::vector<TFE_TensorHandle*>>& parallel_inputs,
-    const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status) {
-  const std::string mesh_str = function_ptr->function_mesh.ToString();
-  VLOG(4) << "Launching computation for mesh : " << mesh_str;
-  parallel_device->StartExecute(
-      context,
-      /*inputs=*/parallel_inputs,
-      /*operation_name=*/function_ptr->translated_function_name.c_str(),
-      /*attributes=*/attributes,
-      /*expected_max_outputs=*/function_ptr->local_output_shapes.size(),
-      /*cancellation_manager=*/*cancellation_manager_,
-      /*step_id=*/step_id);
-
-  VLOG(4) << "Joining computation result from mesh : " << mesh_str;
-  parallel_device->Join(function_ptr->local_output_shapes, status);
-  VLOG(4) << "Joining status: " << TF_Message(status);
-  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_CANCELLED) {
-    LOG(ERROR) << "Encountered error while executing function: "
-               << function_ptr->translated_function_name
-               << " for mesh : " << mesh_str
-               << " / error : " << TF_Message(status);
-  }
-
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> async_wait_status(
-      TF_NewStatus(), TF_DeleteStatus);
-  AsyncWait(context, async_wait_status.get());
-  TF_Code error_code = TF_GetCode(async_wait_status.get());
-  if (error_code != TF_OK && error_code != TF_CANCELLED) {
-    LOG(ERROR) << "Async status: " << TF_Message(async_wait_status.get());
-  }
 }
 
 void DTensorDevice::ParallelExecuteRegularOperation(
@@ -1968,83 +1910,6 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
     auto* output_raw_handle = reinterpret_cast<ImmediateExecutionTensorHandle*>(
         output_raw_handles[output_index]);
     outputs[output_index].reset(tensorflow::wrap(output_raw_handle));
-  }
-}
-
-void DTensorDevice::ExecuteEPUFunctions(
-    TFE_Context* context, std::vector<TensorWithLayoutTf*> inputs,
-    const ExecutionFunctions* execution_functions,
-    const TFE_OpAttrs* attributes, uint64 step_id,
-    absl::flat_hash_set<std::string>* executed_fn_names, TF_Status* status) {
-  std::unique_ptr<const TranslatedFunction> epu_fn_ptr, load_embedding_ptr;
-
-  for (const TranslatedFunction& function :
-       execution_functions->function_list) {
-    if (function.function_mesh.is_epu_mesh()) {
-      if (epu_fn_ptr != nullptr) {
-        RETURN_STATUS(status, TF_INTERNAL,
-                      "There are more than one function defined on EPU mesh.");
-      }
-      epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
-    }
-    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
-      if (load_embedding_ptr != nullptr) {
-        RETURN_STATUS(status, TF_INTERNAL,
-                      "There are more than one function defined on EPU mesh.");
-      }
-      load_embedding_ptr = std::make_unique<const TranslatedFunction>(function);
-    }
-  }
-
-  // Execute excluded functions in sequence.
-  if (epu_fn_ptr != nullptr) {
-    StatusOr<Mesh> mesh = epu_fn_ptr->function_mesh;
-    if (mesh->is_epu_mesh()) {
-      mesh = mesh->ToDeviceType("CPU");
-    }
-
-    if (!mesh.ok()) {
-      RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                    absl::StrCat("Failed to convert mesh, get error: ",
-                                 mesh.status().message())
-                        .c_str());
-    }
-
-    ASSIGN_OR_RETURN_C_STATUS(
-        const parallel_device::ParallelDevice* parallel_device,
-        GetParallelDevice(*mesh, /*strict=*/false), status);
-
-    ExecuteFunctionAndWait(context,
-                           /*function_ptr=*/epu_fn_ptr.get(), *mesh,
-                           parallel_device,
-                           /*parallel_inputs=*/{}, /*step_id=*/step_id,
-                           /*attributes=*/attributes,
-                           /*status=*/status);
-    executed_fn_names->insert(epu_fn_ptr->translated_function_name);
-  }
-
-  if (load_embedding_ptr != nullptr) {
-    Mesh mesh = load_embedding_ptr->function_mesh;
-
-    StatusOr<std::vector<std::vector<TFE_TensorHandle*>>> parallel_inputs =
-        PrepareEmbeddingInputs(inputs);
-
-    if (!parallel_inputs.ok()) {
-      RETURN_STATUS(status, TF_INTERNAL,
-                    tsl::NullTerminatedMessage(parallel_inputs.status()));
-    }
-
-    ASSIGN_OR_RETURN_C_STATUS(
-        const parallel_device::ParallelDevice* parallel_device,
-        GetParallelDevice(mesh, /*strict=*/false), status);
-
-    ExecuteFunctionAndWait(context,
-                           /*function_ptr=*/load_embedding_ptr.get(), mesh,
-                           parallel_device,
-                           /*parallel_inputs=*/*parallel_inputs,
-                           /*step_id=*/step_id,
-                           /*attributes=*/attributes, /*status=*/status);
-    executed_fn_names->insert(load_embedding_ptr->translated_function_name);
   }
 }
 
@@ -2214,11 +2079,6 @@ void DTensorDevice::ExecuteRegularOperation(
   for (const auto& input : inputs) {
     inputs_tf.push_back(llvm::cast<TensorWithLayoutTf>(input));
   }
-
-  ExecuteEPUFunctions(context, inputs_tf, execution_functions, attributes,
-                      step_id, &excluded_fn_names, status);
-
-  if (TF_GetCode(status) != TF_OK) return;
 
   // Extract the global parallel inputs and flatten SparseTensors
   // into the three component tensors.
@@ -2626,6 +2486,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
 
   if (ShouldFastExecuteEagerPureOperation(dtensor_operation, mesh.value(),
                                           typed_inputs, attributes)) {
+    mutex_lock lock(mu_);
     stats_.eager_pure_optimization_hits++;
     FastExecuteEagerPureOperation(context, dtensor_operation, mesh.value(),
                                   num_inputs, *num_outputs, typed_inputs,
@@ -2648,7 +2509,6 @@ bool DTensorDevice::ShouldFastExecuteEagerPureOperation(
     const std::vector<TensorWithLayout*>& typed_inputs,
     const TFE_OpAttrs* attributes) {
   if (dtensor_operation.is_func() || !dtensor_operation.is_pure() ||
-      dtensor_operation.name == std::string("GetEmbeddingConfiguration") ||
       mesh.IsSingleDevice() || mesh.is_remote() ||
       // TODO(b/287529295): Disable this shortcut for TPU for now.
       mesh.is_tpu_mesh()) {

@@ -3538,10 +3538,15 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
         if (!inefficient_sites.empty()) {
           UncommitPendingChunks(absl::MakeSpan(allocation_values));
           for (const HloPositionOrUse& site : inefficient_sites) {
+            // To avoid a livelock situation, we commit the required assignments
+            // right away. Otherwise, reallocation can find alternate memory
+            // allocations at other sites, which can also be inefficient.
             std::visit(
                 [this](const auto& site) {
                   VLOG(3) << "Inefficient site: " << site.ToString();
-                  AddRequiredAssignment(site, MemorySpace::kDefault);
+                  AddRequiredAssignment(site, MemorySpace::kDefault,
+                                        /*offset=*/nullptr,
+                                        /*add_to_pending=*/false);
                 },
                 site);
           }
@@ -4871,31 +4876,32 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloInstruction* instruction, ShapeIndex index,
-    MemorySpace memory_space, AliasedOffset* offset) {
+    MemorySpace memory_space, AliasedOffset* offset, bool add_to_pending) {
   const HloValue* value =
       &alias_analysis_.dataflow_analysis().GetUniqueValueAt(instruction, index);
   int64_t instruction_time =
       hlo_live_range_.instruction_schedule().at(instruction);
   AddRequiredAssignment(value, instruction, memory_space, instruction_time,
-                        offset);
+                        offset, add_to_pending);
 }
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloPosition& position, MemorySpace memory_space,
-    AliasedOffset* offset) {
+    AliasedOffset* offset, bool add_to_pending) {
   AddRequiredAssignment(position.instruction, position.index, memory_space,
-                        offset);
+                        offset, add_to_pending);
 }
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(const HloUse& use,
                                                        MemorySpace memory_space,
-                                                       AliasedOffset* offset) {
+                                                       AliasedOffset* offset,
+                                                       bool add_to_pending) {
   const HloValue* value = &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
       use.instruction->operand(use.operand_number), use.operand_index);
   int64_t instruction_time =
       hlo_live_range_.instruction_schedule().at(use.instruction);
   AddRequiredAssignment(value, use.instruction, memory_space, instruction_time,
-                        offset);
+                        offset, add_to_pending);
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
@@ -5635,6 +5641,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   }
 
   if (!can_eliminate_copy) {
+    VLOG(3) << "Can't eliminate copy.";
     return Result::kFailPrevAllocationNotInAlternateMem;
   }
 
@@ -5644,8 +5651,8 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   // duration checks.
   if (!request.prefer_no_copy_alternate_mem_allocation &&
       !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-          defining_position.shape(), request.start_time + 1,
-          request.end_time)) {
+          defining_position.shape(), request.start_time, request.end_time)) {
+    VLOG(3) << "Live range is too long.";
     return Result::kFailLiveRangeTooLong;
   }
 

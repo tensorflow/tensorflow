@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
@@ -57,7 +57,7 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<func::FuncOp>(
-      mlir::quant::CreateConvertTFQuantOpsToMHLOPass());
+      mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mlir::createCanonicalizerPass());
   AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/false,
                                  skip_resize);

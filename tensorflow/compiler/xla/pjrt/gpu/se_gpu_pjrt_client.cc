@@ -93,7 +93,8 @@ class AsyncHostToDeviceTransferManager
       }
       // Initialize a definition event for each async buffer. The definition
       // event will block the buffer usage until the transfer is done.
-      definition_events.push_back(std::make_shared<BufferSequencingEvent>());
+      definition_events.push_back(
+          std::make_shared<BufferSequencingEvent>(client->thread_pool()));
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->CreateUninitializedBuffer(
                               shape, device, definition_events.back()));
@@ -472,7 +473,8 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     stream->ThenMemcpy(dst, *sub_buffer, transfer_size);
   }
 
-  auto usage_event = std::make_shared<BufferSequencingEvent>();
+  auto usage_event =
+      std::make_shared<BufferSequencingEvent>(this->thread_pool());
   local_device->event_pool().ThenRecordEvent(stream.get(), event_or.value());
   usage_event->SetSequencingEvent(std::move(event_or).value(), stream.get());
   // This usage hold will prevent device_buffer from being deleted before

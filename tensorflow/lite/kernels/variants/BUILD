@@ -6,13 +6,17 @@ cc_library(
     srcs = glob(
         ["list_kernels/*.cc"],
         exclude = ["list_kernels/*test*"],
-    ),
-    hdrs = ["list_ops_lib.h"],
+    ) + ["register_list_ops.cc"],
+    hdrs = [
+        "list_ops_lib.h",
+        "register_list_ops.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":list_ops_util",
         ":tensor_array",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -106,12 +110,31 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "list_get_item_test",
+    srcs = ["list_kernels/list_get_item_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],
     hdrs = ["list_ops_util.h"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -121,8 +144,11 @@ cc_test(
     srcs = ["list_ops_util_test.cc"],
     deps = [
         ":list_ops_util",
+        ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -174,7 +200,7 @@ cc_library(
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/lite/kernels/variants:__subpackages__"],
     deps = [
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",

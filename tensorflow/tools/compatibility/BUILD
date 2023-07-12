@@ -20,7 +20,10 @@ py_strict_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
     srcs_version = "PY3",
-    deps = ["@pasta"],
+    deps = [
+        "@pasta",
+        "@six_archive//:six",  # buildcleaner: keep
+    ],
 )
 
 py_strict_test(

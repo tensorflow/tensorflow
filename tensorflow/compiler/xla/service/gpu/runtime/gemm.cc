@@ -57,11 +57,21 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
   const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
+  AutotuneConfig autotune_config{
+      DeviceConfig{stream->parent(), stream->parent()->GetAllocator()},
+      *debug_options};
+
+  // TODO(jlebar): We should not use stream->parent()->GetAllocator() here;
+  // that's the global CUDA allocator.  There may not be any free space in
+  // there, because TF usually gobbles it all up for its own BFCAllocator.  We
+  // should use the allocator the user passed when running the XLA program.
   se::RedzoneAllocator buffer_allocator(
       stream, stream->parent()->GetAllocator(),
       PtxOptsFromDebugOptions(*debug_options),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/se::RedzoneAllocator::kDefaultRedzoneSize);
+      /*redzone_size=*/autotune_config.should_check_correctness()
+          ? debug_options->xla_gpu_redzone_padding_bytes()
+          : 0);
 
   // Upgrade the reader lock for execution to a writer lock to protect runtime
   // autotuning.
@@ -71,10 +81,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
   TF_ASSIGN_OR_RETURN(
       AutotuneResult best_algorithm,
       GetBestBlasAlgorithm(
-          stream, buffer_allocator, /*gemm_str=*/std::nullopt,
-          AutotuneConfig{
-              DeviceConfig{stream->parent(), stream->parent()->GetAllocator()},
-              *debug_options},
+          stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
           lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
           [&](const se::blas::AlgorithmType& algorithm)
               -> StatusOr<se::blas::ProfileResult> {

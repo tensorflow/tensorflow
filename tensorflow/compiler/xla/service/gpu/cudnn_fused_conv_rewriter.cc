@@ -18,13 +18,10 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -227,9 +224,7 @@ struct ConvConvertTypes {
 // gte(custom-call<float>(int8_x, int8_w))
 StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
   bool changed = false;
-  // Note: We are eliminating F16->F32 due to the benchmark/test
-  // waymo/ml/deploy/sync_test/local:perception_occlusion_net_sync_test_v100
-  // not able to find an appropriate cuDNN function.
+  // Note: We are eliminating F16->F32 because it fails on internal tests.
   std::array<ConvConvertTypes, 3> types{{
       {S32, F32},
       {S8, F32},
@@ -845,37 +840,37 @@ void VlogStats(HloModule* module) {
       VLOG(3) << instr->ToString();
 
       if (instr->custom_call_target() == kCudnnConvForwardCallTarget) {
-        stats["01 non-fused forward convs"]++;
+        ++stats["01 non-fused forward convs"];
       } else if (instr->custom_call_target() ==
                  kCudnnConvBiasActivationForwardCallTarget) {
-        stats["02 fused forward convs"]++;
+        ++stats["02 fused forward convs"];
       }
 
       PrimitiveType conv_in_ty = instr->operand(0)->shape().element_type();
       PrimitiveType conv_out_ty = instr->shape().tuple_shapes(0).element_type();
       if (conv_in_ty == F32) {
-        stats["10 f32 convs"]++;
+        ++stats["10 f32 convs"];
       } else if (conv_in_ty == F16) {
-        stats["11 f16 convs"]++;
+        ++stats["11 f16 convs"];
       } else if (conv_in_ty == S8) {
         if (conv_out_ty == S8) {
-          stats["12 s8->s8 convs"]++;
+          ++stats["12 s8->s8 convs"];
         } else if (conv_out_ty == F32) {
-          stats["13 s8->f32 convs"]++;
+          ++stats["13 s8->f32 convs"];
         } else {
           LOG(ERROR) << "Unexpected conv: " << instr->ToString();
         }
       }
 
       if (instr->operand_count() > 2) {
-        stats["20 convs with bias"]++;
+        ++stats["20 convs with bias"];
         if (Match(instr->operand(2),
                   m::Broadcast(m::ConstantEffectiveScalar(0)))) {
-          stats["21 convs with 0 bias"]++;
+          ++stats["21 convs with 0 bias"];
         }
       }
       if (instr->operand_count() > 3) {
-        stats["22 convs with side-input"]++;
+        ++stats["22 convs with side-input"];
       }
 
       auto config = instr->backend_config<CudnnConvBackendConfig>();
@@ -885,14 +880,14 @@ void VlogStats(HloModule* module) {
       }
 
       if (config->conv_result_scale() != 1) {
-        stats["30 convs with result scale"]++;
+        ++stats["30 convs with result scale"];
       }
       if (config->side_input_scale() != 0 && config->side_input_scale() != 1) {
-        stats["31 convs with side-input scale"]++;
+        ++stats["31 convs with side-input scale"];
       }
-      stats[absl::StrCat(
+      ++stats[absl::StrCat(
           "32 convs with activation mode ",
-          se::dnn::ActivationMode_Name(config->activation_mode()))]++;
+          se::dnn::ActivationMode_Name(config->activation_mode()))];
     }
   }
 
@@ -959,8 +954,8 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
 
-    // Check that we don't have any convs outputing integer types other than s8.
-    // cudnn does not support these.  They should have been transformed to
+    // Check that we don't have any convs outputting integer types other than
+    // s8 - cudnn does not support these.  They should have been transformed to
     // int8->int8 or int8->float above.
     TF_RETURN_IF_ERROR(CheckNoIllegalIntegerConvs(comp));
   }

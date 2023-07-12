@@ -241,7 +241,7 @@ message TocoFlags {
   // Whether to unfold tf.BatchMatMul to a set of tfl.fully_connected ops. If
   // not, translate to tfl.batch_matmul.
   // WARNING: Experimental interface, subject to change.
-  optional bool unfold_batchmatmul = 35 [default = true];
+  optional bool unfold_batchmatmul = 35 [default = false];
 
   // Whether to lower static Tensor List ops to builtin ops. If not, use Flex
   // tensor list ops.

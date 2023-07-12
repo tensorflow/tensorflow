@@ -41,6 +41,12 @@ using MPVariable = operations_research::MPVariable;
 namespace xla {
 namespace spmd {
 
+bool AutoShardingSolverResult::operator==(
+    const AutoShardingSolverResult& other) const {
+  return status == other.status &&
+         skip_auto_sharding == other.skip_auto_sharding;
+}
+
 void PrintLargestInstructions(
     const std::vector<int64_t>& chosen_strategy,
     const std::vector<std::vector<double>>& memory_cost,
@@ -496,7 +502,12 @@ bool AutoShardingEvaluation::operator==(
          total_communication_cost == other.total_communication_cost &&
          total_computation_cost == other.total_computation_cost &&
          total_resharding_cost == other.total_resharding_cost &&
-         total_cost == other.total_cost;
+         total_cost == other.total_cost &&
+         lower_bound_communication_cost ==
+             other.lower_bound_communication_cost &&
+         lower_bound_computation_cost == other.lower_bound_computation_cost &&
+         lower_bound_resharding_cost == other.lower_bound_resharding_cost &&
+         lower_bound_cost == other.lower_bound_cost;
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
@@ -517,6 +528,16 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
       evaluation.violation_codes.insert(kAliasViolationCode);
     }
   }
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    if (request.c[i][s_val[i]] + request.d[i][s_val[i]] >= kInfinityCost) {
+      evaluation.violation_codes.insert(kInfiniteCostViolationCode);
+    }
+  }
+  for (size_t i = 0; i < request.e.size(); ++i) {
+    if (request.r[i][e_val[i]] >= kInfinityCost) {
+      evaluation.violation_codes.insert(kInfiniteCostViolationCode);
+    }
+  }
   if (request.memory_budget > 0) {
     for (size_t t = 0; t < request.live.size(); ++t) {
       double total_memory_cost = 0.0;
@@ -528,20 +549,70 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
       }
     }
   }
-  // Compute metrics.
+  // Compute metrics & lower bounds.
   for (size_t i = 0; i < request.num_nodes; ++i) {
-    const int64_t j = s_val[i];
-    evaluation.total_communication_cost += request.d[i][j];
-    evaluation.total_computation_cost += request.c[i][j];
+    evaluation.total_communication_cost += request.d[i][s_val[i]];
+    evaluation.total_computation_cost += request.c[i][s_val[i]];
+    evaluation.lower_bound_communication_cost +=
+        *std::min_element(request.d[i].begin(), request.d[i].end());
+    evaluation.lower_bound_computation_cost +=
+        *std::min_element(request.c[i].begin(), request.c[i].end());
   }
   for (size_t i = 0; i < request.e.size(); ++i) {
-    const int64_t j = e_val[i];
-    evaluation.total_resharding_cost += request.r[i][j];
+    evaluation.total_resharding_cost += request.r[i][e_val[i]];
+    evaluation.lower_bound_resharding_cost +=
+        *std::min_element(request.r[i].begin(), request.r[i].end());
   }
   evaluation.total_cost += evaluation.total_communication_cost;
   evaluation.total_cost += evaluation.total_computation_cost;
   evaluation.total_cost += evaluation.total_resharding_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_communication_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_computation_cost;
+  evaluation.lower_bound_cost += evaluation.lower_bound_resharding_cost;
   return evaluation;
+}
+
+std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
+                                     const AutoShardingSolverResult& result,
+                                     const AutoShardingSolverResult& subopt) {
+  std::vector<std::string> rationales;
+  const std::vector<std::string>& names = request.instruction_names;
+
+  const std::vector<int64_t>& s_result = std::get<0>(*result.status);
+  const std::vector<int64_t>& s_subopt = std::get<0>(*subopt.status);
+  for (size_t i = 0; i < request.num_nodes; ++i) {
+    const int64_t j = s_result[i], k = s_subopt[i];
+    if (j != k) {
+      rationales.push_back(absl::StrCat("strategy changes for ", names[i], " (",
+                                        j, " -> ", k, ")"));
+    }
+    const double dj = request.d[i][j], dk = request.d[i][k];
+    if (dj < dk) {
+      rationales.push_back(absl::StrCat("communication cost increases for ",
+                                        names[i], " (", dj, " -> ", dk, ")"));
+    }
+    const double cj = request.c[i][j], ck = request.c[i][k];
+    if (cj < ck) {
+      rationales.push_back(absl::StrCat("computation cost increases for ",
+                                        names[i], " (", cj, " -> ", ck, ")"));
+    }
+  }
+
+  const std::vector<int64_t>& e_result = std::get<1>(*result.status);
+  const std::vector<int64_t>& e_subopt = std::get<1>(*subopt.status);
+  for (size_t i = 0; i < request.e.size(); ++i) {
+    const std::pair<int, int>& edge = request.e[i];
+    const int64_t j = e_result[i], k = e_subopt[i];
+    const double rj = request.r[i][j], rk = request.r[i][k];
+    if (rj < rk) {
+      const std::string edge_name =
+          absl::StrCat(names[edge.first], " and ", names[edge.second]);
+      rationales.push_back(absl::StrCat("resharding cost increases for ",
+                                        edge_name, " (", rj, " -> ", rk, ")"));
+    }
+  }
+
+  return rationales;
 }
 
 }  // namespace spmd

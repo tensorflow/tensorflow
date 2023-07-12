@@ -307,18 +307,7 @@ class ResourceHandleWithLayout
     return tsl::OkStatus();
   }
 
-  // Updates the attributes for the tensors.
-  tsl::Status UpdateAttrs(const EmbeddingResourceAttrs& attrs);
-
   ConstValueNode* const_value_node() const override { return nullptr; }
-
-  void UpdateDirtyness(bool is_dirty, TF_Status* status) {
-    if (!attrs_.has_value()) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   "Attempt to update dirtyness on non embedding resource");
-    }
-    attrs_.value().is_dirty = is_dirty;
-  }
 
   void set_dereferenced_shape(const TensorShapeProto& shape) {
     dereferenced_shape_.emplace(shape);
@@ -339,9 +328,6 @@ class ResourceHandleWithLayout
     return dereferenced_dtype_;
   }
 
-  // Gets the resource input attributes for embedding inputs.
-  const std::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
-
   // llvm::RTTIExtends ID.
   static char ID;  // NOLINT
 
@@ -360,9 +346,6 @@ class ResourceHandleWithLayout
   // The shape and dtype of the tensor pointed to by this resource tensor.
   std::optional<TensorShapeProto> dereferenced_shape_;
   std::optional<DataType> dereferenced_dtype_;
-
-  // Resource input attributes for embedding inputs.
-  std::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // TensorWithLayout for SparseTensors.
@@ -617,15 +600,6 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
 
 // Add DTensor specific function attributes to be compatible with eager runtime.
 void AddDTensorFunctionAttr(FunctionDef& function_def);
-
-// Prepare inputs of embeddings for checkpoint functions.
-StatusOr<std::vector<std::vector<TFE_TensorHandle*>>> PrepareEmbeddingInputs(
-    const std::vector<TensorWithLayoutTf*>& inputs);
-
-Status InsertFunctionForTPUEmbeddingCheckpoint(
-    TF_Status* status, Graph* graph,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::string& checkpoint_fn_name);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details for ExecutableManager<T>

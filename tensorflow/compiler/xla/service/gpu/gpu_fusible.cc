@@ -254,9 +254,8 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  if (NoFusionPossible heroes_are_compatible =
-          !FusionHeroesAreCompatible(hero1, hero2)) {
-    return !heroes_are_compatible;
+  if (auto compatible = FusionHeroesAreCompatible(hero1, hero2); !compatible) {
+    return compatible;
   }
 
   const Shape& l1 = get_loop_shape(hero1);
@@ -370,11 +369,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
-FusionDecision IsProducerConsumerMultiOutputFusible(
-    const HloInstruction& producer, const HloInstruction& consumer) {
+FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    return "Producer is not a multi-output fusion";
+    return "Producer is a multi-output fusion";
   }
 
   // Allowing multi-output fusions that contain in-place operations makes code
@@ -407,12 +405,9 @@ FusionDecision IsProducerConsumerMultiOutputFusible(
 
   if (!IsLoopFusibleAsProducer(producer)) {
     return "producer is not loop-fusible";
-  } else if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
-    return "consumer is not fusible as multi-output-fusion-root";
-  } else if (NoFusionPossible fusible =
-                 !ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
-    return !fusible;
-  } else if (IsPhysicallyTransposing(producer)) {
+  }
+
+  if (IsPhysicallyTransposing(producer)) {
     return "producer is physically transposing";
   }
 
@@ -668,10 +663,9 @@ bool CreatesHeavyComputation(const HloInstruction& producer,
       const HloInstruction* cur = dfs.top();
       dfs.pop();
 
-      if (visited.contains(cur)) {
+      if (!visited.insert(cur).second) {
         continue;
       }
-      visited.insert(cur);
 
       if (IfFusedReadsElementsMultipleTimes(*cur)) {
         return true;
@@ -712,24 +706,14 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
       // Skip GTE.
       return IsConsumerTheOnlyNonRootUser(*user, consumer);
     }
-    if (user == &consumer) {
-      // `user` is `consumer`.
-      return true;
-    }
-    if (user == user->parent()->root_instruction()) {
-      // Consumed by ROOT.
-      return true;
-    }
-    return false;
+    // `user` is `consumer` or consumed by ROOT.
+    return user == &consumer || user == user->parent()->root_instruction();
   });
 }
 
 size_t GetInstrCountOfFusible(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return 1;
-  } else {
-    return instr.fused_instruction_count();
-  }
+  return instr.opcode() == HloOpcode::kFusion ? instr.fused_instruction_count()
+                                              : 1;
 }
 
 absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(

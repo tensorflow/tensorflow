@@ -119,6 +119,9 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                                        user->name(), "| inside FusionMerger"),
                           *consumer);
     }
+
+    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_,
+                                                gpu_device_info_);
     changed_ = true;
   }
 
@@ -223,9 +226,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
       return "not fusing bitcast ops";
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
-    if (NoFusionPossible compatible =
-            !FusionHeroesAreCompatible(producer_hero, consumer_hero)) {
-      return !compatible;
+    if (auto compatible =
+            FusionHeroesAreCompatible(producer_hero, consumer_hero);
+        !compatible) {
+      return compatible;
     }
     FusionDecision fusible = IsProducerConsumerFusible(*producer, *user);
     if (!fusible) {
@@ -274,9 +278,15 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     }
   }
 
+  bool use_experimental_block_size =
+      producer->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_enable_experimental_block_size();
+
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_, compute_capability_,
-      producer->users(), /*multi_output=*/false);
+      producer, &*cost_analysis_, gpu_device_info_, use_experimental_block_size,
+      compute_capability_, producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";

@@ -215,7 +215,7 @@ void EmitKernel(FunctionEmitterContext& function_context,
   constructor.construct_attributes(attributes.size())
       .Assign(attributes.begin(), attributes.end());
 
-  if (op.hasTrait<mlir::OpTrait::IsTerminator>()) {
+  if (llvm::isa<mlir::func::ReturnOp>(&op)) {
     constructor.set_code(function_context.module_context.GetKernelId("return"));
 
     function_output_regs = std::move(arguments);
@@ -301,7 +301,7 @@ absl::Status EmitExecutable(ModuleEmitterContext& module_context,
       if (llvm::isa<mlir::func::CallOp>(&op)) {
         // Canonicalize the MLIR builtin call op's name to "call".
         module_context.AddKernelName("call");
-      } else if (op.hasTrait<mlir::OpTrait::IsTerminator>()) {
+      } else if (llvm::isa<mlir::func::ReturnOp>(&op)) {
         // Canonicalize the return op's name to "return".
         if (op.getNumResults() != 0) {
           return absl::InvalidArgumentError(

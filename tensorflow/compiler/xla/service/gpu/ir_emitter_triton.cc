@@ -448,13 +448,91 @@ Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
 Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
                     const HloInstruction& broadcast, Value input,
                     mlir::ArrayRef<int64_t> tile_shape) {
-  if (broadcast.operand(0)->shape().rank() == 0) {
+  if (!input.dyn_cast<TensorValue>()) {
     return Splat(b, input, tile_shape);
   }
   // The only other kind of broadcast that can happen currently is a
   // broadcast into the split-K batch dimension which requires
   // no action here.
   return input;
+}
+
+Value EmitScope(mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+                mlir::triton::FuncOp fn,
+                absl::Span<const HloInstruction* const> instructions,
+                absl::flat_hash_map<const HloInstruction*, Value>& values,
+                Value load_offsets, Value load_mask);
+
+Value EmitReduce(mlir::ImplicitLocOpBuilder& b,
+                 const HloInstruction& hlo_reduce,
+                 absl::string_view libdevice_path, mlir::triton::FuncOp fn,
+                 Value input, Value tile_mask) {
+  llvm::ArrayRef<int64_t> input_shape =
+      input.cast<TensorValue>().getType().getShape();
+
+  // At the moment, we should only emit a full reduction over the last axis of
+  // a single input.
+  CHECK_EQ(hlo_reduce.operand_count(), 2);
+  CHECK_EQ(hlo_reduce.dimensions().size(), 1);
+  CHECK_EQ(hlo_reduce.dimensions(0), hlo_reduce.operand(0)->shape().rank() - 1);
+  CHECK_GE(input_shape.back(),
+           hlo_reduce.operand(0)->shape().dimensions().back());
+  // We assume here that the reduction value was input as a constant, and/or has
+  // been constant-folded.
+  CHECK_EQ(hlo_reduce.operand(1)->opcode(), HloOpcode::kConstant);
+
+  // Since every shape is padded to a power of 2 in Triton, the input tile may
+  // be padded with arbitrary values. These values could affect the result of
+  // the reduction, so we need to mask them away. Luckily, we have a monoid
+  // structure (element_type, hlo_reduce.to_apply(), hlo_reduce.operand(1))---
+  // up to floating-point inaccuracies. Masking the input using
+  // hlo_reduce.operand(1) is thus always the right choice to ensure that the
+  // reduction is computed correctly, since it is the neutral value with regards
+  // to the reducer.
+  Value neutral = EmitConstant(b, *hlo_reduce.operand(1));
+  Value masked_input =
+      b.create<ma::SelectOp>(tile_mask, input, Splat(b, neutral, input_shape));
+
+  // Triton actually only performs reductions on float32 inputs, and we must
+  // thus upcast/downcast our input if its data type is different.
+  Value casted_input = Cast(b, masked_input, b.getF32Type());
+
+  mt::ReduceOp reduction = b.create<mt::ReduceOp>(
+      SmallVector<Value>({casted_input}), (int)input_shape.size() - 1);
+  {
+    mlir::Location loc = b.getLoc();
+    mlir::Block* reducer =
+        b.createBlock(&reduction->getRegion(0), {},
+                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+
+    HloComputation* reduction_computation = hlo_reduce.to_apply();
+
+    std::vector<const HloInstruction*> to_emit;
+    absl::flat_hash_map<const HloInstruction*, Value> region_values;
+    for (const HloInstruction* instr :
+         reduction_computation->MakeInstructionPostOrder()) {
+      if (instr->opcode() == HloOpcode::kParameter) {
+        int parameter_number = instr->parameter_number();
+        CHECK_LT(parameter_number, 2);
+        CHECK(region_values
+                  .insert({instr, reducer->getArgument(parameter_number)})
+                  .second);
+      } else {
+        to_emit.push_back(instr);
+      }
+    }
+
+    CHECK(!to_emit.empty());
+
+    b.setInsertionPointToStart(reducer);
+    Value result =
+        EmitScope(b, libdevice_path, fn, to_emit, region_values, {}, {});
+    b.create<mt::ReduceReturnOp>(SmallVector<Value>({result}));
+    b.setInsertionPointAfter(reduction);
+  }
+
+  return Cast(b, reduction.getResult().front(),
+              TritonType(b, hlo_reduce.shape().element_type()));
 }
 
 // Emit sequence of instructions using compatible tiling ordered producers
@@ -474,6 +552,9 @@ Value EmitScope(mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
       mlir::ArrayRef<int64_t> tile_shape =
           load_offsets.dyn_cast<TensorValue>().getType().getShape();
       result = EmitBroadcast(b, *hlo, values[hlo->operand(0)], tile_shape);
+    } else if (hlo->opcode() == HloOpcode::kReduce) {
+      result = EmitReduce(b, *hlo, libdevice_path, fn, values[hlo->operand(0)],
+                          load_mask);
     } else if (hlo->IsElementwise()) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
@@ -846,25 +927,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
 
-  {
-    int required_shmem_size = 0;
-    for (const HloInstruction* hlo :
-         analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS)) {
-      required_shmem_size += block_m * ShapeUtil::ByteSizeOfPrimitiveType(
-                                           hlo->shape().element_type());
-    }
-    for (const HloInstruction* hlo :
-         analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS)) {
-      required_shmem_size += block_n * ShapeUtil::ByteSizeOfPrimitiveType(
-                                           hlo->shape().element_type());
-    }
-    required_shmem_size *= block_k * config.num_stages();
-    if (required_shmem_size > shmem_budget) {
-      return ResourceExhausted("Requires too much shared memory: %d > %d",
-                               required_shmem_size, shmem_budget);
-    }
-  }
-
   // Data type of dot() immediate inputs.
   Type dot_input_ty = b.getF32Type();
   {
@@ -1189,27 +1251,31 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   mlir::ImplicitLocOpBuilder b(loc, builder);
 
   // Assumptions we make about the matcher:
-  //   * matches *exactly* softmax on the last axis, not just something
-  //     softmax-like
-  //   * the implementation of softmax is like in jax.nn.softmax
+  //   * matches Softmax "diamonds" on the last axis, along with any number of
+  //     elementwise operations/bitcasts on any edge
+  //   * within a given fusion, every argument to a Softmax diamond has the same
+  //     shape
+  //   * every reduction is on the last axis
+  //   * the last axis of every reduction parameter has the same length
+  //   * reductions only reduce a single operand
   //   * all the shapes have canonical layout (logical layout = physical layout)
+  //   * the computation has a single input and a single output
 
-  // TODO(bchetioui): generalise to Softmax-like patterns involving elementwise
-  // ops.
   // TODO(bchetioui): allow doing several rows per block (e.g. for when rows
   // are smaller than the minimum transaction size)
 
-  CHECK_EQ(root->opcode(), HloOpcode::kDivide);
-  CHECK_EQ(root->operand(1)->opcode(), HloOpcode::kBroadcast);
+  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kReduce);
 
-  const HloInstruction* reduce = root->operand(1)->operand(0);
-  Shape root_shape = root->shape();
+  CHECK_NE(reduce, nullptr);
+
+  Shape reduce_input_shape = reduce->operand(0)->shape();
 
   CHECK_EQ(reduce->opcode(), HloOpcode::kReduce);
   CHECK_EQ(reduce->dimensions().size(), 1);
-  CHECK_EQ(reduce->dimensions()[0], root_shape.rank() - 1);
+  CHECK_EQ(reduce->dimensions()[0], reduce_input_shape.rank() - 1);
 
-  int row_len = root_shape.dimensions_minor(0);
+  int row_len = reduce_input_shape.dimensions_minor(0);
   int block_row = 1;
 
   // block_row must be a power of two.
@@ -1218,22 +1284,8 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   }
 
   int num_rows = 1;
-  for (int minor_axis = 1; minor_axis < root_shape.rank(); ++minor_axis)
-    num_rows *= root_shape.dimensions_minor(minor_axis);
-
-  const LaunchDimensions launch_dimensions{
-      {num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
-
-  // In the vanilla softmax case, the output type is the same as the input type.
-  PrimitiveType root_element_type = root->shape().element_type();
-  PrimitiveType producer_element_type =
-      computation->parameter_instruction(0)->shape().element_type();
-
-  CHECK_EQ(root_element_type, producer_element_type);
-
-  // We assume that both the input and the result use a floating point data
-  // type.
-  auto root_ty = TritonType(b, root_element_type).cast<mlir::FloatType>();
+  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank(); ++minor_axis)
+    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
 
   // softmax_kernel(input_ptr, output_ptr, num_rows, row_len, block_row) {
   //   row_index = tl.program_id(0)
@@ -1243,92 +1295,30 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   Value row_stride = b.create<ma::ConstantIntOp>(row_len, /*width=*/32);
   Value offset = b.create<ma::MulIOp>(row_index, row_stride);
 
-  //   input_ptr += offset
-  //   output_ptr += offset
-  Value input_ptr = AddPtr(b, fn.getArgument(0), offset);
-  Value output_ptr = AddPtr(b, fn.getArgument(1), offset);
-
-  //   row_tile = tl.arange(0, block_row)
-  Value row_tile = b.create<mt::MakeRangeOp>(
-      mlir::RankedTensorType::get(block_row, b.getI32Type()), 0, block_row);
+  //   row_tile = tl.arange(0, block_row) + offset
+  Value splat_offsets = Splat(b, offset, block_row);
+  Value row_tile = b.create<ma::AddIOp>(splat_offsets, Range(b, block_row));
 
   //   mask = row_tile < row_stride
   Value splat_row_stride = Splat(b, row_stride, block_row);
-  Value mask =
-      b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, row_tile, splat_row_stride);
+  Value mask = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, Range(b, block_row),
+                                    splat_row_stride);
 
-  //   row = tl.load(input_ptr + row_tile, mask=row_tile < row_len,
-  //                 other=float('-inf'))
-  Value splat_input_ptr = Splat(b, input_ptr, block_row);
-  Value load_ptrs = AddPtr(b, splat_input_ptr, row_tile);
-  llvm::APFloat minus_inf =
-      llvm::APFloat::getInf(root_ty.getFloatSemantics(), /*Negative=*/true);
-
-  Value other = Splat(b, b.create<ma::ConstantFloatOp>(minus_inf, root_ty),
-                      row_tile.getType().cast<mlir::ShapedType>().getShape());
-  Value row =
-      b.create<mt::LoadOp>(load_ptrs, mask, other, mt::CacheModifier::NONE,
-                           mt::EvictionPolicy::NORMAL, /*isVolatile=*/false);
-
-  //   row_max = tl.max(row, axis=0)
-  // Triton actually only performs reductions on float32 inputs, and we must
-  // thus upcast/downcast our input if its data type is different.
-  Value casted_row = Cast(b, row, b.getF32Type());
-
-  mt::ReduceOp row_max =
-      b.create<mt::ReduceOp>(SmallVector<Value>({casted_row}), 0);
-
-  {
-    mlir::Block* max_reducer =
-        b.createBlock(&row_max->getRegion(0), {},
-                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
-
-    b.setInsertionPointToStart(max_reducer);
-    // Lowering for MaxFOp from TritonGPU to LLVM is not implemented, so we use
-    // select and compare instead.
-    Value cmpOp = b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE,
-                                       max_reducer->getArgument(0),
-                                       max_reducer->getArgument(1));
-    Value selectOp = b.create<ma::SelectOp>(cmpOp, max_reducer->getArgument(0),
-                                            max_reducer->getArgument(1));
-
-    b.create<mt::ReduceReturnOp>(SmallVector<Value>({selectOp}));
-    b.setInsertionPointAfter(row_max);
-  }
-
-  //   numerator = tl.exp(row - row_max)
-  Value splat_row_max = Splat(b, row_max->getResult(0), block_row);
-  Value bounded_row = b.create<ma::SubFOp>(casted_row, splat_row_max);
-  Value numerator = b.create<mlir::math::ExpOp>(bounded_row);
-
-  //   denominator = tl.sum(numerator, axis=0)
-  mt::ReduceOp denominator =
-      b.create<mt::ReduceOp>(SmallVector<Value>({numerator}), 0);
-
-  {
-    mlir::Block* sum_reducer =
-        b.createBlock(&denominator->getRegion(0), {},
-                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
-
-    b.setInsertionPointToStart(sum_reducer);
-    Value addOp = b.create<ma::AddFOp>(sum_reducer->getArgument(0),
-                                       sum_reducer->getArgument(1));
-    b.create<mt::ReduceReturnOp>(SmallVector<Value>({addOp}));
-    b.setInsertionPointAfter(denominator);
-  }
-
-  //   result = (numerator / denominator).to(output_ptr.dtype.element_ty)
-  Value splat_denominator = Splat(b, denominator->getResult(0), block_row);
-  Value division = b.create<ma::DivFOp>(numerator, splat_denominator);
-  Value result = Cast(b, division, root_ty);
+  absl::flat_hash_map<const HloInstruction*, Value> values_out;
+  Value result =
+      EmitScope(b, libdevice_path, fn, computation->MakeInstructionPostOrder(),
+                values_out, row_tile, mask);
 
   //   tl.store(output_ptr + row_tile, result, mask=mask)
-  Value splat_output_ptr = Splat(b, output_ptr, block_row);
+  Value splat_output_ptr = Splat(b, fn.getArgument(1), block_row);
   Value store_ptrs = AddPtr(b, splat_output_ptr, row_tile);
 
   b.create<mt::StoreOp>(store_ptrs, result, mask, mt::CacheModifier::NONE,
                         mt::EvictionPolicy::NORMAL);
   // }
+
+  const LaunchDimensions launch_dimensions{
+      {num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};
 
   return launch_dimensions;
 }

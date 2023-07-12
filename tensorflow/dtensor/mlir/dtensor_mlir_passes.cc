@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -37,9 +39,11 @@ class ConditionalPrinter : public BridgeLoggerConfig {
   bool do_not_print_;
 
  public:
-  explicit ConditionalPrinter(bool print_module_scope = false,
-                              bool print_after_only_on_change = true)
-      : BridgeLoggerConfig(print_module_scope, print_after_only_on_change) {
+  explicit ConditionalPrinter(
+      bool print_module_scope = false, bool print_after_only_on_change = true,
+      mlir::OpPrintingFlags op_printing_flags = mlir::OpPrintingFlags())
+      : BridgeLoggerConfig(print_module_scope, print_after_only_on_change,
+                           op_printing_flags) {
     do_not_print_ = !(LogOnAllTasks() || (ClientId() == 0));
   }
 
@@ -71,8 +75,15 @@ bool MaybeEnableLogging(mlir::PassManager *pm) {
     // Print the whole module after each pass, which requires disabling
     // multi-threading as well.
     pm->getContext()->disableMultithreading();
+    mlir::OpPrintingFlags flags;
+    if (VLOG_IS_ON(5)) {
+      // Enable debug information, which includes the call stack of each op.
+      // This might generate a huge MLIR graph dump, so put it under VLOG(5).
+      flags = flags.enableDebugInfo(true, true).useLocalScope();
+    }
     pm->enableIRPrinting(std::make_unique<ConditionalPrinter>(
-        /*print_module_scope=*/true));
+        /*print_module_scope=*/true, /*print_after_only_on_change=*/true,
+        flags));
     return true;
   }
   return false;
@@ -111,8 +122,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // three component tensors and SparseToDenseOps are emitted for every usage
   // of a SparseTensor.
   pm->addPass(CreateDTensorSparseTensorToDenseTensor());
-
-  AddDTensorEmbeddingPass(pm);
 
   // After shape inference, there may be unused constants ops added when
   // propagating caller-callee constants. As DTensor mesh/layout propgation
@@ -165,8 +174,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // expansion.
   pm->addPass(CreateDTensorAnnotateGlobalShape());
 
-  AddDTensorEmbeddingPassV2(pm);
-
   ////////
   // Propagate layout to all ops in graph.
 
@@ -181,9 +188,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Expand graph to SPMD form given layouts are annotated to all ops.
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
-
-  // Insert functions to save or load embeddings when using tpu device.
-  AddDTensorEmbeddingCheckpointPass(pm);
 
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
@@ -216,6 +220,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
       CreateDTensorAllReduceSumOptimization());
 
   AddDTensorAllReduceCombineOptimization(pm);
+
+  // Lowers complex and other unsupported types to supported types.
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorCollectiveTypeLoweringPass());
 
   // DTensorReduceScatter lowering should come before DTensorAllReduce
   // and DTensorAllScatter lowerings since for some devices DTensorReduceScatter

@@ -85,7 +85,19 @@ class GpuExecutableRunOptions {
       NcclUniqueIdCallback nccl_unique_id_callback);
   const NcclUniqueIdCallback& nccl_unique_id_callback() const;
 
+  // Whether the run requires an exclusive lock on the GPU.
+  bool requires_exclusive_lock_on_gpu() const {
+    return requires_exclusive_lock_on_gpu_;
+  }
+
+  // Require writers lock on the GRPU.
+  GpuExecutableRunOptions& set_requires_exclusive_lock_on_gpu() {
+    requires_exclusive_lock_on_gpu_ = true;
+    return *this;
+  }
+
  private:
+  bool requires_exclusive_lock_on_gpu_ = false;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   NcclUniqueIdCallback nccl_unique_id_callback_;
 };

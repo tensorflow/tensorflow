@@ -1,0 +1,29 @@
+diff --git a/lib/Dialect/Triton/IR/Ops.cpp b/lib/Dialect/Triton/IR/Ops.cpp
+index cd8d1b82e..f0f1127d5 100644
+--- a/lib/Dialect/Triton/IR/Ops.cpp
++++ b/lib/Dialect/Triton/IR/Ops.cpp
+@@ -6,7 +6,7 @@
+ #include "mlir/IR/OperationSupport.h"
+ #include "triton/Dialect/Triton/IR/Dialect.h"
+ #include "triton/Dialect/Triton/IR/Types.h"
+-#include "triton/Dialect/TritonGPU/IR/Attributes.h"
++//#include "triton/Dialect/TritonGPU/IR/Attributes.h"
+
+ namespace mlir {
+ namespace triton {
+@@ -404,6 +404,7 @@ LogicalResult mlir::triton::DotOp::verify() {
+   auto bTy = getOperand(1).getType().cast<RankedTensorType>();
+   if (aTy.getElementType() != bTy.getElementType())
+     return emitError("element types of operands A and B must match");
++#if 0 // TODO(csigg): avoid cyclic BUILD dependency.
+   auto aEncoding =
+       aTy.getEncoding().dyn_cast_or_null<triton::gpu::DotOperandEncodingAttr>();
+   auto bEncoding =
+@@ -415,6 +416,7 @@ LogicalResult mlir::triton::DotOp::verify() {
+     return emitError("mismatching encoding between A and B operands");
+   if (aEncoding.getMMAv2kWidth() != bEncoding.getMMAv2kWidth())
+     return emitError("mismatching kWidth between A and B operands");
++#endif
+   return mlir::success();
+ }
+

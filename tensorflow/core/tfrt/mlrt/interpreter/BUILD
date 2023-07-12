@@ -123,6 +123,7 @@ cc_library(
         ":async_handle",
         ":context",
         ":execute",
+        ":future",
         ":value",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/status",

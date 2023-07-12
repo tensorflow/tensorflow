@@ -1061,6 +1061,72 @@ TEST_F(FusionMergerTest, IncompatibleNonTrivialHeroes) {
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
 }
 
+TEST_F(FusionMergerTest, DoNotMergeDUSFusions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    %fused_computation (param_0: f32[8], param_1.2: f32[], param_2.3: f32[8]) -> f32[8] {
+      %param_0 = f32[8]{0} parameter(0)
+      %param_2.3 = f32[8]{0} parameter(2)
+      %slice.2 = f32[5]{0} slice(f32[8]{0} %param_2.3), slice={[0:5]}
+      %param_1.2 = f32[] parameter(1)
+      %broadcast.2 = f32[5]{0} broadcast(f32[] %param_1.2), dimensions={}
+      %add.2 = f32[5]{0} add(f32[5]{0} %slice.2, f32[5]{0} %broadcast.2)
+      %two.1 = s32[] constant(2)
+      ROOT %dynamic-update-slice.2 = f32[8]{0} dynamic-update-slice(f32[8]{0} %param_0, f32[5]{0} %add.2, s32[] %two.1)
+    }
+
+    %fused_computation.1 (param_0.1: f32[8], param_1.4: f32[6], param_2.6: f32[]) -> f32[8] {
+      %param_0.1 = f32[8]{0} parameter(0)
+      %param_1.4 = f32[6]{0} parameter(1)
+      %param_2.6 = f32[] parameter(2)
+      %broadcast.3 = f32[6]{0} broadcast(f32[] %param_2.6), dimensions={}
+      %add.3 = f32[6]{0} add(f32[6]{0} %param_1.4, f32[6]{0} %broadcast.3)
+      %three.1 = s32[] constant(3)
+      ROOT %dynamic-update-slice.3 = f32[8]{0} dynamic-update-slice(f32[8]{0} %param_0.1, f32[6]{0} %add.3, s32[] %three.1)
+    }
+
+    ENTRY %Test (parameter: f32[8]) -> f32[8] {
+      %parameter = f32[8]{0} parameter(0)
+      %slice.1 = f32[6]{0} slice(f32[8]{0} %parameter), slice={[0:6]}
+      %one = f32[] constant(1)
+      %fusion.1 = f32[8]{0} fusion(f32[8]{0} %parameter, f32[6]{0} %slice.1, f32[] %one), kind=kLoop, calls=%fused_computation.1
+      ROOT %fusion = f32[8]{0} fusion(f32[8]{0} %fusion.1, f32[] %one, f32[8]{0} %parameter), kind=kLoop, calls=%fused_computation
+    }
+    )")
+                    .value();
+  EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, MergeDUSFusionWithElementwiseFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    %fused_computation {
+      %param_0 = f32[1,8]{1,0} parameter(0)
+      %bitcast = f32[8]{0} bitcast(%param_0)
+      ROOT %neg = f32[8]{0} negate(%bitcast)
+    }
+
+    %fused_computation.1 {
+      %param_0.1 = f32[8]{0} parameter(0)
+      %param_1.4 = f32[5]{0} parameter(1)
+      %three.1 = s32[] constant(3)
+      %exp = f32[5]{0} exponential(%param_1.4)
+      ROOT %dynamic-update-slice.3 = f32[8]{0} dynamic-update-slice(f32[8]{0} %param_0.1, f32[5]{0} %exp, s32[] %three.1)
+    }
+
+    ENTRY %Test {
+      %parameter = f32[5]{0} parameter(0)
+      %parameter.1 = f32[1,8]{1,0} parameter(1)
+      %fusion = f32[8]{0} fusion(f32[1,8]{1,0} %parameter.1), kind=kLoop, calls=%fused_computation
+      ROOT %fusion.1 = f32[8]{0} fusion(f32[8]{0} %fusion, f32[5]{0} %parameter), kind=kLoop, calls=%fused_computation.1
+    }
+    )")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
