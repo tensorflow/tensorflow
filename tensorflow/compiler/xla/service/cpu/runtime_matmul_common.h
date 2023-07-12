@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_COMMON_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_COMMON_H_
+
+#include <cstdint>
 
 #define EIGEN_USE_THREADS
 
@@ -26,9 +29,9 @@ limitations under the License.
 #include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
-namespace {
+namespace xla {
 
-bool Is16BytesAligned(void* ptr) {
+static inline bool Is16BytesAligned(void* ptr) {
   return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
 }
 
@@ -146,59 +149,6 @@ void BatchMatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
                                     batch_size, transpose_lhs, transpose_rhs);
 }
 
-}  // namespace
+}  // namespace xla
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF16(
-    const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
-    Eigen::half* rhs, int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
-    int32_t transpose_rhs) {
-  MatMulDispatch<Eigen::half>(run_options_ptr, out, lhs, rhs, m, n, k,
-                              transpose_lhs, transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF32(
-    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
-    int64_t n, int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
-  MatMulDispatch<float>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                        transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF64(
-    const void* run_options_ptr, double* out, double* lhs, double* rhs,
-    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
-    int32_t transpose_rhs) {
-  MatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                         transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulC64(
-    const void* run_options_ptr, std::complex<float>* out,
-    std::complex<float>* lhs, std::complex<float>* rhs, int64_t m, int64_t n,
-    int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
-  MatMulDispatch<std::complex<float>>(run_options_ptr, out, lhs, rhs, m, n, k,
-                                      transpose_lhs, transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulC128(
-    const void* run_options_ptr, std::complex<double>* out,
-    std::complex<double>* lhs, std::complex<double>* rhs, int64_t m, int64_t n,
-    int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
-  MatMulDispatch<std::complex<double>>(run_options_ptr, out, lhs, rhs, m, n, k,
-                                       transpose_lhs, transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulS32(
-    const void* run_options_ptr, int32_t* out, int32_t* lhs, int32_t* rhs,
-    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
-    int32_t transpose_rhs) {
-  MatMulDispatch<int32_t>(run_options_ptr, out, lhs, rhs, m, n, k,
-                          transpose_lhs, transpose_rhs);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenBatchMatMulF32(
-    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
-    int64_t n, int64_t k, int64_t batch_size, int32_t transpose_lhs,
-    int32_t transpose_rhs) {
-  BatchMatMulDispatch<float>(run_options_ptr, out, lhs, rhs, m, n, k,
-                             batch_size, transpose_lhs, transpose_rhs);
-}
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_COMMON_H_
