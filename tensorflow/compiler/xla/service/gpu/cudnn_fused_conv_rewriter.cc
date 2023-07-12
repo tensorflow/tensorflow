@@ -67,12 +67,13 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
 
 // elu, relu6, and leaky-relu activations are supported in cudnn via the
 // "runtime fusion" engine, which JIT compiles C++ code.  This can be slow to
-// compile, so we guard it with a debug option.  Also nvidia currently
-// recommends that we enable this only on Ampere+.
+// compile, so we guard it with a debug option.
+//
+// nvidia currently recommends that we enable this only on Ampere+, but we've
+// tested on Turing (sm75) and it seems to work fine.
 bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
                                  se::CudaComputeCapability cc) {
-  return debug_opts.xla_gpu_use_runtime_fusion() &&
-         cc.IsAtLeast(se::CudaComputeCapability::AMPERE);
+  return debug_opts.xla_gpu_use_runtime_fusion() && cc.IsAtLeast(7, 5);
 }
 
 // Can instr be converted to type `dst_ty` without losing any precision?  For
