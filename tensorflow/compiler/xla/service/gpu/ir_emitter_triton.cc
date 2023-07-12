@@ -615,6 +615,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
 }
 
 // Extract additional attributes from an LLVM function that are not passed
