@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace gpu {
@@ -92,6 +94,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
   llvm::SmallVector<RegionInfo> region_infos;
   DataflowAnalysis::DataflowGraph dataflow_graph =
       dataflow_analysis.GetDataflowGraph(capture_func);
+
+  // If verbose logging is enabled print the dataflow graph as a DOT graph.
+  if (VLOG_IS_ON(100)) {
+    std::cout << "Dependency graph for graph capture function "
+              << capture_func.getName().str() << ":\n"
+              << dataflow_analysis.ToDot(dataflow_graph);
+  }
 
   llvm::SmallVector<DataflowAnalysis::Node> region;
 

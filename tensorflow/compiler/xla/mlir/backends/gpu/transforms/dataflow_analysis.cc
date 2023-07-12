@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -193,6 +195,32 @@ DataflowAnalysis::DataflowGraph DataflowAnalysis::GetDataflowGraph(
   }
 
   return graph;
+}
+
+std::string DataflowAnalysis::ToDot(const DataflowGraph& graph) {
+  std::string pad;
+  std::string res;
+  auto indent = [&] { pad.append(2, ' '); };
+  auto outdent = [&] { pad.resize(pad.size() - 2); };
+  auto addline = [&](auto&&... args) {
+    absl::StrAppend(&res, pad, args..., "\n");
+  };
+  auto get_name = [](const Node& node) -> std::string {
+    return absl::StrCat("\"", node.operation->getName().getStringRef().str(),
+                        "_", node.index, "\"");
+  };
+
+  addline("digraph {");
+  indent();
+  for (const Node& node : graph) {
+    for (size_t child_index : node.children) {
+      Node child = graph[child_index];
+      addline(get_name(node), " -> ", get_name(child));
+    }
+  }
+  outdent();
+  addline("}");
+  return res;
 }
 
 }  // namespace gpu

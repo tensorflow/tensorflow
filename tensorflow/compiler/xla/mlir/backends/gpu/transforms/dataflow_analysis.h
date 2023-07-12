@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_DATAFLOW_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_DATAFLOW_ANALYSIS_H_
 
+#include <string>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -45,6 +46,8 @@ class DataflowAnalysis {
   //       have write-conflicts.
   //   (3) We have information about read-only and read-write buffer arguments.
   DataflowGraph GetDataflowGraph(mlir::func::FuncOp graph_capture_function);
+
+  std::string ToDot(const DataflowGraph& graph);
 };
 
 }  // namespace gpu
