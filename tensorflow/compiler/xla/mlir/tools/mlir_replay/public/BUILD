@@ -47,7 +47,6 @@ cc_library(
 xla_cc_test(
     name = "execution_trace_utils_test",
     srcs = ["execution_trace_utils_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":execution_trace_utils",
         "//tensorflow/compiler/xla:literal_util",

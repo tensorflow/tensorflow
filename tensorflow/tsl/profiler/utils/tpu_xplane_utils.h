@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
 #define TENSORFLOW_TSL_PROFILER_UTILS_TPU_XPLANE_UTILS_H_
 
+#include <optional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -29,6 +31,10 @@ std::vector<const tensorflow::profiler::XPlane*> FindTensorCorePlanes(
 // Find and return Mutable TensorCore XPlanes from the XSpace.
 std::vector<tensorflow::profiler::XPlane*> FindMutableTensorCorePlanes(
     tensorflow::profiler::XSpace* xspace);
+
+// Get Tensorcore Id from TensorCore plane name if plane name is a valid
+// TensorCore plane name.
+std::optional<int> GetTensorCoreId(absl::string_view plane_name);
 
 }  // namespace profiler
 }  // namespace tsl

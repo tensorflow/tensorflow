@@ -1708,11 +1708,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Invalid shapes.
     with self.assertRaisesRegex(
-        TypeError,
-        (
-            'Tensor conversion requested dtype float32 for Tensor with dtype'
-            ' int32.*'
-        ),
+        TypeError, r'Can not cast .*dtype=tf.int32.* to .*dtype=tf.float32.*'
     ):
       defined(array_ops.ones([3], dtype=dtypes.int32))
 
@@ -2271,7 +2267,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'Can not cast TensorSpec\(shape=\(2,\).* to TensorSpec\(shape=\(1,\)',
+    ):
       g()
 
   @test_util.run_in_graph_and_eager_modes
@@ -2610,8 +2609,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
           call_args=lambda: (ragged_factory_ops.constant([[1.0]]), 5),
           error=(
-              r'Binding inputs .* failed .* dtype int32 for Tensor with dtype'
-              r' float32:'
+              r'Binding inputs .* failed.*dtype=tf.float32.* to'
+              r' .*dtype=tf.int32.*'
           ),
       ),
       dict(
@@ -4782,12 +4781,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast Tensor'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):
@@ -4842,7 +4841,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     # Index dtype mismatch int32 vs. int64.
     value = indexed_slices.IndexedSlices(
         constant_op.constant([1, 2]), constant_op.constant([0, 1]))
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       lazy_capture()
 
   @parameterized.parameters(

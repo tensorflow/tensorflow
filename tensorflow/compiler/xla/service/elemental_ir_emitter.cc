@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/float8_fnuz_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -57,6 +58,8 @@ using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+using xla::float8_fnuz_ir_emitter::EmitF8fnuzToFloating;
+using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
 
 namespace {
 
@@ -625,6 +628,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
                                      b_),
               b_);
         }
+        if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
+          return EmitFloatingToF8fnuz(
+              F16,
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              to_type, b_);
+        }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
       }
@@ -759,6 +769,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           return operand_value;
         }
       }
+      if (from_type == F8E5M2FNUZ || from_type == F8E4M3FNUZ) {
+        TF_RET_CHECK(to_type != from_type);
+        PrimitiveType cast_type =
+            primitive_util::IsFloatingPointType(to_type) ? to_type : F16;
+        TF_ASSIGN_OR_RETURN(operand_value,
+                            EmitF8fnuzToFloating(from_type, operand_value,
+                                                 cast_type, b_, module_));
+        from_type = cast_type;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -803,6 +825,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value, llvm_ir::PrimitiveTypeToIrType(F16, module_));
         }
         return EmitF16ToF8e4m3b11fnuz(operand_value, b_);
+      }
+      if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
+        return EmitFloatingToF8fnuz(from_type, operand_value, to_type, b_);
       }
       if (to_type == PRED) {
         return b_->CreateZExt(
@@ -1292,6 +1317,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       } else if (operand_type == F8E4M3FN) {
         lhs_value = EmitF8e4m3fnToF16(lhs_value, b_);
         rhs_value = EmitF8e4m3fnToF16(rhs_value, b_);
+      } else if (operand_type == F8E5M2FNUZ || operand_type == F8E4M3FNUZ) {
+        TF_ASSIGN_OR_RETURN(
+            lhs_value,
+            EmitF8fnuzToFloating(operand_type, lhs_value, F16, b_, module_));
+        TF_ASSIGN_OR_RETURN(
+            rhs_value,
+            EmitF8fnuzToFloating(operand_type, rhs_value, F16, b_, module_));
       }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
@@ -3032,6 +3064,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm::Type* float_ir_type;
           if (component_element_type == BF16) {
             float_ir_type = llvm_ir::PrimitiveTypeToIrType(F32, module_);
+          } else if (component_element_type == F8E4M3FNUZ) {
+            float_ir_type = llvm_ir::PrimitiveTypeToIrType(F16, module_);
+          } else if (component_element_type == F8E5M2FNUZ) {
+            float_ir_type = llvm_ir::PrimitiveTypeToIrType(F16, module_);
           } else {
             float_ir_type =
                 llvm_ir::PrimitiveTypeToIrType(component_element_type, module_);
@@ -3040,6 +3076,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == BF16) {
             TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val));
+          } else if (component_element_type == F8E4M3FNUZ ||
+                     component_element_type == F8E5M2FNUZ) {
+            TF_ASSIGN_OR_RETURN(
+                iota_result, EmitFloatingToF8fnuz(F16, float_val,
+                                                  component_element_type, b_));
           } else {
             iota_result = float_val;
           }

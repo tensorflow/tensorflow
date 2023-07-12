@@ -1281,6 +1281,7 @@ std::vector<StackFrame> FrozenStackTrace::GetUserFrames(int limit) const {
   if (limit < 0 || limit > user_frames_.size()) {
     limit = user_frames_.size();
   }
+  result.reserve(limit);
   for (int i = 0; i < limit; ++i) {
     result.push_back(user_frames_[i]);
   }

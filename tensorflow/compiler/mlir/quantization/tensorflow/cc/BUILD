@@ -11,6 +11,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
+        "//learning/brain/mlir/quantization:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
@@ -142,5 +143,58 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "run_passes",
+    srcs = ["run_passes.cc"],
+    hdrs = ["run_passes.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "constant_fold",
+    srcs = [
+        "constant_fold.cc",
+    ],
+    hdrs = [
+        "constant_fold.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:constant_fold_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "constant_fold_test",
+    srcs = ["constant_fold_test.cc"],
+    deps = [
+        ":constant_fold",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Transforms",
     ],
 )

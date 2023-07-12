@@ -1355,7 +1355,9 @@ def tf_gen_op_wrapper_py(
         api_def_srcs = [],
         compatible_with = [],
         testonly = False,
-        copts = []):
+        copts = [],
+        extra_py_deps = None,
+        py_lib_rule = native.py_library):
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1444,14 +1446,15 @@ def tf_gen_op_wrapper_py(
     # Make a py_library out of the generated python file.
     if not generated_target_name:
         generated_target_name = name
-    native.py_library(
+    py_deps = [clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2")]
+    if extra_py_deps:
+        py_deps += extra_py_deps
+    py_lib_rule(
         name = generated_target_name,
         srcs = [out],
         srcs_version = "PY3",
         visibility = visibility,
-        deps = [
-            clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2"),
-        ],
+        deps = py_deps,
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
         # that wraps this one.
@@ -2162,7 +2165,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()
+    return []
 
 check_deps = rule(
     _check_deps_impl,
@@ -2443,7 +2446,7 @@ def pywrap_tensorflow_macro_opensource(
     # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
     # (there is only one currently) that is not in the same directory, otherwise Python will fail to
     # link the pyd (which is just a dll) because of missing dependencies.
-    _create_symlink("bfloat16.so", "//tensorflow/tsl/python/lib/core:bfloat16.so")
+    _create_symlink("ml_dtypes.so", "//tensorflow/tsl/python/lib/core:ml_dtypes.so")
 
     native.py_library(
         name = name,
@@ -2452,8 +2455,8 @@ def pywrap_tensorflow_macro_opensource(
         data = select({
             clean_dep("//tensorflow:windows"): [
                 ":" + cc_library_pyd_name,
-                ":bfloat16.so",
-                "//tensorflow/tsl/python/lib/core:bfloat16.so",
+                ":ml_dtypes.so",
+                "//tensorflow/tsl/python/lib/core:ml_dtypes.so",
             ],
             "//conditions:default": [
                 ":" + cc_shared_library_name,
@@ -2485,7 +2488,6 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         exec_properties = tf_exec_properties(kwargs)
 
     test_rule(
-        # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],

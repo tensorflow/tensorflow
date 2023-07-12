@@ -152,5 +152,76 @@ func.func @func(%arg0: tensor<i32>) -> tensor<i32> {
   EXPECT_EQ(func.getSymName(), "outer_stateful_pcall_func");
 }
 
+TEST(CallGraphUtilTest, GetOpsOfTypeUntilMiss) {
+  const char *const code = R"mlir(
+func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
+  %0 = "tf.While"(%arg0) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
+  func.return %0 : tensor<i32>
+}
+
+func.func @while_cond_func(%arg0: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<0> : tensor<i1>} : () -> tensor<i1>
+  func.return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func.func @while_body_func
+func.func @while_body_func(%arg0: tensor<i32>) -> (tensor<i32>) {
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @outer_stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  func.return %0 : tensor<i32>
+}
+
+func.func @outer_stateful_pcall_func(%arg0: tensor<i32>) -> (tensor<i32>) {
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @inner_stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  func.return %0 : tensor<i32>
+}
+
+func.func @inner_stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @func} : (tensor<i32>) -> (tensor<i32>)
+  func.return %0 : tensor<i32>
+}
+
+func.func @func(%arg0: tensor<i32>) -> tensor<i32> {
+  func.return %arg0 : tensor<i32>
+}
+)mlir";
+  auto has_no_compile_device_type = [](mlir::SymbolUserOpInterface op) {
+    return !op->hasAttr(tensorflow::kCompileDeviceTypeAttr);
+  };
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> entry_funcs =
+      GetEntryFunctions(*module);
+  EXPECT_EQ(entry_funcs.size(), 1);
+  EXPECT_EQ(entry_funcs[0].getSymName(), "entry_func");
+  llvm::SmallVector<mlir::SymbolUserOpInterface> noinline_pcall_ops,
+      outermost_pcall_ops;
+  auto result =
+      mlir::GetOpsOfTypeUntilMiss<mlir::TF::StatefulPartitionedCallOp,
+                                  mlir::TF::PartitionedCallOp>(
+          entry_funcs[0], symtab, has_no_compile_device_type,
+          /*hits*/ noinline_pcall_ops, /*first_misses*/ outermost_pcall_ops)
+          .succeeded();
+  ASSERT_TRUE(result);
+  EXPECT_EQ(noinline_pcall_ops.size(), 2);
+  auto func =
+      llvm::dyn_cast<mlir::func::FuncOp>(noinline_pcall_ops[0]->getParentOp());
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getSymName(), "while_body_func");
+  func =
+      llvm::dyn_cast<mlir::func::FuncOp>(noinline_pcall_ops[1]->getParentOp());
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getSymName(), "outer_stateful_pcall_func");
+
+  EXPECT_EQ(outermost_pcall_ops.size(), 1);
+  func =
+      llvm::dyn_cast<mlir::func::FuncOp>(outermost_pcall_ops[0]->getParentOp());
+  ASSERT_TRUE(func);
+  EXPECT_EQ(func.getSymName(), "inner_stateful_pcall_func");
+}
+
 }  // namespace
 }  // namespace tensorflow

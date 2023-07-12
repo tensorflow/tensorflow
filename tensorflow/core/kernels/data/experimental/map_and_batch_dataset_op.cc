@@ -296,9 +296,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCallCounter), 0));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kBatchResultsSize), 0));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCallCounter, 0));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize, 0));
         return OkStatus();
       }
       mutex_lock l(*mu_);
@@ -309,8 +308,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK_EQ(num_calls_, 0);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCallCounter), call_counter_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kBatchResultsSize),
+          writer->WriteScalar(prefix(), kCallCounter, call_counter_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize,
                                              batch_results_.size()));
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
@@ -324,10 +323,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCallCounter), &call_counter_));
+          reader->ReadScalar(prefix(), kCallCounter, &call_counter_));
       int64_t batch_results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
-                                            &batch_results_size));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kBatchResultsSize, &batch_results_size));
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
@@ -630,15 +629,15 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
       result->end_of_input = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)));
+          prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput));
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumCalls)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumCalls),
           &result->num_calls));
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           &result->num_elements));
       result->output_allocated = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)));
+          prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated));
 
       TF_RETURN_IF_ERROR(ReadBatch(ctx, reader, dataset()->batch_size_,
                                    prefix(), batch_prefix, &result->output));
@@ -658,17 +657,17 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(result->mu);
       if (result->end_of_input) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)), ""));
+            prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput), ""));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumCalls)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumCalls),
           result->num_calls));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           result->num_elements));
       if (result->output_allocated) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)),
+            prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated),
             ""));
       }
 

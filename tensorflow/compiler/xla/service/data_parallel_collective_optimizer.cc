@@ -113,7 +113,7 @@ bool CheckIndexIsMonotonic(
   // are only sub/add then checking that we can compute the range here is enough
   // to guarantee that the index is monotonic if the base index is monotonic. If
   // we want to make the function more powerful we need to have a more
-  // sophisticated check for monothonicity.
+  // sophisticated check for monotonicity.
   Range range = RecursivelyIdentifyRange(index, induction_map);
   VLOG(5) << "Range for: " << index->ToString() << " " << range.ToString();
   return !range.IsEmpty() && range.IsLinear();
@@ -243,8 +243,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     HloInstruction* folded_user = folded_instr->users()[0];
     if (!HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
                           HloOpcode::kPad, HloOpcode::kCollectivePermute,
-                          HloOpcode::kReshape, HloOpcode::kTranspose>(
-            folded_user) &&
+                          HloOpcode::kConvert, HloOpcode::kReshape,
+                          HloOpcode::kTranspose>(folded_user) &&
         !folded_user->IsCustomCall(
             DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
       break;
@@ -1167,7 +1167,8 @@ static Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
 }
 
 // Function that does the work of pushing backward instructions that have been
-// determined that can be pipelined. Rough transformation: while (i < LAYERS) {
+// determined that can be pipelined. Rough transformation:
+// while (i < LAYERS) {
 //   p0 = param(0)
 //   p1 = param(1)
 //   p0_ag = all-gather(p0)
@@ -1426,8 +1427,12 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   // Substitute old loop with the result of the last peeled iteration.
   HloInstruction* final_loop_output = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_tuple_instructions));
+  HloComputation* loop_computation = while_loop->parent();
   TF_RETURN_IF_ERROR(
       while_loop->ReplaceAllUsesWithDifferentShape(final_loop_output));
+  TF_RETURN_IF_ERROR(
+      loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
+  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return OkStatus();
 }
 

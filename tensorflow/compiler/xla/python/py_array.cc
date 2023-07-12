@@ -293,6 +293,22 @@ PyArray PyArray::MakeFromSingleDeviceArray(
                  std::move(traceback), std::move(ifrt_array), committed);
 }
 
+PyArray PyArray::MakeFromIfrtArrayAndSharding(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
+    bool weak_type, bool committed) {
+  auto shape_span = ifrt_array->shape().dims();
+  ShapedArrayCacheKey key;
+  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.weak_type = weak_type;
+  auto aval = MakeShapedArrayCached(key);
+  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
                                            bool committed, bool skip_checks)
     : aval_(std::move(aval)),
@@ -622,11 +638,12 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
                           ifrt_array_ptr->Reshard(
                               ifrt::SingleDeviceSharding::Create(devices[0]),
                               ifrt::ArrayCopySemantics::kReuseInput));
-    } else if (llvm::isa<ifrt::OpaqueSharding>(ifrt_array_ptr->sharding())) {
-      auto opaque_sharding = ifrt::OpaqueSharding::Create(
-          std::move(devices),
-          llvm::dyn_cast<ifrt::OpaqueSharding>(&ifrt_array_ptr->sharding())
-              ->disassemble_func());
+    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::OpaqueSharding>(
+                   &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      std::shared_ptr<const ifrt::Sharding> opaque_sharding =
+          ifrt::OpaqueSharding::Create(std::move(devices),
+                                       in_sharding->disassemble_func());
       TF_ASSIGN_OR_RETURN(
           out_array,
           ifrt_array_ptr->Reshard(opaque_sharding,
@@ -979,8 +996,10 @@ Status PyArray::RegisterTypes(py::module& m) {
         return xla::ValueOrThrow(self.UnsafeBufferPointer());
       },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") = jax::property_readonly(
-      [](PyArray self) { return self.CudaArrayInterface(); });
+  type.attr("__cuda_array_interface__") =
+      jax::property_readonly([](PyArray self) {
+        return xla::ValueOrThrow(self.CudaArrayInterface());
+      });
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       py::is_method(type));

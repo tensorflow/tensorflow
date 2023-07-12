@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -128,41 +127,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
   return builder->getArrayAttr(attrs);
 }
 
-mlir::ArrayAttr ConvertDynamicParameterBindings(
-    const DynamicParameterBinding dpb, mlir::Builder* builder) {
-  llvm::SmallVector<mlir::Attribute, 4> bindings;
-  (void)dpb.ForEachBinding(
-      [&](const DynamicParameterBinding::DynamicParameter& source,
-          const DynamicParameterBinding::DynamicDimension& target) {
-        llvm::SmallVector<int64_t, 4> dpis;
-        for (auto dpi : source.parameter_index) dpis.push_back(dpi);
-        llvm::SmallVector<int64_t, 4> tpis;
-        for (auto tpi : target.parameter_index) tpis.push_back(tpi);
-        bindings.push_back(mlir::mhlo::DynamicParameterBindingAttr::get(
-            builder->getContext(), source.parameter_num, dpis,
-            target.parameter_num, tpis, target.dimension));
-        return OkStatus();
-      });
-  return mlir::ArrayAttr::get(builder->getContext(), bindings);
-}
-
-mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
-    mlir::Builder* builder) {
-  llvm::SmallVector<mlir::Attribute, 4> shapes;
-  for (auto [parameter, index, alt_memory_offset] : prefetches) {
-    llvm::SmallVector<int64_t, 4> dims;
-    for (auto dim : index) dims.push_back(dim);
-    std::optional<int64_t> offset =
-        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
-                          : std::nullopt;
-    shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
-        builder->getContext(), parameter, dims, offset));
-  }
-
-  return mlir::ArrayAttr::get(builder->getContext(), shapes);
-}
-
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
   switch (type) {
     case FftType::FFT:
@@ -256,18 +220,6 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const Shape shape,
                                                   mlir::Builder* builder) {
   if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
-}
-
-mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
-                                mlir::Builder* builder) {
-  return builder->getStringAttr(sharding.ToString(/*include_metadata=*/true));
-}
-
-mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
-                                mlir::Builder* builder) {
-  auto hlo_sharding = xla::HloSharding::FromProto(sharding);
-  if (!hlo_sharding.ok()) return {};
-  return ConvertSharding(hlo_sharding.value(), builder);
 }
 
 }  // namespace xla

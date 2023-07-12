@@ -22,15 +22,15 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
@@ -75,11 +75,7 @@ namespace gpu {
 // result is not stored, then the performance of convolution will be suboptimal.
 class GpuConvAlgorithmPicker : public HloModulePass {
  public:
-  static void ClearAutotuneResults();
-  static Status WriteAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(const AutotuneResults& results);
-
-  explicit GpuConvAlgorithmPicker(AutotuningConfig config) : config_(config) {}
+  explicit GpuConvAlgorithmPicker(AutotuneConfig config) : config_(config) {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -98,22 +94,8 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  // Debug information about the instruction we are autotuning.
-  struct AutotuneInstructionInfo {
-    std::string instr_str;
-    std::string module_str;
-
-    explicit AutotuneInstructionInfo(const HloCustomCallInstruction* instr)
-        : instr_str(instr->ToString()),
-          module_str(instr->GetModule()->ToString()) {}
-
-    explicit AutotuneInstructionInfo(std::string_view instr_str,
-                                     std::string_view module_str)
-        : instr_str(instr_str), module_str(module_str) {}
-  };
-
   // Run autotuning on allocated buffers and pick the best algorithm.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
+  StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
       GpuConvConfig conv_config, const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options,
       std::vector<se::DeviceMemoryBase> buffers,
@@ -122,7 +104,10 @@ class GpuConvAlgorithmPicker : public HloModulePass {
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
+
+  StatusOr<AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -151,28 +136,28 @@ class GpuConvAlgorithmPicker : public HloModulePass {
         se::RedzoneAllocator* input_output_allocator);
   };
 
-  StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
+  StatusOr<AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
       MaybeFusedConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
-      std::optional<AutotuneInstructionInfo> instruction_info,
+      std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 
   // Pick the best algorithm for CUDA platform.
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      std::optional<AutotuneInstructionInfo> instruction_info,
+      std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
+  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
  private:
-  AutotuningConfig config_;
+  AutotuneConfig config_;
 };
 
 }  // namespace gpu

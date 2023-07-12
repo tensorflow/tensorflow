@@ -2844,10 +2844,17 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return OkStatus();
 }
 
-Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                          absl::string_view trigger) {
+  auto print_options = HloPrintOptions::ShortParsable()
+                           .set_print_operand_shape(true)
+                           .set_print_extra_attributes(false);
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
-      << shape() << " is not compatible with " << new_producer->shape();
+      << "The shape doesn't match when replacing '" << ToString(print_options)
+      << "' with '" << new_producer->ToString(print_options) << "'. " << shape()
+      << " is not compatible with " << new_producer->shape() << "\n '"
+      << trigger << "' triggered this wrong replacement.";
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 
@@ -4601,6 +4608,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   }
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
+  }
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->mutable_precision_config();
   }
   LOG(FATAL) << "Unimplemented method.";
 }

@@ -126,8 +126,10 @@ struct IsReal {
       std::is_integral<T>::value || std::is_floating_point<T>::value ||
       std::is_same<bfloat16, T>::value || std::is_same<half, T>::value ||
       std::is_same<tsl::float8_e5m2, T>::value ||
+      std::is_same<tsl::float8_e5m2fnuz, T>::value ||
       std::is_same<tsl::float8_e4m3fn, T>::value ||
-      std::is_same<tsl::float8_e4m3b11, T>::value;
+      std::is_same<tsl::float8_e4m3b11, T>::value ||
+      std::is_same<tsl::float8_e4m3fnuz, T>::value;
 };
 
 template <typename T>
@@ -244,6 +246,16 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 /* static */ Literal LiteralUtil::ConvertBF16ToF64(
     const LiteralSlice& bf16_literal) {
   return ConvertType<bfloat16, double>(bf16_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF8E4M3FNUZ(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e4m3fnuz>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF8E5M2FNUZ(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e5m2fnuz>(f32_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(

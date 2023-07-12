@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -45,7 +46,8 @@ void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
   dialects->insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
                    mlir::func::FuncDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                    mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                   mlir::async::AsyncDialect, RuntimeDialect>();
+                   mlir::async::AsyncDialect, mlir::arith::ArithDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerBuiltinDialectTranslation(*dialects);

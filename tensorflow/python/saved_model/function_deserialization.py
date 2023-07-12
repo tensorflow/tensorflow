@@ -76,7 +76,7 @@ def _call_concrete_function(function, inputs):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
-      tensor_inputs.append(arg)
+      tensor_inputs.append(arg.handle)
   result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
@@ -180,7 +180,7 @@ def set_preinitialized_function_spec(concrete_fn, spec):
   )
   arg_specs, kwarg_specs = concrete_fn.structured_input_signature
 
-  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+  input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
       arg_specs,
       {
           function_type_lib.sanitize_arg_name(k): v
@@ -263,12 +263,6 @@ class RestoredFunction(def_function.Function):
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
-
-  def _compiler_with_scope(self, scope):
-    func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_type = self._function_type  # pylint: disable=protected-access
-    func._default_values = self._default_values  # pylint: disable=protected-access
-    return func
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -484,9 +478,8 @@ def load_function_def_library(library,
         func_graph.structured_outputs,
         func_graph.function_captures.capture_types,
     )
-    func = function_lib.ConcreteFunction(
-        func_graph, attrs=fdef.attr, function_type=function_type
-    )
+    func = function_lib.ConcreteFunction.from_func_graph(
+        func_graph, function_type, attrs=fdef.attr)
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

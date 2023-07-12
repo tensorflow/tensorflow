@@ -194,8 +194,8 @@ class MHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
 // Abs supports complex to real, so element type is not guaranteed to match.
 def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
     [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>,
-     TensorOf<[HLO_SInt, HLO_Float]>> {
+     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex, HLO_QuantizedInt]>,
+     TensorOf<[HLO_SInt, HLO_Float, HLO_QuantizedInt]>> {
   let summary = "Abs operation";
   let description = [{
     Performs element-wise abs operation on `operand` tensor and produces a
@@ -213,7 +213,7 @@ def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
 }
 
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
   let description = [{
     Performs element-wise cubic root operation on `operand` tensor and produces
@@ -286,7 +286,7 @@ def MHLO_ClzOp: MHLO_UnaryElementwiseOp<"count_leading_zeros",
 }
 
 def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cosine operation";
   let description = [{
     Performs element-wise cosine operation on `operand` tensor and produces a
@@ -306,7 +306,7 @@ def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
 }
 
 def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Exp operation";
   let description = [{
     Performs element-wise exponential operation on `operand` tensor and produces
@@ -323,7 +323,7 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
   let hasFolder = 1;
 }
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Expm1 operation";
   let description = [{
     Performs element-wise exponential minus one operation on `operand` tensor
@@ -399,7 +399,7 @@ def MHLO_IsFiniteOp: MHLO_UnaryElementwiseOp<"is_finite", [Pure,
 }
 
 def MHLO_LogOp: MHLO_UnaryElementwiseOp<"log",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Log operation";
   let description = [{
     Performs element-wise logarithm operation on `operand` tensor and produces a
@@ -416,7 +416,7 @@ def MHLO_LogOp: MHLO_UnaryElementwiseOp<"log",
   let hasFolder = 1;
 }
 def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Log1p operation";
   let description = [{
     Performs element-wise logarithm plus one operation on `operand` tensor and
@@ -432,7 +432,7 @@ def MHLO_Log1pOp: MHLO_UnaryElementwiseOp<"log_plus_one",
   }];
 }
 def MHLO_LogisticOp: MHLO_UnaryElementwiseOp<"logistic",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Logistic operation";
   let description = [{
     Performs element-wise logistic operation on `operand` tensor and produces a
@@ -467,7 +467,7 @@ def MHLO_NotOp: MHLO_UnaryElementwiseOp<"not",
 }
 
 def MHLO_NegOp: MHLO_UnaryElementwiseOp<"negate",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Neg operation";
   let description = [{
     Performs element-wise negation of `operand` tensor and produces a `result`
@@ -557,7 +557,7 @@ def MHLO_RoundNearestEvenOp: MHLO_UnaryElementwiseOp<"round_nearest_even",
 }
 
 def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Rsqrt operation";
   let description = [{
     Performs element-wise reciprocal square root operation on `operand` tensor
@@ -577,7 +577,7 @@ def MHLO_RsqrtOp: MHLO_UnaryElementwiseOp<"rsqrt",
 
 def MHLO_SignOp: MHLO_UnaryElementwiseOp<"sign",
     [Pure, HLO_CompatibleOperandsAndResultType],
-    TensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex]>> {
+    TensorOf<[MHLO_SInt, MHLO_Float, MHLO_Complex, HLO_QuantizedInt]>> {
   let summary = "Sign operation";
   let description = [{
     Returns the sign of the `operand` element-wise and produces a `result`
@@ -595,7 +595,7 @@ def MHLO_SignOp: MHLO_UnaryElementwiseOp<"sign",
 }
 
 def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Sine operation";
   let description = [{
     Performs element-wise sine operation on `operand` tensor and produces a
@@ -632,7 +632,7 @@ def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
 }
 
 def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
-    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Sqrt operation";
   let description = [{
     Performs element-wise square root operation on `operand` tensor and produces
@@ -651,7 +651,7 @@ def MHLO_SqrtOp: MHLO_UnaryElementwiseOp<"sqrt",
 
 def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
     [Pure, HLO_CompatibleOperandsAndResultType],
-    MHLO_FpOrComplexTensor> {
+    MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Tanh operation";
   let description = [{
     Performs element-wise hyperbolic tangent operation on `operand` tensor and
@@ -721,7 +721,7 @@ def MHLO_AddOp : MHLO_BinaryElementwiseOp<"add",
 }
 
 def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Atan2 operation";
   let description = [{
     Performs element-wise atan2 operation on `lhs` and `rhs` tensor and produces
@@ -766,7 +766,7 @@ def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
 }
 
 def MHLO_DivOp : MHLO_BinaryElementwiseOp<"divide",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Div operation";
   let description = [{
     Performs element-wise division of dividend `lhs` and divisor `rhs` tensors
@@ -838,7 +838,7 @@ def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
 }
 
 def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Pow operation";
   let description = [{
     Performs element-wise exponentiation of `lhs` tensor by `rhs` tensor and
@@ -854,7 +854,7 @@ def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
   }];
 }
 def MHLO_RemOp : MHLO_BinaryElementwiseOp<"remainder",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Rem operation";
   let description = [{
     Performs element-wise remainder of dividend `lhs` and divisor `rhs` tensors
@@ -923,7 +923,7 @@ def MHLO_ShiftRightLogicalOp : MHLO_BinaryElementwiseOp<"shift_right_logical",
 }
 
 def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
-      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexTensor> {
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Subtract operation";
   let description = [{
     Performs element-wise subtraction of two tensors `lhs` and `rhs` and
@@ -3458,16 +3458,16 @@ def MHLO_XlaRngGetAndUpdateStateOp: MHLO_Op<"xla.rng_get_and_update_state", [Dec
 
 // TODO(b/230662142): Implement unknown scales/zero_point cases.
 def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
-      [Pure], TensorOf<[F32, BF16, MHLO_QuantizedInt]>,
+      [Pure], TensorOf<[HLO_Float, MHLO_QuantizedInt]>,
       MHLO_QuantizedIntTensor> {
   let summary = "UniformQuantize operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/588.
+    Performs element-wise conversion of floating-point tensor or quantized
+    tensor `operand` to a quantized tensor `result` according to the
+    quantization parameters defined by the `result` type.
 
-    Informally, this operation converts floating point tensors or uniform
-    quantized tensors to uniform quantized tensors according to the quantization
-    parameters defined by the result type.
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#uniform_quantize
 
     Example:
     ```mlir
@@ -3481,15 +3481,15 @@ def MHLO_UniformQuantizeOp : MHLO_UnaryElementwiseOp<"uniform_quantize",
 }
 
 def MHLO_UniformDequantizeOp : MHLO_UnaryElementwiseOp<"uniform_dequantize",
-      [InferTensorType, Pure], MHLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
+      [InferTensorType, Pure], MHLO_QuantizedIntTensor, MHLO_FpTensor> {
   let summary = "UniformDequantize operation";
   let description = [{
-    This operation is a work in progress, so it is not yet included in
-    the specification: https://github.com/openxla/stablehlo/issues/588.
+    Performs element-wise conversion of quantized tensor `operand` to a
+    floating-point tensor `result` according to the quantization parameters
+    defined by the `operand` type.
 
-    Informally, this operation converts uniform quantized tensors to floating
-    point tensors according to the quantization parameters defined by the
-    operand type.
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#uniform_dequantize
 
     Example:
     ```mlir

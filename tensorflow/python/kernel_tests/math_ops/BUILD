@@ -479,7 +479,6 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["sets_test.py"],
     deps = [
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -490,6 +489,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:set_ops_gen",
         "//tensorflow/python/ops:sets",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

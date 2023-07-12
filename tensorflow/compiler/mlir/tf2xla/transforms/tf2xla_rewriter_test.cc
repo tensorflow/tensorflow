@@ -101,8 +101,7 @@ class Tf2XlaRewriterTestPeer {
       : op_builder_(op),
         empty_rewriter_(op_builder_),
         tf2xla_rewriter_(op, empty_rewriter_,
-                         /*device_type=*/"XLA_CPU_JIT",
-                         /*use_tf2xla_hlo_importer=*/true) {}
+                         /*device_type=*/"XLA_CPU_JIT") {}
 
   tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
@@ -131,15 +130,15 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  Status LegalizeSingleOp(bool use_tf2xla_hlo_importer, Operation& op) {
+  Status LegalizeSingleOp(Operation& op) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
     OpBuilder op_builder(&op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
-    LogicalResult result = Tf2XlaRewriter::RewriteOp(
-        &op, pattern_rewriter,
-        /*device_type=*/"XLA_CPU_JIT", use_tf2xla_hlo_importer);
+    LogicalResult result =
+        Tf2XlaRewriter::RewriteOp(&op, pattern_rewriter,
+                                  /*device_type=*/"XLA_CPU_JIT");
     if (!result.succeeded()) {
       return tsl::errors::Internal("Failed to rewrite op");
     }
@@ -147,8 +146,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  Status LegalizeModule(bool use_tf2xla_hlo_importer,
-                        std::string module_string = kMlirModuleStr) {
+  Status LegalizeModule(std::string module_string = kMlirModuleStr) {
     TF_EXPECT_OK(CreateMlirModule(module_string));
     FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
@@ -161,7 +159,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
         return WalkResult::advance();
       }
 
-      if (!LegalizeSingleOp(use_tf2xla_hlo_importer, *op).ok()) {
+      if (!LegalizeSingleOp(*op).ok()) {
         return WalkResult::interrupt();
       }
 
@@ -203,12 +201,8 @@ class Tf2XlaRewriterTest : public ::testing::Test {
   llvm::SourceMgr source_manager_;
 };
 
-TEST_F(Tf2XlaRewriterTest, LegalizesOp) {
-  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/false));
-}
-
 TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
-  TF_EXPECT_OK(LegalizeModule(/*use_tf2xla_hlo_importer=*/true));
+  TF_EXPECT_OK(LegalizeModule());
 
   int num_tuple_ops = 0;
   module_->walk([&num_tuple_ops](TupleOp tuple_op) { num_tuple_ops += 1; });
@@ -289,8 +283,7 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
     }
   })";
 
-  TF_ASSERT_OK(
-      LegalizeModule(/*use_tf2xla_hlo_importer=*/true, kModuleWithConstParam));
+  TF_ASSERT_OK(LegalizeModule(kModuleWithConstParam));
 }
 
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {

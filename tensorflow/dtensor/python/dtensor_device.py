@@ -357,7 +357,7 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_stats(self):
+  def _get_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
@@ -367,7 +367,7 @@ class DTensorDevice(object):
         'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheStats(
+    return _pywrap_dtensor_device.GetStats(
         context.context()._handle,  # pylint: disable=protected-access,
         self._device_info,
     )

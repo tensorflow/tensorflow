@@ -30,7 +30,8 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
     auto s = reshape->shape();
     auto s0 = operand->shape();
     if (ShapeUtil::ReshapeIsBitcast(s, s0)) {
-      return OkStatus();
+      auto b = MakeBitcastHlo(operand, s, &operand->metadata());
+      return ReplaceInstruction(reshape, b);
     } else if (auto output_aligned_input_shape =
                    ShapeUtil::AlignLayouts(s, s0)) {
       Shape new_input_shape = *output_aligned_input_shape;
@@ -39,15 +40,15 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
                  "transpose on the operand: "
               << copied_operand->ToString();
 
-      TF_ASSIGN_OR_RETURN(auto r, MakeReshapeHlo(s, copied_operand));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, r));
-      DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
+      auto b = MakeBitcastHlo(copied_operand, s, &copied_operand->metadata());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, b));
+      DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
     } else if (auto input_aligned_output_shape =
                    ShapeUtil::AlignLayouts(s0, s)) {
       Shape new_output_shape = *input_aligned_output_shape;
-      TF_ASSIGN_OR_RETURN(auto r, MakeReshapeHlo(new_output_shape, operand));
-      DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
-      HloInstruction* copied_result = MakeCopyHlo(r, s);
+      auto b = MakeBitcastHlo(operand, new_output_shape, &operand->metadata());
+      DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
+      HloInstruction* copied_result = MakeCopyHlo(b, s);
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
                  "transposition on the result: "
               << copied_result->ToString();
@@ -60,9 +61,9 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       auto c1 = MakeCopyHlo(reshape->mutable_operand(0), s0_normalized);
       auto s_normalized = ShapeUtil::MakeShapeWithDescendingLayout(
           s.element_type(), s.dimensions());
-      TF_ASSIGN_OR_RETURN(auto r, MakeReshapeHlo(s_normalized, c1));
-      DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
-      auto c2 = MakeCopyHlo(r, s);
+      auto b = MakeBitcastHlo(c1, s_normalized, &c1->metadata());
+      DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
+      auto c2 = MakeCopyHlo(b, s);
       TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, c2));
     }
     return OkStatus();

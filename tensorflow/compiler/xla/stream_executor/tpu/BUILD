@@ -142,7 +142,6 @@ cc_library(
         "tpu_executor.h",
         "tpu_platform.h",
         "tpu_stream.h",
-        "tpu_timer.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -195,7 +194,6 @@ cc_library(
         "tpu_platform_interface.h",
         "tpu_stream.h",
         "tpu_stream_interface.h",
-        "tpu_timer.h",
     ],
     deps = [
         ":c_api_conversions",
@@ -233,7 +231,6 @@ cc_library(
         "tpu_executor.h",
         "tpu_platform.h",
         "tpu_stream.h",
-        "tpu_timer.h",
     ],
     deps = [
         ":c_api_conversions",
@@ -365,7 +362,6 @@ cc_library(
         ":tpu_api",
         ":tpu_executable_interface",
         ":tpu_executor_base",
-        ":tpu_executor_c_api_hdrs",
         ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla:shape_util",
@@ -485,6 +481,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",

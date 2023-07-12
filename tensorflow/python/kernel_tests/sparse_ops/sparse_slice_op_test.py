@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -362,6 +363,21 @@ class SparseSliceOpTest(test.TestCase):
           start=[2**62, -1],
           size=[2**62, 2**62])
       self.evaluate(res)
+
+  def testInvalidSparseInput(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        'Number of elements .* do not match',
+    ):
+      self.evaluate(
+          gen_sparse_ops.sparse_slice(
+              indices=[[0, 0, 0]],
+              values=[0, 1, 2],
+              shape=[3, 3],
+              start=[0, 0],
+              size=[1, 1],
+          )
+      )
 
 
 if __name__ == '__main__':

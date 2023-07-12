@@ -43,17 +43,18 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -294,8 +295,7 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
   if (status.ok()) {
     const int dims = shape.dims();
     if (dims < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unavailable tensor shape!"));
+      return absl::InvalidArgumentError("Unavailable tensor shape!");
     }
     std::vector<int64_t> result;
     result.reserve(dims);
@@ -306,6 +306,18 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
   } else {
     return status;
   }
+}
+
+StatusOr<std::vector<std::vector<int64_t>>> GetAllTensorShapes(
+    const std::vector<TensorHandlePtr>& tensors) {
+  std::vector<std::vector<int64_t>> local_shapes;
+  local_shapes.reserve(tensors.size());
+  for (size_t i = 0; i < tensors.size(); i++) {
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> local_shape,
+                        GetTensorShapeAsVector(tensors[i].get()));
+    local_shapes.push_back(std::move(local_shape));
+  }
+  return local_shapes;
 }
 
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
@@ -366,9 +378,21 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  std::unique_ptr<TensorWithLayoutTf> result(
-      new TensorWithLayoutTf(std::move(tensors), std::move(layout), *shape,
-                             /*dtype=*/std::nullopt, std::move(const_value)));
+  // For dynamic shape, get local shapes for all local tensors.
+  std::vector<std::vector<int64_t>> local_shapes;
+  if (IsDynamicShape(*shape)) {
+    StatusOr<std::vector<std::vector<int64_t>>> local_shapes_or =
+        GetAllTensorShapes(tensors);
+    if (!local_shapes_or.ok()) {
+      Set_TF_Status_from_Status(status, local_shapes_or.status());
+      return nullptr;
+    }
+    local_shapes = std::move(local_shapes_or.value());
+  }
+
+  std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
+      std::move(tensors), std::move(layout), *shape, local_shapes,
+      /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
@@ -378,8 +402,14 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
   if (!shape.has_value()) {
     TF_ASSIGN_OR_RETURN(shape, GetTensorShapeAsVector(tensors[0].get()));
   }
+
+  // For dynamic shape, get local shapes for all local tensors.
+  std::vector<std::vector<int64_t>> local_shapes;
+  if (IsDynamicShape(*shape)) {
+    TF_ASSIGN_OR_RETURN(local_shapes, GetAllTensorShapes(tensors));
+  }
   return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(tensors), layout, *shape));
+      new TensorWithLayoutTf(std::move(tensors), layout, *shape, local_shapes));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
@@ -404,8 +434,8 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
     const Layout& layout) {
-  return absl::WrapUnique(new TensorWithLayoutTf(std::vector<TensorHandlePtr>(),
-                                                 layout, local_shape, dtype));
+  return absl::WrapUnique(new TensorWithLayoutTf(
+      std::vector<TensorHandlePtr>(), layout, local_shape, {}, dtype));
 }
 
 namespace {
@@ -563,8 +593,8 @@ tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
 tsl::Status ResourceHandleWithLayout::UpdateAttrs(
     const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Attempted to overwrite an existing embedding resource attribute."));
+    return absl::InvalidArgumentError(
+        "Attempted to overwrite an existing embedding resource attribute.");
   }
   attrs_.emplace(attrs);
   return tsl::OkStatus();
@@ -902,22 +932,52 @@ Status PrepareGraphForMlir(
   return OkStatus();
 }
 
+Status SetMultiDeviceFunctionOutputs(
+    TranslatedFunction& function, Node* node,
+    const std::vector<PartialTensorShape>& global_output_shapes) {
+  const AttrValue* serialized_layouts = (node->attrs()).Find(kLayoutAttr);
+  if (serialized_layouts == nullptr) {
+    return absl::InvalidArgumentError("missing layout attribute");
+  }
+  const auto& serialized_layout_list = serialized_layouts->list();
+  for (int i = 0; i < serialized_layout_list.s_size(); i++) {
+    const auto& serialized_layout = serialized_layout_list.s(i);
+    TF_ASSIGN_OR_RETURN(const Layout layout,
+                        Layout::FromString(serialized_layout));
+    function.output_layouts.emplace_back(std::move(layout));
+  }
+  for (int i = 0; i < function.output_layouts.size(); i++) {
+    const Layout& output_layout = function.output_layouts[i];
+    PartialTensorShape local_shape =
+        output_layout.LocalShapeFromGlobalShape(global_output_shapes[i]);
+    const int num_devices = output_layout.num_devices();
+    for (int j = 0; j < num_devices; j++) {
+      function.local_output_shapes.emplace_back(local_shape);
+    }
+  }
+  return OkStatus();
+}
+
 // Returns set of functions to run to execute DTensor computation.
 StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
     const tensorflow::Graph& graph,
     const std::vector<PartialTensorShape>& global_output_shapes) {
+  bool multi_device_mode = EnableMultiDeviceMode();
   ExecutionFunctions execution_functions;
   execution_functions.function_list = std::vector<TranslatedFunction>();
   for (Node* node : graph.nodes()) {
     if (node->op_def().name() != "StatefulPartitionedCall") continue;
     // Extract mesh to execute the function.
     std::string serialized_mesh;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh));
-    Mesh mesh;
-    TF_ASSIGN_OR_RETURN(mesh, Mesh::FromString(serialized_mesh));
+    std::optional<Mesh> mesh;
+    if (GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh).ok()) {
+      TF_ASSIGN_OR_RETURN(mesh, Mesh::FromString(serialized_mesh));
+    }
 
     TranslatedFunction function;
-    function.function_mesh = std::move(mesh);
+    if (mesh.has_value()) {
+      function.function_mesh = std::move(mesh.value());
+    }
     function.node_to_execute = node;
 
     // Identify input arg information.
@@ -962,22 +1022,28 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
       output_edges[global_index] = out_edge;
     }
 
-    for (auto it = output_edges.begin(); it != output_edges.end(); it++) {
-      const int global_index = it->first;
-      function.output_index_map.emplace_back(global_index);
+    if (multi_device_mode) {
+      // need to update the output shapes and layouts
+      TF_RETURN_IF_ERROR(
+          SetMultiDeviceFunctionOutputs(function, node, global_output_shapes));
+    } else {
+      for (auto it = output_edges.begin(); it != output_edges.end(); it++) {
+        const int global_index = it->first;
+        function.output_index_map.emplace_back(global_index);
 
-      const Edge* retval_edge = it->second;
-      const int output_index = retval_edge->src_output();
+        const Edge* retval_edge = it->second;
+        const int output_index = retval_edge->src_output();
 
-      // Add output layout and shape information.
-      TF_ASSIGN_OR_RETURN(
-          const Layout output_layout,
-          GetLayoutThroughIdentityOps(retval_edge->src(), output_index));
+        // Add output layout and shape information.
+        TF_ASSIGN_OR_RETURN(
+            const Layout output_layout,
+            GetLayoutThroughIdentityOps(retval_edge->src(), output_index));
 
-      function.output_layouts.emplace_back(output_layout);
-      function.local_output_shapes.emplace_back(
-          output_layout.LocalShapeFromGlobalShape(
-              global_output_shapes[global_index]));
+        function.output_layouts.emplace_back(output_layout);
+        function.local_output_shapes.emplace_back(
+            output_layout.LocalShapeFromGlobalShape(
+                global_output_shapes[global_index]));
+      }
     }
 
     execution_functions.function_list.emplace_back(std::move(function));
@@ -1157,9 +1223,9 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
     const std::string& checkpoint_fn_name) {
   if (checkpoint_fn_name != kLoadEmbeddingFn &&
       checkpoint_fn_name != kRetrieveEmbeddingFn) {
-    return absl::InvalidArgumentError(absl::StrCat(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Found wrong function name: ", checkpoint_fn_name,
-        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn)));
+        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn));
   }
 
   StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =

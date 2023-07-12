@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
@@ -72,6 +73,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
                    mlir::sparse_tensor::SparseTensorDialect,
                    mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
                    RuntimeDialect>();
+
+  mlir::func::registerAllExtensions(*dialects);
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);
@@ -140,7 +143,7 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   // Convert everything else to LLVM dialect.
   mlir::GenericHostToLLVMPassOptions llvm_options;
   llvm_options.enableAvx2 = opts.math_avx2;
-
+  pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
   const bool gpuCodegen = opts.xla_cpu_sparse_cuda_threads > 0;
   if (gpuCodegen) {
 #ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
@@ -148,13 +151,8 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
         mlir::createGpuSerializeToCubinPass(opts.cuda_triplet, opts.cuda_arch,
                                             opts.cuda_features));
 #endif
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createConvertFuncToLLVMPass());
     pm.addPass(mlir::createGpuToLLVMConversionPass());
   }
-
-  pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
-
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.

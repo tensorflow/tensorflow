@@ -1122,6 +1122,8 @@ in the batch dimensions and broadcasting.
 
   let hasOptions = 1;
 
+  let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     bool RequireAsymmetricQuantizeInputsAttr() { return true; }

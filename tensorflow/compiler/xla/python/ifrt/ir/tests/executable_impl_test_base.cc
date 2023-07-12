@@ -62,8 +62,9 @@ IfrtIrExecutableImplTestBase::CreateArray(
   TF_RET_CHECK(per_shard_data.size() == device_list.devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
       << " vs device_list " << device_list.devices().size();
-  TF_ASSIGN_OR_RETURN(auto sharding, ShardingParamSharding::Create(
-                                         sharding_param, device_list));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const Sharding> sharding,
+      ShardingParamSharding::Create(sharding_param, device_list));
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;

@@ -3462,15 +3462,9 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
   const std::string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
-  Array<int64_t> group_tiling({2});
-  group_tiling(0) = 0;
-  group_tiling(1) = 1;
-  std::vector<int64_t> group0_members({0, 1});
-  std::vector<int64_t> group1_members({2, 3});
-  EXPECT_EQ(
-      HloSharding::PartialTile(group_tiling, {group0_members, group1_members})
-          .ToString(),
-      original);
+  Array<int64_t> tiling_last_dim_replicated({{0, 1}, {2, 3}});
+  EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
+            original);
 }
 
 TEST_F(HloParserTest, ParseShardingSubGroup) {
@@ -3481,6 +3475,50 @@ TEST_F(HloParserTest, ParseShardingSubGroup) {
   EXPECT_EQ(sharding.ToString(), original);
   Array<int64_t> tile_assignment({2, 2, 2, 2});
   tile_assignment.FillIota(0);
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseTrivialIotaShardingPartialReplication) {
+  const std::string original = "{devices=[2,2]<=[4] last_tile_dim_replicate}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tiling_last_dim_replicated((absl::Span<const int64_t>){2, 2});
+  EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseTrivialIotaShardingSubGroup) {
+  const std::string original =
+      "{devices=[2,2,2,2]<=[16] last_tile_dims={manual, replicated}}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tile_assignment({2, 2, 2, 2});
+  std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
+                                                  OpSharding::REPLICATED};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseTransposedIotaShardingPartialReplication) {
+  const std::string original =
+      "{devices=[2,2]<=[2,2]T(1,0) last_tile_dim_replicate}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tiling_last_dim_replicated({2, 2}, {2, 2}, {1, 0});
+  EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
+            original);
+}
+
+TEST_F(HloParserTest, ParseTransposedIotaShardingSubGroup) {
+  const std::string original =
+      "{devices=[2,2,2,2]<=[2,2,4]T(2,1,0) last_tile_dims={manual, "
+      "replicated}}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  TileAssignment tile_assignment({2, 2, 2, 2}, {2, 2, 4}, {2, 1, 0});
   std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,
                                                   OpSharding::REPLICATED};
   EXPECT_EQ(HloSharding::Subgroup(tile_assignment, subgroup_types).ToString(),

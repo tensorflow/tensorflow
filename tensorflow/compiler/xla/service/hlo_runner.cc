@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -312,27 +310,22 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
 
 StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
     Executable* executable, std::vector<ExecutionInput> arguments,
-    ExecutionProfile* profile, se::Stream* stream) {
+    ExecutionProfile* profile) {
   xla::UpdateEntryComputationLayout(&executable->module(),
                                     device_shape_representation_fn_);
 
-  std::optional<se::Stream> new_stream;
-  if (stream == nullptr) {
-    new_stream.emplace(backend().default_stream_executor());
-    new_stream->Init();
-    stream = &new_stream.value();
-  }
+  // Get service run options.
+  se::Stream stream(backend().default_stream_executor());
+  stream.Init();
   ServiceExecutableRunOptions service_run_options =
-      GetServiceRunOptionsForDevice(stream->parent()->device_ordinal(), stream,
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
                                     nullptr, RunId());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       executable->ExecuteOnStreamWrapper(&service_run_options,
                                                          std::move(arguments)));
-  if (new_stream.has_value()) {
-    TF_RETURN_IF_ERROR(new_stream.value().BlockHostUntilDone());
-  }
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }
 

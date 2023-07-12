@@ -24,11 +24,17 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace mlir {
 namespace mhlo {
@@ -44,6 +50,29 @@ auto* mlir_failed_legalization_op_count =
         "mlir_second_phase_failed_legalization_op_count",
         "Counts which op fails to legalize", "op_name");
 
+auto* mlir_non_static_op_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/"
+    "mlir_second_phase_non_static_op_count",
+    "Counts which ops do not have static results", "op_name");
+
+auto* mlir_non_static_op_skip_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/"
+    "mlir_second_phase_non_static_op_skip_count",
+    "Counts skipped ops which do not have static results", "op_name");
+
+static const char* kMustBeConstantError =
+    "must have compile-time constant inputs and outputs.\n\n"
+    "XLA compilation requires that operator arguments that represent shapes or "
+    "dimensions be evaluated to concrete values at compile time.  This error "
+    "means that a shape or dimension argument could not be evaluated at "
+    "compile time, usually because the value of the argument depends on a "
+    "parameter to the computation, on a variable, or on a stateful operation "
+    "such as a random number generator.";
+
+// TODO(b/282188914) remove the operations to skip once tests are fixed.
+static const DenseSet<mlir::TypeID>* operations_to_skip =
+    new DenseSet<mlir::TypeID>{mlir::TypeID::get<mhlo::EinsumOp>()};
+
 class VerifyTFXLALegalization
     : public impl::VerifyTFXLALegalizationBase<VerifyTFXLALegalization> {
  public:
@@ -54,6 +83,68 @@ class VerifyTFXLALegalization
   void runOnOperation() override;
 };
 
+static void IncrementCounterFor(tensorflow::monitoring::Counter<1>* counter,
+                                Operation* op) {
+  counter->GetCell(op->getName().getStringRef().str())->IncrementBy(1);
+}
+
+bool HasBounds(RankedTensorType type) {
+  auto encoding =
+      type.getEncoding().dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
+  return (encoding && !encoding.getBounds().empty());
+}
+
+bool HasStaticShapeOrBounded(Value val) {
+  auto type = val.getType();
+  if (type.isa<UnrankedTensorType>()) {
+    return false;
+  }
+  if (type.isa<RankedTensorType>()) {
+    auto ranked_tensor = type.dyn_cast<RankedTensorType>();
+    if (ranked_tensor.hasStaticShape()) {
+      return true;
+    }
+    return HasBounds(ranked_tensor);
+  }
+  return true;
+}
+
+bool EmitMustBeConstantError(Operation* op) {
+  if (operations_to_skip->contains(op->getRegisteredInfo()->getTypeID())) {
+    IncrementCounterFor(mlir_non_static_op_skip_count, op);
+    return true;
+  }
+  emitError(op->getLoc()) << absl::StrCat(
+      "Node `", op->getName().getStringRef().str(), "` ", kMustBeConstantError);
+  return false;
+}
+
+bool IsStaticOperation(Operation* op) {
+  for (auto o : op->getResults()) {
+    if (!HasStaticShapeOrBounded(o)) {
+      return EmitMustBeConstantError(op);
+    }
+  }
+  return true;
+}
+
+bool IsMhloAndStatic(Operation* op) {
+  if (!llvm::isa<mlir::mhlo::MhloDialect>(op->getDialect())) {
+    // Skip this op if it isn't an mhlo op.
+    return true;
+  }
+  return IsStaticOperation(op);
+}
+
+bool IsDefaultConversionLegal(
+    Operation* op, const ConversionTarget& default_conversion_target) {
+  if (!default_conversion_target.isLegal(op)) {
+    emitError(op->getLoc()) << "Could not legalize op: " << op->getName();
+    return false;
+  }
+  return true;
+}
+
 void VerifyTFXLALegalization::runOnOperation() {
   Operation* func_op = getOperation();
   ConversionTarget default_conversion_target =
@@ -61,16 +152,15 @@ void VerifyTFXLALegalization::runOnOperation() {
 
   bool has_invalid_ops = false;
   func_op->walk([&](Operation* op) {
-    if (default_conversion_target.isLegal(op)) {
-      return WalkResult::advance();
+    if (!IsMhloAndStatic(op)) {
+      has_invalid_ops = true;
+      IncrementCounterFor(mlir_non_static_op_count, op);
+      return WalkResult::interrupt();
     }
-
-    emitError(op->getLoc()) << "Could not legalize op: " << op->getName();
-    mlir_failed_legalization_op_count
-        ->GetCell(op->getName().getStringRef().str())
-        ->IncrementBy(1);
-
-    has_invalid_ops = true;
+    if (!IsDefaultConversionLegal(op, default_conversion_target)) {
+      has_invalid_ops = true;
+      IncrementCounterFor(mlir_failed_legalization_op_count, op);
+    }
     return WalkResult::advance();
   });
 

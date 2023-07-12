@@ -1,6 +1,7 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "filegroup", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
 
 # copybara:uncomment_begin(google-only)
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
@@ -1011,23 +1012,38 @@ tf_gen_op_wrapper_py(
     name = "test_ops_for_light_outside_compilation",
     testonly = True,
     out = "test_ops_for_light_outside_compilation.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         ":light_outside_compilation_kernels_for_test",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "light_outside_compilation_test",
     srcs = ["light_outside_compilation_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_ops_for_light_outside_compilation",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
     ] + if_google([":light_outside_compilation_kernels_for_test"]),
 )
 

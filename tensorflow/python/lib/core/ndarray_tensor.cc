@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
-#include "tensorflow/tsl/python/lib/core/float8.h"
+#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
@@ -182,7 +181,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
-      if (pyarray_type == tsl::Bfloat16NumpyType()) {
+      if (pyarray_type == tsl::ml_dtypes::GetBfloat16TypeNum()) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
       } else if (pyarray_type == NPY_ULONGLONG) {
@@ -205,10 +204,10 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // be different on certain platforms.
         *out_tf_datatype = TF_UINT32;
         break;
-      } else if (pyarray_type == tsl::Float8e5m2NumpyType()) {
+      } else if (pyarray_type == tsl::ml_dtypes::GetFloat8E5m2TypeNum()) {
         *out_tf_datatype = TF_FLOAT8_E5M2;
         break;
-      } else if (pyarray_type == tsl::Float8e4m3fnNumpyType()) {
+      } else if (pyarray_type == tsl::ml_dtypes::GetFloat8E4m3fnTypeNum()) {
         *out_tf_datatype = TF_FLOAT8_E4M3FN;
         break;
       }

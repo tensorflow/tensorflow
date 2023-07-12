@@ -4,15 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_cc_test",
-    "cuda_library",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "rocm_copts",
-)
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -101,6 +92,26 @@ cc_library(
         ":byte_order",
         ":stringpiece",
         ":types",
+    ],
+)
+
+cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -334,11 +345,16 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
+    deps = [
+        ":logging",
         ":macros",
+        ":net",
+        ":path",
         ":platform",
+        ":types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -420,6 +436,7 @@ filegroup(
         "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -504,6 +521,7 @@ filegroup(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -641,6 +659,7 @@ exports_files(
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",
@@ -1034,27 +1053,8 @@ cc_library(
     hdrs = ["float8.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//third_party/eigen3",
-        "@com_google_absl//absl/numeric:bits",
+        "@ml_dtypes//:float8",
     ],
-)
-
-cuda_library(
-    name = "float8_test_lib",
-    testonly = 1,
-    srcs = ["float8_test.cu.cc"],
-    copts = rocm_copts(),
-    deps = [
-        ":float8",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-cuda_cc_test(
-    name = "float8_test",
-    deps = [":float8_test_lib"],
 )
 
 cc_library(

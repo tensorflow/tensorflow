@@ -92,6 +92,10 @@ struct i4 {
     v = (v + 1) & 0x0F;
     return *this;
   }
+  constexpr i4& operator+=(const i4 other) {
+    v = (v + other.v) & 0x0F;
+    return *this;
+  }
 
   friend ::std::ostream& operator<<(::std::ostream& os, const i4& num) {
     os << static_cast<int16_t>(num.v);

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -39,6 +40,10 @@ xla::Status RefinePolymorphicShapes(llvm::StringRef module_str,
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::stablehlo::StablehloDialect>();
   context.loadDialect<mlir::chlo::ChloDialect>();
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(module_str.data(), module_str.size()), &context);

@@ -1509,19 +1509,23 @@ std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
 
 HloConstantInstruction::HloConstantInstruction(Literal literal)
     : HloInstruction(HloOpcode::kConstant, literal.shape()),
-      literal_(std::move(literal)) {}
+      literal_(new Literal(std::move(literal))) {}
 
 HloConstantInstruction::HloConstantInstruction(Literal literal,
                                                const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape),
-      literal_(std::move(literal)) {}
+      literal_(new Literal(std::move(literal))) {}
+
+HloConstantInstruction::HloConstantInstruction(std::shared_ptr<Literal> literal,
+                                               const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape), literal_(literal) {}
 
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape) {}
 
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  if (literal_.has_value()) {
+  if (literal_) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   return proto;
@@ -1543,7 +1547,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    *literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_literal() = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
@@ -1560,23 +1564,21 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  if (!literal_.has_value()) {
+  if (!literal_) {
     return std::make_unique<HloConstantInstruction>(this->shape());
   }
-  CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
   CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(literal_->shape(),
                                                   this->shape()));
-  return std::make_unique<HloConstantInstruction>(literal_->Clone(),
-                                                  this->shape());
+  return std::make_unique<HloConstantInstruction>(literal_, this->shape());
 }
 
 void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
-    if (!literal_.has_value()) {
+    if (!literal_) {
       printer->Append("{...}");
       return;
     }
@@ -1605,7 +1607,7 @@ void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
   }
 
   // For constants, show the actual value in place of an empty operand list.
-  if (literal_.has_value() &&
+  if (literal_ &&
       ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
@@ -2225,8 +2227,11 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   auto new_fused_computation = GetOrCloneCalledComputations(context);
   CHECK_EQ(new_fused_computation.size(), 1);
-  return std::make_unique<HloFusionInstruction>(
+  auto new_fusion_instruction = std::make_unique<HloFusionInstruction>(
       shape, fusion_kind(), new_operands, new_fused_computation.front());
+  new_fusion_instruction->set_output_to_operand_aliasing(
+      output_to_operand_aliasing());
+  return new_fusion_instruction;
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
@@ -2850,7 +2855,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
-  if (literal_.has_value()) {
+  if (literal_) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   for (const auto& pair : output_to_operand_aliasing()) {
@@ -2926,7 +2931,7 @@ void HloCustomCallInstruction::PrintExtraAttributesImpl(
       printer->Append("custom_call_has_side_effect=true");
     });
   }
-  if (literal_.has_value()) {
+  if (literal_) {
     printer.Next([this](Printer* printer) {
       printer->Append("literal=");
       literal_->PrintWithLayoutOneline(printer);

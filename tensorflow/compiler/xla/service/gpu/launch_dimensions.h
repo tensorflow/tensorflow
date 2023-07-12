@@ -137,7 +137,8 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config = {}, mlir::Operation* op = nullptr);
+    LaunchDimensionsConfig dim_config = {}, mlir::Operation* op = nullptr,
+    bool use_experimental_block_size = false);
 
 }  // namespace gpu
 }  // namespace xla

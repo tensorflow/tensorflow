@@ -35,7 +35,7 @@ const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
 const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
-const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
+const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -247,6 +247,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"step_name", kStepName},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"deduplicated_name", kDeduplicatedName},
       {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
       {"program_id", kProgramId},
@@ -432,14 +433,6 @@ bool IsInternalStat(std::optional<int64_t> stat_type) {
     default:
       return false;
   }
-}
-
-bool IsTensorCorePlaneName(absl::string_view plane_name) {
-  DCHECK(absl::StartsWith(plane_name, kTpuPlanePrefix) ||
-         absl::StartsWith(plane_name, kTpuNonCorePlaneNamePrefix))
-      << "unexpected plane name:" << plane_name;
-  return absl::StartsWith(plane_name, kTpuPlanePrefix) &&
-         RE2::FullMatch(plane_name, {kTpuPlaneRegex});
 }
 
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);

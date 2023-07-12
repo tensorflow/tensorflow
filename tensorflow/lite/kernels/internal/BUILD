@@ -21,7 +21,6 @@ HARD_FP_FLAGS_IF_APPLICABLE = select({
 NEON_FLAGS_IF_APPLICABLE = select({
     ":arm": [
         "-O3",
-        "-mfpu=neon",
     ],
     ":armeabi-v7a": [
         "-O3",
@@ -460,7 +459,6 @@ cc_library(
     copts = tflite_copts() + select({
         "//tensorflow:android_arm64": [
             "-march=armv8.2-a+dotprod",
-            "-mfpu=neon-fp-armv8",
         ],
         "//tensorflow:android_arm": [],
         "//conditions:default": [],

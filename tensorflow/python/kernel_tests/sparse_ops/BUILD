@@ -107,7 +107,6 @@ cuda_py_strict_test(
         "optonly",  # b/77589990
     ],
     deps = [
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
@@ -123,6 +122,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
     ],
 )
@@ -133,6 +133,7 @@ tf_py_strict_test(
     srcs = ["sparse_reorder_op_test.py"],
     deps = [
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_spec",
@@ -141,6 +142,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:sparse_grad",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -194,6 +196,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:sparse_grad",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

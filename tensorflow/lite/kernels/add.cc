@@ -437,20 +437,50 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace add
 
 TfLiteRegistration* Register_ADD_REF() {
-  static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
-                                 add::Eval<add::kReference>};
+  static TfLiteRegistration r = {
+      add::Init,
+      add::Free,
+      add::Prepare,
+      add::Eval<add::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_ADD_GENERIC_OPT() {
-  static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
-                                 add::Eval<add::kGenericOptimized>};
+  static TfLiteRegistration r = {
+      add::Init,
+      add::Free,
+      add::Prepare,
+      add::Eval<add::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_ADD_NEON_OPT() {
-  static TfLiteRegistration r = {add::Init, add::Free, add::Prepare,
-                                 add::Eval<add::kNeonOptimized>};
+  static TfLiteRegistration r = {
+      add::Init,
+      add::Free,
+      add::Prepare,
+      add::Eval<add::kNeonOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 

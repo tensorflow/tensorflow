@@ -47,7 +47,7 @@ mlir::Value GetOrCreateCompilationKey(mlir::Operation* op) {
   auto cluster = op->getParentOfType<mlir::tf_device::ClusterOp>();
   assert(cluster);
   cluster.walk(
-      [&](mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp compilation_key) {
+      [&](mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp compilation_key) {
         key = compilation_key.getProgram();
       });
   if (key) return key;
@@ -56,7 +56,7 @@ mlir::Value GetOrCreateCompilationKey(mlir::Operation* op) {
   auto result_type =
       mlir::RankedTensorType::get({3}, builder.getType<mlir::TF::StringType>());
   auto new_compilation_key =
-      builder.create<mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+      builder.create<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
           cluster.getLoc(), /*program=*/result_type,
           llvm::ArrayRef<mlir::Value>{});
   return new_compilation_key.getProgram();

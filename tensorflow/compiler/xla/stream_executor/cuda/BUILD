@@ -281,7 +281,6 @@ cc_library(
         ":cuda_helpers",
         ":cuda_platform_id",
         ":cuda_stream",
-        ":cuda_timer",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -297,7 +296,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
@@ -390,7 +389,6 @@ cc_library(
         ":cuda_gpu_executor",
         ":cuda_platform_id",
         ":cuda_stream",
-        ":cuda_timer",
         ":cudnn_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -414,41 +412,6 @@ cc_library(
     ]) + tf_additional_cudnn_plugin_deps() + [
         "@com_google_absl//absl/synchronization",
     ],
-    alwayslink = True,
-)
-
-alias(
-    name = "curand_stub",
-    actual = "//tensorflow/tsl/cuda:curand_stub",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "curand_lib",
-    actual = "//tensorflow/tsl/cuda:curand_lib",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "curand_plugin",
-    srcs = if_cuda_is_configured(["cuda_rng.cc"]),
-    hdrs = if_cuda_is_configured(["cuda_rng.h"]),
-    deps = if_cuda_is_configured([
-        ":cuda_activation",
-        ":cuda_gpu_executor",
-        ":cuda_platform_id",
-        ":cuda_stream",
-        ":cuda_helpers",
-        ":curand_lib",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_helpers_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_rng_header",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-    ]),
     alwayslink = True,
 )
 
@@ -479,6 +442,12 @@ alias(
 alias(
     name = "cusparse_lib",
     actual = "//tensorflow/tsl/cuda:cusparse_lib",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "tensorrt_rpath_stub",
+    actual = "//tensorflow/tsl/cuda:tensorrt_rpath_stub",
     visibility = ["//visibility:public"],
 )
 
@@ -544,19 +513,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_timer",
-    srcs = [],
-    hdrs = if_cuda_is_configured(["cuda_timer.h"]),
-    deps = if_cuda_is_configured([
-        ":cuda_driver",
-        ":cuda_gpu_executor_header",
-        ":cuda_stream",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
-    ]),
-)
-
-cc_library(
     name = "cuda_asm_compiler",
     srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
     copts = tf_additional_gpu_compilation_copts(),
@@ -583,14 +539,13 @@ cc_library(
         ":cuda_kernel",
         ":cuda_platform_id",
         ":cuda_stream",
-        ":cuda_timer",
         ":cuda_asm_compiler",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl_header",
-        "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -617,7 +572,9 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
-        ":curand_plugin",
+        ":cusolver_lib",
+        ":cusparse_lib",
+        ":tensorrt_rpath_stub",
     ],
     alwayslink = 1,
 )

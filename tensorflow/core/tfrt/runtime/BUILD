@@ -12,12 +12,15 @@ package_group(
     packages = [
         # Authorized users go here.
         "//tensorflow/compiler/xla/service/gpu/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
         # copybara:uncomment "//tensorflow_serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
+        # copybara:uncomment "//learning/serving/...",
+        # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )
 
@@ -27,8 +30,10 @@ cc_library(
     hdrs = ["runtime.h"],
     deps = [
         ":work_queue_interface",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@tf_runtime//:core_runtime_alwayslink",
@@ -36,6 +41,17 @@ cc_library(
         "@tf_runtime//:tensor",
         "@tf_runtime//backends/cpu:core_runtime",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
+    ],
+)
+
+tf_cc_test(
+    name = "runtime_test",
+    srcs = ["runtime_test.cc"],
+    deps = [
+        ":runtime",
+        "//tensorflow/core:test",
+        "@com_google_googletest//:gtest_main",
+        "@tf_runtime//cpp_tests:common",
     ],
 )
 

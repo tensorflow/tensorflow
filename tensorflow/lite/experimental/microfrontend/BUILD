@@ -127,7 +127,6 @@ tf_py_test(
     name = "audio_microfrontend_op_test",
     size = "small",
     srcs = ["python/kernel_tests/audio_microfrontend_op_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",

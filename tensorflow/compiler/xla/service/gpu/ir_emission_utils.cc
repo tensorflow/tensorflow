@@ -24,9 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Verifier.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -576,31 +578,191 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       "StaticMemRefCastOp(ViewOp(arg)) or arg");
 }
 
+std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const HloComputation* fusion) {
+  // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
+  // computation instead of a LMHLO FusionOp.
+  HloInstruction* root = fusion->root_instruction();
+
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root};
+  }
+
+  if (root->opcode() == HloOpcode::kBitcast &&
+      root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root->mutable_operand(0)};
+  }
+
+  std::vector<HloInstruction*> dus_ops;
+
+  if (root->opcode() == HloOpcode::kTuple) {
+    for (HloInstruction* operand : root->operands()) {
+      while (operand->opcode() == HloOpcode::kBitcast) {
+        operand = operand->mutable_operand(0);
+      }
+
+      if (operand->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        dus_ops.push_back(operand);
+      }
+    }
+  }
+
+  return dus_ops;
+}
+
+std::vector<mlir::mhlo::DynamicUpdateSliceOp>
+GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
+  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops;
+
+  auto fusion_results = fusion.getFusionResults();
+  for (const auto& fusion_result : fusion_results) {
+    // A dynamic slice update is said to be "defining" of a result if that
+    // result is the output of a dynamic slice update, or if that result is
+    // the output of a bitcast of a dynamic slice update---since a bitcast may
+    // be handled here as a no-op.
+    if (auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
+            fusion_result.getDefiningOp())) {
+      dus_ops.push_back(dus);
+    }
+
+    if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(
+            fusion_result.getDefiningOp())) {
+      if (auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
+              bitcast.getOperand().getDefiningOp())) {
+        dus_ops.push_back(dus);
+      }
+    }
+  }
+  return dus_ops;
+}
+
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations) {
-  auto results = fusion.getFusionResults();
-  if (results.size() != 1) {
-    return false;
-  }
-  auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
-      results[0].getDefiningOp());
-  if (!dus) {
+  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
+      GetOutputDefiningDynamicUpdateSliceOps(fusion);
+
+  // This check could probably be relaxed: if code generation is made to use a
+  // separate parallel loop for each dynamic slice update, then it shouldn't be
+  // necessary for every output to be a dynamic slice update, nor to have the
+  // same shape.
+  if (dus_ops.size() != fusion.getFusionResults().size()) {
     return false;
   }
 
   auto output_buffers = fusion.getOutputBuffers();
-  CHECK_EQ(1, output_buffers.size());
-  auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-      dus.getOperand().getDefiningOp());
+  CHECK_GE(output_buffers.size(), 1);
+  CHECK_EQ(dus_ops.size(), output_buffers.size());
 
-  if (!parameter) {
-    return false;
+  auto update_shape =
+      dus_ops[0].getUpdate().getType().cast<mlir::ShapedType>().getShape();
+
+  // We can safely assume here that the slices being updated do not overlap, as
+  // constructing a fusion with them would not be safe otherwise.
+  for (auto [dus, output_buffer] : llvm::zip(dus_ops, output_buffers)) {
+    // Dynamic slice updates should have a single path to the root---this to
+    // avoid allowing a dynamic slice update to depend on another, as this would
+    // not be guaranteed to work with the current codegen.
+    if (!dus->hasOneUse()) {
+      return false;
+    }
+
+    // Since the direct consumer of an output dynamic slice update may be a
+    // bitcast, we also check that this bitcast is used a single time.
+    // This property is also important because reads and writes on the parameter
+    // to be updated are done using the shape and layout of the dynamic slice
+    // update. This is a valid approach only if a subsequent bitcast is not read
+    // by any other op within the fusion---as this may result in codegen
+    // accessing elements using the wrong physical layout.
+    auto dus_user = *dus->user_begin();
+    if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(dus_user)) {
+      if (!bitcast->hasOneUse()) {
+        return false;
+      }
+      dus_user = *bitcast->user_begin();
+    }
+    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+      return false;
+    }
+    auto operand = dus.getOperand();
+    // A bitcast separating a fusion input from a dynamic slice update can be
+    // treated as a no-op.
+    if (auto bitcast =
+            mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp())) {
+      operand = bitcast.getOperand();
+    }
+
+    auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
+        operand.getDefiningOp());
+
+    if (!parameter) {
+      return false;
+    }
+
+    // We require that the parameter being updated is only read at the same
+    // index positions by all users, since we otherwise risk a race condition
+    // when updating the parameter inplace.
+    std::queue<mlir::Operation*> q;
+    absl::flat_hash_set<mlir::Operation*> visited;
+    q.push(parameter);
+    visited.insert(parameter);
+    // We have already checked above that the DUS only has one user: a
+    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
+    // the breadth-first search.
+    visited.insert(dus);
+    while (!q.empty()) {
+      auto op = q.front();
+      q.pop();
+      for (auto user : op->getUsers()) {
+        if (mlir::isa<mlir::mhlo::DynamicSliceOp>(user) &&
+            dus->getOperand(0) == user->getOperand(0) &&
+            update_shape == user->getResult(0)
+                                .getType()
+                                .cast<mlir::ShapedType>()
+                                .getShape()) {
+          // We can still emit in-place in this case if the same slice is
+          // accessed by the DUS and the DS. If they don't access the same
+          // slice, the two slices might partially overlap and read/write the
+          // same index at different times, and then we cannot guarantee that we
+          // read before it is overwritten. However if both access only a single
+          // element, there also can be no race condition.
+          if (mlir::ShapedType::getNumElements(update_shape) != 1 &&
+              dus.getStartIndices() !=
+                  mlir::dyn_cast<mlir::mhlo::DynamicSliceOp>(user)
+                      .getStartIndices()) {
+            return false;
+          }
+        } else if (user != dus &&
+                   !user->hasTrait<mlir::OpTrait::Elementwise>() &&
+                   !mlir::isa<mlir::mhlo::BitcastOp, mlir::mhlo::TupleOp>(
+                       user)) {
+          return false;
+        }
+        if (visited.insert(user).second) {
+          q.push(user);
+        }
+      }
+    }
+
+    // This check could probably be relaxed: if code generation is made to use a
+    // separate parallel loop for each dynamic slice update, then it shouldn't
+    // be necessary for the shape to be the same for all the dynamic slice
+    // updates. Note that this equality check purposefully ignores the element
+    // type.
+    if (dus.getUpdate().getType().cast<mlir::ShapedType>().getShape() !=
+        update_shape) {
+      return false;
+    }
+
+    auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
+    auto maybe_rhs = GetAllocationSlice(output_buffer, allocations);
+
+    if (!(maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs)) {
+      return false;
+    }
   }
 
-  auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
-  auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
-  return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
+  return true;
 }
 
 Shape GetShape(mlir::Value value) {
@@ -734,8 +896,7 @@ std::optional<TransposeDescription> FindAnyTiledTranspose(
   return std::nullopt;
 }
 
-static bool IsIntermediate(const HloInstruction* instr,
-                           int allowed_operand_count = 1) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   return (
       instr->operand_count() > 0 &&
       instr->operand_count() <= allowed_operand_count &&

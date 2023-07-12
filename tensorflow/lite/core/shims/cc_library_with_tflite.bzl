@@ -399,6 +399,7 @@ def custom_c_library_with_tflite(
         copts = tflite_copts_warnings(),
         deps = [
             ":%s_c_api" % name,
+            "//tensorflow/lite/core/c:private_c_api_without_op_resolver",
         ],
         **kwargs
     )

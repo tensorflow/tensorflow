@@ -253,6 +253,10 @@ bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 // Returns true if the devices list contain any TPU devices
 bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
 
+// Returns the host device used for outside compilation in generic pipeline.
+mlir::LogicalResult GetHostDeviceOutsideCompilationInGenericPipeline(
+    mlir::TF::RuntimeDevices devices, std::string* host_device);
+
 // Parses XLA compilation and execution devices from a tf_device.cluster and
 // returns the host device for the head and tail computations. For TPU device,
 // if the computation is replicated, GetDeviceAliasForHostOfLogicalCore(0) is

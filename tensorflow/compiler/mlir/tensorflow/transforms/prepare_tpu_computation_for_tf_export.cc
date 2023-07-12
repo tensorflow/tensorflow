@@ -99,7 +99,7 @@ class RewriteXlaHostComputeMlir
       auto result_type =
           RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
       auto dynamic_key =
-          rewriter.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+          rewriter.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
               func.getLoc(), /*program=*/result_type, llvm::ArrayRef<Value>{});
 
       auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(

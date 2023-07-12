@@ -76,6 +76,22 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "legalize_tf_quant_test",
+    srcs = ["legalize_tf_quant_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/288215766): Temporarily disable OSS.
+    ],
+    deps = [
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 tf_proto_library(
     name = "device_type_proto",
     srcs = ["device_type.proto"],

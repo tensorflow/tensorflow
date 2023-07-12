@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
@@ -20,7 +21,7 @@ exports_files([
     "logging.h",
 ])
 
-py_binary(
+py_strict_binary(
     name = "visualize",
     srcs = ["visualize.py"],
     python_version = "PY3",
@@ -31,7 +32,7 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "visualize_lib",
     srcs = ["visualize.py"],
     srcs_version = "PY3",
@@ -41,20 +42,20 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "visualize_test",
     srcs = ["visualize_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":test_utils",
-        ":visualize",
+        ":visualize_lib",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "convert_image_to_csv",
     srcs = ["convert_image_to_csv.py"],
     python_version = "PY3",
@@ -70,14 +71,29 @@ py_binary(
     ],
 )
 
-py_test(
+py_strict_library(
+    name = "convert_image_to_csv_lib",
+    srcs = ["convert_image_to_csv.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:io_ops",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_strict_test(
     name = "convert_image_to_csv_test",
     srcs = ["convert_image_to_csv_test.py"],
     data = ["//tensorflow/core:image_testdata"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":convert_image_to_csv",
+        ":convert_image_to_csv_lib",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -86,7 +102,7 @@ py_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "strip_strings",
     srcs = ["strip_strings.py"],
     python_version = "PY3",
@@ -98,7 +114,7 @@ py_binary(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "reverse_xxd_dump_from_cc",
     srcs = ["reverse_xxd_dump_from_cc.py"],
     python_version = "PY3",
@@ -110,7 +126,7 @@ py_binary(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
     python_version = "PY3",
@@ -122,7 +138,7 @@ py_binary(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
     srcs_version = "PY3",
@@ -134,7 +150,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "flatbuffer_utils_test",
     srcs = ["flatbuffer_utils_test.py"],
     python_version = "PY3",
@@ -147,7 +163,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
     srcs_version = "PY3",
@@ -371,7 +387,7 @@ tf_cc_test(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "zip_files",
     srcs = ["zip_files.py"],
     python_version = "PY3",

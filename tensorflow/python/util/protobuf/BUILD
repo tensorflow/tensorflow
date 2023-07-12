@@ -46,7 +46,7 @@ tf_py_strict_test(
     deps = [
         ":compare_test_proto_py",
         ":protobuf",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
         "@six_archive//:six",
     ],
 )

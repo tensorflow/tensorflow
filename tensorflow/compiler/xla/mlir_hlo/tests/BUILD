@@ -25,7 +25,6 @@ package(
         # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
-            "nopip",  # Don't run as part of the pip wheel test suite.
         ],
     )
     for src in glob(["**/*.mlir"])

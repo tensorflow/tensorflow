@@ -256,6 +256,14 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   OP_REQUIRES_OK(c, c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
   OP_REQUIRES_OK(c, c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
   OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_batch_size",
+                               &low_priority_max_batch_size_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_batch_timeout_micros",
+                               &low_priority_batch_timeout_micros_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_allowed_batch_sizes",
+                               &low_priority_allowed_batch_sizes_));
+  OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
+                               &low_priority_max_enqueued_batches_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -310,7 +318,8 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
 
   if (adaptive_batch_scheduler_options_ != absl::nullopt) {
-    creator = [this](BatchResource** r) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       serving::AdaptiveSharedBatchScheduler<
           serving::BatchResourceBase::BatchTask>::Options
           adaptive_shared_batch_scheduler_options;
@@ -371,16 +380,23 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };
   } else {
-    creator = [this](BatchResource** r) {
+    creator = [this,
+               session_metadata = c->session_metadata()](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,
           max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
           allowed_batch_sizes_, enable_large_batch_splitting_, &new_resource));
+      if (session_metadata) {
+        new_resource->set_session_metadata(*session_metadata);
+      }
       *r = new_resource.release();
       return OkStatus();
     };

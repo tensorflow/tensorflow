@@ -48,7 +48,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_live_range_test",
     srcs = ["hlo_live_range_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_live_range",
         "//tensorflow/compiler/xla:literal",
@@ -79,7 +78,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_matchers_test",
     srcs = ["hlo_matchers_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_matchers",
         "//tensorflow/compiler/xla:literal_util",
@@ -104,6 +102,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:tile_assignment",
         "//tensorflow/compiler/xla/service:call_graph",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -119,7 +118,6 @@ xla_cc_test(
     srcs = [
         "hlo_sharding_util_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         ":hlo_sharding_util",
         "//tensorflow/compiler/xla:test",
@@ -137,6 +135,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

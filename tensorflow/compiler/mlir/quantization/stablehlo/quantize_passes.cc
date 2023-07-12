@@ -14,14 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 
-#include "absl/container/flat_hash_set.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/fill_quantization_options.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace stablehlo {
 namespace quantization {
@@ -49,7 +46,8 @@ void AddQuantizationPasses(mlir::PassManager& pass_manager,
         break;
     }
   }
-
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::CreatePrepareSrqQuantizePass(quantization_options_));
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::CreateQuantizeWeightPass(weight_component));
 }

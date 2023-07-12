@@ -65,6 +65,14 @@ struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
   std::shared_ptr<xla::PjRtExecutable> executable;
 
+  mutable absl::Mutex mutex;
+  // Cost analysis properties and name strings are populated after cost analysis
+  // has been run. These are returned from cost analysis calls, and do not
+  // change after the first call.
+  bool cost_analysis_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<std::string> cost_analysis_names;
+  std::vector<PJRT_NamedValue> cost_analysis_properties;
+
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
 
   const xla::PjRtExecutable* get() const { return executable.get(); }
@@ -80,14 +88,6 @@ struct PJRT_LoadedExecutable {
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
 
-  mutable absl::Mutex mutex;
-  // Cost analysis properties and name strings are populated after cost analysis
-  // has been run. These are returned from cost analysis calls, and do not
-  // change after the first call.
-  bool cost_analysis_ran ABSL_GUARDED_BY(mutex) = false;
-  std::vector<std::string> cost_analysis_names;
-  std::vector<PJRT_NamedValue> cost_analysis_properties;
-
   PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
                         PJRT_Client* client);
 
@@ -98,6 +98,8 @@ struct PJRT_LoadedExecutable {
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
   PJRT_Client* client;
+  // Set the first time PJRT_Buffer_UnpaddedDimensions is called.
+  std::optional<std::vector<int64_t>> unpadded_dims;
 };
 
 struct PJRT_Event {
@@ -187,14 +189,14 @@ PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
 PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
 
 PJRT_Error* PJRT_LoadedExecutable_Destroy(
     PJRT_LoadedExecutable_Destroy_Args* args);
-PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_Delete(
     PJRT_LoadedExecutable_Delete_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
@@ -212,6 +214,10 @@ PJRT_Error* PJRT_SerializedExecutable_Data(
     PJRT_SerializedExecutable_Data_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
+PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
+PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
+PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
@@ -288,6 +294,13 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 // should be destroyed with PJRT_Client_Destroy.
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
 
+// Helper functions for converting C key-value store callbacks to C++ callbacks.
+xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
+    PJRT_KeyValueGetCallback c_callback, void* user_arg);
+
+xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
+    PJRT_KeyValuePutCallback c_callback, void* user_arg);
+
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 constexpr PJRT_Api CreatePjrtApi(
@@ -354,6 +367,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Executable_NumOutputs=*/pjrt::PJRT_Executable_NumOutputs,
       /*PJRT_Executable_SizeOfGeneratedCodeInBytes=*/
       pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,
+      /*PJRT_Executable_GetCostAnalysis=*/pjrt::PJRT_Executable_GetCostAnalysis,
       /*PJRT_Executable_OptimizedProgram=*/
       pjrt::PJRT_Executable_OptimizedProgram,
       /*PJRT_Executable_Serialize=*/pjrt::PJRT_Executable_Serialize,
@@ -363,8 +377,6 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_LoadedExecutable_GetExecutable,
       /*PJRT_LoadedExecutable_AddressableDevices=*/
       pjrt::PJRT_LoadedExecutable_AddressableDevices,
-      /*PJRT_LoadedExecutable_GetCostAnalysis=*/
-      pjrt::PJRT_LoadedExecutable_GetCostAnalysis,
       /*PJRT_LoadedExecutable_Delete=*/pjrt::PJRT_LoadedExecutable_Delete,
       /*PJRT_LoadedExecutable_IsDeleted=*/
       pjrt::PJRT_LoadedExecutable_IsDeleted,
@@ -378,6 +390,10 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_SerializedExecutable_Data,
 
       /*PJRT_Buffer_Destroy=*/pjrt::PJRT_Buffer_Destroy,
+      /*PJRT_Buffer_ElementType=*/pjrt::PJRT_Buffer_ElementType,
+      /*PJRT_Buffer_Dimensions=*/pjrt::PJRT_Buffer_Dimensions,
+      /*PJRT_Buffer_UnpaddedDimensions=*/
+      pjrt::PJRT_Buffer_UnpaddedDimensions,
       /*PJRT_Buffer_OnDeviceTrimmedShape=*/
       pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/

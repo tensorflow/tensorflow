@@ -19,7 +19,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Alignment.h"
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -335,20 +340,36 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
   // (Log)Softmax's logits are a rank >= 1 tensor. We reduce over the last
   // dimension. If this is replicated, we don't need any cross-replica
   // operations and can just emit the op as is.
-  if (logits_layout->IsLastDimReplicated())
-    return InferSPMDExpandedLocalShape(op);
+  mlir::Value softmax_result;
+  if (logits_layout->IsLastDimReplicated()) {
+    InferSPMDExpandedLocalShape(op);
+    softmax_result = op->getOpResult(0);
+  } else {
+    mlir::OpBuilder builder(op);
+    builder.setInsertionPointAfter(op);
 
-  mlir::OpBuilder builder(op);
-  builder.setInsertionPointAfter(op);
+    TF_ASSIGN_OR_RETURN(
+        softmax_result,
+        ComputeShardedSoftmax(builder, op->getOperand(0), *logits_layout,
+                              mlir::isa<mlir::TF::LogSoftmaxOp>(op)));
+    op->getOpResult(0).replaceAllUsesWith(softmax_result);
+    op->erase();
+  }
 
-  TF_ASSIGN_OR_RETURN(
-      const mlir::Value new_softmax,
-      ComputeShardedSoftmax(builder, op->getOperand(0), *logits_layout,
-                            mlir::isa<mlir::TF::LogSoftmaxOp>(op)));
-
-  op->getOpResult(0).replaceAllUsesWith(new_softmax);
-  op->erase();
-  return new_softmax.getDefiningOp();
+  // Add a final Relayout in case the output layout is not the same as the
+  // layout of input logits.
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+  llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
+  auto final_result = EmitRelayout(softmax_result, *logits_layout,
+                                   output_layout, &newly_created_ops);
+  if (!final_result.ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to relayout the output of softmax: ",
+                     final_result.status().message()));
+  }
+  softmax_result.replaceAllUsesExcept(*final_result, newly_created_ops);
+  return final_result->getDefiningOp();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>

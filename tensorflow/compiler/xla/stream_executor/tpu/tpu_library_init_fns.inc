@@ -44,8 +44,8 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(ops_api_fn, TpuExecute_RuntimeInputToPaddedData);
 
-  TFTPU_SET_FN(ops_api_fn, SE_DeviceMemoryBase_FreeArray);
-  TFTPU_SET_FN(ops_api_fn, TpuExecute_GetTpuEmbeddingMemoryWordAddresses);
+  TFTPU_SET_FN(ops_api_fn, TpuExecute_GetTpuEmbeddingMemoryAllocations);
+  TFTPU_SET_FN(ops_api_fn, TpuExecute_FreeTpuEmbeddingMemoryAllocations);
 
   TFTPU_SET_FN(ops_api_fn, TpuProgram_New);
   TFTPU_SET_FN(ops_api_fn, TpuProgram_Free);

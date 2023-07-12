@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/core/acceleration/configuration/stable_delegate_registry.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -78,7 +79,7 @@ inline bool HasTensorData(tools::ModelLoader* model_loader,
   // regardless of how the model is loaded.
   const TfLiteTensor* tensor = graph.tensor(index);
   return tensor->allocation != nullptr ||
-         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+         (model_loader->type() == tools::ModelLoader::Type::kPipeModelLoader &&
           tensor->data.data != nullptr);
 }
 
@@ -198,33 +199,36 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   if (!compute_settings_) {
     return kMinibenchmarkPreconditionNotMet;
   }
+  if (opaque_delegate_) {
+    // An opaque delegate is created already.
+    return kMinibenchmarkSuccess;
+  }
 
   // Create delegate plugin and delegate.
   Delegate which_delegate = Delegate_NONE;
-  bool is_stable_delegate = false;
+  bool is_stable_delegate_path_provided = false;
   auto tflite_settings = compute_settings_->tflite_settings();
   if (tflite_settings) {
     which_delegate = compute_settings_->tflite_settings()->delegate();
-    if (tflite_settings->stable_delegate_loader_settings() &&
-        tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
-      is_stable_delegate = !tflite_settings->stable_delegate_loader_settings()
-                                ->delegate_path()
-                                ->str()
-                                .empty();
+    if (tflite_settings->stable_delegate_loader_settings()) {
+      is_stable_delegate_path_provided =
+          tflite_settings->stable_delegate_loader_settings()->delegate_path() &&
+          !tflite_settings->stable_delegate_loader_settings()
+               ->delegate_path()
+               ->str()
+               .empty();
     }
   }
   std::string delegate_name;
-  if (is_stable_delegate) {
-    if (which_delegate == Delegate_GPU) {
-      // Load GPU plugin from GpuModulePlugin when delegate_path is provided.
-      // This is a workaround before StableDelegate is supported.
-      delegate_name = "GpuModule";
-    } else {
-      // When a stable delegate shared library is provided, the stable delegate
-      // plugin loads symbols from the shared library to initialize the
-      // delegates.
-      delegate_name = "StableDelegate";
-    }
+  if (is_stable_delegate_path_provided && which_delegate == Delegate_GPU) {
+    // Load GPU plugin from GpuModulePlugin when delegate_path is provided.
+    // This is a workaround before StableDelegate is supported.
+    delegate_name = "GpuModule";
+  } else if (is_stable_delegate_path_provided) {
+    // When a stable delegate shared library path is provided, the stable
+    // delegate plugin loads symbols from the shared library to initialize the
+    // delegates.
+    delegate_name = "StableDelegate";
   } else {
     switch (which_delegate) {
       case Delegate_NONE:
@@ -259,6 +263,47 @@ MinibenchmarkStatus Validator::LoadDelegate() {
   return kMinibenchmarkSuccess;
 }
 
+MinibenchmarkStatus Validator::LoadOpaqueDelegate() {
+  if (!compute_settings_) {
+    return kMinibenchmarkPreconditionNotMet;
+  }
+
+  // Create delegate plugin and delegate.
+  bool is_stable_delegate_name_provided = false;
+  auto tflite_settings = compute_settings_->tflite_settings();
+  if (!tflite_settings) {
+    return kMinibenchmarkSuccess;
+  }
+  auto stable_delegate_settings =
+      tflite_settings->stable_delegate_loader_settings();
+  is_stable_delegate_name_provided =
+      stable_delegate_settings && stable_delegate_settings->delegate_name() &&
+      !stable_delegate_settings->delegate_name()->str().empty();
+  if (!is_stable_delegate_name_provided) {
+    // It is optional to have an opaque delegate.
+    return kMinibenchmarkSuccess;
+  }
+  // When a stable delegate name is provided, we load symbols from the stable
+  // delegate registry to initialize the delegates.
+  std::string delegate_name = stable_delegate_settings->delegate_name()->str();
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running mini-benchmark on %s",
+                  delegate_name.c_str());
+
+  const TfLiteStableDelegate* stable_delegate =
+      delegates::StableDelegateRegistry::RetrieveStableDelegate(delegate_name);
+  if (!stable_delegate) {
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Failed to load stable delegate plugin %s",
+                    delegate_name.c_str());
+    return kMinibenchmarkDelegatePluginNotFound;
+  }
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
+      stable_delegate->delegate_plugin;
+  opaque_delegate_ = TfLiteOpaqueDelegatePtr(
+      delegate_plugin->create(tflite_settings), delegate_plugin->destroy);
+  return kMinibenchmarkSuccess;
+}
+
 MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
                                                  int* delegated_kernels_out) {
   if (!delegate_error_out || !delegated_kernels_out ||
@@ -290,6 +335,9 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   // Add delegate if not running on CPU.
   if (delegate_ != nullptr) {
     builder.AddDelegate(delegate_.get());
+  }
+  if (opaque_delegate_ != nullptr) {
+    builder.AddDelegate(opaque_delegate_.get());
   }
   TfLiteStatus status = builder(&interpreter_);
   if (!interpreter_) {
@@ -381,6 +429,7 @@ Validator::Status Validator::RunValidation(Results* results_out) {
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();
+  MB_RETURN_IF_ERROR(LoadOpaqueDelegate(), stage);
   MB_RETURN_IF_ERROR(LoadDelegate(), stage);
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
                                        &results_out->delegated_kernels),

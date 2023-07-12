@@ -130,6 +130,8 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],

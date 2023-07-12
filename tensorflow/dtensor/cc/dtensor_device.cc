@@ -81,6 +81,8 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 #include "tensorflow/dtensor/cc/dtensor_graph_to_mlir_pass.h"
+#include "tensorflow/dtensor/cc/dtensor_operation.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/parallel_executor.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -116,6 +118,15 @@ bool ShouldRunAsSingleDevice(const DTensorOperation& dtensor_operation) {
   }
   return !SPMDExpanderRegistry::Global()->IsOpSupported(
       GetFullOpName(dtensor_operation.name));
+}
+
+// Returns True if an Op intends to change the layout of a Tensor but maintains
+// its global semantics.
+bool IsRelayoutOp(const DTensorOperation& dtensor_operation) {
+  return (dtensor_operation.name == std::string("CopyToMesh") ||
+          dtensor_operation.name == std::string("CopyToMeshGrad") ||
+          dtensor_operation.name == std::string("Relayout") ||
+          dtensor_operation.name == std::string("RelayoutLike"));
 }
 
 class DTensorDevice {
@@ -380,8 +391,8 @@ class DTensorDevice {
   bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                        TF_Status* status);
 
-  std::unordered_map<std::string, int> GetFunctionCacheStats(
-      TFE_Context* context, TF_Status* status) const;
+  std::unordered_map<std::string, int> GetStats(TFE_Context* context,
+                                                TF_Status* status) const;
 
   void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
                                  const std::vector<std::string>& string_layouts,
@@ -398,6 +409,7 @@ class DTensorDevice {
       : name_(name),
         is_async_(is_async),
         in_flight_nodes_limit_(in_flight_nodes_limit),
+        stats_{0},
         module_manager_(
             new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
         function_manager_(new ExecutableManager<ExecutionFunctions>()),
@@ -473,12 +485,55 @@ class DTensorDevice {
                            absl::flat_hash_set<std::string>* executed_fn_names,
                            TF_Status* status);
 
+  // Executes a multi-device function.
+  void ExecuteMultiDeviceOperation(
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const TranslatedFunction& function,
+      const std::vector<TensorWithLayoutTf*>& inputs,
+      std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
+      TF_Status* status);
+
   // Executes a single device Operation, on a single device.
   void ExecuteSingleDeviceOperation(
       TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
       const std::string& operation_name, const std::string& device_name,
       const TFE_OpAttrs* attributes, int* num_outputs,
       std::vector<TensorHandlePtr>& outputs, TF_Status* status);
+
+  // Helper that calls `ExecuteSingleDeviceOperation` with the right parameters.
+  void ExecuteEagerOperation(
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const TranslatedFunction& function,
+      const std::vector<TensorWithLayoutTf*>& inputs_tf,
+      std::vector<std::unique_ptr<TensorWithLayout>>& output_with_layout,
+      TF_Status* status);
+
+  // Helper that calls `ParallelDevice::Execute` with the right parameters.
+  void ExecuteParallelDeviceOperation(
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const ExecutionFunctions* execution_functions,
+      const std::vector<const TranslatedFunction*>& function_list,
+      const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
+      int num_inputs, uint64 step_id, TF_Status* status);
+
+  // Whether the eager op can be executed with fast execution shortcut.
+  // See FastExecuteEagerPureOperation for more details.
+  bool ShouldFastExecuteEagerPureOperation(
+      const DTensorOperation& dtensor_operation, const Mesh& mesh,
+      const std::vector<TensorWithLayout*>& typed_inputs,
+      const TFE_OpAttrs* attributes);
+
+  // Helper function to execute a eager op without MLIR path.
+  // This is a shortcut for performance improvement, especially for variable
+  // initialization. Under certain condition
+  // (see ShouldFastExecuteEagerPureOperation), the op can be run locally, and
+  // the result will be broadcast to each shards.
+  void FastExecuteEagerPureOperation(
+      TFE_Context* context, const DTensorOperation& dtensor_operation,
+      const Mesh& mesh, int num_inputs, int num_outputs,
+      const std::vector<TensorWithLayout*>& typed_inputs,
+      const TFE_OpAttrs* attributes, std::vector<TensorHandlePtr>& outputs,
+      TF_Status* status);
 
   // Wraps a TensorWithLayout into a TFE_TensorHandle.
   TFE_TensorHandle* MakeLayoutTensorHandle(TFE_Context* context,
@@ -620,6 +675,10 @@ class DTensorDevice {
   // Eager executors.
   int in_flight_nodes_limit_;
 
+  // Statistics
+  struct Stats {
+    int64_t eager_pure_optimization_hits;
+  } stats_;
   // Mesh configs with matching parallel devices.
   //
   // For now we just consider the first entry added to dtensor_device as the
@@ -845,9 +904,13 @@ StatusOr<Layout> FetchLayoutFromAttributes(const TFE_OpAttrs* attributes,
   // Get attributes.
   TF_ASSIGN_OR_RETURN(NameAttrList name_and_attrs, FetchAttributes(attributes));
 
+  auto iter = name_and_attrs.attr().find(std::string(attribute_name));
+  if (iter == name_and_attrs.attr().end()) {
+    return absl::NotFoundError(
+        absl::StrCat("Attribute ", attribute_name, "not found"));
+  }
   // Get layout string from attributes.
-  absl::string_view layout_str =
-      name_and_attrs.attr().find(std::string(attribute_name))->second.s();
+  absl::string_view layout_str = iter->second.s();
 
   // This would probably be slow at the moment without caching.
   // We should consider making this faster in the future.
@@ -1268,15 +1331,16 @@ bool DTensorDevice::IsSparseDTensor(TFE_Context* context,
   return t->tensor_type() == TensorType::kSparse;
 }
 
-std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
+std::unordered_map<std::string, int> DTensorDevice::GetStats(
     TFE_Context* context, TF_Status* status) const {
-  const auto stats = function_manager_->GetStats();
+  const auto fm_stats = function_manager_->GetStats();
 
   const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
   std::unordered_map<std::string, int> result{
-      {"hit", stats.hits},
-      {"miss", stats.misses},
-      {"size", stats.size},
+      {"function_manager.hit", fm_stats.hits},
+      {"function_manager.miss", fm_stats.misses},
+      {"function_manager.size", fm_stats.size},
+      {"eager_pure_optimization.hit", stats_.eager_pure_optimization_hits},
       {"device_cache.size", eager_stats.device_cache_size},
       {"kernel_cache.size", eager_stats.kernel_cache_size},
       {"local_rendezvous_cache.active.size",
@@ -1809,6 +1873,45 @@ void DTensorDevice::ParallelExecuteRegularOperation(
   }
 }
 
+void DTensorDevice::ExecuteMultiDeviceOperation(
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const TranslatedFunction& function,
+    const std::vector<TensorWithLayoutTf*>& inputs,
+    std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
+    TF_Status* status) {
+  std::vector<TFE_TensorHandle*> eager_inputs;
+  for (TensorWithLayoutTf* input : inputs) {
+    std::vector<TFE_TensorHandle*> tensors(input->tensors());
+    eager_inputs.insert(eager_inputs.end(), tensors.begin(), tensors.end());
+  }
+
+  int num_outputs = function.local_output_shapes.size();
+  int num_output_layouts = function.output_layouts.size();
+
+  std::vector<TensorHandlePtr> eager_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(
+      context, eager_inputs, function.translated_function_name,
+      /*device_name=*/"", attributes, &num_outputs, eager_outputs, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  int output_offset = 0;
+  for (int i = 0; i < num_output_layouts; i++) {
+    const Layout& output_layout = function.output_layouts[i];
+    std::vector<TensorHandlePtr> layout_outputs;
+    const int num_devices = output_layout.num_devices();
+    for (int j = 0; j < num_devices; j++) {
+      const int output_idx = output_offset + j;
+      layout_outputs.emplace_back(std::move(eager_outputs[output_idx]));
+    }
+    output_offset += num_devices;
+    ASSIGN_OR_RETURN_C_STATUS(
+        auto local_output,
+        CreateTensorWithLayout(std::move(layout_outputs), output_layout),
+        status);
+    outputs[i] = std::move(local_output);
+  }
+}
+
 void DTensorDevice::ExecuteSingleDeviceOperation(
     TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
     const std::string& operation_name, const std::string& device_name,
@@ -1825,7 +1928,9 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
                             /*device_name=*/device_name.c_str(),
                             /*remote=*/false, eager_executor_.get()));
   if (TF_GetCode(status) != TF_OK) return;
-  new_op->AddAttrs(tensorflow::unwrap(attributes));
+  if (attributes) {
+    new_op->AddAttrs(tensorflow::unwrap(attributes));
+  }
   for (int input_index = 0; input_index < inputs.size(); ++input_index) {
     auto input = inputs[input_index];
     const char* input_device = TFE_TensorHandleDeviceName(input, status);
@@ -1943,6 +2048,96 @@ void DTensorDevice::ExecuteEPUFunctions(
   }
 }
 
+void DTensorDevice::ExecuteParallelDeviceOperation(
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const ExecutionFunctions* execution_functions,
+    const std::vector<const TranslatedFunction*>& function_list,
+    const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
+    int num_inputs, uint64 step_id, TF_Status* status) {
+  // Execute all functions in parallel.
+  for (const TranslatedFunction* function : function_list) {
+    const Mesh& mesh = function->function_mesh;
+    const std::string& translated_function_name =
+        function->translated_function_name;
+
+    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
+
+    ASSIGN_OR_RETURN_C_STATUS(
+        const parallel_device::ParallelDevice* parallel_device,
+        GetParallelDevice(mesh, /*strict=*/false), status);
+
+    // Gather the local inputs for this function.
+    std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
+    parallel_inputs.reserve(num_inputs + 1);
+    auto input_mapping = function->input_index_map;
+
+    // We sort here because by this time, the function graph we are executing
+    // is a reduced version of the main function, that includes the
+    // StatefulPartitionedCall that we are executing for this mesh.
+    // Thus, the ordering is the same as the main function ordering, which
+    // is sorted increasingly.
+    std::sort(input_mapping.begin(), input_mapping.end());
+
+    for (const int global_index : input_mapping) {
+      auto input_index = global_index - execution_functions->num_device_ids;
+
+      if (global_index < execution_functions->num_device_ids) {
+        parallel_device::ParallelTensor* device_ids =
+            GetDeviceIDs(context, status, mesh, parallel_device);
+        if (TF_GetCode(status) != TF_OK) return;
+        parallel_inputs.emplace_back(device_ids->tensors());
+      } else {
+        parallel_inputs.emplace_back(global_parallel_inputs[input_index]);
+      }
+    }
+
+    parallel_device->StartExecute(
+        context, parallel_inputs, translated_function_name.c_str(), attributes,
+        /*expected_max_outputs=*/function->local_output_shapes.size(),
+        *cancellation_manager_, /*step_id=*/step_id);
+  }
+}
+
+void DTensorDevice::ExecuteEagerOperation(
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const TranslatedFunction& function,
+    const std::vector<TensorWithLayoutTf*>& inputs_tf,
+    std::vector<std::unique_ptr<TensorWithLayout>>& output_with_layout,
+    TF_Status* status) {
+  const Mesh& mesh = function.function_mesh;
+  const std::string device_name = std::string{mesh.single_device()};
+
+  std::vector<TFE_TensorHandle*> single_device_inputs;
+  single_device_inputs.reserve(inputs_tf.size());
+  for (auto input_tf : inputs_tf) {
+    if (!input_tf->layout().IsSingleDevice()) {
+      Set_TF_Status_from_Status(
+          status, absl::InvalidArgumentError(
+                      "Some of the inputs are not single device"));
+      return;
+    }
+    single_device_inputs.push_back(input_tf->single_tensor());
+  }
+
+  int num_outputs = function.output_index_map.size();
+  std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(
+      context, single_device_inputs, function.translated_function_name,
+      device_name, attributes, &num_outputs, single_device_outputs, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return;
+  }
+
+  for (const TensorHandlePtr& output : single_device_outputs) {
+    std::unique_ptr<TensorWithLayout> output_tensor =
+        Broadcast(context, output.get(), mesh, status);
+    if (TF_GetCode(status) != TF_OK) {
+      break;
+    }
+    output_with_layout.push_back(std::move(output_tensor));
+  }
+}
+
 void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
@@ -2050,61 +2245,45 @@ void DTensorDevice::ExecuteRegularOperation(
                                 global_parallel_sparse_inputs.begin(),
                                 global_parallel_sparse_inputs.end());
 
-  // Execute all functions in parallel.
-  for (const TranslatedFunction& function :
-       execution_functions->function_list) {
+  // Calculate the number of global outputs.
+  const std::vector<TranslatedFunction>& function_list =
+      execution_functions->function_list;
+  const bool multi_device_mode = EnableMultiDeviceMode();
+  if (multi_device_mode && function_list.size() != 1) {
+    Set_TF_Status_from_Status(
+        status,
+        absl::InvalidArgumentError(
+            "There should only be one function after multi-device expansion."));
+    return;
+  }
+
+  std::vector<const TranslatedFunction*> functions_to_execute;
+  for (const TranslatedFunction& function : function_list) {
     const Mesh& mesh = function.function_mesh;
     const std::string& translated_function_name =
         function.translated_function_name;
 
-    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
+    if (multi_device_mode) {
+      num_global_outputs += function.output_layouts.size();
+    } else {
+      num_global_outputs += function.local_output_shapes.size();
+    }
 
-    num_global_outputs += function.local_output_shapes.size();
-
-    if (is_remote_mesh(mesh) ||
+    if (is_remote_mesh(mesh) || mesh.IsSingleDevice() ||
         (excluded_fn_names.find(translated_function_name) !=
          excluded_fn_names.end())) {
-      // Skip execution for a translated function has remote mesh or when it is
-      // excluded.
+      // Skip execution for a translated function has remote mesh, when it is
+      // excluded, or if it is for a single device.
       continue;
+    } else {
+      functions_to_execute.emplace_back(&function);
     }
-    if (mesh.IsSingleDevice()) {
-      continue;
-    }
+  }
 
-    ASSIGN_OR_RETURN_C_STATUS(
-        const parallel_device::ParallelDevice* parallel_device,
-        GetParallelDevice(mesh, /*strict=*/false), status);
-
-    // Gather the local inputs for this function.
-    std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
-    parallel_inputs.reserve(inputs.size() + 1);
-    auto input_mapping = function.input_index_map;
-
-    // We sort here because by this time, the function graph we are executing
-    // is a reduced version of the main function, that includes the
-    // StatefulPartitionedCall that we are executing for this mesh.
-    // Thus, the ordering is the same as the main function ordering, which
-    // is sorted increasingly.
-    std::sort(input_mapping.begin(), input_mapping.end());
-
-    for (const int global_index : input_mapping) {
-      auto input_index = global_index - execution_functions->num_device_ids;
-
-      if (global_index < execution_functions->num_device_ids) {
-        parallel_device::ParallelTensor* device_ids =
-            GetDeviceIDs(context, status, mesh, parallel_device);
-        if (TF_GetCode(status) != TF_OK) return;
-        parallel_inputs.emplace_back(device_ids->tensors());
-      } else {
-        parallel_inputs.emplace_back(global_parallel_inputs[input_index]);
-      }
-    }
-
-    parallel_device->StartExecute(
-        context, parallel_inputs, translated_function_name.c_str(), attributes,
-        /*expected_max_outputs=*/function.local_output_shapes.size(),
-        *cancellation_manager_, /*step_id=*/step_id);
+  if (!multi_device_mode) {
+    ExecuteParallelDeviceOperation(context, attributes, execution_functions,
+                                   functions_to_execute, global_parallel_inputs,
+                                   inputs.size(), step_id, status);
   }
 
   *num_outputs = num_global_outputs;
@@ -2131,37 +2310,12 @@ void DTensorDevice::ExecuteRegularOperation(
     output_with_layout.reserve(function.output_index_map.size());
     VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
 
-    if (mesh.IsSingleDevice()) {
-      const std::string device_name = std::string{mesh.single_device()};
-      std::vector<TFE_TensorHandle*> single_device_inputs;
-      single_device_inputs.reserve(inputs_tf.size());
-      for (auto input_tf : inputs_tf) {
-        if (!input_tf->layout().IsSingleDevice()) {
-          Set_TF_Status_from_Status(
-              status, errors::InvalidArgument(
-                          "Some of the inputs are not single device"));
-          break;
-        }
-        single_device_inputs.push_back(input_tf->single_tensor());
-      }
-      int num_outputs = function.output_index_map.size();
-
-      std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
-
-      if (TF_GetCode(status) == TF_OK) {
-        ExecuteSingleDeviceOperation(context, single_device_inputs,
-                                     function.translated_function_name,
-                                     device_name, attributes, &num_outputs,
-                                     single_device_outputs, status);
-        for (const TensorHandlePtr& output : single_device_outputs) {
-          std::unique_ptr<TensorWithLayout> output_tensor =
-              Broadcast(context, output.get(), mesh, status);
-          if (TF_GetCode(status) != TF_OK) {
-            break;
-          }
-          output_with_layout.push_back(std::move(output_tensor));
-        }
-      }
+    if (multi_device_mode) {
+      ExecuteMultiDeviceOperation(context, attributes, function, inputs_tf,
+                                  typed_outputs, status);
+    } else if (mesh.IsSingleDevice()) {
+      ExecuteEagerOperation(context, attributes, function, inputs_tf,
+                            output_with_layout, status);
     } else if (is_remote_mesh(mesh)) {
       // Create dummy outputs on a remote mesh.
       for (int i = 0; i < function.output_index_map.size(); ++i) {
@@ -2217,6 +2371,8 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
 
+    // This loop will not execute under multi device mode (since it doesn't
+    // set the output index map).
     for (int i = 0; i < function.output_index_map.size(); ++i) {
       // TODO(b/162744844): Generalize this pattern so that the extraction is
       // not special cased.
@@ -2434,10 +2590,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
     if (!mesh->IsSingleDevice()  // Broadcast to single device tensor is
                                  // allowed.
-        && (operation_name != std::string("CopyToMesh") &&
-            operation_name != std::string("CopyToMeshGrad") &&
-            operation_name != std::string("Relayout") &&
-            operation_name != std::string("RelayoutLike")) &&
+        && !IsRelayoutOp(dtensor_operation) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       StatusOr<std::vector<int64_t>> shape = GetTensorShapeAsVector(input);
       if (!shape.ok()) {
@@ -2471,6 +2624,15 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     broadcast_results_keep_alive.emplace_back(std::move(tensor_with_layout));
   }
 
+  if (ShouldFastExecuteEagerPureOperation(dtensor_operation, mesh.value(),
+                                          typed_inputs, attributes)) {
+    stats_.eager_pure_optimization_hits++;
+    FastExecuteEagerPureOperation(context, dtensor_operation, mesh.value(),
+                                  num_inputs, *num_outputs, typed_inputs,
+                                  attributes, outputs, status);
+    return;
+  }
+
   std::vector<TFE_TensorHandle*> raw_outputs(*num_outputs);
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
                           num_outputs, raw_outputs.data(), status);
@@ -2478,6 +2640,105 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     for (int i = 0; i < *num_outputs; ++i) {
       outputs[i].reset(raw_outputs[i]);
     }
+  }
+}
+
+bool DTensorDevice::ShouldFastExecuteEagerPureOperation(
+    const DTensorOperation& dtensor_operation, const Mesh& mesh,
+    const std::vector<TensorWithLayout*>& typed_inputs,
+    const TFE_OpAttrs* attributes) {
+  if (dtensor_operation.is_func() || !dtensor_operation.is_pure() ||
+      dtensor_operation.name == std::string("GetEmbeddingConfiguration") ||
+      mesh.IsSingleDevice() || mesh.is_remote() ||
+      // TODO(b/287529295): Disable this shortcut for TPU for now.
+      mesh.is_tpu_mesh()) {
+    return false;
+  }
+  if (IsRelayoutOp(dtensor_operation)) {
+    auto layout = FetchLayoutFromAttributes(attributes, kQualifiedLayoutAttr);
+    if (typed_inputs.empty()) {  // Missing Inputs.
+      return false;
+    }
+    if (!layout.ok()) {
+      return false;
+    }
+    if (!layout->IsFullyReplicated()) {
+      return false;
+    }
+    if (layout->mesh() != mesh) {
+      return false;
+    }
+  }
+  bool all_replicated_inputs = true;
+  bool all_on_default_mesh = true;
+  bool all_dtype_supported = true;
+  for (auto typed_input : typed_inputs) {
+    auto layout = typed_input->layout();
+    all_replicated_inputs &= layout.IsFullyReplicated();
+
+    all_on_default_mesh &= layout.mesh() == mesh;
+
+    auto input_dtype = typed_input->dtype();
+    all_dtype_supported &= input_dtype != TF_STRING;
+  }
+
+  // In case user specify the default_layout, it could affect the output
+  // tensor layout, even the inputs are all replicated.
+  bool all_replicated_output =
+      (!default_layout_.has_value() || default_layout_->IsFullyReplicated());
+
+  // Fetch the ops registy to get the output dtype for the op. Certain dtypes
+  // like string are not supported by the broadcast.
+  const OpDef* op_def = nullptr;
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(dtensor_operation.name, &op_def);
+  if (!status.ok()) return false;
+  for (const auto& output_arg : op_def->output_arg()) {
+    all_dtype_supported &= output_arg.type() != DT_STRING;
+  }
+
+  return (all_replicated_inputs && all_replicated_output &&
+          all_dtype_supported && all_on_default_mesh);
+}
+
+void DTensorDevice::FastExecuteEagerPureOperation(
+    TFE_Context* context, const DTensorOperation& dtensor_operation,
+    const Mesh& mesh, int num_inputs, int num_outputs,
+    const std::vector<TensorWithLayout*>& typed_inputs,
+    const TFE_OpAttrs* attributes, std::vector<TensorHandlePtr>& outputs,
+    TF_Status* status) {
+  std::string device_name = std::string{mesh.local_devices()[0]};
+  std::vector<TFE_TensorHandle*> single_device_inputs;
+  single_device_inputs.reserve(num_inputs);
+  const char* operation_name = dtensor_operation.name;
+
+  // Fully replicated Relayout the same as Identity.
+  if (IsRelayoutOp(dtensor_operation)) {
+    // Run as Identity.
+    operation_name = "Identity";
+    // Ignore the reference input if there is any.
+    num_inputs = 1;
+    // Ignore the attributes.
+    attributes = nullptr;
+  }
+  for (int i = 0; i < num_inputs; ++i) {
+    TFE_TensorHandle* first_replica_input = typed_inputs[i]->get_tensor(0);
+    single_device_inputs.push_back(first_replica_input);
+  }
+  std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(context, single_device_inputs, operation_name,
+                               device_name, attributes, &num_outputs,
+                               single_device_outputs, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  for (int i = 0; i < num_outputs; ++i) {
+    TFE_TensorHandle* output = single_device_outputs[i].get();
+    std::unique_ptr<TensorWithLayout> output_tensor =
+        Broadcast(context, output, mesh, status);
+    if (TF_GetCode(status) != TF_OK) return;
+    outputs[i].reset(
+        MakeLayoutTensorHandle(context, std::move(output_tensor), status));
+    if (TF_GetCode(status) != TF_OK) return;
   }
 }
 
@@ -2766,11 +3027,11 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
   return device->IsSparseDTensor(context, input, status);
 }
 
-std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
-                                                           void* device_info,
-                                                           TF_Status* status) {
+std::unordered_map<std::string, int> GetStats(TFE_Context* context,
+                                              void* device_info,
+                                              TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  return device->GetFunctionCacheStats(context, status);
+  return device->GetStats(context, status);
 }
 
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

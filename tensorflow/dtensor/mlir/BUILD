@@ -11,6 +11,7 @@ package(
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+        "//third_party/py/tensorflow_addons/custom_ops/dtensor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -163,17 +164,11 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@stablehlo//:chlo_ops",
     ],
     alwayslink = 1,
 )
@@ -379,7 +374,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )
@@ -422,7 +416,6 @@ cc_library(
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/dtensor/cc:dstatus",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//mlir:IR",

@@ -251,9 +251,9 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
-
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -283,9 +283,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -311,10 +312,13 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
-        args, kwargs, function_type.FunctionType.get_default_values(foo), {},
+    default_values = function_type.FunctionType.get_default_values(foo)
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, default_values, {},
         polymorphic_type)
 
+    kwargs["z"] = 3
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -344,9 +348,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -371,9 +376,12 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del my_var_args
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
-        (1, 2, 3), {}, {}, {}, polymorphic_type)
+    args = (1, 2, 3)
+    kwargs = {}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -398,12 +406,14 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((), {
-        "x": 1,
-        "y": 2,
-        "z": 3
-    }, {}, {}, polymorphic_type)
 
+    args = ()
+    kwargs = {"x": 1, "y": 2, "z": 3}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type
+    )
+
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, ())
     self.assertEqual(bound_args.kwargs, {"x": 1, "y": 2, "z": 3})
 
@@ -425,11 +435,13 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del args, kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((1,), {
-        "y": 2,
-        "z": 3
-    }, {}, {}, polymorphic_type)
+    args = (1,)
+    kwargs = {"y": 2, "z": 3}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type
+    )
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1,))
     self.assertEqual(bound_args.kwargs, {"y": 2, "z": 3})
 
@@ -456,9 +468,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2))
     self.assertEqual(bound_args.kwargs, {"z": 3})
 
@@ -489,9 +502,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
     foo = eval("lambda x, y, /, z: x + y + z")  # pylint: disable=eval-used
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 

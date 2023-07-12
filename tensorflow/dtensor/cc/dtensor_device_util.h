@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_operation.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
@@ -118,6 +119,7 @@ struct TranslatedFunction {
 struct ExecutionFunctions {
   // Stores information about all functions to execute for provided computation.
   std::vector<TranslatedFunction> function_list;
+
   // Number of device ids args added to translated functions.
   // During translation, we insert one device id arg node per mesh.
   // For a single mesh function, it equals 1.
@@ -128,17 +130,6 @@ struct ExecutionFunctions {
   // Mesh fingerprint of function_list. Set only when ExecutionFunctions refers
   // to a function for performance reason, since an eager op doesn't use it.
   uint64 function_mesh_fingerprint = 0;
-};
-
-struct DTensorOperation {
-  // For all fields: not owned. lifetime covers the whole usage.
-  const char* name;
-  const FunctionDef* function_def;
-  // Default mesh is used when Mesh Propagation does not identify a mesh
-  // otherwise.
-  const Mesh default_mesh;
-  const StackTracesMap& stack_traces;
-  inline bool is_func() const { return function_def != nullptr; }
 };
 
 class TensorWithLayoutTf
@@ -207,7 +198,7 @@ class TensorWithLayoutTf
   std::string DebugString() const override;
 
   std::vector<int64_t> global_shape() const override {
-    return layout_.GlobalShapeFromLocalShape(local_shape_);
+    return layout_.GlobalShapeFromLocalShape(local_shape_, &local_shapes_);
   }
 
   ConstValueNode* const_value_node() const override {
@@ -221,11 +212,13 @@ class TensorWithLayoutTf
   TensorWithLayoutTf(std::vector<TensorHandlePtr>&& tensors,
                      const Layout& layout,
                      const std::vector<int64_t>& local_shape,
+                     const std::vector<std::vector<int64_t>>& local_shapes,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
       : tensors_(std::move(tensors)),
         layout_(layout),
         local_shape_(local_shape),
+        local_shapes_(std::move(local_shapes)),
         dtype_(dtype) {
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
@@ -251,6 +244,9 @@ class TensorWithLayoutTf
 
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
+  // The local shape of each individual tensor in `tensors_`.
+  // Initialized only when there is dynamic shape.
+  std::vector<std::vector<int64_t>> local_shapes_;
 
   // dtype of tensor_. Empty if the layout is Single Device.
   std::optional<TF_DataType> dtype_;
@@ -354,7 +350,7 @@ class ResourceHandleWithLayout
                            const Layout& layout,
                            const std::vector<int64_t>& local_shape)
       : llvm::RTTIExtends<ResourceHandleWithLayout, TensorWithLayoutTf>(
-            std::move(tensors), layout, local_shape, TF_RESOURCE) {}
+            std::move(tensors), layout, local_shape, {}, TF_RESOURCE) {}
 
   // The layout of the tensor pointed to by this handle, if any.
   std::optional<Layout> dereferenced_layout_;
@@ -435,7 +431,7 @@ class SparseTensorWithLayout
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : llvm::RTTIExtends<SparseTensorWithLayout, TensorWithLayoutTf>(
-            std::vector<TensorHandlePtr>(), layout, local_shape),
+            std::vector<TensorHandlePtr>(), layout, local_shape, {}),
         indices_(std::move(indices)),
         values_(std::move(values)),
         dense_shapes_(std::move(dense_shapes)) {}

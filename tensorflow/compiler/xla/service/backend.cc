@@ -22,6 +22,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -116,6 +117,23 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor,
     stream_pools_.emplace(executor, std::make_unique<StreamPool>());
   }
   return stream_pools_.at(executor)->BorrowStream(executor, priority);
+}
+
+StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
+    int device_ordinal, int num_streams, se::StreamPriority priority) {
+  absl::MutexLock l(&mu_);
+  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  if (!stream_pools_.contains(executor)) {
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+  }
+
+  std::vector<StreamPool::Ptr> ptrs;
+  for (int i = 0; i < num_streams; i++) {
+    StreamPool::Ptr ptr =
+        stream_pools_.at(executor)->BorrowStream(executor, priority);
+    ptrs.push_back(std::move(ptr));
+  }
+  return ptrs;
 }
 
 Backend::Backend(se::Platform* platform, Compiler* compiler,

@@ -191,13 +191,13 @@ Status HloInputOutputAliasConfig::Verify(
   }
   return ForEachAliasWithStatus([&](const ShapeIndex& output_index,
                                     const Alias& alias) -> Status {
-    const HloInstruction* root = entry->root_instruction();
-
     TF_RET_CHECK(0 <= alias.parameter_number);
     TF_RET_CHECK(entry->num_parameters() > alias.parameter_number);
     const Shape& param_shape =
-        entry->parameter_instruction(alias.parameter_number)->shape();
-    const Shape& output_shape = root->shape();
+        module.entry_computation_layout().parameter_shape(
+            alias.parameter_number);
+    const Shape& output_shape =
+        module.entry_computation_layout().result_shape();
     TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, alias.parameter_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(output_shape, output_index));
 

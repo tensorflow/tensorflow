@@ -72,7 +72,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
-        "//tensorflow/compiler/xla/python/ifrt/ir:compile_options",
+        "//tensorflow/compiler/xla/python/ifrt/ir:compiler",
         "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
@@ -88,7 +88,6 @@ cc_library(
 xla_cc_test(
     name = "executable_test_no_impl",
     srcs = [],
-    tags = ["nomsan"],
     deps = [
         ":executable_impl_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",

@@ -240,6 +240,7 @@ enum StatType {
   kStepName,
   kTfOp,
   kHloOp,
+  kDeduplicatedName,
   kHloCategory,
   kHloModule,
   kProgramId,
@@ -352,8 +353,6 @@ bool IsStatType(StatType stat_type, absl::string_view stat_name);
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
-
-bool IsTensorCorePlaneName(absl::string_view plane_name);
 
 std::optional<int64_t> FindStatType(absl::string_view stat_name);
 

@@ -145,15 +145,6 @@ xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
   }
 }
 
-DataType MaybeConvertBF16ToF32(DataType const& dtype) {
-  if (dtype == DT_BFLOAT16) {
-    // We'll go through F32 to generate BF16.
-    // TODO(b/256243456): Generate BF16 directly from U16.
-    return DT_FLOAT;
-  }
-  return dtype;
-}
-
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
@@ -169,9 +160,10 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
 
     auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
@@ -215,17 +207,20 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     TensorShape minval_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval_shape),
-                errors::InvalidArgument("minval must be scalar, got shape ",
-                                        minval_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(minval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be scalar, got shape ", minval_shape.DebugString())));
     TensorShape maxval_shape = ctx->InputShape(3);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval_shape),
-                errors::InvalidArgument("minval must be scalar, got shape ",
-                                        maxval_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(maxval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be scalar, got shape ", maxval_shape.DebugString())));
 
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaOp minval = ctx->Input(2);
@@ -266,9 +261,10 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
 
     xla::XlaOp seed = ctx->Input(1);
 
@@ -307,9 +303,10 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
     auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
@@ -358,9 +355,10 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
@@ -403,9 +401,10 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
     TensorShape seed_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape == TensorShape({2}),
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 

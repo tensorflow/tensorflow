@@ -388,22 +388,22 @@ struct PostorderDFSVisitor {
   // beyond kLargeShapeElementLimit and the instruction needs evaluation (e.g.,
   // kGetDimensionSize or kSetDimensionSize doesn't need evaluation).
   bool IsInstructionOverLimit(const HloInstructionProto* proto,
-                              InferenceContext context) {
-    Shape subshape =
-        ShapeUtil::GetSubshape(Shape(proto->shape()), context.shape_index);
+                              const InferenceContext& context) {
+    auto subshape = std::make_unique<Shape>(
+        ShapeUtil::GetSubshape(Shape(proto->shape()), context.shape_index));
 
-    if (subshape.IsArray() &&
-        ShapeUtil::ElementsIn(subshape) > kLargeShapeElementLimit) {
+    if (subshape->IsArray() &&
+        ShapeUtil::ElementsIn(*subshape) > kLargeShapeElementLimit) {
       return true;
     }
     HloOpcode opcode = StringToHloOpcode(proto->opcode()).value();
     for (int64_t operand_id : proto->operand_ids()) {
       const HloInstructionProto* operand =
           handle_to_instruction(operand_id).value();
-      Shape operand_shape = Shape(operand->shape());
+      auto operand_shape = std::make_unique<Shape>(operand->shape());
 
-      if (operand_shape.IsArray() &&
-          ShapeUtil::ElementsIn(operand_shape) > kLargeShapeElementLimit &&
+      if (operand_shape->IsArray() &&
+          ShapeUtil::ElementsIn(*operand_shape) > kLargeShapeElementLimit &&
           opcode != HloOpcode::kGetDimensionSize &&
           opcode != HloOpcode::kSetDimensionSize) {
         return true;
@@ -449,8 +449,8 @@ struct PostorderDFSVisitor {
 
 // Returns a result representing that value is fully dynamic and can't be
 // inferred. In other words, "give up" and return most conservative value.
-PostorderDFSNode CreateAllDynamicResult(Shape shape,
-                                        PostorderDFSNodeType type) {
+PostorderDFSNode CreateAllDynamicResult(const Shape& shape,
+                                        const PostorderDFSNodeType& type) {
   return PostorderDFSNode().AddVisit(
       [shape, type](absl::Span<Literal>) -> Literal {
         if (type == PostorderDFSNodeType::kConstantValue ||
@@ -1000,16 +1000,20 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
 
 StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     int64_t handle, PostorderDFSNodeType type, InferenceContext context) {
+  TF_RETURN_IF_ERROR(handle_to_instruction(handle).status());
+  // Invariant check.
+  TF_RET_CHECK(handle_to_instruction(handle).value());
+  VLOG(1) << "Analyzing IsDynamic on "
+          << handle_to_instruction(handle).value()->DebugString();
+  if (IsInstructionOverLimit(handle_to_instruction(handle).value(), context)) {
+    return CreateAllDynamicResult(
+        ShapeUtil::GetSubshape(
+            Shape(handle_to_instruction(handle).value()->shape()),
+            context.shape_index),
+        type);
+  }
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
-  // Invariant check.
-  TF_RET_CHECK(root);
-  VLOG(1) << "Analyzing IsDynamic on " << root->DebugString();
-  Shape subshape =
-      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
-  if (IsInstructionOverLimit(root, context)) {
-    return CreateAllDynamicResult(subshape, type);
-  }
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   PostorderDFSNode result;
   for (auto operand_id : root->operand_ids()) {
@@ -1189,7 +1193,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
 
       if (call_proto->operand_ids_size() != 1) {
         // Only support single operand forwarding.
-        return CreateAllDynamicResult(subshape, type);
+        return CreateAllDynamicResult(
+            Shape(handle_to_instruction(handle).value()->shape()), type);
       }
       int64_t call_root =
           handle_to_computation(call_proto->called_computation_ids(0))

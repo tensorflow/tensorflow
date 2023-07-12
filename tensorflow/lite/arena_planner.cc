@@ -158,41 +158,30 @@ void ArenaPlanner::IdentifyInPlaceTensors() {
     const TfLiteRegistration& registration = graph_info_->registration(i);
     const TfLiteNode& node = graph_info_->node(i);
     if (node.outputs->size < 1) continue;
-    bool tensor_changed = true;
-    switch (registration.builtin_code) {
-      // Operation types whose output can reuse input memory.
-      // TODO (b/254230751): add support for more ops which support forwarding.
-      // The following ops don't care about the number of consumers of the input
-      // being shared as they do not modify the contents.
-      case kTfLiteBuiltinBitcast:
-      case kTfLiteBuiltinExpandDims:
-      case kTfLiteBuiltinReshape:
-      case kTfLiteBuiltinSqueeze:
-        tensor_changed = false;
-        break;
-      case kTfLiteBuiltinAdd:
-      case kTfLiteBuiltinDiv:
-      case kTfLiteBuiltinDynamicUpdateSlice:
-      case kTfLiteBuiltinMul:
-      case kTfLiteBuiltinSoftmax:
-      case kTfLiteBuiltinSub:
-        break;
-      default:
-        continue;
+    bool tensor_changed =
+        !(registration.inplace_operator & kTfLiteInplaceOpDataUnmodified);
+    if (registration.inplace_operator == kTfLiteInplaceOpNone) {
+      continue;
     }
     int32_t input_id = -1;
     int32_t output_id = node.outputs->data[0];
     const TfLiteTensor& output_tensor = tensors[output_id];
-    for (int i = 0; i < node.inputs->size; ++i) {
+    const int loop_end =
+        std::min(kTfLiteMaxSharableOpInputs, node.inputs->size);
+    for (int i = 0; i < loop_end; ++i) {
       if (node.inputs->data[i] == kTfLiteOptionalTensor) {
         continue;
       }
-      const TfLiteTensor& input_tensor = tensors[node.inputs->data[i]];
-      if (InputTensorCanBeShared(input_tensor, output_tensor,
-                                 node.inputs->data[i], output_id,
-                                 tensor_changed)) {
-        input_id = node.inputs->data[i];
-        break;
+      const bool input_shareable =
+          registration.inplace_operator & (kTfLiteInplaceOpInput0Shared << i);
+      if (input_shareable) {
+        const TfLiteTensor& input_tensor = tensors[node.inputs->data[i]];
+        if (InputTensorCanBeShared(input_tensor, output_tensor,
+                                   node.inputs->data[i], output_id,
+                                   tensor_changed)) {
+          input_id = node.inputs->data[i];
+          break;
+        }
       }
     }
     if (input_id == -1) {

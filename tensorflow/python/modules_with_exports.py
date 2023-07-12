@@ -34,12 +34,17 @@ from tensorflow.core.util.event_pb2 import *
 # Data
 from tensorflow.python import data
 
+# Distribute
+from tensorflow.python import distribute
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import ops
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -47,12 +52,58 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.random_crop_ops import *
+from tensorflow.python.ops import bincount_ops
+from tensorflow.python.ops import bitwise_ops as bitwise
+from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import composite_tensor_ops
+from tensorflow.python.ops import gen_audio_ops
+from tensorflow.python.ops import gen_boosted_trees_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import gen_rnn_ops
+from tensorflow.python.ops import gen_sendrecv_ops
+from tensorflow.python.ops import gen_tpu_ops
+from tensorflow.python.ops import gen_uniform_quant_ops
+from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import initializers_ns as initializers
+from tensorflow.python.ops import manip_ops as manip
+from tensorflow.python.ops import metrics
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import ragged
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import sets
+from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import while_v2
+from tensorflow.python.ops.distributions import distributions
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.ops.linalg.sparse import sparse
+from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.numpy_ops import np_random
+from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.ops.numpy_ops import np_array_ops
+from tensorflow.python.ops.numpy_ops import np_arrays
+from tensorflow.python.ops.numpy_ops import np_config
+from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_math_ops
+from tensorflow.python.ops.ragged import ragged_ops
+from tensorflow.python.ops.signal import signal
+from tensorflow.python.ops.structured import structured_ops as _structured_ops
+
+# Update the RaggedTensor package docs w/ a list of ops that support dispatch.
+ragged.__doc__ += ragged_ops.ragged_dispatch.ragged_op_list()
+
+# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
+# (due to a circular dependency issue: rnn depends on layers).
+nn.dynamic_rnn = rnn.dynamic_rnn
+nn.static_rnn = rnn.static_rnn
+nn.raw_rnn = rnn.raw_rnn
+nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
+nn.static_state_saving_rnn = rnn.static_state_saving_rnn
+nn.rnn_cell = rnn_cell
 
 # Function
 from tensorflow.core.function.trace_type import *
-
-# Namespaces
-from tensorflow.python.ops import initializers_ns as initializers
 
 from tensorflow.python.util.tf_export import tf_export
 
@@ -75,17 +126,8 @@ from tensorflow.python.distribute.coordinator.cluster_coordinator import *
 from tensorflow.python.distribute.failure_handling.failure_handling import *
 from tensorflow.python.distribute.failure_handling.preemption_watcher import *
 
-from tensorflow.python.ops.numpy_ops import np_random
-from tensorflow.python.ops.numpy_ops import np_utils
-from tensorflow.python.ops.numpy_ops import np_array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
-from tensorflow.python.ops.numpy_ops import np_config
-from tensorflow.python.ops.numpy_ops import np_dtypes
-from tensorflow.python.ops.numpy_ops import np_math_ops
-
 tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
 tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)
-
 
 # Export protos
 # pylint: disable=undefined-variable

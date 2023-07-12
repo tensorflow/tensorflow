@@ -1,3 +1,4 @@
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
@@ -6,7 +7,6 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
@@ -483,8 +483,6 @@ cuda_py_strict_test(
         ":def_function",
         ":record",
         ":test",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:nn",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -499,10 +497,13 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:functional_ops",
         "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:random_ops",
@@ -528,8 +529,6 @@ cuda_py_strict_test(
         ":forwardprop",
         ":forwardprop_util",
         ":record",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:nn",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/framework:constant_op",
@@ -539,9 +538,11 @@ cuda_py_strict_test(
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:map_fn",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -663,7 +664,7 @@ py_strict_library(
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:tf_method_target",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/eager/polymorphic_function:transform",
     ],
 )
@@ -735,8 +736,9 @@ py_strict_library(
         ":backprop_util",
         ":execute",
         ":forwardprop_util",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
+        "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
@@ -833,7 +835,7 @@ cuda_py_strict_test(
     ],
 )
 
-tf_xla_py_test(
+tf_xla_py_strict_test(
     name = "run_eager_op_as_function_xla_test",
     size = "small",
     srcs = ["run_eager_op_as_function_xla_test.py"],
@@ -889,10 +891,10 @@ tf_py_strict_test(
         ":context",
         ":record",
         ":test",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_grad",
@@ -1032,6 +1034,7 @@ py_strict_library(
         ":lift_to_graph",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:func_graph",
@@ -1282,12 +1285,23 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
+        "//tensorflow/python/framework:op_def_registry",
+        "//tensorflow/python/framework:ops",
+        "@gast_archive//:gast",
     ],
 )
 

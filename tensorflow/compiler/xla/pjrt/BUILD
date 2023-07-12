@@ -61,7 +61,6 @@ cc_library(
 xla_cc_test(
     name = "semaphore_test",
     srcs = ["semaphore_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":semaphore",
         "//tensorflow/compiler/xla:test",
@@ -97,7 +96,6 @@ cc_library(
 xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":tracked_device_buffer",
         "//tensorflow/compiler/xla:literal_util",
@@ -148,7 +146,6 @@ cc_library(
 xla_cc_test(
     name = "pjrt_api_test",
     srcs = ["pjrt_api_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":pjrt_api",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -168,6 +165,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
+        ":utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -209,7 +207,6 @@ cc_library(
 xla_cc_test(
     name = "pjrt_client_test_cpu",
     srcs = ["pjrt_client_test_cpu.cc"],
-    tags = ["nomsan"],
     deps = [
         ":pjrt_client_test_common",
         ":tfrt_cpu_pjrt_client",
@@ -223,11 +220,13 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = [":friends"],
     deps = [
+        ":pjrt_common",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
@@ -237,7 +236,6 @@ cc_library(
 xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":compile_options_proto_cc",
         ":pjrt_executable",
@@ -252,6 +250,7 @@ cc_library(
     name = "pjrt_device_description",
     hdrs = ["pjrt_device_description.h"],
     deps = [
+        ":pjrt_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -277,13 +276,18 @@ cc_library(
 xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":pjrt_client",
         ":pjrt_compiler",
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "pjrt_common",
+    hdrs = ["pjrt_common.h"],
+    visibility = [":friends"],
 )
 
 cc_library(
@@ -380,7 +384,6 @@ cc_library(
 xla_cc_test(
     name = "pjrt_stream_executor_client_test",
     srcs = ["pjrt_stream_executor_client_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":pjrt_client",
         ":pjrt_stream_executor_client",
@@ -443,22 +446,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_plugin_device_client",
-    deps = [
-        ":pjrt_plugin_device_client_headers",
-        "//tensorflow/compiler/xla/pjrt/plugin",
-    ],
-)
-
-cc_library(
-    name = "pjrt_plugin_device_client_headers",
-    hdrs = ["pjrt_plugin_device_client.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-    ],
-)
-
-cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
     hdrs = ["mlir_to_hlo.h"],
@@ -472,6 +459,7 @@ cc_library(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -514,7 +502,6 @@ cc_library(
 xla_cc_test(
     name = "tracked_tfrt_cpu_device_buffer_test",
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
         "@com_google_googletest//:gtest_main",
@@ -628,7 +615,6 @@ cc_library(
 xla_cc_test(
     name = "tfrt_cpu_pjrt_client_test",
     srcs = ["tfrt_cpu_pjrt_client_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla:literal",
@@ -663,7 +649,6 @@ cc_library(
 xla_cc_test(
     name = "lru_cache_test",
     srcs = ["lru_cache_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:test",
@@ -701,7 +686,6 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":transpose",
         "//tensorflow/compiler/xla:array",
@@ -759,7 +743,6 @@ cc_library(
 xla_cc_test(
     name = "tf_pjrt_client_test",
     srcs = ["tf_pjrt_client_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":tf_pjrt_client",
         ":tfrt_cpu_pjrt_client",
@@ -782,7 +765,6 @@ cc_library(
 xla_cc_test(
     name = "host_callback_test",
     srcs = ["host_callback_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":host_callback",
         ":pjrt_client",

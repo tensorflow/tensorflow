@@ -1,10 +1,10 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 8f7335c0b4ed..055fd65342d6 100644
+index c43ab727e285..7d848d2dffae 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -19,6 +19,30 @@ licenses(["notice"])
- 
- exports_files(["LICENSE.TXT"])
+@@ -30,6 +30,30 @@ exports_files([
+     "utils/lit/lit.py",
+ ])
  
 +config_setting(
 +    name = "macos_arm64",

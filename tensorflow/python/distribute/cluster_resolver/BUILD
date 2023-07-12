@@ -187,7 +187,6 @@ tf_py_strict_test(
     main = "kubernetes_cluster_resolver_test.py",
     deps = [
         ":kubernetes_cluster_resolver_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],

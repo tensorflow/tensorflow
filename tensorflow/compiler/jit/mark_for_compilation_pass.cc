@@ -2203,6 +2203,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "StatelessTruncatedNormal",
       "StatelessTruncatedNormalV2",
       "StatelessWhile",
+      "StochasticCastToInt",
       "Svd",
       "SymbolicGradient",
       "TensorArrayCloseV3",

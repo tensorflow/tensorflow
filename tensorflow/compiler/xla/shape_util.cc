@@ -73,6 +73,8 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
     sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
+    sizeof(float) / 4,   // F8E4M3FNUZ = 24
+    sizeof(float) / 4,   // F8E5M2FNUZ = 25
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -515,18 +517,19 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
-
-  if (shape->has_layout()) {
-    // Bump up all values in the layout by one.
-    for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
-         dim_idx++) {
-      int layout_idx = shape->layout().minor_to_major(dim_idx);
-      shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
-    }
-    // Then we can safely add zero.
-    shape->mutable_layout()->add_minor_to_major(0);
-  }
   shape->add_dimensions(bound);
+  if (shape->has_layout()) {
+    // Append an empty field to the layout.
+    shape->mutable_layout()->add_minor_to_major(0);
+    // Shift by one position all values in the layout in the major direction.
+    for (int dim_idx = shape->layout().minor_to_major_size() - 2; dim_idx >= 0;
+         --dim_idx) {
+      int layout_idx = shape->layout().minor_to_major(dim_idx);
+      shape->mutable_layout()->set_minor_to_major(dim_idx + 1, layout_idx);
+    }
+    // Insert the newly added dimension at the minor-most position.
+    shape->mutable_layout()->set_minor_to_major(0, shape->rank() - 1);
+  }
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 

@@ -17,7 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -27,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
@@ -147,7 +150,22 @@ bool HasDependency(llvm::ArrayRef<BufferUse> region_buffer_uses,
   return false;
 }
 
-using RegionStartAndEnd = std::pair<Operation*, Operation*>;
+struct RegionInfo {
+  Operation* start;
+  Operation* end;
+  int size;
+};
+
+int GetKernelCount(llvm::ArrayRef<Operation*> region) {
+  int kernel_count = 0;
+  for (Operation* op : region) {
+    if (!isa<memref::ViewOp, memref::ReinterpretCastOp, arith::ConstantOp>(
+            op)) {
+      kernel_count++;
+    }
+  }
+  return kernel_count;
+}
 
 //
 // Return a list of pairs of operations, in which the first element is the
@@ -164,8 +182,8 @@ using RegionStartAndEnd = std::pair<Operation*, Operation*>;
 //     else
 //       region.add(operation)
 //
-llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
-  llvm::SmallVector<RegionStartAndEnd> region_start_and_end;
+llvm::SmallVector<RegionInfo> GetRegionInfos(FuncOp capture_func) {
+  llvm::SmallVector<RegionInfo> region_infos;
 
   // These two arrays stores the information about the current region that is
   // being processed. region contains the kernels, while buffer_uses stores the
@@ -174,8 +192,10 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
   llvm::SmallVector<BufferUse> buffer_uses;
 
   auto store_region_and_start_new_region = [&]() {
-    if (region.size() >= 2) {
-      region_start_and_end.push_back({region.front(), region.back()});
+    int kernel_count = GetKernelCount(region);
+    if (kernel_count >= 2) {
+      RegionInfo region_info = {region.front(), region.back(), kernel_count};
+      region_infos.push_back(region_info);
     }
     region.clear();
     buffer_uses.clear();
@@ -204,7 +224,16 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
       operand_buffer_uses.push_back(buffer_use_0);
       operand_buffer_uses.push_back(buffer_use_1);
       operand_buffer_uses.push_back(buffer_use_2);
-    } else {
+    } else if (auto memcpy = dyn_cast<mlir::gpu::MemcpyOp>(operation)) {
+      BufferUse src_buffer = GetBufferUse(memcpy.getSrc(), /*read_only=*/true);
+      BufferUse dst_buffer = GetBufferUse(memcpy.getDst(), /*read_only=*/false);
+      operand_buffer_uses.push_back(src_buffer);
+      operand_buffer_uses.push_back(dst_buffer);
+    } else if ((!isa<memref::ViewOp>(operation) &&
+                !isa<memref::ReinterpretCastOp>(operation) &&
+                !isa<arith::ConstantOp>(operation)) ||
+               region.empty()) {
+      // Operation is unsupported by multi-streaming.
       store_region_and_start_new_region();
       continue;
     }
@@ -230,25 +259,25 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
     store_region_and_start_new_region();
   }
 
-  return region_start_and_end;
+  return region_infos;
 }
 
 void InsertConcurrentRegions(FuncOp capture_func,
                              CustomCallDeclarations& custom_calls) {
-  llvm::SmallVector<RegionStartAndEnd> region_start_and_end =
-      GetRegionStartAndEnd(capture_func);
+  llvm::SmallVector<RegionInfo> region_infos = GetRegionInfos(capture_func);
   auto sym_table = custom_calls.sym_table();
 
-  for (auto pair : region_start_and_end) {
-    Operation* start = pair.first;
-    Operation* end = pair.second;
+  for (RegionInfo region_info : region_infos) {
+    Operation* start = region_info.start;
+    Operation* end = region_info.end;
 
     ImplicitLocOpBuilder b(start->getLoc(), sym_table.getOp());
-    // See how graph launch is added.
     func::FuncOp begin_marker = custom_calls.GetOrCreate(
         b, "xla.gpu.concurrent_region.begin", TypeRange(), TypeRange());
     b.setInsertionPoint(start);
-    b.create<func::CallOp>(begin_marker.getName(), TypeRange());
+    auto call = b.create<func::CallOp>(begin_marker.getName(), TypeRange());
+    call->setAttr(b.getStringAttr("size"),
+                  IntegerAttr::get(b.getIntegerType(64), region_info.size));
 
     func::FuncOp end_marker = custom_calls.GetOrCreate(
         b, "xla.gpu.concurrent_region.end", TypeRange(), TypeRange());

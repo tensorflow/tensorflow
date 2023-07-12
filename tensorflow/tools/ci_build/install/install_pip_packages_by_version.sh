@@ -97,7 +97,7 @@ if [[ "$2" == "jax" ]]; then
   if [[ ${PYTHON_VERSION} -eq 11 ]]; then
     "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.2"
   else
-    "${PIP_INSTALL[@]}" "numpy==1.21.3" "scipy==1.7.2"
+    "${PIP_INSTALL[@]}" "numpy==1.22.4" "scipy==1.7.3"
   fi
 else
   # Special casing by version of Python

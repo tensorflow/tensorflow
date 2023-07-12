@@ -635,13 +635,19 @@ struct DTensorAllReduceCombineOptimization
         std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),
                   [](std::vector<mlir::TF::DTensorAllReduceOp> lhs,
                      std::vector<mlir::TF::DTensorAllReduceOp> rhs) {
-                    if (lhs.empty() || rhs.empty()) {
-                      // Skip order check if either group is empty.
-                      return false;
+                    // Prefer groups that are not empty.
+                    if (lhs.empty() && !rhs.empty()) return false;
+                    if (!lhs.empty() && rhs.empty()) return true;
+
+                    // Then prefer groups that are in earlier-in-memory blocks,
+                    // this part just needs to be consistent for strict weak
+                    // ordering purposes.
+                    if (lhs[0]->getBlock() != rhs[0]->getBlock()) {
+                      return lhs[0]->getBlock() < rhs[0]->getBlock();
                     }
-                    if (lhs[0]->getBlock() == rhs[0]->getBlock())
-                      return lhs[0]->isBeforeInBlock(rhs[0]);
-                    return true;
+
+                    // Within the block, use the group's actual sorting.
+                    return lhs[0]->isBeforeInBlock(rhs[0]);
                   });
         for (const auto& reduce_group : all_reduce_groups) {
           if (reduce_group.size() > 1) {

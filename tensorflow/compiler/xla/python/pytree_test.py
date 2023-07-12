@@ -67,6 +67,24 @@ class PyTreeTest(absltest.TestCase):
     with self.assertRaises(ValueError):
       self.roundtrip({"a": ExampleType2(field0=o, field1=o)})
 
+  def roundtrip_node_data(self, example):
+    original = pytree.flatten(example)[1]
+    restored = pytree.PyTreeDef.make_from_node_data_and_children(
+        original.node_data(), original.children()
+    )
+    self.assertEqual(restored, original)
+
+  def testRoundtripNodeData(self):
+    o = object()
+    self.roundtrip_node_data([o, o, o])
+    self.roundtrip_node_data((o, o, o))
+    self.roundtrip_node_data({"a": o, "b": o})
+    self.roundtrip_node_data({22: o, 88: o})
+    self.roundtrip_node_data(None)
+    self.roundtrip_node_data(o)
+    self.roundtrip_node_data(ExampleType(field0=o, field1=o))
+    self.roundtrip_node_data(ExampleType2(field0=o, field1=o))
+
 
 if __name__ == "__main__":
   absltest.main()

@@ -152,6 +152,7 @@ class TestCluster:
       worker_timeout_ms=TEST_WORKER_TIMEOUT_MS,
       worker_shutdown_quiet_period_ms=0,
       snapshot_max_chunk_size_bytes=TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES,
+      worker_max_concurrent_snapshots=0,
       start=True,
       data_transfer_protocol=None,
   ):
@@ -176,6 +177,8 @@ class TestCluster:
         wait for the gRPC server to process the final requests.
       snapshot_max_chunk_size_bytes: The maximum size of a distributed snapshot
         chunk file.
+      worker_max_concurrent_snapshots: The maximum number of snapshots a worker
+        can concurrently process.
       start: Whether to immediately start the servers in the cluster. If
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
@@ -190,6 +193,7 @@ class TestCluster:
     self._job_gc_check_interval_ms = job_gc_check_interval_ms
     self._job_gc_timeout_ms = job_gc_timeout_ms
     self._worker_timeout_ms = worker_timeout_ms
+    self._worker_max_concurrent_snapshots = worker_max_concurrent_snapshots
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=dispatcher_port,
@@ -199,6 +203,7 @@ class TestCluster:
             job_gc_check_interval_ms=job_gc_check_interval_ms,
             job_gc_timeout_ms=job_gc_timeout_ms,
             worker_timeout_ms=worker_timeout_ms,
+            worker_max_concurrent_snapshots=worker_max_concurrent_snapshots,
         ),
         start=start,
     )
@@ -263,6 +268,8 @@ class TestCluster:
             job_gc_check_interval_ms=self._job_gc_check_interval_ms,
             job_gc_timeout_ms=self._job_gc_timeout_ms,
             worker_timeout_ms=self._worker_timeout_ms,
+            worker_max_concurrent_snapshots=
+            self._worker_max_concurrent_snapshots,
         )
     )
 

@@ -38,32 +38,10 @@ from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
-# Bring in subpackages.
-from tensorflow.python import distribute
 # from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 # from tensorflow.python.layers import layers
 from tensorflow.python.module import module
-from tensorflow.python.ops import bincount_ops
-from tensorflow.python.ops import bitwise_ops as bitwise
-from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import composite_tensor_ops
-from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops import manip_ops as manip
-from tensorflow.python.ops import metrics
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import ragged
-from tensorflow.python.ops import sets
-from tensorflow.python.ops import stateful_random_ops
-from tensorflow.python.ops import while_v2
-from tensorflow.python.ops.distributions import distributions
-from tensorflow.python.ops.linalg import linalg
-from tensorflow.python.ops.linalg.sparse import sparse
-from tensorflow.python.ops.losses import losses
-from tensorflow.python.ops.ragged import ragged_ops as _ragged_ops
-from tensorflow.python.ops.signal import signal
-from tensorflow.python.ops.structured import structured_ops as _structured_ops
 from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
@@ -73,18 +51,6 @@ from tensorflow.python.summary import summary
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
-
-# Update the RaggedTensor package docs w/ a list of ops that support dispatch.
-ragged.__doc__ += _ragged_ops.ragged_dispatch.ragged_op_list()
-
-# Import to make sure the ops are registered.
-from tensorflow.python.ops import gen_audio_ops
-from tensorflow.python.ops import gen_boosted_trees_ops
-from tensorflow.python.ops import gen_cudnn_rnn_ops
-from tensorflow.python.ops import gen_rnn_ops
-from tensorflow.python.ops import gen_sendrecv_ops
-from tensorflow.python.ops import gen_tpu_ops
-from tensorflow.python.ops import gen_uniform_quant_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -111,7 +77,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.eager.def_function import function
-from tensorflow.python.framework.ops import enable_eager_execution
 
 # Check whether TF2_BEHAVIOR is turned on.
 from tensorflow.python.eager import monitoring as _monitoring
@@ -119,11 +84,6 @@ from tensorflow.python import tf2 as _tf2
 _tf2_gauge = _monitoring.BoolGauge(
     '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
 _tf2_gauge.get_cell().set(_tf2.enabled())
-
-# Necessary for the symbols in this module to be taken into account by
-# the namespace management system (API decorators).
-from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
@@ -140,18 +100,6 @@ from tensorflow.python.compiler.xla import xla
 
 # MLIR APIs.
 from tensorflow.python.compiler.mlir import mlir
-
-# Structs (aka extension types)
-from tensorflow.python.framework import extension_type as _extension_type
-
-# Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
-# (due to a circular dependency issue: rnn depends on layers).
-nn.dynamic_rnn = rnn.dynamic_rnn
-nn.static_rnn = rnn.static_rnn
-nn.raw_rnn = rnn.raw_rnn
-nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
-nn.static_state_saving_rnn = rnn.static_state_saving_rnn
-nn.rnn_cell = rnn_cell
 
 # Update dispatch decorator docstrings to contain lists of registered APIs.
 # (This should come after any imports that register APIs.)

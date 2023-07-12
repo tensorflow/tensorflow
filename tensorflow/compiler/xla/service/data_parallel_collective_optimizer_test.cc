@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -63,7 +62,6 @@ StatusOr<bool> RunOptimizer(
                                                 direction, should_process);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
   return pass.Run(module);
 }
 
@@ -1009,6 +1007,12 @@ ENTRY entry {
           IsAllGather)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
+  const int64_t while_count = absl::c_count_if(
+      module->entry_computation()->instructions(),
+      [](const HloInstruction* instruction) {
+        return HloPredicateIsOp<HloOpcode::kWhile>(instruction);
+      });
+  EXPECT_EQ(while_count, 1);
 }
 
 TEST_F(DataParallelCollectiveOptimizerTest,
@@ -1130,6 +1134,80 @@ ENTRY entry {
   tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(c0, p0, p1)
   while = (s32[], bf16[3,8,128], bf16[3,1,2,128]) while(tuple), condition=while_cond, body=while_body
   ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/false, 0,
+          /*process_different_sized_ops=*/true,
+          DataParallelCollectiveOptimizer::PipeliningDirection::kBackward,
+          IsAllGather)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true, 0,
+          /*process_different_sized_ops=*/true,
+          DataParallelCollectiveOptimizer::PipeliningDirection::kForward)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(DataParallelCollectiveOptimizerTest,
+       TransformIncrementIndexByOneBackwardsPlusForwardConvertOutput) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], f32[3,8,128], bf16[3,1,2,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[3,8,128], bf16[3,1,2,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = f32[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.k = bf16[3,1,2,128] get-tuple-element(param), index=2
+  constant.2561 = s32[] constant(0)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.k = bf16[1,1,2,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561, constant.2561, constant.2561), dynamic_slice_sizes={1,1,2,128}
+  r = bf16[1,2,128] reshape(dynamic-slice.k)
+  a = bf16[1,2,128] add(r, r)
+  ag = bf16[1,8,128] all-gather(a), dimensions={1}, replica_groups={}
+  dynamic-slice.99 = f32[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  cvt.0 = bf16[1,8,128] convert(dynamic-slice.99)
+  mul = bf16[1,8,128] multiply(cvt.0, ag)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  cvt.1 = f32[1,8,128] convert(ar.1)
+  dynamic-update-slice.35 = f32[3,8,128] dynamic-update-slice(get-tuple-element.395, cvt.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], f32[3,8,128], bf16[3,1,2,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[3,8,128] parameter(0)
+  p1 = bf16[3,1,2,128] parameter(1)
+  tuple = (s32[], f32[3,8,128], bf16[3,1,2,128]) tuple(c0, p0, p1)
+  while = (s32[], f32[3,8,128], bf16[3,1,2,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = f32[3,8,128] get-tuple-element(while), index=1
 }
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
