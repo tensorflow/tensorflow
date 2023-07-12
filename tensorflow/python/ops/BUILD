@@ -1628,6 +1628,8 @@ py_strict_library(
         ":tensor_array_ops",
         ":unconnected_gradients",
         ":while_loop",
+        "//tensorflow/python/debug/lib:debug_gradients",
+        "//tensorflow/python/debug/lib:dumping_callback",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
