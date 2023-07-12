@@ -193,7 +193,7 @@ StatusOr<std::optional<Layout>> FindResourceLayout(mlir::BlockArgument arg) {
     }
 
     for (auto [i, index] : llvm::enumerate(resource_indices)) {
-      uint64_t index_value = index.getZExtValue();
+      int64_t index_value = index.getSExtValue();
       if (index_value == arg_num) {
         return (resource_layouts.value())->at(i);
       }
@@ -433,7 +433,8 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
             mesh = layout->mesh();
           } else {
             return absl::InvalidArgumentError(
-                "Could not find resource layout!");
+                absl::StrCat("Could not find resource layout for %arg",
+                             arg.getArgNumber(), "!"));
           }
         }
       }
@@ -494,25 +495,28 @@ struct InferredResourceAttributes {
 
 template <typename Operations>
 mlir::LogicalResult GetInferredResourceAttributes(
-    const Operations& call_ops,
+    mlir::OpBuilder& builder, const Operations& call_ops,
     std::optional<InferredResourceAttributes>* resource_attrs) {
-  for (auto call_op : call_ops) {
-    // Set the resource layouts.
-    mlir::Attribute resource_layouts_attr =
-        call_op->getAttr(kNewResourceArgLayouts);
-    mlir::Attribute resource_indices_attr =
-        call_op->getAttr(kNewResourceLayoutIndices);
+  llvm::SmallVector<mlir::Attribute, 8> resource_layouts;
+  llvm::SmallVector<int32_t, 8> resource_indices;
+  for (mlir::Operation* call_op : call_ops) {
+    const auto resource_layouts_attr =
+        call_op->getAttrOfType<mlir::ArrayAttr>(kNewResourceArgLayouts);
+    const auto resource_indices_attr =
+        call_op->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kNewResourceLayoutIndices);
     if (resource_indices_attr && resource_layouts_attr) {
-      if (resource_attrs->has_value()) {
-        // TODO(twelve): Determine how to merge inferred resource attrs if there
-        //               are multiple sets of them. (when can that happen?)
-        call_op.emitOpError()
-            << "Multiple sets of inferred resource attributes!";
-        return mlir::failure();
-      } else {
-        resource_attrs->emplace(resource_layouts_attr, resource_indices_attr);
+      for (auto [index, layout] :
+           llvm::zip(resource_indices_attr, resource_layouts_attr)) {
+        // Build up the lists of resource indices and layouts.
+        resource_indices.emplace_back(index.getSExtValue());
+        resource_layouts.emplace_back(layout);
       }
     }
+  }
+  if (!resource_layouts.empty()) {
+    resource_attrs->emplace(builder.getArrayAttr(resource_layouts),
+                            builder.getI32VectorAttr(resource_indices));
   }
   return mlir::success();
 }
@@ -565,7 +569,8 @@ mlir::LogicalResult BuildOuterMainFunc(
   expanded_call_op->setAttr(kNumLocalOutputsAttr, num_local_outputs_attr);
 
   std::optional<InferredResourceAttributes> resource_attrs;
-  if (failed(GetInferredResourceAttributes(call_ops, &resource_attrs))) {
+  if (failed(
+          GetInferredResourceAttributes(builder, call_ops, &resource_attrs))) {
     return mlir::failure();
   }
 
