@@ -1441,6 +1441,18 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
   args.dst = literal->untyped_data();
+  xla::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
+  if (literal->shape().has_layout()) {
+    c_layout_data =
+        pjrt::ConvertToBufferMemoryLayoutData(&literal->shape().layout());
+    if (!c_layout_data.ok()) {
+      return PjRtFuture<Status>(c_layout_data.status());
+    }
+    args.host_layout = &(c_layout_data->c_layout);
+  } else {
+    args.host_layout = nullptr;
+  }
+
   const PJRT_Api* api = pjrt_c_api();
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{

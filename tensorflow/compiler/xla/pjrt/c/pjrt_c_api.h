@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 7
+#define PJRT_API_MINOR 8
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1352,6 +1352,10 @@ struct PJRT_Buffer_ToHostBuffer_Args {
   void* priv;
   PJRT_Buffer* src;
 
+  // The caller can specify an optional host layout. If nullptr, the layout of
+  // the src buffer will be used. The caller is responsible to keep the data
+  // (tiled or strides) in the host_layout alive during the call.
+  PJRT_Buffer_MemoryLayout* host_layout;
   // `dst` can be nullptr to query required size which will be set into
   // `dst_size`.
   void* dst;  // in/out
