@@ -437,31 +437,37 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     return std::nullopt;
   }
   tsl::Env* env = tsl::Env::Default();
+  auto read_text_or_binary_profile = [&profile, env](
+                                         const std::string& text_path,
+                                         const std::string& binary_path)
+      -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
+    Status s = tsl::ReadTextProto(env, text_path, &profile);
+    if (s.ok()) {
+      LOG(INFO) << "Using PGLE profile from " << text_path;
+      return profile;
+    }
+    profile.Clear();
+    s = tsl::ReadBinaryProto(env, binary_path, &profile);
+    if (s.ok()) {
+      LOG(INFO) << "Using PGLE profile from " << binary_path;
+      return profile;
+    }
+    return std::nullopt;
+  };
+
   // If its a directory, use fingerprint to look for the profile for this
   // specific module.
   if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
-    std::string pgle_profile_path =
-        pgle_profile_file_or_dir_path + "/" + fingerprint + ".pbtxt";
-    Status s =
-        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &profile);
-    if (!s.ok()) {
-      // Unable to read PGLE using fingerprint.
-      return std::nullopt;
-    }
-    LOG(INFO) << "Using PGLE profile from " << pgle_profile_path;
-    return profile;
+    std::string pgle_profile_path_prefix =
+        pgle_profile_file_or_dir_path + "/" + fingerprint;
+    return read_text_or_binary_profile(pgle_profile_path_prefix + ".pbtxt",
+                                       pgle_profile_path_prefix + ".pb");
   }
 
-  // The pgle_profile_file_or_dir is a file. Read the profile and see if its
-  // applicable for this HLO module (all instruction names in the profile should
-  // be present in the HLO module)
-  Status s = tsl::ReadTextProto(tsl::Env::Default(),
-                                pgle_profile_file_or_dir_path, &profile);
-  if (s.ok()) {
-    LOG(INFO) << "Using PGLE profile from " << pgle_profile_file_or_dir_path;
-    return profile;
-  }
-  return std::nullopt;
+  // The pgle_profile_file_or_dir is a file. Attempt to read the profile as text
+  // proto or binary proto.
+  return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
+                                     pgle_profile_file_or_dir_path);
 }
 
 // Return true if the profile is applicable to the module. That is true if every
