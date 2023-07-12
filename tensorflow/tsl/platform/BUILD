@@ -14,6 +14,7 @@ load(
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
+    "tf_error_logging_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
@@ -665,6 +666,7 @@ exports_files(
         "env.cc",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.cc",
         "file_system.h",
         "file_system_helper.cc",
@@ -1094,6 +1096,16 @@ cc_library(
         "//visibility:public",
     ],
     deps = tf_logging_deps(),
+)
+
+cc_library(
+    name = "error_logging",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["error_logging.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = tf_error_logging_deps(),
 )
 
 cc_library(

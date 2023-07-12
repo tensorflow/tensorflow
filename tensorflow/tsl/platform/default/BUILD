@@ -207,6 +207,24 @@ cc_library(
 )
 
 cc_library(
+    name = "error_logging",
+    srcs = ["error_logging.cc"],
+    hdrs = ["//tensorflow/tsl/platform:error_logging.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    textual_hdrs = ["error_logging.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "human_readable_json",
     srcs = ["human_readable_json.cc"],
     hdrs = ["//tensorflow/tsl/platform:human_readable_json.h"],
@@ -608,6 +626,7 @@ exports_files(
     srcs = glob(
         ["*"],
         exclude = [
+            "error_logging.h",
             "integral_types.h",
             "logging.h",
             "test.cc",
@@ -618,6 +637,7 @@ exports_files(
 
 exports_files(
     srcs = [
+        "error_logging.h",
         "integral_types.h",
         "logging.h",
         "test.cc",
