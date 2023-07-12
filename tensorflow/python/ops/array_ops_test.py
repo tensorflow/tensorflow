@@ -159,6 +159,7 @@ class ArrayOpTest(test.TestCase):
     self.assertFalse(flags.config().tf_shape_default_int64.value())
     s1 = array_ops.shape_v2(array_ops.zeros([1, 2]))
     self.assertEqual(s1.dtype, dtypes.int32)
+    
 
 if __name__ == "__main__":
   test.main()
