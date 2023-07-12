@@ -39,8 +39,8 @@ ROCM_DEB_REPO=${ROCM_DEB_REPO_HOME}${ROCM_VERS}/
 if [ ! -f "/${CUSTOM_INSTALL}" ]; then
 # Add rocm repository
 chmod 1777 /tmp
-apt-get --allow-unauthenticated update && apt install -y wget software-properties-common
-apt-get clean all
+DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update && apt install -y wget software-properties-common
+DEBIAN_FRONTEND=noninteractive apt-get clean all
 wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -;
 if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; then \
       echo "deb [arch=amd64] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list; \
