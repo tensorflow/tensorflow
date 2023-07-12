@@ -1,12 +1,18 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/WebAssembly/MCTargetDesc/WebAssemblyMCCodeEmitter.cpp b/llvm/lib/Target/WebAssembly/MCTargetDesc/WebAssemblyMCCodeEmitter.cpp
---- a/llvm/lib/Target/WebAssembly/MCTargetDesc/WebAssemblyMCCodeEmitter.cpp
-+++ b/llvm/lib/Target/WebAssembly/MCTargetDesc/WebAssemblyMCCodeEmitter.cpp
-@@ -127,6 +127,7 @@
-           Ctx.reportError(
-               SMLoc(),
-               Twine("Wasm globals should only be accessed symbolically!"));
-+          break;
-         default:
-           encodeULEB128(uint64_t(MO.getImm()), OS);
-         }
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Arith/Transforms/EmulateUnsupportedFloats.cpp b/mlir/lib/Dialect/Arith/Transforms/EmulateUnsupportedFloats.cpp
+--- a/mlir/lib/Dialect/Arith/Transforms/EmulateUnsupportedFloats.cpp
++++ b/mlir/lib/Dialect/Arith/Transforms/EmulateUnsupportedFloats.cpp
+@@ -79,10 +79,10 @@
+ void EmulateFloatPattern::rewrite(Operation *op, ArrayRef<Value> operands,
+                                   ConversionPatternRewriter &rewriter) const {
+   Location loc = op->getLoc();
++  TypeConverter *converter = getTypeConverter();
+   SmallVector<Type> resultTypes;
+-  assert(
+-      succeeded(getTypeConverter()->convertTypes(op->getResultTypes(), resultTypes)) &&
+-      "type conversions shouldn't fail in this pass");
++  LogicalResult pass = converter->convertTypes(op->getResultTypes(), resultTypes);
++  (void) pass;
+   Operation *expandedOp =
+       rewriter.create(loc, op->getName().getIdentifier(), operands, resultTypes,
+                       op->getAttrs(), op->getSuccessors(), /*regions=*/{});
