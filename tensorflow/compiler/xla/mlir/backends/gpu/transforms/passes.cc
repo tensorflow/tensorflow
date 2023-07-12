@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 
-#include <cstdlib>
-#include <string_view>
-
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 
@@ -34,7 +31,6 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
 
   // Clean up IR before converting it to the runtime operations.
   pm.addPass(createCSEPass());
-  pm.addPass(createCanonicalizerPass());
 
   // Convert global memrefs corresponding to constant arguments.
   pm.addPass(createConvertMemrefGetGlobalToArgPass());
