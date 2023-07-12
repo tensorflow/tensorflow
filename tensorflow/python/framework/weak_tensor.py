@@ -24,7 +24,10 @@ from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion_registry
+
 
 _ALLOWED_WEAK_DTYPES = (
     dtypes.int32,
@@ -164,6 +167,16 @@ class WeakTensor(extension_type.ExtensionType):
     """Converts this 'WeakTensor' into a 'tf.Tensor'."""
     return self.tensor
 
+  def numpy(self):
+    """Copy of the contents of this WeakTensor into a NumPy array or scalar."""
+    if not isinstance(self.tensor, ops.EagerTensor):
+      raise ValueError("WeakTensor.numpy() is only supported in eager mode.")
+    return self.tensor.numpy()
+
+  def _as_graph_element(self):
+    """Convert `self` to a graph element."""
+    return self.tensor
+
   @classmethod
   def from_tensor(cls, tensor):
     """Converts a 'tf.Tensor' into a 'WeakTensor'."""
@@ -178,6 +191,10 @@ class WeakTensor(extension_type.ExtensionType):
   @property
   def shape(self):
     return self.tensor.shape
+
+  @property
+  def is_tensor_like(self):
+    return True
 
   __composite_gradient__ = WeakTensorGradient()
 
@@ -201,3 +218,19 @@ class _WeakTensorIterator(object):
     result = WeakTensor(self._weak_tensor.tensor[self._index])
     self._index += 1
     return result
+
+
+def maybe_convert_to_weak_tensor(t, is_weak):
+  return WeakTensor(t) if is_weak else t
+
+
+# convert_to_tensor(WeakTensor) should return a WeakTensor because WeakTensor is
+# a 'Tensor' with a special dtype.
+def weak_tensor_conversion_function(t):
+  if isinstance(t, WeakTensor):
+    return t
+
+
+tensor_conversion_registry.register_tensor_conversion_function(
+    WeakTensor, weak_tensor_conversion_function
+)

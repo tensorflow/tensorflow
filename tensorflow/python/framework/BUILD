@@ -1606,7 +1606,9 @@ py_strict_library(
         ":dtypes",
         ":errors",
         ":extension_type",
+        ":ops",
         ":tensor",
+        ":tensor_conversion_registry",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
@@ -1618,7 +1620,6 @@ tf_py_strict_test(
     main = "weak_tensor_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_pip"],  # weak_tensor_test is not available in pip.
     deps = [
         ":constant_op",
         ":dtypes",
@@ -1818,10 +1819,11 @@ pytype_strict_library(
     name = "flexible_dtypes",
     srcs = ["flexible_dtypes.py"],
     deps = [
-        ":constant_op",
         ":dtypes",
         ":ops",
+        ":tensor_shape",
         ":weak_tensor",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -3114,14 +3116,15 @@ py_strict_test(
     name = "flexible_dtypes_test",
     srcs = ["flexible_dtypes_test.py"],
     tags = [
-        "no_pip",
         "no_windows",  # TODO(b/286939592): Enable this test on Windows.
     ],
     deps = [
         ":constant_op",
         ":dtypes",
+        ":extension_type",
         ":flexible_dtypes",
         ":ops",
+        ":tensor",
         ":weak_tensor",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:weak_tensor_test_util",

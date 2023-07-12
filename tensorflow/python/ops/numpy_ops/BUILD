@@ -67,7 +67,6 @@ py_strict_library(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sort_ops",
-        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -139,7 +138,6 @@ py_strict_library(
         "//tensorflow/python/ops:sort_ops",
         "//tensorflow/python/ops:special_math_ops",
         "//tensorflow/python/ops:while_loop",
-        "//tensorflow/python/util:dispatch",
         "//third_party/py/numpy",
     ],
 )
