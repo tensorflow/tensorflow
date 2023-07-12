@@ -31,6 +31,7 @@ def libjpeg_handle_deps():
 def minibenchmark_visibility_allowlist():
     """Returns a list of packages that can depend on mini_benchmark."""
     return [
+        "//tensorflow/lite/core/experimental/acceleration/mini_benchmark/c:__subpackages__",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance:__subpackages__",
     ]
 

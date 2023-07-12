@@ -150,6 +150,9 @@ cc_library(
         ":libjpeg_handle_hdr",
         "//tensorflow/lite/core/c:c_api_types",
     ] + libjpeg_deps(),
+    # Some targets only have an implicit dependency on LibjpegHandle.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
 )
 
 cc_library(

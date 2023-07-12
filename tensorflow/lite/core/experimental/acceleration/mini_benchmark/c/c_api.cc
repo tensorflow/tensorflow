@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h"
+#include "tensorflow/lite/core/experimental/acceleration/mini_benchmark/c/c_api.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api_types.h"
+#include "tensorflow/lite/core/experimental/acceleration/mini_benchmark/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 
