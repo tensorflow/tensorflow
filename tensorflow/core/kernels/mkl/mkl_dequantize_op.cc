@@ -159,7 +159,6 @@ class MklDequantizeOp : public OpKernel {
           memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
                  cpu_engine, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
-      std::vector<primitive> net;
 
       // Create reorder primitive and then execute.
       auto reorder_pd =
