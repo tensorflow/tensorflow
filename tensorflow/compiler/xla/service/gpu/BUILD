@@ -3167,6 +3167,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    shard_count = 10,
     tags = [
         "gpu",
         "no_oss",
