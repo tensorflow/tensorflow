@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/python/refine_polymorphic_shapes.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -379,7 +380,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     auto arg = main_body.getArgument(i);
     arg.setType(static_array_input_types[i]);
     // If the argument is used by `func.return`, then we also need to
-    // update function result types. It's not great that we need this hack,
+    // update the function result types. It's not great that we need this hack,
     // but in the future when we have stablehlo.func, stablehlo.return, etc,
     // this will not be needed.
     // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
@@ -396,33 +397,10 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
   }
 
-  // Verify the module before running passes on it.
-  // If the module doesn't pass verification, all sorts of weirdness might
-  // happen if we run the pass manager.
-  {
-    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+  TF_RETURN_IF_ERROR(xla::RefinePolymorphicShapes(*module_));
 
-    if (failed(verify(*module_))) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Module verification failed: ",
-                       diag_handler.ConsumeStatus().ToString()));
-    }
-
-    mlir::PassManager pm(module_->getContext());
-    applyTensorflowAndCLOptions(pm);
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
-    if (mlir::failed(pm.run(*module_))) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Module shape refinement failed: ",
-                       diag_handler.ConsumeStatus().ToString()));
-    }
-
-    if (VLOG_IS_ON(3)) {
-      DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
-    }
+  if (VLOG_IS_ON(3)) {
+    DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
   return tsl::OkStatus();
 }
@@ -467,7 +445,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
 
-  VLOG(3) << "Parsed serialized module (version " << version
+  VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
           << "], loading_platform = " << loading_platform
           << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
@@ -554,37 +532,6 @@ tsl::Status XlaCallModuleLoader::ValidateDialect() {
   if (moduleHasUnsupportedDialects) {
     return absl::InvalidArgumentError(
         absl::StrCat("Module has unsupported dialects: ",
-                     diag_handler.ConsumeStatus().ToString()));
-  }
-  return tsl::OkStatus();
-}
-
-tsl::Status XlaCallModuleLoader::ValidateStaticShapes() {
-  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-  bool moduleHasDynamicShapes = false;
-
-  module_->walk([&](mlir::Operation *op) {
-    // It's sufficient to only check results because operands either come from
-    // results or from block arguments which are checked below.
-    auto hasDynamicShape = [](mlir::Value value) {
-      auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
-      return shaped_type ? !shaped_type.hasStaticShape() : false;
-    };
-    bool opHasDynamicShapes = false;
-    opHasDynamicShapes |= llvm::any_of(op->getResults(), hasDynamicShape);
-    for (mlir::Region &region : op->getRegions()) {
-      opHasDynamicShapes |=
-          llvm::any_of(region.getArguments(), hasDynamicShape);
-    }
-    if (opHasDynamicShapes) {
-      moduleHasDynamicShapes = true;
-      op->emitOpError() << "has dynamic shapes";
-    }
-  });
-
-  if (moduleHasDynamicShapes) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Module has dynamic shapes: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
   return tsl::OkStatus();
