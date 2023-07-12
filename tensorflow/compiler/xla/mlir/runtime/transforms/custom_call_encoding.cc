@@ -422,7 +422,8 @@ static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Allocas &a,
   LLVM::AllocaOp alloca = a.GetOrCreate(b, value.getType());
   // Start the lifetime of encoded value.
   b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
-  b.create<LLVM::StoreOp>(value, alloca);
+  // Use volatile store to suppress expensive LLVM optimizations.
+  b.create<LLVM::StoreOp>(value, alloca, /*alignment=*/0, /*isVolatile=*/true);
 
   return alloca;
 }
