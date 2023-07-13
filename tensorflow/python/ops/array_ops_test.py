@@ -156,7 +156,7 @@ class ArrayOpTest(test.TestCase):
     )
 
   def testWrapPadConcreteOp(self):
-    wrap_pad_concrete = array_ops._wrap_pad.get_concrete_function(
+    wrap_pad_concrete = def_function.function(array_ops._wrap_pad).get_concrete_function(
       tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32), 
       tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32))
     t = array_ops.constant([[1, 2, 3], [4, 5, 6]])
