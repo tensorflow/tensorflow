@@ -199,9 +199,12 @@ class DimensionOrder {
   // `hlo` is currently supposed to be an operand of dot();
   // dimension indices describing the operand
   // are stored along with the dimension order for later analysis.
-  explicit DimensionOrder(const HloInstruction* hlo,
-                          const int64_t splittable_dimension_index = -1)
-      : splittable_dimension_index_(splittable_dimension_index) {
+  explicit DimensionOrder(
+      const HloInstruction* hlo, const int64_t splittable_dimension_index = -1,
+      const int64_t splittable_dimension_supported_major_size = 0)
+      : splittable_dimension_index_(splittable_dimension_index),
+        splittable_dimension_supported_major_part_size_(
+            splittable_dimension_supported_major_size) {
     dim_order_.reserve(hlo->shape().rank());
     for (const int64_t i : hlo->shape().layout().minor_to_major()) {
       dim_order_.push_back({i, 0, hlo->shape().dimensions(i)});
@@ -214,7 +217,9 @@ class DimensionOrder {
                                        int operand_number, int64_t split_k = 1);
 
   // Create dimension order describing dot's output.
-  static DimensionOrder FromDotOutput(const HloInstruction& dot);
+  static DimensionOrder FromDotOutput(
+      const HloInstruction& dot, int64_t split_k = 1,
+      int64_t splittable_dimension_supported_major_part_size = 0);
 
   enum class TransformDirection { kInputToOutput, kOutputToInput };
 
@@ -258,6 +263,13 @@ class DimensionOrder {
     return splittable_dimension_index_;
   }
 
+  // Tells whether `size` major part of a dimension can be physically split.
+  bool IsSupportedSplittableDimensionMajorPartSize(int64_t size) const {
+    // 0 means no specific size requirement.
+    return splittable_dimension_supported_major_part_size_ == 0 ||
+           splittable_dimension_supported_major_part_size_ == size;
+  }
+
   // Tells that two dimension orders describe the same tensor physical layout.
   bool IsPhysicallyEquivalent(const DimensionOrder& other) const;
 
@@ -276,6 +288,7 @@ class DimensionOrder {
 
   DimOrderVector dim_order_;
   const int64_t splittable_dimension_index_;
+  const int64_t splittable_dimension_supported_major_part_size_;
 };
 
 using DimIterationSpec = TensorIterationSpec::DimIterationSpec;
@@ -348,8 +361,20 @@ DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
   return DimensionOrder(operand);
 }
 
-DimensionOrder DimensionOrder::FromDotOutput(const HloInstruction& dot) {
-  return DimensionOrder(&dot);
+DimensionOrder DimensionOrder::FromDotOutput(
+    const HloInstruction& dot, const int64_t split_k,
+    const int64_t splittable_dimension_supported_major_part_size) {
+  // Allow non-contracting dimension originating from LHS to split if
+  // this dimension is split at the output at the same ratio as
+  // at the input.
+  int64_t splittable_dimension_index = -1;
+  if (splittable_dimension_supported_major_part_size > 1) {
+    // Split-K dimension is the first one in the output if present;
+    // LHS non-contracting follows (batch is absent in this case).
+    splittable_dimension_index = (split_k > 1) ? 1 : 0;
+  }
+  return DimensionOrder(&dot, splittable_dimension_index,
+                        splittable_dimension_supported_major_part_size);
 }
 
 FusionDecision DimensionOrder::HandleBitcast(const HloInstruction* hlo,
@@ -522,7 +547,8 @@ FusionDecision RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
     }
     if (i == 0 || dim_order_vector[i - 1].target_dim_number != dim_number) {
       ++split_counters[dim_number];
-      if (dim_number == order.SplittableDimensionIndex()) {
+      if (dim_number == order.SplittableDimensionIndex() &&
+          order.IsSupportedSplittableDimensionMajorPartSize(size)) {
         if (split_counters[dim_number] > 1) {
           return "2nd split of a splittable dimension.";
         }
@@ -813,7 +839,13 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
 
-    auto fuse_inputs = [&](int operand_number) {
+    // Separate traversal from LHS and RHS inputs of the dot: they use
+    // differently shaped tiles but may go through same HLO graph nodes.
+    // Direct dot inputs have well defined dimension orders.
+
+    auto fuse_inputs = [&](int operand_number)
+        -> StatusOr<
+            absl::flat_hash_map<const HloInstruction*, DimensionOrder>> {
       absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
       int operand_count_before = call_operands.size();
       // Direct dot inputs have well defined dimension orders.
@@ -821,12 +853,36 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
           dot->mutable_operand(operand_number),
           DimensionOrder::FromDotOperand(*dot, operand_number), dim_orders,
           gpu_version_, old_to_new_mapping, call_operands, builder);
-      return call_operands.size() - operand_count_before;
+      TF_RET_CHECK(call_operands.size() - operand_count_before <=
+                   DotFusionAnalysis::kMaxParameterPerScope);
+      return dim_orders;
     };
-    // Separate traversal from LHS and RHS inputs of the dot: they use
-    // differently shaped tiles but may go through same HLO graph nodes.
-    TF_RET_CHECK(fuse_inputs(0) <= DotFusionAnalysis::kMaxParameterPerScope);
-    TF_RET_CHECK(fuse_inputs(1) <= DotFusionAnalysis::kMaxParameterPerScope);
+    // Check if non-contracting dimension originating from LHS operand in the
+    // output can be split. This currently requires this dimension being split
+    // in the operand the same way.
+    int64_t lhs_nc_split_major_part = -1;
+    {
+      TF_ASSIGN_OR_RETURN(const auto lhs_dim_orders, fuse_inputs(0));
+      // Looking at first LHS parameter to find split non-contracting dimension
+      // is sufficient because currently all parameters of one scope have to use
+      // the same tiling.
+      auto first_lhs_parameter_it = lhs_dim_orders.cbegin();
+      while (first_lhs_parameter_it != lhs_dim_orders.cend()) {
+        if (first_lhs_parameter_it->first->opcode() == HloOpcode::kParameter) {
+          break;
+        }
+        ++first_lhs_parameter_it;
+      }
+      if (first_lhs_parameter_it != lhs_dim_orders.cend()) {
+        const auto lhs_nc_iter_spec = DimensionOrderToTensorIterationSpec(
+            first_lhs_parameter_it
+                ->second)[NonContractingDimensionIndex(*dot, 0)];
+        if (lhs_nc_iter_spec.size() > 1) {
+          lhs_nc_split_major_part = lhs_nc_iter_spec.at(1).count;
+        }
+      }
+    }
+    TF_RET_CHECK(fuse_inputs(1).ok());
 
     Fuse(*dot, old_to_new_mapping, call_operands, builder);
 
@@ -834,7 +890,9 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 
     // These describe _outputs_ of corresponding HLOs.
     absl::flat_hash_map<const HloInstruction*, DimensionOrder> out_dim_orders;
-    out_dim_orders.insert({dot, DimensionOrder::FromDotOutput(*dot)});
+    out_dim_orders.insert(
+        {dot, DimensionOrder::FromDotOutput(*dot, /*split_k=*/1,
+                                            lhs_nc_split_major_part)});
     HloInstruction* fusion_output = dot;
     bool output_changed = true;
     while (output_changed) {
@@ -1270,7 +1328,17 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
     }
   }
 
-  DimensionOrder dim_order = DimensionOrder::FromDotOutput(*dot);
+  int64_t lhs_nc_split_major_part_size = -1;
+  if (!ScopeParameters(Scope::LHS).empty()) {
+    const TensorIterationSpec::DimIterationSpec* lhs_nc_iter_spec =
+        IterSpec(Scope::LHS, *ScopeParameters(Scope::LHS).cbegin(),
+                 NonContractingDimensionIndex(*dot, 0));
+    if (lhs_nc_iter_spec->size() > 1) {
+      lhs_nc_split_major_part_size = lhs_nc_iter_spec->at(1).count;
+    }
+  }
+  DimensionOrder dim_order = DimensionOrder::FromDotOutput(
+      *dot, split_k, lhs_nc_split_major_part_size);
   const HloInstruction* output = dot;
   // Currently supported is one fusion output and one path from dot to it.
   while (!output->IsRoot()) {

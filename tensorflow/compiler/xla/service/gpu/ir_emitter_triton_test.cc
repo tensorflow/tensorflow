@@ -994,6 +994,66 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
 
+TEST_F(TritonGemmLevel2Test, SplitLHSOutputTransposeAloneIsNotFused) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = s8[18,15000] parameter(0)
+  p0c = bf16[18,15000] convert(p0)
+  p1 = bf16[42,18] parameter(1)
+  d = bf16[15000,42] dot(p0c, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  r1 = bf16[5,200,15,42] reshape(d)
+  ROOT t1 = bf16[5,42,200,15] transpose(r1), dimensions={0,3,1,2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Transpose(
+                  m::Fusion(m::Parameter(), m::Parameter())
+                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmLevel2Test, SplitLHSInputOutputIsFused) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = s8[5,18,20,150] parameter(0)
+  p0c = bf16[5,18,20,150] convert(p0)
+  t0 = bf16[18,5,20,150] transpose(p0c), dimensions={1,0,2,3}
+  r0 = bf16[18,15000] reshape(t0)
+  p1 = bf16[42,18] parameter(1)
+  d = bf16[15000,42] dot(r0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  r1 = bf16[5,20,150,42] reshape(d)
+  ROOT t1 = bf16[5,42,20,150] transpose(r1), dimensions={0,3,1,2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonGemmTest, Naming) {
   const char* hlo_text = R"(
 HloModule t
