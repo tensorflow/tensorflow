@@ -228,11 +228,17 @@ class DimensionOrder {
   FusionDecision HandleInstruction(const HloInstruction* hlo,
                                    TransformDirection direction) {
     VLOG(7) << hlo->ToString();
-    if (hlo->opcode() == HloOpcode::kParameter) {
+    if (hlo->opcode() == HloOpcode::kParameter ||
+        hlo_query::IsScalarConstant(hlo)) {
       return FusionDecision{};
     } else if (hlo->opcode() == HloOpcode::kTranspose ||
                hlo->opcode() == HloOpcode::kCopy) {
-      return HandleCopyOrTranspose(hlo, direction);
+      return HandleCopyOrTransposeOrBroadcast(hlo, direction);
+    } else if (hlo->opcode() == HloOpcode::kBroadcast) {
+      if (direction != TransformDirection::kOutputToInput) {
+        return "Unsupported broadcast direction.";
+      }
+      return HandleCopyOrTransposeOrBroadcast(hlo, direction);
     } else if (hlo->operand_count() > 0 &&
                IsTritonSupportedElementwise(
                    hlo->opcode(), hlo->operand(0)->shape().element_type())) {
@@ -245,11 +251,6 @@ class DimensionOrder {
         return "Non-bitcast reshape.";
       }
       return HandleBitcast(hlo, direction);
-    } else if (hlo_query::IsScalarConstant(hlo) ||
-               hlo_query::IsBroadcastOfScalarConstant(*hlo)) {
-      // Dimension order collapses on a scalar, for simplicity leave it equal
-      // to the output one for now.
-      return FusionDecision{};
     }
     return "Unimplemented instruction.";
   }
@@ -283,8 +284,8 @@ class DimensionOrder {
  private:
   // See HandleInstruction() for the general description of Handle*().
   FusionDecision HandleBitcast(const HloInstruction*, TransformDirection);
-  FusionDecision HandleCopyOrTranspose(const HloInstruction*,
-                                       TransformDirection);
+  FusionDecision HandleCopyOrTransposeOrBroadcast(const HloInstruction*,
+                                                  TransformDirection);
 
   DimOrderVector dim_order_;
   const int64_t splittable_dimension_index_;
@@ -463,8 +464,8 @@ FusionDecision DimensionOrder::HandleBitcast(const HloInstruction* hlo,
   return FusionDecision{};
 }
 
-FusionDecision DimensionOrder::HandleCopyOrTranspose(
-    const HloInstruction* hlo, TransformDirection direction) {
+FusionDecision DimensionOrder::HandleCopyOrTransposeOrBroadcast(
+    const HloInstruction* hlo, const TransformDirection direction) {
   // Every HLO dimension can correspond to a group of subdimensions in
   // dim_order_. For the easier handling of permutations: group dim_order_ by
   // dimension, apply permutations, then finally remove the grouping.
@@ -498,15 +499,21 @@ FusionDecision DimensionOrder::HandleCopyOrTranspose(
   // Source logical -> destination logical.
   std::vector<DimOrderVector> dst_logical;
   if (hlo->opcode() == HloOpcode::kTranspose) {
-    auto transpose = ::xla::Cast<HloTransposeInstruction>(hlo);
+    const auto transpose = Cast<HloTransposeInstruction>(hlo);
     std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
                                      transpose->dimensions().cend());
     if (direction == TransformDirection::kInputToOutput) {
       permutation = InversePermutation(permutation);
     }
-    dst_logical.resize(src_logical.size());
-    for (int i = 0; i < src_logical.size(); ++i) {
+    dst_logical.resize(permutation.size());
+    for (int i = 0; i < permutation.size(); ++i) {
       dst_logical[permutation[i]] = src_logical[i];
+    }
+  } else if (hlo->opcode() == HloOpcode::kBroadcast) {
+    const auto broadcast = Cast<HloBroadcastInstruction>(hlo);
+    dst_logical.resize(broadcast->dimensions().size());
+    for (int i = 0; i < broadcast->dimensions().size(); ++i) {
+      dst_logical[i] = src_logical[broadcast->dimensions()[i]];
     }
   } else {
     // Copy preserves the logical shape, just permutes the layout.

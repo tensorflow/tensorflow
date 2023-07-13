@@ -439,6 +439,88 @@ ENTRY e {
                             /*subfragments=*/ElementsAre(3))));
 }
 
+TEST_F(TritonDotAnalysisTest, InputBroadcastFromScalarIsHandled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+triton_dot {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[] parameter(1)
+  p1b = bf16[4,3] broadcast(p1)
+  ROOT dot = bf16[24,3]{1,0} dot(p0, p1b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT r = bf16[24,3]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot
+})"));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* scalar = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation);
+  EXPECT_EQ(analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 0)->size(),
+            1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 0),
+              ElementsAre(FieldsAre(/*stride=*/0, /*count=*/1,
+                                    /*subfragments=*/ElementsAre(1))));
+}
+
+TEST_F(TritonDotAnalysisTest, InputBroadcastFromVectorIsHandled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+triton_dot {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[4] parameter(1)
+  p1b = bf16[4,3] broadcast(p1), dimensions={0}
+  ROOT dot = bf16[24,3]{1,0} dot(p0, p1b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[4] parameter(1)
+  ROOT r = bf16[24,3]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot
+})"));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* vector = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation);
+  EXPECT_EQ(analysis.IterSpec(DotFusionAnalysis::Scope::RHS, vector, 0)->size(),
+            1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, vector, 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
+}
+
+TEST_F(TritonDotAnalysisTest, OutputBroadcastIsNotAccepted) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f16[1,35] parameter(0)
+  p0c = bf16[1,35] convert(p0)
+  p1 = bf16[35,1] parameter(1)
+  dot = bf16[1,1] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  b = bf16[] bitcast(dot)
+  ROOT bc = bf16[100] broadcast(b)
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::AMPERE, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kBroadcast);
+}
+
 using SplitKTest = HloTestBase;
 
 class SplitKTestWithMorePreciseReduction
