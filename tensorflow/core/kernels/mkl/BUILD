@@ -62,6 +62,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
@@ -75,6 +76,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_einsum_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
@@ -88,7 +90,10 @@ tf_mkl_kernel_library(
         "mkl_matmul_op.cc",
         "mkl_matmul_op_fused.cc",
     ],
-    hdrs = ["mkl_matmul_ops_common.h"],
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+    ],
     deps = MKL_DEPS,
 )
 
@@ -204,6 +209,7 @@ tf_mkl_kernel_library(
     name = "mkl_qmatmul_op",
     srcs = ["mkl_qmatmul_op.cc"],
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
         "mkl_quantized_conv_ops.h",
     ],

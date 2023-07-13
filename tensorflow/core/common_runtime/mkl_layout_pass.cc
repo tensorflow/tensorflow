@@ -2832,6 +2832,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
   nb->Attr("is_weight_const", filter_node->IsConstant());
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
@@ -2845,12 +2848,15 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
 
   Node* weight_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &weight_node));
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
 
   // Add attributes to new node.
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 
   // Requantization attr Tbias
   DataType Tbias;
