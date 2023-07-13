@@ -45,6 +45,7 @@ cc_library(
         "index_domain.cc",
         "shape.cc",
         "sharding.cc",
+        "sharding_serdes.cc",
         "tuple.cc",
         "value.cc",
     ],
@@ -61,17 +62,21 @@ cc_library(
         "index_domain.h",
         "shape.h",
         "sharding.h",
+        "sharding_serdes.h",
         "tuple.h",
         "value.h",
     ],
     deps = [
         ":serdes",
+        ":sharding_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -308,4 +313,27 @@ xla_cc_test(
 tf_proto_library(
     name = "serdes_proto",
     srcs = ["serdes.proto"],
+)
+
+xla_cc_test(
+    name = "sharding_serdes_test",
+    srcs = ["sharding_serdes_test.cc"],
+    deps = [
+        ":ifrt",
+        ":mock",
+        ":serdes",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "types_proto",
+    srcs = ["types.proto"],
+)
+
+tf_proto_library(
+    name = "sharding_proto",
+    srcs = ["sharding.proto"],
+    protodeps = [":types_proto"],
 )
