@@ -416,9 +416,23 @@ Status GpuRuntimeExecutable::Execute(
 
 #if GOOGLE_CUDA
   // Instantiate all CUDA graphs before executing the main function.
-  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0) {
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0 &&
+      !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
+    // To instantiate all Gpu graphs we have to pass a valid device pointer
+    // because some device operations in XLA (e.g. memcpy) query device
+    // information from a pointer. We have to find the largest allocation
+    // available, to guarantee that all memref slices are within bounds,
+    // otherwise we might get crashes from a Gpu driver.
+    void* device_ptr = temp_buffer.opaque();
+    size_t device_ptr_size = temp_buffer.size();
+
+    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
+      auto mem = buffer_allocations.GetDeviceAddress(i);
+      if (mem.size() > device_ptr_size) device_ptr = mem.opaque();
+    }
+
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
-            run_options, executable, user_data, temp_buffer.opaque());
+            run_options, executable, user_data, device_ptr);
         !instantiated.ok()) {
       return InternalError("Failed to instantiate CUDA graphs: %s",
                            instantiated.message());

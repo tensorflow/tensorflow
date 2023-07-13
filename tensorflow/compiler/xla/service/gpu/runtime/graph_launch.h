@@ -93,6 +93,10 @@ class GraphInstances {
                               const runtime::CustomCall::UserData& user_data,
                               void* ptr);
 
+  // Returns true if all Gpu graphs were already instantiated.
+  bool InstantiatedAllGraphs(const ServiceExecutableRunOptions* run_options,
+                             const runtime::Executable& executable);
+
  private:
   mutable absl::Mutex mutex_;
   absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_

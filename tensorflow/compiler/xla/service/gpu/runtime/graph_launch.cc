@@ -85,12 +85,23 @@ CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
   return &counts_[executor];
 }
 
+bool GraphInstances::InstantiatedAllGraphs(
+    const ServiceExecutableRunOptions* run_options,
+    const Executable& executable) {
+  if (executable.num_functions() == 1) return true;
+
+  absl::MutexLock lock(&mutex_);
+  return instantiated_.contains(run_options->stream()->parent());
+}
+
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
     void* ptr) {
-  absl::MutexLock lock(&mutex_);
+  // We have only "main" function in the executable.
+  if (executable.num_functions() == 1) return OkStatus();
 
+  absl::MutexLock lock(&mutex_);
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   // All Gpu graphs are already instantiated for a given executor.
