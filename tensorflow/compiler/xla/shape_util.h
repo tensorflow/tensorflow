@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/macros.h"
@@ -319,6 +320,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Prepends a major dimension sized `bound` to the shape.
+  static Shape PrependMajorDimension(int64_t bound, Shape shape);
 
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
@@ -657,6 +661,51 @@ class ShapeUtil {
   static std::optional<std::vector<int64_t>>
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
+
+  // This means that the bitcast can be decomposed to a single reshape.
+  struct BitcastDecompositionReshape {};
+
+  // This means that the bitcast can be decomposed to a single transpose.
+  struct BitcastDecompositionTranspose {
+    std::vector<int64_t> transpose_dims;
+  };
+
+  // Every bitcast from A to B can be represented as a sequence of:
+  // 1) Transpose to a normalized layout of A
+  // 2) Reshape to a normalized layout of B
+  // 3) Transpose from (2) to B
+  //
+  // All members are always set, even if they correspond to an identity
+  // operation.
+  //
+  // Note: Some bitcasts can be converted to a single transpose or reshape,
+  // using other methods.
+  struct BitcastDecompositionTrt {
+    std::vector<int64_t> transpose1_dims;
+    // Has a normalized layout.
+    Shape transpose1_shape;
+    // Has a normalized layout.
+    Shape reshape_shape;
+    std::vector<int64_t> transpose2_dims;
+
+    bool IsTranspose1Identity() const;
+    bool IsTranspose2Identity() const;
+  };
+
+  // A variant type holding one of the possible bitcast decompositions.
+  using BitcastDecomposition =
+      std::variant<BitcastDecompositionReshape, BitcastDecompositionTranspose,
+                   BitcastDecompositionTrt>;
+
+  // Decomposes a bitcast to a sequence of transpose, reshape, transpose.
+  //
+  // See the comment on BitcastDecompositionTrt.
+  static BitcastDecompositionTrt DecomposeBitcastToTrt(
+      const Shape& input_shape, const Shape& output_shape);
+
+  // Decomposes a bitcast to one of the possible decompositions.
+  static BitcastDecomposition DecomposeBitcast(const Shape& input_shape,
+                                               const Shape& output_shape);
 
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns

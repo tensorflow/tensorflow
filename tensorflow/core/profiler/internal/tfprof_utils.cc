@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"

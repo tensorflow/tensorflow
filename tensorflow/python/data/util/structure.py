@@ -23,8 +23,8 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import resource_variable_ops
@@ -41,7 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export(v1=["data.experimental.TensorStructure"])
 @deprecation.deprecated(None, "Use `tf.TensorSpec` instead.")
 def _TensorStructure(dtype, shape):
-  return tensor_spec.TensorSpec(shape, dtype)
+  return tensor_lib.TensorSpec(shape, dtype)
 
 
 @tf_export(v1=["data.experimental.SparseTensorStructure"])
@@ -171,8 +171,8 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       flat_ret.append(flat_class)
     elif issubclass(flat_class, sparse_tensor.SparseTensor):
       flat_ret.append(sparse_tensor.SparseTensorSpec(flat_shape, flat_type))
-    elif issubclass(flat_class, ops.Tensor):
-      flat_ret.append(tensor_spec.TensorSpec(flat_shape, flat_type))
+    elif issubclass(flat_class, tensor_lib.Tensor):
+      flat_ret.append(tensor_lib.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
       # We sneaked the dynamic_size and infer_shape into the legacy shape.
       flat_ret.append(

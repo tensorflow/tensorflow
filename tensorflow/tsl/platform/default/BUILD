@@ -50,6 +50,15 @@ cc_library(
 )
 
 cc_library(
+    name = "criticality",
+    hdrs = ["//tensorflow/tsl/platform:criticality.h"],
+    textual_hdrs = ["criticality.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+    ],
+)
+
+cc_library(
     name = "cuda_libdevice_path",
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tensorflow/tsl/platform:cuda_libdevice_path.h"],
@@ -195,6 +204,24 @@ cc_library(
         "nobuilder",
     ],
     deps = ["//tensorflow/tsl/platform:types"],
+)
+
+cc_library(
+    name = "error_logging",
+    srcs = ["error_logging.cc"],
+    hdrs = ["//tensorflow/tsl/platform:error_logging.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    textual_hdrs = ["error_logging.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -454,28 +481,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test",
-    testonly = True,
-    srcs = ["test.cc"],
-    hdrs = ["//tensorflow/tsl/platform:test.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:net",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "tracing",
     srcs = [
         "tracing.cc",
@@ -621,6 +626,7 @@ exports_files(
     srcs = glob(
         ["*"],
         exclude = [
+            "error_logging.h",
             "integral_types.h",
             "logging.h",
             "test.cc",
@@ -631,6 +637,7 @@ exports_files(
 
 exports_files(
     srcs = [
+        "error_logging.h",
         "integral_types.h",
         "logging.h",
         "test.cc",

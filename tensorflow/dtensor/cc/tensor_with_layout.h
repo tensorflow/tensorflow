@@ -36,12 +36,6 @@ enum TensorType {
   kSparse = 2,
 };
 
-struct EmbeddingResourceAttrs {
-  int64_t table_id;
-  std::optional<int64_t> slot_id;  // NOLINT
-  bool is_dirty = false;
-};
-
 class ConstValueNode {
  public:
   explicit ConstValueNode(std::optional<NodeDef> const_value)

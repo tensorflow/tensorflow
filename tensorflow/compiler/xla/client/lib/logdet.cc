@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/logdet.h"
 
+#include <limits>
 #include <memory>
 #include <vector>
 

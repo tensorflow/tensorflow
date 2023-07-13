@@ -70,7 +70,7 @@ void CudaGraphSupport::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
 
 tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
   VLOG(3) << "Update CUDA graph exec with a new graph after " << num_launches_
-          << " launches since last update "
+          << " launches since last update"
           << " #" << num_updates_++;
 
   num_launches_ = 0;

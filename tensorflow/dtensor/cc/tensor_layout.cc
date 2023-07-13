@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -167,6 +168,13 @@ bool ShardVector::ContainsShard(const Shard& shard) const {
 
 bool IsDynamicSize(int64_t size) {
   return mlir::ShapedType::isDynamic(size) || size == -1;
+}
+
+bool IsDynamicShape(const std::vector<int64_t>& shape) {
+  for (int64_t size : shape) {
+    if (IsDynamicSize(size)) return true;
+  }
+  return false;
 }
 
 // static
@@ -380,7 +388,7 @@ StatusOr<Mesh> Mesh::ToDeviceType(const std::string& device_type) const {
                                   parsed_dev.task, device_type, parsed_dev.id));
     parsed_dev.Clear();
   }
-  return GetMesh(name_, mesh_dims_, global_device_ids_, local_device_ids_,
+  return GetMesh("", mesh_dims_, global_device_ids_, local_device_ids_,
                  to_local_devices, /*global_devices=*/{});
 }
 
@@ -792,27 +800,13 @@ Mesh Mesh::CreateMesh(const std::string& mesh_name,
 }
 
 StatusOr<Layout> Layout::GetLayout(
-    const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh) {
-  // Re-format sharding specs.
-  std::vector<ShardingSpec> sharding_specs;
-  sharding_specs.reserve(sharding_spec_strs.size());
-  for (const std::string& spec_str : sharding_spec_strs) {
-    ShardingSpec spec;
-    spec.set_sharding_spec(spec_str);
-    sharding_specs.push_back(spec);
-  }
-  return GetLayout(sharding_specs, mesh);
-}
-
-StatusOr<Layout> Layout::GetLayout(
-    const std::vector<ShardingSpec>& sharding_specs, const Mesh& mesh) {
+    const std::vector<std::string>& sharding_specs, const Mesh& mesh) {
   Layout layout;
   // Append mesh, then check sharding_specs are legal.
   layout.mesh_ = mesh;
 
   // Check sharding_specs are either mesh dimension or special value.
-  for (const auto& dim : sharding_specs) {
-    const std::string& sharding_spec = dim.sharding_spec();
+  for (const auto& sharding_spec : sharding_specs) {
     if (!(sharding_spec == kUnshardedDim || sharding_spec == kAny ||
           sharding_spec == kMatch || mesh.IsMeshDim(sharding_spec) ||
           sharding_spec == "scalar"))
@@ -823,8 +817,7 @@ StatusOr<Layout> Layout::GetLayout(
   }
   // Check same tensor dimensions not sharded over same mesh dimension twice.
   std::set<std::string> dims_set;
-  for (const auto& dim : sharding_specs) {
-    const std::string& sharding_spec = dim.sharding_spec();
+  for (const auto& sharding_spec : sharding_specs) {
     if (sharding_spec == kUnshardedDim || sharding_spec == kAny) continue;
     // If scalar, delete all sharding specs.
     if (sharding_spec == "scalar") {
@@ -868,8 +861,7 @@ bool Layout::IsEmpty() const { return mesh_.IsEmpty(); }
 
 namespace {
 Mesh ReducedAbstractMesh(const Layout* layout) {
-  const std::vector<std::string>& shard_spec_strs =
-      layout->sharding_spec_strs();
+  const std::vector<std::string> shard_spec_strs = layout->sharding_spec_strs();
   std::vector<MeshDimension> reduced_mesh_dims;
   reduced_mesh_dims.reserve(layout->mesh().dims().size());
   for (const MeshDimension& mesh_dim : layout->mesh().dims()) {
@@ -926,12 +918,9 @@ Mesh Layout::ReducedMesh() const {
 
 namespace {
 Layout ReducedLayout(const Layout* layout) {
-  // Change format sharding specs.
-  std::vector<ShardingSpec> shard_specs(layout->sharding_specs().size());
-  for (size_t i = 0; i < shard_specs.size(); ++i)
-    shard_specs[i] = layout->dim(i);
   // Retrieve layout.
-  return Layout::GetLayout(shard_specs, layout->ReducedMesh()).value();
+  return Layout::GetLayout(layout->sharding_spec_strs(), layout->ReducedMesh())
+      .value();
 }
 
 // Returns index of the given mesh dimension or mesh dim size if not found.
@@ -944,16 +933,13 @@ StatusOr<int> IndexOfMeshDimension(const Mesh& mesh,
 }  // namespace
 
 ShardVector Layout::GetShardVector() const {
-  // Change format sharding specs.
-  std::vector<ShardingSpec> shard_specs(sharding_specs().size());
-  for (size_t i = 0; i < shard_specs.size(); ++i) shard_specs[i] = dim(i);
   // Obtain a shard position (i.e. sharded section of a tensor) from a mesh
   // location, using the sharding specs.
   auto GetShardFromDeviceLocation = [&](const DeviceLocation& loc) -> Shard {
     Shard shard;
-    for (size_t i = 0; i < shard_specs.size(); ++i) {
+    for (size_t i = 0; i < sharding_specs_.size(); ++i) {
       // If unsharded, there is only one shard, that is 1.
-      std::string spec = shard_specs[i].sharding_spec();
+      std::string spec = sharding_specs_[i];
       if (spec == Layout::kUnshardedDim) {
         shard.push_back(1);
       } else {
@@ -966,11 +952,11 @@ ShardVector Layout::GetShardVector() const {
   };
   // Obtain dims of shard vector.
   auto ShardVectorDims = [&]() -> std::vector<int> {
-    std::vector<int> num_shards_per_dim(shard_specs.size());
-    for (size_t i = 0; i < sharding_specs().size(); ++i) {
-      ShardingSpec spec = sharding_specs()[i];
-      if (Layout::IsShardedSpec(spec)) {
-        StatusOr<int64> dim_size = mesh().dim_size(spec.sharding_spec());
+    std::vector<int> num_shards_per_dim(sharding_specs_.size());
+    for (size_t i = 0; i < sharding_specs_.size(); ++i) {
+      std::string spec = sharding_specs_[i];
+      if (Layout::IsShardedDimension(spec)) {
+        StatusOr<int64> dim_size = mesh().dim_size(spec);
         num_shards_per_dim[i] = dim_size.value();
       } else {
         num_shards_per_dim[i] = 1;
@@ -1025,28 +1011,25 @@ std::map<std::string, ShardVector> Layout::HostShardMap() const {
 }
 
 const std::string& Layout::sharding_spec(int idx) const {
-  return sharding_specs_[idx].sharding_spec();
+  return sharding_specs_[idx];
 }
 
 std::vector<int32> Layout::num_shards() const {
   std::vector<int32> num_shards;
   num_shards.reserve(sharding_specs_.size());
-  for (const auto& sharding_spec : sharding_specs_) {
-    num_shards.push_back(num_shards_for_dim(sharding_spec));
+  for (int64_t index = 0; index < sharding_specs_.size(); ++index) {
+    num_shards.push_back(num_shards_for_dim(index));
   }
   return num_shards;
 }
 
-size_t Layout::num_shards_for_dim(const ShardingSpec& dim) const {
-  absl::string_view name = dim.sharding_spec();
-  if (name == Layout::kUnshardedDim) return 1;
-  if (name == Layout::kMatch) return -1;
-
-  return mesh().dim_size(name).value();
-}
 
 size_t Layout::num_shards_for_dim(int dim) const {
-  return num_shards_for_dim(sharding_specs_[dim]);
+  const std::string spec = sharding_specs_[dim];
+  if (spec == Layout::kUnshardedDim) return 1;
+  if (spec == Layout::kMatch) return -1;
+
+  return mesh().dim_size(spec).value();
 }
 
 bool Layout::IsFullyReplicated() const {
@@ -1054,9 +1037,7 @@ bool Layout::IsFullyReplicated() const {
     return false;
   }
   for (const auto& sharding_spec : sharding_specs_) {
-    if (num_shards_for_dim(sharding_spec) > 1) {
-      return false;
-    }
+    if (sharding_spec != Layout::kUnshardedDim) return false;
   }
   return true;
 }
@@ -1064,7 +1045,7 @@ bool Layout::IsFullyReplicated() const {
 bool Layout::IsLastDimReplicated() const {
   return (mesh_.IsTile() &&
           ((sharding_specs_.empty()) ||
-           (num_shards_for_dim(sharding_specs_.back()) == 1)));
+           (sharding_specs_.back() == Layout::kUnshardedDim)));
 }
 
 bool Layout::IsBatchParallel() const {
@@ -1072,16 +1053,16 @@ bool Layout::IsBatchParallel() const {
     return false;
   }
   if (sharding_specs_.empty()) {
-    return true;
+    return false;
   }
 
   for (int i = 1; i < sharding_specs_.size(); ++i) {
-    const auto& dim = sharding_specs_[i];
-    if (num_shards_for_dim(dim) != 1) {
+    const auto& spec = sharding_specs_[i];
+    if (spec != Layout::kUnshardedDim) {
       return false;
     }
   }
-  return true;
+  return sharding_specs_[0] != Layout::kUnshardedDim;
 }
 
 // TODO(samuelslee) Replace this with the IsBatchParallel() everywhere
@@ -1091,7 +1072,7 @@ bool Layout::IsBatchParallel(int non_batch_rank) const {
   }
   if (sharding_specs_.empty()) return true;
   for (int i = rank() - non_batch_rank; i < rank(); ++i) {
-    if (num_shards_for_dim(sharding_specs_[i]) != 1) return false;
+    if (num_shards_for_dim(i) != 1) return false;
   }
   return true;
 }
@@ -1099,8 +1080,8 @@ bool Layout::IsBatchParallel(int non_batch_rank) const {
 StatusOr<LayoutProto> Layout::ToProto() const {
   LayoutProto proto;
   TF_ASSIGN_OR_RETURN(*proto.mutable_mesh_config(), mesh_.ToProto());
-  for (const auto& dim : sharding_specs_) {
-    *proto.add_sharding_specs() = dim;
+  for (const auto& spec : sharding_specs_) {
+    proto.add_sharding_specs()->set_sharding_spec(spec);
   }
   return proto;
 }
@@ -1109,10 +1090,8 @@ bool Layout::IsEquivalent(const Layout& b) const {
   if (this->rank() != b.rank()) return false;
   if (this->mesh() != b.mesh()) return false;
   for (int i = 0; i < this->rank(); ++i) {
-    if (this->sharding_specs_[i].sharding_spec() !=
-        b.sharding_specs_[i].sharding_spec()) {
-      if ((this->num_shards_for_dim(this->sharding_specs_[i]) != 1) ||
-          (b.num_shards_for_dim(b.sharding_specs_[i]) != 1))
+    if (this->sharding_specs_[i] != b.sharding_specs_[i]) {
+      if ((this->num_shards_for_dim(i) != 1) || (b.num_shards_for_dim(i) != 1))
         return false;
     }
   }
@@ -1129,18 +1108,42 @@ bool Layout::operator==(const Layout& b) const {
 }
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
-    absl::Span<const int64_t> local_shape) const {
+    absl::Span<const int64_t> local_shape,
+    const std::vector<std::vector<int64_t>>* local_shapes) const {
   if (IsSingleDevice() || IsFullyReplicated()) {
     return std::vector<int64_t>(local_shape.begin(), local_shape.end());
   }
+
+  std::vector<int64_t> stride_for_dim;
+  stride_for_dim.resize(sharding_specs_.size());
+  size_t stride = mesh().num_local_devices();
+  for (int i = 0; i < stride_for_dim.size(); i++) {
+    stride = stride / num_shards_for_dim(i);
+    stride_for_dim[i] = stride;
+  }
+
+  auto dimension_size = [&, this](int dim) -> int64_t {
+    int64_t local_size = local_shape[dim];
+    if (IsDynamicSize(local_size) && local_shapes &&
+        local_shapes->size() == mesh().num_local_devices()) {
+      // If `dim` is using dynamic shape and local tensor shapes are available,
+      // calculate global shape by adding up local tensor shapes.
+      int64_t dim_size = 0;
+      int index = 0;
+      for (int i = 0; i < num_shards_for_dim(dim); i++) {
+        dim_size += local_shapes->at(index)[dim];
+        index += stride_for_dim[dim];
+      }
+      return dim_size;
+    } else {
+      return local_size * num_shards_for_dim(dim);
+    }
+  };
+
   std::vector<int64_t> global_shape;
-  global_shape.reserve(sharding_specs().size());
-  for (int i = 0; i < sharding_specs().size(); ++i) {
-    int64_t l_shape = local_shape.empty() ? 1 : local_shape[i];
-    int64_t dim_shards = num_shards()[i];
-    int64_t global_size =
-        IsDynamicSize(l_shape) ? l_shape : l_shape * dim_shards;
-    global_shape.emplace_back(global_size);
+  global_shape.reserve(sharding_specs_.size());
+  for (int i = 0; i < sharding_specs_.size(); ++i) {
+    global_shape.push_back(dimension_size(i));
   }
   return global_shape;
 }
@@ -1152,7 +1155,7 @@ std::vector<int64_t> Layout::LocalShapeFromGlobalShape(
   }
   std::vector<int32> shards = num_shards();
   std::vector<int64_t> local_shape;
-  for (int i = 0; i < sharding_specs().size(); ++i) {
+  for (int i = 0; i < sharding_specs_.size(); ++i) {
     int64_t dim_shards = shards[i];
     // TODO(hthu): Shape might not be always divisible.
     int64_t local_size = IsDynamicSize(global_shape[i])
@@ -1170,7 +1173,7 @@ PartialTensorShape Layout::LocalShapeFromGlobalShape(
   }
   std::vector<int32> shards = num_shards();
   PartialTensorShape local_shape({});
-  for (int spec_index = 0; spec_index < sharding_specs().size(); ++spec_index) {
+  for (int spec_index = 0; spec_index < sharding_specs_.size(); ++spec_index) {
     int64_t dim_size = global_shape.dim_size(spec_index);
     int64_t local_size =
         IsDynamicSize(dim_size) ? dim_size : dim_size / shards[spec_index];
@@ -1183,7 +1186,7 @@ StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
   Layout layout;
   if (proto.mesh_config().single_device().empty()) {
     for (const auto& spec : proto.sharding_specs())
-      layout.sharding_specs_.push_back(spec);
+      layout.sharding_specs_.push_back(spec.sharding_spec());
 
     TF_ASSIGN_OR_RETURN(auto mesh, Mesh::ParseFromProto(proto.mesh_config()));
     layout.mesh_ = std::move(mesh);
@@ -1269,10 +1272,7 @@ StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
 }
 
 std::vector<std::string> Layout::sharding_spec_strs() const {
-  std::vector<std::string> sharding_spec_strs(sharding_specs().size());
-  for (size_t i = 0; i < sharding_specs().size(); ++i)
-    sharding_spec_strs[i] = sharding_spec(i);
-  return sharding_spec_strs;
+  return sharding_specs_;
 }
 
 std::string Layout::ToString() const {
@@ -1285,8 +1285,7 @@ std::string Layout::ToString() const {
 
   std::string layout_str = "sharding_specs:";
   // Print sharding specs.
-  for (const ShardingSpec& dim : sharding_specs_) {
-    std::string dim_name = dim.sharding_spec();
+  for (const auto& dim_name : sharding_specs_) {
     absl::StrAppend(&layout_str, dim_name + ",");
   }
   // Append mesh.
@@ -1296,19 +1295,16 @@ std::string Layout::ToString() const {
 
 StatusOr<Layout> Layout::GetLayoutWithReducedDims(
     const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const {
-  dtensor::LayoutProto output_layout;
-  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
-
+  std::vector<std::string> sharding_specs;
   for (int i = 0; i < rank(); ++i) {
     // reduced_dims may contain negative values.
     if (!reduced_dims.contains(i) && !reduced_dims.contains(i - rank())) {
-      *output_layout.add_sharding_specs() = dim(i);
+      sharding_specs.push_back(sharding_spec(i));
     } else if (keep_dims) {
-      auto* replicated_dim = output_layout.add_sharding_specs();
-      replicated_dim->set_sharding_spec(kUnshardedDim);
+      sharding_specs.push_back(kUnshardedDim);
     }
   }
-  return Layout::FromProto(output_layout).value();
+  return Layout::GetLayout(sharding_specs, mesh());
 }
 
 Layout Layout::Truncate(int64 split_point, bool end) const {
@@ -1332,9 +1328,7 @@ Layout Layout::LeftPad(int64_t rank) const {
   Layout output_layout(*this);
 
   auto& specs = output_layout.sharding_specs_;
-  ShardingSpec spec;
-  spec.set_sharding_spec(Layout::kUnshardedDim);
-  specs.insert(specs.begin(), rank - this->rank(), spec);
+  specs.insert(specs.begin(), rank - this->rank(), Layout::kUnshardedDim);
   return output_layout;
 }
 
@@ -1378,7 +1372,7 @@ StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts) {
   absl::flat_hash_map<std::string, std::set<int>> layout_map;
   for (const Layout& layout : layouts) {
     for (int i = 0; i < layout.rank(); ++i) {
-      const std::string& mesh_dim = layout.dim(i).sharding_spec();
+      const std::string& mesh_dim = layout.sharding_spec(i);
       if (mesh_dim == Layout::kUnshardedDim) continue;
 
       layout_map[mesh_dim].insert(i);
@@ -1431,7 +1425,7 @@ StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts) {
   }
   specs.resize(rank, Layout::kAny);
   for (const auto& layout : layouts) {
-    auto current_specs = layout.sharding_spec_strs();
+    const auto current_specs = layout.sharding_spec_strs();
     for (int i = 0; i < rank; i++) {
       auto current_spec = current_specs[i];
       if (specs[i] == Layout::kAny) {

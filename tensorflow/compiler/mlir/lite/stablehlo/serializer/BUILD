@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,7 +17,7 @@ cc_library(
         "flatbuffer_operator.h",
         "flatbuffer_translator.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -48,7 +48,7 @@ cc_library(
         "flatbuffer_export.cc",
     ],
     hdrs = ["flatbuffer_export.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":flatbuffer_translator",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",

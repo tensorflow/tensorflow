@@ -51,7 +51,6 @@ cc_library(
     deps = [
         ":benchmark",
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
@@ -61,7 +60,6 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:basic_kernels_alwayslink",

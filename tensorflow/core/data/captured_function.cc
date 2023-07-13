@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/captured_function.h"
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"

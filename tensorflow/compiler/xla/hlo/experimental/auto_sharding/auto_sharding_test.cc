@@ -15,9 +15,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <numeric>
-#include <string>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -26,14 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "ortools/linear_solver/linear_solver.h"
 
 namespace op = xla::testing::opcode_matchers;
-
-using MPConstraint = operations_research::MPConstraint;
-using MPSolver = operations_research::MPSolver;
-using MPSolverParameters = operations_research::MPSolverParameters;
-using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
@@ -58,31 +50,6 @@ ENTRY %elementwise {
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
-}
-
-TEST(MIPSolverTest, TwoVariableToyExample) {
-  // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(
-      MPSolver::CreateSolver("SCIP_MIXED_INTEGER_PROGRAMMING"));
-  solver->MutableObjective()->SetMaximization();
-  ASSERT_TRUE(solver);
-  // Test with the following integer programming problem:
-  //   max  x + 2y
-  //   s.t. 6x + 2y <= 19
-  //        0 <= x <= 3
-  //        0 <= y <= 2
-  MPVariable* x = solver->MakeIntVar(0.0, 3.0, "x");
-  MPVariable* y = solver->MakeIntVar(0.0, 2.0, "y");
-  MPConstraint* constraint =
-      solver->MakeRowConstraint(-MPSolver::infinity(), 19.0);
-  constraint->SetCoefficient(x, 6.0);
-  constraint->SetCoefficient(y, 2.0);
-  solver->MutableObjective()->SetCoefficient(x, 1.0);
-  solver->MutableObjective()->SetCoefficient(y, 2.0);
-  MPSolver::ResultStatus solve_status = solver->Solve();
-  EXPECT_EQ(solve_status, MPSolver::OPTIMAL);
-  EXPECT_DOUBLE_EQ(x->solution_value(), 2.0);
-  EXPECT_DOUBLE_EQ(y->solution_value(), 2.0);
 }
 
 class AutoShardingTest : public HloTestBase {

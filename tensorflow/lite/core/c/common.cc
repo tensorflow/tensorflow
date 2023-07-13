@@ -150,8 +150,8 @@ TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteVariantObject) {
-    delete reinterpret_cast<VariantData*>(t->data.data);
+  if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
+    delete static_cast<VariantData*>(t->data.data);
   } else if (t->allocation_type == kTfLiteDynamic ||
              t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
@@ -262,9 +262,20 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
   if (src->allocation_type == kTfLiteVariantObject) {
-    if (dst->allocation_type != kTfLiteVariantObject) return kTfLiteError;
-    dst->data.data =
-        reinterpret_cast<VariantData*>(src->data.data)->Clone(dst->data.raw);
+    // An edge case exists in control flow ops when they copy inputs to outputs
+    // before invoking any body, in this case the `dst` will not have its
+    // `allocation_type` set properly, so we handle here for now.
+    if (dst->allocation_type != kTfLiteVariantObject) {
+      TfLiteTensorDataFree(dst);
+      dst->allocation_type = kTfLiteVariantObject;
+    }
+    auto* dst_vd = static_cast<VariantData*>(dst->data.data);
+    auto* src_vd = static_cast<VariantData*>(src->data.data);
+
+    // `CloneTo` will handle the case when `dst_vd` is nullptr, so it is safe
+    // to `CloneTo` something which was "freed". Also, returning from `CloneTo`
+    // will implicitly cast to `VariantData`; don't need static cast here.
+    dst->data.data = src_vd->CloneTo(dst_vd);
   } else {
     memcpy(dst->data.raw, src->data.raw, src->bytes);
   }
@@ -373,6 +384,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
   if (!opaque_delegate_builder) return nullptr;
@@ -392,6 +404,7 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   delete tflite_delegate->opaque_delegate_builder;
   delete tflite_delegate;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
   if (!delegate) return nullptr;

@@ -15,42 +15,42 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
-#include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
-#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/step_intersection.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using tsl::profiler::FindTensorCorePlanes;
 
 std::string Hostname(const XSpace& space) {
   if (space.hostnames().empty()) return "localhost";
@@ -85,7 +85,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
         {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()),
          UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
   } else {
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
         visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
     auto peak_tera_flops_per_second_val =
@@ -137,7 +137,8 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(tpu_planes.at(0));
+    XPlaneVisitor visitor =
+        tsl::profiler::CreateTfXPlaneVisitor(tpu_planes.at(0));
     auto xstat = visitor.GetStat(StatType::kDeviceTypeString);
     if (xstat.has_value()) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
@@ -233,7 +234,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
           ConvertHostThreadsXPlaneToStepEvents(*host_plane, device_step_events);
       CombineStepEvents(host_step_events, &step_events);
     }
-    XPlaneVisitor visitor = CreateTfXPlaneVisitor(host_plane);
+    XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
     auto stat = visitor.GetStat(StatType::kMatrixUnitUtilizationPercent);
     if (stat.has_value()) {
       op_stats.mutable_performance_counter_result()

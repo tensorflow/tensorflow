@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 
 #include <cstdio>
+#include <iostream>
 #include <unordered_map>
 #include <vector>
 
@@ -381,16 +382,39 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
       tflite_context, reinterpret_cast<TfLiteTensor*>(tensor), new_size);
 }
 
-TfLiteOpaqueContext* TfLiteOpaqueContextGetSubgraphContext(
-    struct TfLiteOpaqueContext* opaque_context, int subgraph_index) {
+TfLiteStatus TfLiteOpaqueContextAcquireSubgraphContext(
+    struct TfLiteOpaqueContext* opaque_context, int subgraph_index,
+    TfLiteOpaqueContext** acquired_opaque_context) {
   auto* subgraph = GetSubgraph(opaque_context);
-  return Convert(subgraph->GetSubgraphContext(subgraph_index));
+  TfLiteContext* acquired_context;
+  TfLiteStatus status =
+      subgraph->AcquireSubgraphContext(subgraph_index, &acquired_context);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+  *acquired_opaque_context = Convert(acquired_context);
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueContextReleaseSubgraphContext(
+    struct TfLiteOpaqueContext* opaque_context, int subgraph_index) {
+  return GetSubgraph(opaque_context)->ReleaseSubgraphContext(subgraph_index);
 }
 
 TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
     TfLiteOpaqueContext* opaque_context, int subgraph_index) {
   auto* subgraph = GetSubgraph(opaque_context);
   return subgraph->MarkSubgraphAsDelegationSkippable(subgraph_index);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+    const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size) {
+  auto* subgraph = GetSubgraph(context);
+  return subgraph->GetNodeInitDataMmapInfo(Convert(node), fd,
+                                           custom_initial_data_offset_in_file,
+                                           custom_initial_data_size);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,

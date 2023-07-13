@@ -62,6 +62,11 @@ limitations under the License.
 #include "tensorflow/tsl/platform/random.h"
 #endif
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace xla {
 namespace gpu {
 
@@ -187,12 +192,18 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
                      const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
-                     bool block_host_until_done) {
+                     bool block_host_until_done,
+                     bool use_highest_priority_for_async_stream) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+  stream_executor::StreamPriority stream_priority =
+      stream_executor::StreamPriority::Default;
+  if (use_highest_priority_for_async_stream) {
+    stream_priority = stream_executor::StreamPriority::Highest;
+  }
 
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(executor->device_ordinal());
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
@@ -532,6 +543,13 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   se::StreamExecutor* executor = run_options->stream()->parent();
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // GpuExecutable always bound to a single GpuContext during its execution, so
+  // we activate it once to skip expensive context activations later.
+  se::gpu::GpuExecutor* gpu_executor = se::gpu::ExtractGpuExecutor(executor);
+  se::gpu::ScopedActivateExecutorContext activation(gpu_executor);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
   // If persistent buffers are enabled, the executable cannot execute
   // concurrently, therefore performance can suffer under contention.
   absl::MutexLockMaybe lock(
@@ -551,11 +569,17 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
-
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
-  // computations to use the same GPU simultaneously.
+  // computations to use the same GPU simultaneously. We do not add locking for
+  // "recursive" invocations, which are done when holding a lock already.
   NonAtomicallyUpgradeableRWLock gpu_lock(&GetGpuMutex(executor));
+  std::optional<NonAtomicallyUpgradeableRWLock::WriterLock> exclusive_gpu_lock;
+  const gpu::GpuExecutableRunOptions* gpu_opts =
+      run_options->run_options().gpu_executable_run_options();
+  if (gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
+    exclusive_gpu_lock.emplace(&gpu_lock);
+  }
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
@@ -725,8 +749,14 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
 
-    return ExecuteThunks(module_name_, unique_id, *thunks_, run_options,
-                         buffer_allocations, block_host_until_done);
+    return ExecuteThunks(
+        module_name_, unique_id, *thunks_, run_options, buffer_allocations,
+        block_host_until_done,
+        /*use_highest_priority_for_async_stream*/
+        has_module() ? module_config()
+                           .debug_options()
+                           .xla_gpu_enable_highest_priority_async_stream()
+                     : false);
   }
 
   if (gpu_runtime_executable_) {

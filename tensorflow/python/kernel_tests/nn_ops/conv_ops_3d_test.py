@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -42,6 +43,23 @@ def GetTestConfigs():
   if test.is_gpu_available(cuda_only=True):
     # "NCDHW" format is only supported on CUDA.
     test_configs += [("NCDHW", True)]
+  return test_configs
+
+
+def GetConvTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format, use_gpu and op name.
+  """
+  test_configs = [
+      ("NDHWC", False, "Conv3D"),
+      ("NDHWC", True, "Conv3D"),
+      ("NDHWC", False, "Conv"),
+  ]
+  if test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is only supported on CUDA.
+    test_configs += [("NCDHW", True, "Conv3D")]
   return test_configs
 
 
@@ -67,8 +85,17 @@ class Conv3DTest(test.TestCase):
           dtypes.float32, dtypes.float16, dtypes.bfloat16
       ]
 
-  def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
-                            padding, data_format, dtype, use_gpu):
+  def _SetupValuesForDevice(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      stride,
+      padding,
+      data_format,
+      dtype,
+      use_gpu,
+      op_name,
+  ):
     total_size_tensor = np.prod(tensor_in_sizes)
     total_size_filter = np.prod(filter_in_sizes)
 
@@ -89,8 +116,18 @@ class Conv3DTest(test.TestCase):
       if data_format == "NCDHW":
         t1 = test_util.NHWCToNCHW(t1)
         strides = test_util.NHWCToNCHW(strides)
-      conv = nn_ops.conv3d(t1, t2, strides, padding=padding,
-                           data_format=data_format)
+
+      if op_name == "Conv3D":
+        op = nn_ops.conv3d
+        conv_format = data_format
+      elif op_name == "Conv":
+        op = gen_nn_ops.conv
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NDHWC" else "CHANNELS_FIRST"
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+      conv = op(t1, t2, strides, padding=padding, data_format=conv_format)
       if data_format == "NCDHW":
         conv = test_util.NCHWToNHWC(conv)
 
@@ -99,7 +136,7 @@ class Conv3DTest(test.TestCase):
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
                     expected):
     results = []
-    for data_format, use_gpu in GetTestConfigs():
+    for data_format, use_gpu, op_name in GetConvTestConfigs():
       for dtype in self._DtypesToTest(use_gpu):
         result = self._SetupValuesForDevice(
             tensor_in_sizes,
@@ -108,7 +145,9 @@ class Conv3DTest(test.TestCase):
             padding,
             data_format,
             dtype,
-            use_gpu=use_gpu)
+            use_gpu=use_gpu,
+            op_name=op_name,
+        )
         results.append(result)
 
       with self.cached_session() as sess:
@@ -118,9 +157,17 @@ class Conv3DTest(test.TestCase):
           print("actual = ", value)
           self.assertAllCloseAccordingToType(expected, value.flatten())
 
-  def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
-                                   stride, dilation, padding, data_format,
-                                   use_gpu):
+  def _ComputeReferenceDilatedConv(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      stride,
+      dilation,
+      padding,
+      data_format,
+      use_gpu,
+      op_name,
+  ):
     total_size_tensor = np.prod(tensor_in_sizes)
     total_size_filter = np.prod(filter_in_sizes)
 
@@ -149,13 +196,25 @@ class Conv3DTest(test.TestCase):
           strides=strides,
           dilation_rate=dilation,
           data_format=data_format)
-      computed = nn_ops.conv3d(
+      if op_name == "Conv3D":
+        op = nn_ops.conv3d
+        conv_format = data_format
+      elif op_name == "Conv":
+        op = gen_nn_ops.conv
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NDHWC" else "CHANNELS_FIRST"
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+
+      computed = op(
           t1,
           t2,
           strides=full_strides,
           dilations=full_dilation,
           padding=padding,
-          data_format=data_format)
+          data_format=conv_format,
+      )
       if data_format == "NCDHW":
         expected = test_util.NCHWToNHWC(expected)
         computed = test_util.NCHWToNHWC(computed)
@@ -167,14 +226,21 @@ class Conv3DTest(test.TestCase):
     computed_results = []
     default_dilations = (
         dilations[0] == 1 and dilations[1] == 1 and dilations[2] == 1)
-    for data_format, use_gpu in GetTestConfigs():
+    for data_format, use_gpu, op_name in GetConvTestConfigs():
       # If any dilation rate is larger than 1, only do test on the GPU
       # because we currently do not have a CPU implementation for arbitrary
       # dilation rates.
       if default_dilations or use_gpu:
         expected, computed = self._ComputeReferenceDilatedConv(
-            tensor_in_sizes, filter_in_sizes, stride, dilations, padding,
-            data_format, use_gpu)
+            tensor_in_sizes,
+            filter_in_sizes,
+            stride,
+            dilations,
+            padding,
+            data_format,
+            use_gpu,
+            op_name,
+        )
         expected_results.append(expected)
         computed_results.append(computed)
         tolerance = 1e-2 if use_gpu else 1e-5
@@ -204,6 +270,29 @@ class Conv3DTest(test.TestCase):
         x1, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
     conv2 = nn_ops.conv3d_v2(
         x2, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 1, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 1, 3]
+    batch_dims = 2
+    filter_in_sizes = [1, 1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = gen_nn_ops.conv(
+        x1, filter_in, strides=[1, 1, 1, 1, 1], padding="VALID"
+    )
+    conv2 = gen_nn_ops.conv(
+        x2,
+        filter_in,
+        strides=[1, 1, 1, 1, 1],
+        padding="VALID",
+        batch_dims=batch_dims,
+    )
     self.assertEqual(conv1.shape, tensor_in_sizes_batch)
     self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
     self.assertAllClose(conv1, self.evaluate(conv2).reshape(conv1.shape))

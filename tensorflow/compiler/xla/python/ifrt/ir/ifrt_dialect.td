@@ -35,6 +35,32 @@ def Ifrt_ShardingParameter :
   let parser = "::xla::ifrt::ShardingParam::Parse($_parser)";
 }
 
+def Ifrt_DevicesAttr : AttrDef<Ifrt_Dialect, "IfrtDevices"> {
+  let mnemonic = "devices";
+  let summary = "Represents a list of device ids.";
+
+  let parameters = (ins ArrayRefParameter<"int">:$ids);
+  let assemblyFormat = "`[` $ids `]`";
+
+  let returnType = "::llvm::ArrayRef<int>";
+  let convertFromStorage = "$_self";
+  let constBuilderCall = "$_builder.getAttr<::xla::ifrt::IfrtDevicesAttr>($0)";
+
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    operator ::llvm::ArrayRef<int>() const;
+  }];
+}
+
+def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
+  let mnemonic = "sharding";
+  let summary = "ShardingParam as an attribute.";
+
+  let parameters = (ins Ifrt_ShardingParameter:$sharding);
+  let assemblyFormat = "`<` $sharding `>`";
+}
+
 def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let mnemonic = "array";
   let summary = "An Ifrt array sharded on a set of devices.";
@@ -42,11 +68,26 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let parameters = (ins
     Builtin_RankedTensor:$shape,
     Ifrt_ShardingParameter:$sharding,
-    ArrayRefParameter<"int">:$devices);
+    Ifrt_DevicesAttr:$devices_attr);
 
-  let assemblyFormat = "`<` $shape`,` $sharding`,` `[`$devices`]` `>`";
+  let builders = [
+    TypeBuilder<(ins
+      "::mlir::RankedTensorType":$shape,
+      "::xla::ifrt::ShardingParam":$sharding,
+      "::llvm::ArrayRef<int>":$devices), [{
+        return Base::get($_ctxt, shape, sharding,
+                         ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices));
+      }]>
+  ];
+
+  let assemblyFormat = "`<` $shape`,` $sharding`,` $devices_attr`>`";
 
   let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    // Get device ids from `devices_attr`.
+    ::llvm::ArrayRef<int> getDevices() const;
+  }];
 }
 
 def Ifrt_ControlType : TypeDef<Ifrt_Dialect, "IfrtControl"> {
@@ -57,14 +98,6 @@ def Ifrt_ControlType : TypeDef<Ifrt_Dialect, "IfrtControl"> {
     When an op takes a control as argument, it will not be scheduled for
     execution before the op emitting the control has finished execution.
   }];
-}
-
-def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
-  let mnemonic = "sharding";
-  let summary = "ShardingParam as an attribute.";
-
-  let parameters = (ins Ifrt_ShardingParameter:$sharding);
-  let assemblyFormat = "`<` $sharding `>`";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_TD_

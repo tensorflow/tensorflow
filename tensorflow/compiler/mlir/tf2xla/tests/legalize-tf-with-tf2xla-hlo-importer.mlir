@@ -1,4 +1,4 @@
-// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true use-tf2xla-hlo-importer=true" %s -verify-diagnostics -mlir-disable-threading  | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics -mlir-disable-threading  | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: binary_op
@@ -18,7 +18,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: constant_parameter
   func.func @constant_parameter(%arg0: tensor<2xf32>) -> tensor<2xf32> {
     %0 = "tf.Const"() {value = dense<1.42> : tensor<2xf32>} : () -> tensor<2xf32>
-    // CHECK: mhlo.atan2 %arg0, %4
+    // CHECK: mhlo.atan2 %arg0, %2
     %1 = "tf.Atan2"(%arg0, %0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
     func.return %0 : tensor<2xf32>
   }
@@ -653,6 +653,55 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %result : tensor<2x13x25x7xf32>
   }
 
+  //===--------------------------------------------------------------------===//
+  // tf.XlaReduceScatter legalization
+  //===--------------------------------------------------------------------===//
+  // CHECK-LABEL: func @xla_reduce_scatter
+  func.func @xla_reduce_scatter(%arg0: tensor<128x128xf32>) -> tensor<64x128xf32> {
+      %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+      %cst_0 = "tf.Const"() {value = dense<[[0, 4], [1, 5], [2, 6], [3, 7]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+      // CHECK:          "mhlo.reduce_scatter"(%arg0)
+      // CHECK{LITERAL}: replica_groups = dense<[[0, 4], [1, 5], [2, 6], [3, 7]]>
+      // CHECK-SAME:     scatter_dimension = 0
+      //
+      %1 = "tf.XlaReduceScatter"(%arg0, %cst_0, %cst) {reduce_op = "Add"} : (tensor<128x128xf32>, tensor<4x2xi32>, tensor<i32>) -> tensor<64x128xf32>
+      func.return %1 : tensor<64x128xf32>
+  }
+
+  // CHECK-LABEL: func @tf_mod
+  func.func @tf_mod(%arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+    %cst = "tf.Const"() {value = dense<7.000000e+00> : tensor<f32>} : () -> tensor<f32>
+    // CHECK: "mhlo.dynamic_broadcast_in_dim"
+    // CHECK: mhlo.remainder
+    %6 = "tf.Mod"(%arg1, %cst) {_global_shape = [#tf_type.shape<4x8>], device = ""} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+    return %6 : tensor<2x2xf32>
+  }
+
+  // CHECK-LABEL: func @concat_v2
+  func.func @concat_v2(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
+    // CHECK: "mhlo.concatenate"({{.*}}) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+    %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+    %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<3x3xf32>, tensor<3x3xf32>, tensor<i64>) -> tensor<6x3xf32>
+    func.return %1 : tensor<6x3xf32>
+  }
+
+  // CHECK-LABEL: func @matrix_diag_part_v3
+  // CHECK-SAME: %[[ARG:.*]]: tensor<7x140x128xi32>
+  func.func @matrix_diag_part_v3(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32> {
+    %0 = mhlo.constant dense<42> : tensor<i32>  // padding value
+    %1 = mhlo.constant dense<[-10, 11]> : tensor<2xi32>  // k
+    // CHECK: mhlo.iota
+    // CHECK: mhlo.reshape
+    // CHECK: mhlo.concatenate
+    // CHECK: mhlo.gather
+    // CHECK: mhlo.broadcast
+    // CHECK: mhlo.select
+    %2 = "tf.MatrixDiagPartV3"(%arg0, %1, %0) {
+        T = i32, align = "RIGHT_LEFT"
+    } : (tensor<7x140x128xi32>, tensor<2xi32>, tensor<i32>) -> tensor<7x22x128xi32>
+    func.return %2: tensor<7x22x128xi32>
+  }
+
   // CHECK-LABEL: func @xla_call_module
   func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
     // Equivalent to the following:
@@ -664,7 +713,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     //   }
     // }
     // CHECK: call @main.2
-    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], function_list = [], has_token_input_output = false, module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = [], version = 4 : i64} : (tensor<f32>) -> tensor<*xf32>
+    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], function_list = [], disabled_checks = [], has_token_input_output = false, module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = ["CPU"], version = 6 : i64} : (tensor<f32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
 

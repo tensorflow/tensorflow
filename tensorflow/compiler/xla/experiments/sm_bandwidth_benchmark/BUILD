@@ -1,6 +1,8 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "sm_bw_utils",
     hdrs = ["sm_bw_utils.h"],

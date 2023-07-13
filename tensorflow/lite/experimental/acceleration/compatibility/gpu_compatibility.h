@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -109,6 +110,20 @@ class GPUCompatibilityList {
   // Checks if the provided byte array represents a valid compatibility list
   static bool IsValidFlatbuffer(const unsigned char* data, int len);
 
+  std::map<std::string, std::string> InfosToMap(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
+
+  // Converts the compatibility status enum value to the corresponding status
+  // string.
+  static std::string CompatibilityStatusToString(
+      gpu::CompatibilityStatus status);
+
+  // Converts the status string to the corresponding compatibility status enum
+  // value.
+  static gpu::CompatibilityStatus StringToCompatibilityStatus(
+      absl::string_view status);
+
  protected:
   const DeviceDatabase* database_;
 
@@ -121,10 +136,6 @@ class GPUCompatibilityList {
       const unsigned char* compatibility_list_flatbuffer);
 
   explicit GPUCompatibilityList(std::string compatibility_list_flatbuffer);
-
-  std::map<std::string, std::string> InfosToMap(
-      const AndroidInfo& android_info,
-      const ::tflite::gpu::GpuInfo& gpu_info) const;
 };
 
 }  // namespace acceleration

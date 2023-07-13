@@ -98,7 +98,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.Identity"
     // CHECK-NEXT: return
     %0 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-    %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %3 = "tf.FloorMod"(%2, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %4 = "tf._XlaRecvAtHostV2"(%1, %3) {key = "communication_key_sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0_0"} : (tensor<2x!tf_type.string>, tensor<i64>) -> tensor<f32>
@@ -211,7 +211,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.Identity"
     // CHECK-NEXT: return
     %0 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-    %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %3 = "tf.FloorMod"(%2, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %4 = "tf._XlaRecvAtHostV2"(%1, %3) {key = "communication_key_sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0_0"} : (tensor<2x!tf_type.string>, tensor<i64>) -> tensor<f32>
@@ -269,7 +269,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
     %0 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-    %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %3 = "tf.FloorMod"(%2, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %4 = "tf._XlaRecvAtHostV2"(%1, %3) {key = "communication_key_sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0_0"} : (tensor<2x!tf_type.string>, tensor<i64>) -> tensor<f32>
@@ -324,7 +324,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
     %0 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-    %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %3 = "tf.FloorMod"(%2, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %4 = "tf._XlaRecvAtHostV2"(%1, %3) {key = "communication_key_sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0_0"} : (tensor<2x!tf_type.string>, tensor<i64>) -> tensor<f32>
@@ -380,7 +380,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   func.func private @_func_1(%arg0: tensor<i32>) -> tensor<f32> {
     %0 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-    %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
+    %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf_type.string>
     %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<i32>) -> tensor<i64>
     %3 = "tf.FloorMod"(%2, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %4 = "tf._XlaRecvAtHostV2"(%1, %3) {key = "communication_key_sharding_specs: mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0_0"} : (tensor<2x!tf_type.string>, tensor<i64>) -> tensor<f32>

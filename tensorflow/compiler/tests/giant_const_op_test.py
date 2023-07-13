@@ -25,7 +25,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import flags
-from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -45,7 +44,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   return tpu_lib.TPUStrategyV2(resolver)
 
 

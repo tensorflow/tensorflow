@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 
 #include <string>
+#include <unordered_set>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"

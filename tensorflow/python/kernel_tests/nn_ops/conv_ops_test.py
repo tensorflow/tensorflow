@@ -157,6 +157,23 @@ def GetTestConfigs():
   return test_configs
 
 
+def GetConvTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format, use_gpu and op name.
+  """
+  test_configs = [
+      ("NHWC", False, "Conv2D"),
+      ("NHWC", True, "Conv2D"),
+      ("NHWC", False, "Conv"),
+  ]
+  if test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is only supported on CUDA.
+    test_configs += [("NCHW", True, "Conv2D")]
+  return test_configs
+
+
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class Conv2DTest(test.TestCase):
 
@@ -182,21 +199,33 @@ class Conv2DTest(test.TestCase):
       total_size *= s
     return np.arange(1, total_size + 1, dtype=np.float32).reshape(shape)
 
-  def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, dilations,
-                            strides, padding, data_format, dtype, use_gpu):
+  def _SetupValuesForDevice(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      dilations,
+      strides,
+      padding,
+      data_format,
+      dtype,
+      use_gpu,
+      op_name,
+  ):
     """Verifies the output values of the convolution function.
 
     Args:
-      tensor_in_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_in_sizes: Filter tensor dimensions in
-        [kernel_rows, kernel_cols, input_depth, output_depth].
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
       dilations: Dilated rate: [col_dilation, row_dilation]
       strides: Stride: [col_stride, row_stride]
       padding: Padding type.
       data_format: Format of the data tensors.
       dtype: Data type for inputs and outputs.
       use_gpu: True if the operations should be run on GPU
+      op_name: Name of the op to be tested
+
     Returns:
       Symbolic tensor value that can be used to execute the computation
     """
@@ -216,13 +245,32 @@ class Conv2DTest(test.TestCase):
         dilations = test_util.NHWCToNCHW(dilations)
         if isinstance(padding, (list, tuple)):
           padding = test_util.NHWCToNCHW(padding)
-      conv = nn_ops.conv2d(
-          t1,
-          t2,
-          dilations=dilations,
-          strides=strides,
-          padding=padding,
-          data_format=data_format)
+      if op_name == "Conv2D":
+        conv = nn_ops.conv2d(
+            t1,
+            t2,
+            dilations=dilations,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+        )
+      elif op_name == "Conv":
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NHWC" else "CHANNELS_FIRST"
+        )
+        conv_padding, explicit_paddings = nn_ops.convert_padding(padding)
+        conv = gen_nn_ops.conv(
+            t1,
+            t2,
+            strides=strides,
+            padding=conv_padding,
+            explicit_paddings=explicit_paddings,
+            data_format=conv_format,
+            dilations=dilations,
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+
       self.assertEqual(conv.dtype, dtype)
       if data_format == "NCHW":
         conv = test_util.NCHWToNHWC(conv)
@@ -265,9 +313,17 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
-  def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
-                                   stride, dilation, padding, data_format,
-                                   use_gpu):
+  def _ComputeReferenceDilatedConv(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      stride,
+      dilation,
+      padding,
+      data_format,
+      use_gpu,
+      op_name,
+  ):
     x1 = self._CreateNumpyTensor(tensor_in_sizes)
     x2 = self._CreateNumpyTensor(filter_in_sizes)
     with test_util.device(use_gpu):
@@ -291,13 +347,32 @@ class Conv2DTest(test.TestCase):
           strides=strides,
           dilation_rate=dilation,
           data_format=data_format)
-      computed = nn_ops.conv2d(
-          t1,
-          t2,
-          strides=full_strides,
-          dilations=full_dilation,
-          padding=padding,
-          data_format=data_format)
+      if op_name == "Conv2D":
+        computed = nn_ops.conv2d(
+            t1,
+            t2,
+            strides=full_strides,
+            dilations=full_dilation,
+            padding=padding,
+            data_format=data_format,
+        )
+      elif op_name == "Conv":
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NHWC" else "CHANNELS_FIRST"
+        )
+        conv_padding, explicit_paddings = nn_ops.convert_padding(padding)
+        computed = gen_nn_ops.conv(
+            t1,
+            t2,
+            strides=full_strides,
+            dilations=full_dilation,
+            padding=conv_padding,
+            explicit_paddings=explicit_paddings,
+            data_format=conv_format,
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+
       if data_format == "NCHW":
         expected = test_util.NCHWToNHWC(expected)
         computed = test_util.NCHWToNHWC(computed)
@@ -307,10 +382,17 @@ class Conv2DTest(test.TestCase):
                                padding, dilations, rtol=1e-4):
     expected_results = []
     computed_results = []
-    for data_format, use_gpu in GetTestConfigs():
+    for data_format, use_gpu, op_name in GetConvTestConfigs():
       expected, computed = self._ComputeReferenceDilatedConv(
-          tensor_in_sizes, filter_in_sizes, strides, dilations, padding,
-          data_format, use_gpu)
+          tensor_in_sizes,
+          filter_in_sizes,
+          strides,
+          dilations,
+          padding,
+          data_format,
+          use_gpu,
+          op_name,
+      )
       expected_results.append(expected)
       computed_results.append(computed)
     tolerance = 1e-2 if use_gpu else 1e-5
@@ -336,7 +418,7 @@ class Conv2DTest(test.TestCase):
       return
     tensors = []
     dilations = list(dilations)
-    for (data_format, use_gpu) in GetTestConfigs():
+    for data_format, use_gpu, op_name in GetConvTestConfigs():
       if gpu_only and not use_gpu:
         continue
       dtypes_to_test = self._DtypesToTest(use_gpu)
@@ -351,7 +433,9 @@ class Conv2DTest(test.TestCase):
             padding,
             data_format,
             dtype,
-            use_gpu=use_gpu)
+            use_gpu=use_gpu,
+            op_name=op_name,
+        )
         if test_grappler_layout_optimizer and data_format == "NHWC" and use_gpu:
           # Grappler's layout optimizer will not optimize a fetch node, so
           # this identity allows Grappler to optimize the Conv2D node.
@@ -452,6 +536,29 @@ class Conv2DTest(test.TestCase):
     self.assertAllEqual(
         conv1,
         self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    batch_dims = 2
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = gen_nn_ops.conv(
+        x1, filter_in, strides=[1, 1, 1, 1], padding="VALID"
+    )
+    conv2 = gen_nn_ops.conv(
+        x2,
+        filter_in,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        batch_dims=batch_dims,
+    )
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionClass2DExpandedBatch(self):
@@ -2626,6 +2733,42 @@ class Conv2DTest(test.TestCase):
               out_backprop_val,
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+
+  def testConvOpEdgeCases(self):
+    # Illegal strides.
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "strides in the batch and depth"
+    ):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[2, 1, 1, 1], padding="SAME"
+          )
+      )
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "strides in the batch and depth"
+    ):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[1, 1, 1, 2], padding="SAME"
+          )
+      )
+
+    # Filter dimensions must be greater than 0.
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "filter must not have zero elements|has a non-positive dimension",
+    ):
+      input_val = np.ones([1, 1, 1, 1])
+      filter_val = np.ones([1, 0, 1, 1])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[1, 1, 1, 1], padding="SAME"
+          )
+      )
 
   def testConv2DBackpropInputInvalidOutBackpropRaiseError(self):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):

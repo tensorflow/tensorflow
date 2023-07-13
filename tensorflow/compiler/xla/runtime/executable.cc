@@ -49,6 +49,7 @@ using llvm::dyn_cast;
 
 // ExecutionContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.
+// LINT.IfChange
 struct ExecutionContext {
   // Results memory layout is owned by the executable, and stays alive after the
   // function execution completes.
@@ -68,6 +69,7 @@ struct ExecutionContext {
   // User-defined diagnostic engine for reporting diagnostics.
   const DiagnosticEngine* diagnostic_engine = nullptr;
 };
+// LINT.ThenChange(//tensorflow/compiler/xla/runtime/aot_ffi_execution_context.h)
 
 void DestroyExecutionContext::operator()(ExecutionContext* ctx) { delete ctx; }
 
@@ -466,6 +468,11 @@ Status Executable::ReturnResults(unsigned ordinal,
 bool Executable::IsAsync(unsigned ordinal) const {
   assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].results_memory_layout.has_async_results;
+}
+
+std::string_view Executable::function_name(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
+  return functions_[ordinal].name;
 }
 
 unsigned Executable::num_results(unsigned ordinal) const {

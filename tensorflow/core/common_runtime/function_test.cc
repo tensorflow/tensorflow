@@ -2458,7 +2458,6 @@ class TestStackTrace : public AbstractStackTrace {
       : frames_(frames) {}
 
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
-  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 
@@ -2577,10 +2576,6 @@ TEST(StackTracesTest, ToFrames) {
       StackFrame({"other_file_name", 20, "other_function_name"})};
   auto stack_trace = TestStackTrace(frames);
   EXPECT_EQ(stack_trace.ToFrames().size(), 2);
-  auto uncached_frames = stack_trace.ToUncachedFrames();
-  EXPECT_EQ(uncached_frames.size(), 2);
-  EXPECT_EQ(frames[0], uncached_frames[0]);
-  EXPECT_EQ(frames[1], uncached_frames[1]);
 }
 
 }  // namespace

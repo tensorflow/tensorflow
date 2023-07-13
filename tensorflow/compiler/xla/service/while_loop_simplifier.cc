@@ -1037,6 +1037,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   auto nested = [&](HloInstruction* instr) {
     std::vector<HloInstruction*> gtes;
     const Shape& flat_shape = instr->shape();
+    gtes.reserve(flat_shape.tuple_shapes_size());
     for (int i = 0; i < flat_shape.tuple_shapes_size(); ++i) {
       gtes.push_back(add_new_instr(HloInstruction::CreateGetTupleElement(
           flat_shape.tuple_shapes(i), instr, i)));
@@ -1251,6 +1252,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
     // In the new form, induction variables come from `init`, everything else
     // (including the trip counter if it's not one we created ourselves) comes
     // from the `root` tuple unmodified.
+    tuple_elems.reserve(while_shape.tuple_shapes_size());
     for (int i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       tuple_elems.push_back(
           add_gte((induction_vars.count(i) ? loop_body_param : old_root), i));
@@ -1276,6 +1278,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
       return init;
     }
     std::vector<HloInstruction*> tuple_elems;
+    tuple_elems.reserve(while_shape.tuple_shapes_size());
     for (int i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       tuple_elems.push_back(add_gte(init, i));
     }

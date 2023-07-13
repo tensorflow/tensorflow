@@ -40,7 +40,8 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
                                       NcclAllReduceConfig config,
-                                      std::vector<Buffer> buffers);
+                                      std::vector<Buffer> buffers,
+                                      bool is_sync);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
@@ -70,12 +71,8 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
       mlir::lmhlo_gpu::AllReduceStartOp op);
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
-
- private:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
 };
 
 // -----------------------------------------------------------------------------
@@ -98,12 +95,8 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
-
- private:
-  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
-                          ncclComm_t comm);
 };
 
 // -----------------------------------------------------------------------------

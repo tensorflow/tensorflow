@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
@@ -88,6 +86,9 @@ class PjRtMemorySpace {
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.
   virtual absl::string_view DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse.
+  virtual absl::string_view ToString() const = 0;
 };
 
 class PjRtDevice {
@@ -407,6 +408,21 @@ class PjRtLoadedExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  // In the multi-node case, the caller of PjRtClient can provide a key-value
+  // store accessible across nodes. The caller can provide the two callbacks
+  // below to access the key-value store. There are a few requirements:
+  // (1) KeyValueGetCallback and KeyValuePutCallback must be thread-safe.
+  // (2) The caller that provides the two callbacks is responsible for avoiding
+  // key collisions between different users of key-value store (i.e. between
+  // different plugins, but not between different GPU plugin nodes).
+  // (3) KeyValueGetCallback is blocking.
+  // Subclasses of PjRtClient can optionally take these callbacks in their
+  // constructors.
+  using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
+      const std::string& key, absl::Duration timeout)>;
+  using KeyValuePutCallback = std::function<xla::Status(
+      const std::string& key, const std::string& value)>;
+
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
                           host_memory_for_device_manager)
@@ -844,7 +860,29 @@ class PjRtBuffer {
  public:
   virtual ~PjRtBuffer() = default;
 
+  virtual PrimitiveType element_type() const {
+    return on_device_shape().element_type();
+  }
+
+  // Returned dimensions have lifetime of this buffer.
+  virtual absl::Span<const int64_t> dimensions() const {
+    return on_device_shape().dimensions();
+  }
+
   virtual const Shape& on_device_shape() const = 0;
+
+  // Same as dimensions() when the shape is static. When the shape is dynamic,
+  // it gathers the metadata from the device and returns a static shape
+  // representing the logical shape of the data. This approach is identical to
+  // how tensorflow and xrt setup the output buffer in the graph.
+  //
+  // Since this method actually acquires locks and communicate with the device,
+  // it does not have the const qualifier, similar to what ToLiteral does.
+  virtual StatusOr<std::vector<int64_t>> logical_dimensions() {
+    TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    absl::Span<const int64_t> dims = logical_shape.dimensions();
+    return std::vector<int64_t>(dims.begin(), dims.end());
+  }
 
   // Same as on_device_shape when the shape is static. When the shape is
   // dynamic, it gathers the metadata from the device and returns a static shape
@@ -853,7 +891,14 @@ class PjRtBuffer {
   //
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
-  virtual StatusOr<Shape> logical_on_device_shape() = 0;
+  virtual StatusOr<Shape> logical_on_device_shape() {
+    const Shape& shape = on_device_shape();
+    CHECK(shape.is_static())
+        << "logical_on_device_shape needs to be overridden for platform '"
+        << client()->platform_name() << "'";
+    return shape;
+  }
+
   virtual PjRtMemorySpace* memory_space() const { return nullptr; }
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
@@ -1154,112 +1199,6 @@ class PjRtBuffer {
   virtual bool IsOnCpu() const = 0;
 };
 
-class ExecuteContext {
- public:
-  virtual ~ExecuteContext() = default;
-};
-
-struct PjRtTransferMetadata {
-  // May be invalid if
-  // ExecuteOptions::use_major_to_minor_data_layout_for_callbacks is true for
-  // this execution.
-  Shape device_shape;
-};
-
-struct SendCallback {
-  int64_t channel_id;
-  // The callback for retrieving the send value. It will be invoked once for
-  // each invocation of the corresponding Send op in the HLO program (So it can
-  // be invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops. The callback can also return errors to indicate
-  // the execution should fail.
-  //
-  // IMPORTANT: the implementation might NOT signal the error to the execution,
-  // and the execution will run to completion with UNDEFINED DATA returned by
-  // the callback. If there is any potential control flow that depends on the
-  // value of the returned data, an error return is unsafe.
-  //
-  // TODO(chky): Currently the callback invocation order may not be consistent
-  // with the HLO send op invocation order, due to limitations in some PjRt
-  // implementation. Consider making it strictly the same order as HLO program.
-  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                       size_t total_size_in_bytes, bool done)>
-      callback;
-};
-
-struct RecvCallback {
-  int64_t channel_id;
-  // The callback for feeding the recv value. It will be invoked once for each
-  // invocation of the corresponding Recv op in the HLO program (So it can be
-  // invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Recv ops.
-  std::function<void(const PjRtTransferMetadata& metadata,
-                     std::unique_ptr<CopyToDeviceStream> stream)>
-      callback;
-};
-
-struct ExecuteOptions {
-  // If true, the client must pass a single PjRtBuffer which contains all of
-  // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
-  bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
-  // If non-zero, identifies this execution as part of a potentially
-  // multi-device launch. This can be used to detect scheduling errors, e.g. if
-  // multi-host programs are launched in different orders on different hosts,
-  // the launch IDs may be used by the runtime to detect the mismatch.
-  int32_t launch_id = 0;
-  // If non-null, an opaque context passed to an execution that may be used to
-  // supply additional arguments to a derived class of PjRtExecutable.
-  const ExecuteContext* context = nullptr;
-  // If true, check that the PjRtBuffer argument shapes match the compiled
-  // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
-
-  // Set multi_slice_config when the computation spans multiple slices. The
-  // config should match what was used during compilation to generate this
-  // executable.
-  const MultiSliceConfig* multi_slice_config = nullptr;
-
-  // The send/recv callbacks for PjRt execution. The first level span is for
-  // multi-device parallel execution, the second level vector contains the
-  // callbacks for all send/recv ops in the executable. These callbacks can be
-  // stateful and the user code is responsible for managing the states here.
-  // These callbacks must outlive the execution.
-  absl::Span<const std::vector<SendCallback>> send_callbacks;
-  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
-
-  // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
-  // recv functions should pass major-to-minor chunks to
-  // CopyToDeviceStream::AddChunk.
-  //
-  // If false, send callbacks are passed PjRtChunks in the on-device layout
-  // specified in the PjRtTransferMetadata, and recv functions should similarly
-  // pass device-layout chunks to CopyToDeviceStream::AddChunk.
-  bool use_major_to_minor_data_layout_for_callbacks = false;
-
-  // The `execution_mode` decides whether the execution will be invoked in the
-  // caller thread or launched to a separate thread. By default, the
-  // implementation may choose either strategy or use a heuristic to decide.
-  // Currently it is only applied to CPU implementations
-  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
-  ExecutionMode execution_mode = ExecutionMode::kDefault;
-
-  // A set of indices denoting the input buffers that should not be donated.
-  // An input buffer may be non-donable, for example, if it is referenced more
-  // than once. Since such runtime information is not available at compile time,
-  // the compiler might mark the input as `may-alias`, which could lead PjRt to
-  // donate the input buffer when it should not. By defining this set of
-  // indices, a higher-level PjRt caller can instruct PjRtClient not to donate
-  // specific input buffers.
-  absl::flat_hash_set<int> non_donatable_input_indices;
-};
-
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
@@ -1275,8 +1214,8 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const;
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

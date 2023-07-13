@@ -208,7 +208,7 @@ mlir::LogicalResult SendRecvCompilationKey(
 
 mlir::LogicalResult HandleCompilationOps(
     const llvm::SmallVectorImpl<
-        mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp>& compilation_key_ops,
+        mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>& compilation_key_ops,
     std::map<Mesh, mlir::TF::StatefulPartitionedCallOp>& computation_map,
     mlir::ModuleOp module, int* num_send_recv) {
   // Identity XLA function and corresponding CPU functions to move compilation.
@@ -368,9 +368,9 @@ struct DTensorMoveCompilationToHost
     mlir::OpBuilder builder(&context);
     auto module = getOperation();
 
-    llvm::SmallVector<mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp, 4>
+    llvm::SmallVector<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp, 4>
         compilation_key_ops;
-    module.walk([&](mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp op) {
+    module.walk([&](mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp op) {
       compilation_key_ops.emplace_back(op);
     });
 

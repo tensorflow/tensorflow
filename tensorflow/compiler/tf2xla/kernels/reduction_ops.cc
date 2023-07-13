@@ -16,6 +16,9 @@ limitations under the License.
 // XLA-specific reduction Ops.
 
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
+
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"

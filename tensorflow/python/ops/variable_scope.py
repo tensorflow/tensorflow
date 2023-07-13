@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -698,7 +699,7 @@ class _VariableStore:
         sharded variable exists for the given name but with different sharding.
     """
     initializing_from_value = initializer is not None and isinstance(
-        initializer, ops.Tensor)
+        initializer, tensor.Tensor)
     if name in self._vars:
       raise ValueError(
           "A partitioner was provided, but an unpartitioned version of the "
@@ -780,7 +781,7 @@ class _VariableStore:
         elif callable(initializer):
           init = initializer
           init_shape = var_shape
-        elif isinstance(initializer, ops.Tensor):
+        elif isinstance(initializer, tensor.Tensor):
           init = array_ops.slice(initializer, var_offset, var_shape)
           # Use the dtype of the given tensor.
           dtype = init.dtype.base_dtype

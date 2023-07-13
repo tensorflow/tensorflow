@@ -542,9 +542,8 @@ ENTRY MnistTrainingLoopWithInfeed.140 {
       IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.67"));
   EXPECT_TRUE(
       IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.71"));
-  // TODO(b/280359884): Should be a WeightGradient and not an Activation.
   EXPECT_TRUE(
-      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.85"));
+      IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.85"));
   EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
                                    "dot.89"));
   EXPECT_TRUE(

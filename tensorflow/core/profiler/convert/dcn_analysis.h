@@ -158,7 +158,7 @@ class DcnEventsProcessor {
   // Update XPlanes using DCN traffic info
   void AddHostDcnTrafficToXPlane(tensorflow::profiler::XPlane *host_xplane);
   void AddTpuCollectiveDcnTrafficToXPlane(
-      tensorflow::profiler::XPlane *device_xplane, uint32_t tpu_idx);
+      tensorflow::profiler::XPlane *device_xplane);
 
  private:
   // Tensor cores and megacore flag for this host. DCN messages are sent to a
@@ -190,7 +190,8 @@ class DcnEventsProcessor {
   std::vector<CollectiveBurstManager> tpu_collective_bursts_;
 
   // Find the TPU index a DCN message goes to.
-  uint32_t FindTpuIdx(const tensorflow::profiler::DcnMessage &dcn_message);
+  uint32_t FindTpuIdx(int tpu);
+
   // Generates BW info to display in the trace viewer.
   // This included trace event BW level string, mean BW per burst and
   // utilization.

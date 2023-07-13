@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,9 +40,11 @@ class DerivedXEventBuilder {
   bool ShouldExpand(const XEventMetadata& event_metadata,
                     std::optional<int64_t> group_id) const;
 
-  void Expand(Timespan event_span);
-  Timespan GetTimespan() const { return event_.GetTimespan(); }
-  void SetTimespan(Timespan event_span) { event_.SetTimespan(event_span); }
+  void Expand(tsl::profiler::Timespan event_span);
+  tsl::profiler::Timespan GetTimespan() const { return event_.GetTimespan(); }
+  void SetTimespan(tsl::profiler::Timespan event_span) {
+    event_.SetTimespan(event_span);
+  }
 
  private:
   XEventBuilder event_;
@@ -65,13 +67,14 @@ class DerivedXLineBuilder {
   //   HLO-op, step: only group_id is used.
   //   HLO module, source: both group_id and low_level_event_name are NOT used.
   void ExpandOrAddEvent(const XEventMetadata& event_metadata,
-                        Timespan event_span, std::optional<int64_t> group_id);
+                        tsl::profiler::Timespan event_span,
+                        std::optional<int64_t> group_id);
 
   // The multi-level version of ExpandOrAddEvent. Here, the XEvents at different
   // levels all share the same group_id and low_level_event_name.
   void ExpandOrAddEvents(
       const std::vector<XEventMetadata*>& events_metadata_per_level,
-      Timespan event_span, std::optional<int64_t> group_id);
+      tsl::profiler::Timespan event_span, std::optional<int64_t> group_id);
 
   // Reset the last events lower than or equal to the given level.
   void ResetLastEvents(int level = 0);
@@ -84,7 +87,7 @@ class DerivedXLineBuilder {
   // last_event_by_level_ prevents a nested event from growing larger than the
   // parent event(s).
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
-                             Timespan event_span,
+                             tsl::profiler::Timespan event_span,
                              std::optional<int64_t> group_id, int level);
   void AdjustDurationForTraceViewer(int level);
 
@@ -107,16 +110,17 @@ using SymbolResolver = std::function<Symbol(std::optional<uint64_t> program_id,
 
 // Derives TF name scope and op events from the TF op's fully qualified name
 // with the name of the originating low-level event.
-void ProcessTfOpEvent(absl::string_view tf_op_full_name, Timespan event_span,
+void ProcessTfOpEvent(absl::string_view tf_op_full_name,
+                      tsl::profiler::Timespan event_span,
                       std::optional<int64_t> group_id,
                       XPlaneBuilder& plane_builder,
                       DerivedXLineBuilder& tf_name_scope_line_builder,
                       DerivedXLineBuilder& tf_op_line_builder);
 
-
 // Derives "Steps" line from group_id XStat in XEvents.
-void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
-                                XPlane* device_trace);
+void DeriveStepEventsFromGroups(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    XPlane* device_trace);
 
 // Derives "TensorFlow Ops", "TensorFlow Name Scope", "XLA Ops" and "XLA Module"
 // lines in an NVIDIA_GPU device trace from data passed as ScopedAnnotations and
@@ -127,14 +131,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  XPlane* device_trace);
 
 // Derives "Launch Activities Summary" line from host trace.
-void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const GroupMetadataMap& group_metadata_map,
-                               std::vector<XPlane*> device_traces);
+void DeriveEventsFromHostTrace(
+    const XPlane* host_trace,
+    const tsl::profiler::GroupMetadataMap& group_metadata_map,
+    std::vector<XPlane*> device_traces);
 
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              XSpace* space);
+void GenerateDerivedTimeLines(
+    const tsl::profiler::GroupMetadataMap& group_metadata_map, XSpace* space);
 
 // Derives `Tensorflow Ops`, `Tensorflow Name Scope` and `Source Code` lines
 // from device_trace.

@@ -20,11 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-
-inline constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 
 namespace mlir {
 
@@ -41,7 +40,7 @@ struct XlaClusterFormationPass
   void runOnOperation() override;
 };
 
-void EncapsulatePartitionedCall(Operation *call_op) {
+void EncapsulatePartitionedCall(Operation *call_op, StringAttr callee_name) {
   OpBuilder builder(call_op);
 
   auto cluster = builder.create<tf_device::ClusterOp>(
@@ -60,40 +59,47 @@ void EncapsulatePartitionedCall(Operation *call_op) {
   // Propagate necessary attributes to the cluster so that when it's outlined,
   // the function will have correct attributes.
   TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
+  // Save the function name for the outlined cluster function.
+  cluster->setAttr(TF::kClusterOutlinedFunctionNameAttr, callee_name);
 }
 
 void XlaClusterFormationPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  SymbolTable symtab(module);
-
-  llvm::SmallVector<func::FuncOp> entry_funcs;
-  // A model may have multiple graphs, with each graph having its own entry.
-  // When a graph is imported to MLIR, `tf.entry_function` will be added to
-  // each entry function. The one exception are initializer functions, which
-  // have `tf_saved_model.initializer_type` instead.
-  module.walk([&](func::FuncOp func) {
-    if (func->hasAttr(kEntryFunctionAttr) ||
-        func->hasAttr(tf_saved_model::kTfSavedModelInitializerTypeAttr)) {
-      entry_funcs.push_back(func);
-    }
-  });
-  if (entry_funcs.empty()) {
-    LOG(WARNING) << "no entry function is found";
-  }
-  auto predicate = [](Operation *op) {
-    if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) return true;
-    return false;
+  auto has_no_compile_device_type = [](SymbolUserOpInterface op) {
+    return !op->hasAttr(TF::kCompileDeviceTypeAttr);
   };
-  for (auto &root : entry_funcs) {
-    llvm::SmallVector<Operation *> outermost_call_ops;
-    if (failed(GetOutermostOpsOfType<TF::StatefulPartitionedCallOp,
+
+  ModuleOp module = getOperation();
+  SymbolTableCollection symbol_table_collection;
+  SymbolTable symtab = symbol_table_collection.getSymbolTable(module);
+  mlir::OpBuilder builder(module.getContext());
+  auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
+  llvm::SmallVector<func::FuncOp> entry_funcs = GetEntryFunctions(module);
+  for (auto &entry_func : entry_funcs) {
+    llvm::SmallVector<SymbolUserOpInterface> noinline_pcall_ops,
+        outermost_pcall_ops;
+    if (failed(GetOpsOfTypeUntilMiss<TF::StatefulPartitionedCallOp,
                                      TF::PartitionedCallOp>(
-            root, symtab, outermost_call_ops, predicate)))
+            entry_func, symtab, /*predicate*/ has_no_compile_device_type,
+            /*hits*/ noinline_pcall_ops,
+            /*first_misses*/ outermost_pcall_ops))) {
       return signalPassFailure();
+    }
     // Cluster outermost partitioned calls with _xla_compile_device_type
     // attribute.
-    for (auto &call_op : outermost_call_ops) {
-      EncapsulatePartitionedCall(call_op);
+    for (auto &pcall_op : outermost_pcall_ops) {
+      auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
+      CallInterfaceCallable callable = call.getCallableForCallee();
+      auto sym = callable.get<SymbolRefAttr>();
+      EncapsulatePartitionedCall(pcall_op, sym.getRootReference());
+    }
+    // Partitioned calls are executed asynchronous. The calls outside of device
+    // clusters therefore should not be inlined to perserve run-time
+    // performance.
+    for (auto &pcall_op : noinline_pcall_ops) {
+      auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
+      auto callee = llvm::cast<func::FuncOp>(
+          call.resolveCallable(&symbol_table_collection));
+      callee->setAttr(noinline_attr_name, builder.getBoolAttr(true));
     }
   }
 }

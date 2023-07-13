@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/python_binding/tfrt_fallback.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"

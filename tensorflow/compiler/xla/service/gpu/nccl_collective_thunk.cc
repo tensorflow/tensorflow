@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
@@ -130,6 +130,14 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
+NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                                         bool is_sync)
+    : Thunk(kind, thunk_info) {
+  if (!is_sync) {
+    async_ = std::make_unique<AsyncExecutor>();
+  }
+}
+
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
 #if XLA_ENABLE_XCCL
   return true;
@@ -214,22 +222,35 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
-  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
-  // TODO(b/284297899): [XLA:GPU] Correctly support unified sync/async
-  // collectives in thunks
-  TF_ASSIGN_OR_RETURN(NcclComm::Lock comm,
-                      LockNcclComm(params.nccl_params, config().replica_groups,
-                                   config().group_mode, config().op_id,
-                                   /*stream_id=*/1));
+  VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
+                                Thunk::KindToString(kind()));
+  const int64_t stream_id = IsAsync() ? 1 : 0;
+  TF_ASSIGN_OR_RETURN(
+      NcclComm::Lock comm,
+      LockNcclComm(params.nccl_params, config().replica_groups,
+                   config().group_mode, config().op_id, stream_id));
 
-  TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
+  // Run the collective on main stream or using the async executor.
+  Status status = [&]() {
+    if (!IsAsync()) {
+      return RunNcclCollective(params, *params.stream, *comm);
+    }
+    return async_->Execute(
+        [this](const ExecuteParams& params, se::Stream& stream,
+               ncclComm_t comm) {
+          return RunNcclCollective(params, stream, comm);
+        },
+        params, *comm);
+  }();
+  TF_RETURN_IF_ERROR(status);
 
   // Block host on the first call to ensure that all devices have allocated the
   // required buffers for their communicators before allowing any device to
   // continue enqueuing operations. Otherwise, the allocations can cause
   // deadlock in the CUDA driver (b/215649390).
   if (first_call_to_execute_) {
-    TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+    se::Stream* stream = IsAsync() ? params.async_comms_stream : params.stream;
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
   return OkStatus();

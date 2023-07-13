@@ -60,13 +60,6 @@ void FallbackResourceArray::SetResource(
           *resource_storage_[index], resources_.back().get());
 }
 
-static CancellationManager* GetDefaultCancellationManager() {
-  // TODO(b/167630926): Support cancellation by hooking up with TFRT's
-  // mechanism.
-  static auto* const default_cancellation_manager = new CancellationManager;
-  return default_cancellation_manager;
-}
-
 KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
     std::function<void(std::function<void()>)>* runner,
     const tensorflow::DeviceMgr* device_manager, int64_t step_id,
@@ -85,7 +78,6 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
                                ? collective_executor_handle_->get()
                                : nullptr),
       rendezvous_(std::move(rendezvous)),
-      default_cancellation_manager_(GetDefaultCancellationManager()),
       device_manager_(device_manager),
       runner_table_(runner_table),
       resource_array_(resource_array),
@@ -165,7 +157,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner,
     tfrt_stub::CostRecorder* cost_recorder,
-    tfrt::ResourceContext* client_graph_resource_context) {
+    tfrt::ResourceContext* client_graph_resource_context,
+    tensorflow::CancellationManager* cancellation_manager) {
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
@@ -181,6 +174,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_cost_recorder(cost_recorder);
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
+  fallback_request_state.set_cancellation_manager(cancellation_manager);
 
   return OkStatus();
 }

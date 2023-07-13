@@ -42,7 +42,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util import variable_utils
 
 
@@ -971,7 +970,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     for aggregation in aggregations:
       if strategy_test_lib.is_tpu_strategy(distribution):
         resolver = tpu_cluster_resolver.TPUClusterResolver("")
-        tpu_strategy_util.initialize_tpu_system(resolver)
+        tpu_cluster_resolver.initialize_tpu_system(resolver)
       with distribution.scope():
         v = variable_v1.VariableV1(
             0.,

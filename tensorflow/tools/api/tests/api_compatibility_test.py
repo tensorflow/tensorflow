@@ -118,8 +118,6 @@ _PY311_INT_ENUM_MEMBERS = [
 # pylint: disable=line-too-long
 _PY311_UPDATED_MEMBER_TYPES = {
     "<class 'enum.EnumMeta'>": "<class 'enum.EnumType'>",
-    "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>":
-    "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>",
 }
 # pylint: enable=line-too-long
 

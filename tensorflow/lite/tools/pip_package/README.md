@@ -24,29 +24,29 @@ the following command will cross-compile tflite-runtime package for python2.7
 and python3.7 (from Debian Buster) on Raspberry Pi:
 
 ```sh
-make BASE_IMAGE=debian:buster PYTHON=python TENSORFLOW_TARGET=rpi docker-build
-make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=2.7 TENSORFLOW_TARGET=rpi docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=3.7 TENSORFLOW_TARGET=rpi docker-build
 ```
 
 Another option is to cross-compile for python3.5 (from Debian Stretch) on ARM64
 board:
 
 ```sh
-make BASE_IMAGE=debian:stretch PYTHON=python3 TENSORFLOW_TARGET=aarch64 docker-build
+make BASE_IMAGE=debian:stretch PYTHON_VERSION=3.5 TENSORFLOW_TARGET=aarch64 docker-build
 ```
 
 To build for python3.6 (from Ubuntu 18.04) on x86_64 (native to the docker
 image) run:
 
 ```sh
-make BASE_IMAGE=ubuntu:18.04 PYTHON=python3 TENSORFLOW_TARGET=native docker-build
+make BASE_IMAGE=ubuntu:18.04 PYTHON_VERSION=3.6 TENSORFLOW_TARGET=native docker-build
 ```
 
 In addition to the wheel there is a way to build Debian package by adding
 `BUILD_DEB=y` to the make command (only for python3):
 
 ```sh
-make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=3.6 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
 ```
 
 ## Alternative build with Bazel (experimental)

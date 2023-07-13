@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -249,6 +250,7 @@ REGISTER_SPMD(BroadcastGradientArgs, TF::BroadcastGradientArgsOp,
 REGISTER_SPMD(AssignVariable, TF::AssignVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignAddVariable, TF::AssignAddVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(AssignSubVariable, TF::AssignSubVariableOp, ResourceSPMDExpander);
+REGISTER_SPMD(SummaryWriter, TF::SummaryWriterOp, ResourceSPMDExpander);
 REGISTER_SPMD(ReadVariable, TF::ReadVariableOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarHandle, TF::VarHandleOp, ResourceSPMDExpander);
 REGISTER_SPMD(VarIsInitialized, TF::VarIsInitializedOp, ResourceSPMDExpander);
@@ -557,6 +559,9 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
               /*error_message=*/
               "Stateful random operations are not supported in DTensor. Please "
               "use stateless random operations instead.");
+
+// Where
+REGISTER_SPMD(Where, TF::WhereOp, WhereOpSPMDExpander);
 
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,

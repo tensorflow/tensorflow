@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -207,6 +208,12 @@ auto* tf_data_service_data_transfer_protocol_error =
         "The number of times a tf.data service worker client got this type "
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_optimal_number_of_workers =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/optimal_number_of_workers",
+        "Estimated optimal number of tf.data service workers based on the "
+        "current workload.");
 
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -527,6 +534,10 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
 
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
+}
+
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
+  tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {

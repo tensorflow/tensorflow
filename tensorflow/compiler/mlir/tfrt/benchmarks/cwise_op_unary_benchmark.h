@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 
+#include <array>
+#include <memory>
 #include <optional>
 #include <utility>
 

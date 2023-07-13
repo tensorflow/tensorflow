@@ -2550,7 +2550,7 @@ class ParseTensorOpTest(test.TestCase):
       tensor = parsing_ops.parse_tensor(serialized, dtypes.uint16)
 
       with self.assertRaisesOpError(
-          "Could not parse `serialized` as TensorProto: 'bogus'"):
+          "Could not parse `serialized` as TensorProto, base64: Ym9ndXM="):
         tensor.eval(feed_dict={serialized: "bogus"})
 
       with self.assertRaisesOpError(

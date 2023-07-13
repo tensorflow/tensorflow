@@ -60,7 +60,7 @@ GroupAssignment CreateGroupAssignment(
       group_assignment_attr,
       GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
           num_slices, slice_size));
-  CHECK(group_assignment.ok());
+  TF_CHECK_OK(group_assignment.status());
   return *group_assignment;
 }
 
@@ -74,7 +74,7 @@ GroupAssignment CreateGroupAssignment(
   StatusOr<GroupAssignment> group_assignment = GroupAssignment::FromMLIR(
       group_assignment_attr,
       GroupAssignment::ReplicaToDeviceMap(std::move(map)));
-  CHECK(group_assignment.ok());
+  TF_CHECK_OK(group_assignment.status());
   return *group_assignment;
 }
 

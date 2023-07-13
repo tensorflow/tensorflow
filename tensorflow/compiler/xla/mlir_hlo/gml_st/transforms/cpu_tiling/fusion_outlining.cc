@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"

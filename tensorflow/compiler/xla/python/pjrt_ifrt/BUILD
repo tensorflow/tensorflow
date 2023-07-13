@@ -1,4 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
     name = "friends",
@@ -34,13 +35,78 @@ cc_library(
     name = "xla_ifrt",
     srcs = [
         "xla_compiler.cc",
+        "xla_sharding.cc",
     ],
     hdrs = [
         "xla_compiler.h",
+        "xla_sharding.h",
     ],
     deps = [
+        ":xla_compiler_proto_cc",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/python/ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:serdes",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_proto_library(
+    name = "xla_host_callback_proto",
+    srcs = ["xla_host_callback.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
+)
+
+tf_proto_library(
+    name = "xla_compiler_proto",
+    srcs = ["xla_compiler.proto"],
+    protodeps = ["//tensorflow/compiler/xla/pjrt:compile_options_proto"],
+)
+
+cc_library(
+    name = "xla_program_serdes",
+    srcs = ["xla_program_serdes.cc"],
+    deps = [
+        ":xla_ifrt",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/python/ifrt:serdes",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_serialization",
+    ],
+    alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "xla_program_serdes_test",
+    srcs = ["xla_program_serdes_test.cc"],
+    deps = [
+        ":xla_ifrt",
+        ":xla_program_serdes",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/python/ifrt:serdes",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -69,6 +135,21 @@ xla_cc_test(
         ":xla_executable_impl_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+# TODO(hyeontaek): Move this target out of pjrt_ifrt.
+xla_cc_test(
+    name = "xla_sharding_test",
+    size = "small",
+    srcs = ["xla_sharding_test.cc"],
+    deps = [
+        ":tfrt_cpu_client_test_lib",
+        ":xla_ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:tuple_impl_test_lib",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -108,6 +189,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -135,6 +217,8 @@ xla_cc_test(
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:array_impl_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -157,6 +241,8 @@ xla_cc_test(
     deps = [
         ":tfrt_cpu_client_test_lib",
         ":xla_executable_impl_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

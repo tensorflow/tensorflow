@@ -16,6 +16,10 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
@@ -72,10 +76,10 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
-        ":gradient_checker_v2",
         ":no_contrib",
-        ":stateful_random_ops",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:app",
         "//tensorflow/python/platform:client_testlib",
@@ -86,6 +90,8 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_estimator",
+        "//tensorflow/python/training",
+        "//tensorflow/python/training:quantize_training",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
@@ -114,38 +120,10 @@ py_strict_library(
         "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
-        ":layers",
-        ":rnn",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
-    ],
-)
-
-py_strict_library(
-    name = "tmp_alias_for_pip",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":array_grad",
-        ":batch_ops",
-        ":candidate_sampling_ops",
-        ":composite_tensor_ops_gen",
-        ":critical_section_ops",
-        ":data_flow_grad",
-        ":data_flow_ops_gen",
-        ":functional_ops_gen",
-        ":inplace_ops",
-        ":linalg_ops_impl",
-        ":math_grad",
-        ":numerics",
-        ":parsing_config",
-        ":random_grad",
-        ":random_index_shuffle_ops_gen",
-        ":set_ops_gen",
-        ":shape_util",
-        ":sparse_grad",
-        ":state_ops_gen",
-        ":stateful_random_ops_gen",
+        "//tensorflow/python/layers",
+        "//tensorflow/python/ops:rnn",
     ],
 )
 
@@ -167,71 +145,12 @@ py_library(
     deps = [
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
-        ":_pywrap_utils",
-        ":array_ops",
-        ":array_ops_stack",
-        ":audio_ops_gen",
-        ":bincount_ops",
-        ":bitwise_ops",
-        ":boosted_trees_ops",
-        ":check_ops",
-        ":client_testlib",
-        ":clustering_ops",
-        ":collective_ops",
-        ":composite_tensor_ops",
-        ":cond",
-        ":cond_v2",
-        ":confusion_matrix",
-        ":control_flow_assert",
-        ":control_flow_case",
-        ":control_flow_ops",
-        ":control_flow_switch_case",
-        ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
-        ":dtensor",
-        ":filesystem_ops",
-        ":functional_ops",
-        ":gradient_checker",
-        ":gradient_checker_v2",
-        ":histogram_ops",
-        ":image_ops",
-        ":initializers_ns",
-        ":io_ops",
         ":keras_lib",
-        ":lib",
-        ":list_ops",
-        ":manip_ops",
-        ":map_fn",
-        ":map_ops",
-        ":math_ops",
-        ":metrics",
-        ":nccl_ops",
-        ":nn",
-        ":ops",
-        ":proto_ops",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
-        ":random_crop_ops",
-        ":ref_variable",
-        ":rnn_ops_gen",
-        ":script_ops",
-        ":sendrecv_ops_gen",
-        ":session_ops",
-        ":sets",
-        ":sparse_ops",
-        ":standard_ops",
-        ":state_ops",
-        ":stateful_random_ops",
-        ":string_ops",
-        ":tensor_array_ops",
-        ":tmp_alias_for_pip",
-        ":training",
-        ":uniform_quant_ops_gen",
-        ":variable_v1",
-        ":weights_broadcast_ops",
-        ":while_loop",
-        ":while_v2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/python/autograph",
         "//tensorflow/python/autograph/utils:testing",
         "//tensorflow/python/client",
@@ -263,15 +182,76 @@ py_library(
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:extension_type",
+        "//tensorflow/python/framework:flexible_dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:subscribe",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_ops",  # TODO(b/183988750): Break testing code out into separate rule.
+        "//tensorflow/python/framework:weak_tensor",
         "//tensorflow/python/grappler:tf_cluster",
         "//tensorflow/python/grappler:tf_item",
         "//tensorflow/python/grappler:tf_optimizer",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:audio_ops_gen",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:bitwise_ops",
+        "//tensorflow/python/ops:boosted_trees_ops",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:clustering_ops",
+        "//tensorflow/python/ops:collective_ops",
+        "//tensorflow/python/ops:composite_tensor_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:confusion_matrix",
+        "//tensorflow/python/ops:control_flow_assert",
+        "//tensorflow/python/ops:control_flow_case",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:control_flow_switch_case",
+        "//tensorflow/python/ops:cudnn_rnn_ops_gen",
+        "//tensorflow/python/ops:filesystem_ops",
+        "//tensorflow/python/ops:functional_ops",
+        "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:histogram_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:initializers_ns",
+        "//tensorflow/python/ops:io_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:map_fn",
+        "//tensorflow/python/ops:map_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:nccl_ops",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/ops:random_crop_ops",
+        "//tensorflow/python/ops:ref_variable",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_ops_gen",
+        "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:sendrecv_ops_gen",
+        "//tensorflow/python/ops:session_ops",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
+        "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/ops:standard_ops",
+        "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/ops:uniform_quant_ops_gen",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/ops:weak_tensor_ops",
+        "//tensorflow/python/ops:weak_tensor_test_util",
+        "//tensorflow/python/ops:weights_broadcast_ops",
+        "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/ops:while_v2",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/distributions:bijector_test_util",
         "//tensorflow/python/ops/distributions:identity_bijector",
@@ -297,6 +277,7 @@ py_library(
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:resource_loader",
@@ -315,11 +296,15 @@ py_library(
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
         "//tensorflow/python/tpu:tpu_noestimator",
+        "//tensorflow/python/training:evaluation",
+        "//tensorflow/python/training:quantize_training",
+        "//tensorflow/python/training:saver",
         "//tensorflow/python/training:saver_test_utils",
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:data",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/types:trace",
+        "//tensorflow/python/user_ops:ops",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python/util:_pywrap_nest",
@@ -327,6 +312,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
@@ -360,14 +346,65 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        ":tf2",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/compiler/mlir",
+        "//tensorflow/python/compiler/xla",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/python/data",
+        "//tensorflow/python/debug/lib:check_numerics_callback",
+        "//tensorflow/python/debug/lib:dumping_callback",
+        "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        "//tensorflow/python/dlpack",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:extension_type",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_combinations_lib",
+        "//tensorflow/python/framework:versions",
+        "//tensorflow/python/ops:audio_ops_gen",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:bitwise_ops",
+        "//tensorflow/python/ops:boosted_trees_ops_gen",
+        "//tensorflow/python/ops:composite_tensor_ops",
+        "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:cudnn_rnn_ops_gen",
+        "//tensorflow/python/ops:debug_ops_gen",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:initializers_ns",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:random_crop_ops",
+        "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_ops_gen",
+        "//tensorflow/python/ops:sendrecv_ops_gen",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:standard_ops",
+        "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops:tpu_ops_gen",
+        "//tensorflow/python/ops:uniform_quant_ops_gen",
+        "//tensorflow/python/ops:while_v2",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg/sparse:sparse_py",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_arrays",
         "//tensorflow/python/ops/numpy_ops:np_config",
@@ -375,24 +412,13 @@ py_library(
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
         "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/ops/numpy_ops:np_utils",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_ops",
+        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
-)
-
-alias(
-    name = "tf_decorator",
-    actual = "//tensorflow/python/util:tf_decorator",
-)
-
-# Deprecated.  Use
-#   //third_party/tensorflow/tsl/python/lib/core:bfloat16_lib
-# for the bfloat16-specific dependency, or
-#   //third_party/tensorflow/tsl/python/lib/core
-# for all custom types and python utilities.
-alias(
-    name = "bfloat16_lib",
-    actual = "//tensorflow/python/lib/core:bfloat16_lib",
 )
 
 # Necessary for the pywrap inclusion below.
@@ -425,16 +451,6 @@ tf_python_pybind_extension(
     ],
 )
 
-alias(
-    name = "pywrap_tf_session",
-    actual = "//tensorflow/python/client:pywrap_tf_session",
-)
-
-alias(
-    name = "_pywrap_utils",
-    actual = "//tensorflow/python/util:_pywrap_utils",
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_quantize_training",
     srcs = [
@@ -465,14 +481,14 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     static_deps = tf_python_pybind_static_deps(),
+    # Do not sort: core:py_exception_registry must come before platform:status
     deps = [
-        ":py_exception_registry",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -514,12 +530,6 @@ cc_header_only_library(
     ],
 )
 
-alias(
-    name = "map_fn",
-    actual = "//tensorflow/python/ops:map_fn",
-    tags = ["avoid_dep"],
-)
-
 py_strict_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
@@ -535,6 +545,7 @@ py_strict_library(
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
+        "@pypi_scipy//:pkg",
         "@six_archive//:six",
     ],
 )
@@ -543,1199 +554,6 @@ py_strict_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
-)
-
-alias(
-    name = "functional_ops_gen",
-    actual = "//tensorflow/python/ops:functional_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/eager/polymorphic_function:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-    ],
-)
-
-alias(
-    name = "functional_ops",
-    actual = "//tensorflow/python/ops:functional_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "debug_ops_gen",
-    actual = "//tensorflow/python/ops:debug_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/debug:__subpackages__",
-    ],
-)
-
-alias(
-    name = "array_ops_gen",
-    actual = "//tensorflow/python/ops:array_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-alias(
-    name = "bitwise_ops_gen",
-    actual = "//tensorflow/python/ops:bitwise_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/contrib/quantization:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-alias(
-    name = "boosted_trees_ops_gen",
-    actual = "//tensorflow/python/ops:boosted_trees_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "summary_ops_gen",
-    actual = "//tensorflow/python/ops:summary_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-alias(
-    name = "audio_ops_gen",
-    actual = "//tensorflow/python/ops:audio_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-alias(
-    name = "cudnn_rnn_ops_gen",
-    actual = "//tensorflow/python/ops:cudnn_rnn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-alias(
-    name = "candidate_sampling_ops_gen",
-    actual = "//tensorflow/python/ops:candidate_sampling_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-alias(
-    name = "checkpoint_ops_gen",
-    actual = "//tensorflow/python/ops:checkpoint_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "clustering_ops_gen",
-    actual = "//tensorflow/python/ops:clustering_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "collective_ops_gen",
-    actual = "//tensorflow/python/ops:collective_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "control_flow_ops_gen",
-    actual = "//tensorflow/python/ops:control_flow_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-    ],
-)
-
-alias(
-    name = "ctc_ops_gen",
-    actual = "//tensorflow/python/ops:ctc_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "data_flow_ops_gen",
-    actual = "//tensorflow/python/ops:data_flow_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "dataset_ops_gen",
-    actual = "//tensorflow/python/ops:dataset_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-alias(
-    name = "optional_ops_gen",
-    actual = "//tensorflow/python/ops:optional_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-alias(
-    name = "experimental_dataset_ops_gen",
-    actual = "//tensorflow/python/ops:experimental_dataset_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-alias(
-    name = "filesystem_ops_gen",
-    actual = "//tensorflow/python/ops:filesystem_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-alias(
-    name = "image_ops_gen",
-    actual = "//tensorflow/python/ops:image_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests/image_ops:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-alias(
-    name = "io_ops_gen",
-    actual = "//tensorflow/python/ops:io_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/checkpoint:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
-        "//tensorflow/python/trackable:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "linalg_ops_gen",
-    actual = "//tensorflow/python/ops:linalg_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-    ],
-)
-
-alias(
-    name = "logging_ops_gen",
-    actual = "//tensorflow/python/ops:logging_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/framework:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/summary:__pkg__",
-        "//tensorflow/python/summary/writer:__pkg__",
-    ],
-)
-
-alias(
-    name = "lookup_ops_gen",
-    actual = "//tensorflow/python/ops:lookup_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "batch_ops_gen",
-    actual = "//tensorflow/python/ops:batch_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-alias(
-    name = "batch_ops",
-    actual = "//tensorflow/python/ops:batch_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "manip_ops_gen",
-    actual = "//tensorflow/python/ops:manip_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-alias(
-    name = "math_ops_gen",
-    actual = "//tensorflow/python/ops:math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/google/python/ops:__pkg__",
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/math_ops:__pkg__",
-    ],
-)
-
-alias(
-    name = "nn_ops_gen",
-    actual = "//tensorflow/python/ops:nn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
-        "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-alias(
-    name = "count_ops_gen",
-    actual = "//tensorflow/python/ops:count_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-alias(
-    name = "parsing_ops_gen",
-    actual = "//tensorflow/python/ops:parsing_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/autograph/operators:__pkg__",
-        "//tensorflow/python/data/ops:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-alias(
-    name = "random_ops_gen",
-    actual = "//tensorflow/python/ops:random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/eager/polymorphic_function:__pkg__",
-        "//tensorflow/python/kernel_tests/random:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-alias(
-    name = "special_math_ops_gen",
-    actual = "//tensorflow/python/ops:special_math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-alias(
-    name = "stateful_random_ops_gen",
-    actual = "//tensorflow/python/ops:stateful_random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests/random:__pkg__",
-    ],
-)
-
-alias(
-    name = "resource_variable_ops_gen",
-    actual = "//tensorflow/python/ops:resource_variable_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/distribute:__pkg__",
-    ],
-)
-
-alias(
-    name = "stateless_random_ops_gen",
-    actual = "//tensorflow/python/ops:stateless_random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/data/experimental/ops:__pkg__",
-    ],
-)
-
-alias(
-    name = "stateless_random_ops_v2_gen",
-    actual = "//tensorflow/python/ops:stateless_random_ops_v2_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-alias(
-    name = "random_index_shuffle_ops_gen",
-    actual = "//tensorflow/python/ops:random_index_shuffle_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
-)
-
-alias(
-    name = "list_ops_gen",
-    actual = "//tensorflow/python/ops:list_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-alias(
-    name = "map_ops_gen",
-    actual = "//tensorflow/python/ops:map_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "script_ops_gen",
-    actual = "//tensorflow/python/ops:script_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sdca_ops_gen",
-    actual = "//tensorflow/python/ops:sdca_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__"],
-)
-
-alias(
-    name = "set_ops_gen",
-    actual = "//tensorflow/python/ops:set_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/math_ops:__pkg__"],
-)
-
-alias(
-    name = "state_ops_gen",
-    actual = "//tensorflow/python/ops:state_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/framework:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/variables:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "sparse_ops_gen",
-    actual = "//tensorflow/python/ops:sparse_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/sparse_ops:__pkg__"],
-)
-
-alias(
-    name = "spectral_ops_gen",
-    actual = "//tensorflow/python/ops:spectral_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/ops/signal:__pkg__",
-    ],
-)
-
-alias(
-    name = "string_ops_gen",
-    actual = "//tensorflow/python/ops:string_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-alias(
-    name = "training_ops_gen",
-    actual = "//tensorflow/python/ops:training_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-alias(
-    name = "composite_tensor_ops_gen",
-    actual = "//tensorflow/python/ops:composite_tensor_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests:__pkg__"],
-)
-
-alias(
-    name = "ragged_array_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_array_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-alias(
-    name = "ragged_math_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-alias(
-    name = "ragged_conversion_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_conversion_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-alias(
-    name = "risc_ops_gen",
-    actual = "//tensorflow/python/ops:risc_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/ops/risc:__pkg__",
-    ],
-)
-
-alias(
-    name = "rnn_ops_gen",
-    actual = "//tensorflow/python/ops:rnn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/kernel_tests/nn_ops:__pkg__"],
-)
-
-alias(
-    name = "sendrecv_ops_gen",
-    actual = "//tensorflow/python/ops:sendrecv_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "tpu_ops_gen",
-    actual = "//tensorflow/python/ops:tpu_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//smartass/brain/configure/python:__pkg__",
-        "//tensorflow/python/tpu:__pkg__",
-        "//tensorflow/python/tpu/ops:__pkg__",
-    ],
-)
-
-alias(
-    name = "tpu_partition_ops_gen",
-    actual = "//tensorflow/python/ops:tpu_partition_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/python/tpu:__pkg__",
-        "//tensorflow/python/tpu/ops:__pkg__",
-    ],
-)
-
-alias(
-    name = "uniform_quant_ops_gen",
-    actual = "//tensorflow/python/ops:uniform_quant_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-alias(
-    name = "sync_ops_gen",
-    actual = "//tensorflow/python/ops:sync_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-alias(
-    name = "array_grad",
-    actual = "//tensorflow/python/ops:array_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "array_ops",
-    actual = "//tensorflow/python/ops:array_ops",
-    tags = ["avoid_dep"],
-    visibility = visibility,
-)
-
-alias(
-    name = "array_ops_stack",
-    actual = "//tensorflow/python/ops:array_ops_stack",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "inplace_ops",
-    actual = "//tensorflow/python/ops:inplace_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "bitwise_ops",
-    actual = "//tensorflow/python/ops:bitwise_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "boosted_trees_ops",
-    actual = "//tensorflow/python/ops:boosted_trees_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "optional_grad",
-    actual = "//tensorflow/python/ops:optional_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sets",
-    actual = "//tensorflow/python/ops:sets",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "candidate_sampling_ops",
-    actual = "//tensorflow/python/ops:candidate_sampling_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "check_ops",
-    actual = "//tensorflow/python/ops:check_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "clip_ops",
-    actual = "//tensorflow/python/ops:clip_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "clustering_ops",
-    actual = "//tensorflow/python/ops:clustering_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "collective_ops",
-    actual = "//tensorflow/python/ops:collective_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_assert",
-    actual = "//tensorflow/python/ops:control_flow_assert",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_grad",
-    actual = "//tensorflow/python/ops:control_flow_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_ops",
-    actual = "//tensorflow/python/ops:control_flow_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_case",
-    actual = "//tensorflow/python/ops:control_flow_case",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_switch_case",
-    actual = "//tensorflow/python/ops:control_flow_switch_case",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "cond",
-    actual = "//tensorflow/python/ops:cond",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "while_loop",
-    actual = "//tensorflow/python/ops:while_loop",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_util",
-    actual = "//tensorflow/python/ops:control_flow_util",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_util_v2",
-    actual = "//tensorflow/python/ops:control_flow_util_v2",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-alias(
-    name = "control_flow_v2_func_graphs",
-    actual = "//tensorflow/python/ops:control_flow_v2_func_graphs",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_v2_toggles",
-    actual = "//tensorflow/python/ops:control_flow_v2_toggles",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "cond_v2",
-    actual = "//tensorflow/python/ops:cond_v2",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "while_v2",
-    actual = "//tensorflow/python/ops:while_v2",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "bincount_ops",
-    actual = "//tensorflow/python/ops:bincount_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "ctc_ops",
-    actual = "//tensorflow/python/ops:ctc_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "cudnn_rnn_grad",
-    actual = "//tensorflow/python/ops:cudnn_rnn_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "data_flow_grad",
-    actual = "//tensorflow/python/ops:data_flow_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "data_flow_ops",
-    actual = "//tensorflow/python/ops:data_flow_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "embedding_ops",
-    actual = "//tensorflow/python/ops:embedding_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "handle_data_util",
-    actual = "//tensorflow/python/ops:handle_data_util",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "gradients",
-    actual = "//tensorflow/python/ops:gradients",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "gradients_impl",
-    actual = "//tensorflow/python/ops:gradients_impl",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "gradients_util",
-    actual = "//tensorflow/python/ops:gradients_util",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "default_gradient",
-    actual = "//tensorflow/python/ops:default_gradient",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "control_flow_state",
-    actual = "//tensorflow/python/ops:control_flow_state",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "unconnected_gradients",
-    actual = "//tensorflow/python/ops:unconnected_gradients",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "filesystem_ops",
-    actual = "//tensorflow/python/ops:filesystem_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "histogram_ops",
-    actual = "//tensorflow/python/ops:histogram_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "image_grad",
-    actual = "//tensorflow/python/ops:image_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "image_ops",
-    actual = "//tensorflow/python/ops:image_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "init_ops",
-    actual = "//tensorflow/python/ops:init_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "init_ops_v2",
-    actual = "//tensorflow/python/ops:init_ops_v2",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "initializers_ns",
-    actual = "//tensorflow/python/ops:initializers_ns",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "io_ops",
-    actual = "//tensorflow/python/ops:io_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "linalg_grad",
-    actual = "//tensorflow/python/ops:linalg_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "linalg_ops",
-    actual = "//tensorflow/python/ops:linalg_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "linalg_ops_impl",
-    actual = "//tensorflow/python/ops:linalg_ops_impl",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "manip_grad",
-    actual = "//tensorflow/python/ops:manip_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "manip_ops",
-    actual = "//tensorflow/python/ops:manip_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "logging_ops",
-    actual = "//tensorflow/python/ops:logging_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "lookup_ops",
-    actual = "//tensorflow/python/ops:lookup_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "math_grad",
-    actual = "//tensorflow/python/ops:math_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "op_selector",
-    actual = "//tensorflow/python/ops:op_selector",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "math_ops",
-    actual = "//tensorflow/python/ops:math_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "resources",
-    actual = "//tensorflow/python/ops:resources",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "resource_variable_ops",
-    actual = "//tensorflow/python/ops:resource_variable_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "critical_section_ops",
-    actual = "//tensorflow/python/ops:critical_section_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "list_ops",
-    actual = "//tensorflow/python/ops:list_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "map_ops",
-    actual = "//tensorflow/python/ops:map_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "nn",
-    actual = "//tensorflow/python/ops:nn",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "nn_grad",
-    actual = "//tensorflow/python/ops:nn_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "nn_ops",
-    actual = "//tensorflow/python/ops:nn_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "numerics",
-    actual = "//tensorflow/python/ops:numerics",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "parsing_config",
-    actual = "//tensorflow/python/ops:parsing_config",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "parsing_ops",
-    actual = "//tensorflow/python/ops:parsing_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "partitioned_variables",
-    actual = "//tensorflow/python/ops:partitioned_variables",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "random_grad",
-    actual = "//tensorflow/python/ops:random_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "random_ops",
-    actual = "//tensorflow/python/ops:random_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "random_crop_ops",
-    actual = "//tensorflow/python/ops:random_crop_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "stateful_random_ops",
-    actual = "//tensorflow/python/ops:stateful_random_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "stateless_random_ops",
-    actual = "//tensorflow/python/ops:stateless_random_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "rnn",
-    actual = "//tensorflow/python/ops:rnn",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "rnn_cell",
-    actual = "//tensorflow/python/ops:rnn_cell",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "script_ops",
-    actual = "//tensorflow/python/ops:script_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sdca_ops",
-    actual = "//tensorflow/python/ops:sdca_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "session_ops",
-    actual = "//tensorflow/python/ops:session_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "shape_util",
-    actual = "//tensorflow/python/ops:shape_util",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sparse_grad",
-    actual = "//tensorflow/python/ops:sparse_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sparse_ops",
-    actual = "//tensorflow/python/ops:sparse_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "sort_ops",
-    actual = "//tensorflow/python/ops:sort_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "confusion_matrix",
-    actual = "//tensorflow/python/ops:confusion_matrix",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "weights_broadcast_ops",
-    actual = "//tensorflow/python/ops:weights_broadcast_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "metrics",
-    actual = "//tensorflow/python/ops:metrics",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "special_math_ops",
-    actual = "//tensorflow/python/ops:special_math_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "rnn_grad",
-    actual = "//tensorflow/python/ops:rnn_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "standard_ops",
-    actual = "//tensorflow/python/ops:standard_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "state_grad",
-    actual = "//tensorflow/python/ops:state_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "state_ops",
-    actual = "//tensorflow/python/ops:state_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "string_ops",
-    actual = "//tensorflow/python/ops:string_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "summary_ops_v2",
-    actual = "//tensorflow/python/ops:summary_ops_v2",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "template",
-    actual = "//tensorflow/python/ops:template",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "tensor_array_grad",
-    actual = "//tensorflow/python/ops:tensor_array_grad",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "tensor_array_ops",
-    actual = "//tensorflow/python/ops:tensor_array_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "composite_tensor_ops",
-    actual = "//tensorflow/python/ops:composite_tensor_ops",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "variable_scope",
-    actual = "//tensorflow/python/ops:variable_scope",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "variables",
-    actual = "//tensorflow/python/ops:variables",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "ref_variable",
-    actual = "//tensorflow/python/ops:ref_variable",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "variable_v1",
-    actual = "//tensorflow/python/ops:variable_v1",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "gradient_checker",
-    actual = "//tensorflow/python/ops:gradient_checker",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "gradient_checker_v2",
-    actual = "//tensorflow/python/ops:gradient_checker_v2",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "client",
-    actual = "//tensorflow/python/client:client",
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
@@ -1765,11 +583,6 @@ tf_proto_library(
     visibility = visibility,
 )
 
-alias(
-    name = "device_lib",
-    actual = "//tensorflow/python/client:device_lib",
-)
-
 py_strict_library(
     name = "pywrap_tensorflow",
     srcs = [
@@ -1789,7 +602,7 @@ py_strict_library(
 pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
-    dynamic_deps = ["//tensorflow/tsl/python/lib/core:bfloat16.so"] + select({
+    dynamic_deps = ["//tensorflow/tsl/python/lib/core:ml_dtypes.so"] + select({
         "//tensorflow:macos": [
             "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
             "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
@@ -1812,7 +625,7 @@ pywrap_tensorflow_macro(
         "@eigen_archive//:__subpackages__",
     ]),
     roots = [
-        ":py_exception_registry",
+        "//tensorflow/python/lib/core:py_exception_registry",
     ],
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
@@ -1854,6 +667,12 @@ pywrap_tensorflow_macro(
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
         "@local_config_python//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
@@ -1879,7 +698,6 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
-        ":safe_pyobject_ptr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
@@ -1984,7 +802,15 @@ pywrap_tensorflow_macro(
     )) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-    ]) + if_xla_available([
+    ]) + if_oss(if_cuda_is_configured([
+        # TODO(tmorris): These dependencies are added to get the RPATHs for
+        # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
+        # able to remove this in the future, as these stubs should already
+        # be brought in via other dependencies.
+        "//tensorflow/tsl/cuda:cudnn_stub",
+        "//tensorflow/tsl/cuda:cufft_stub",
+        "//tensorflow/tsl/cuda:nccl_rpath_stub",
+    ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
 )
@@ -1995,9 +821,6 @@ pywrap_tensorflow_macro(
 filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
-        ":ndarray_tensor",  # checkpoint_reader
-        ":py_exception_registry",  # py_exception_registry
-        ":safe_pyobject_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:safe_ptr",  # checkpoint_reader
@@ -2067,7 +890,10 @@ filegroup(
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
+        "//tensorflow/python/lib/core:ndarray_tensor",  # checkpoint_reader
+        "//tensorflow/python/lib/core:py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",  # checkpoint_reader
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
@@ -2076,9 +902,7 @@ filegroup(
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
-        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
-        "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
+        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "//tensorflow/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
@@ -2186,55 +1010,6 @@ cc_import(
 
 # ** Targets for Windows build (end) **
 
-alias(
-    name = "session",
-    actual = "//tensorflow/python/client:session",
-)
-
-alias(
-    name = "timeline",
-    actual = "//tensorflow/python/client:timeline",
-    visibility = [
-        "//visibility:public",
-    ],
-)
-
-alias(
-    name = "summary_op_util",
-    actual = "//tensorflow/python/ops:summary_op_util",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "fake_summary_writer",
-    actual = "//tensorflow/python/summary/writer:fake_summary_writer",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "nccl_ops_gen",
-    actual = "//tensorflow/python/ops:nccl_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-alias(
-    name = "nccl_ops",
-    actual = "//tensorflow/python/ops:nccl_ops",
-    tags = ["avoid_dep"],
-    visibility = visibility + [
-        "//learning/deepmind/tensorflow:__subpackages__",
-        "//third_party/car/deep_nets/tensorflow:__subpackages__",
-    ],
-)
-
-alias(
-    name = "proto_ops",
-    actual = "//tensorflow/python/ops:proto_ops",
-    tags = ["avoid_dep"],
-)
-
 py_strict_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
@@ -2285,9 +1060,9 @@ tf_python_pybind_extension(
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
-        ":pybind11_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -2526,494 +1301,8 @@ py_strict_library(
     ],
 )
 
-alias(
-    name = "platform_benchmark",
-    actual = "//tensorflow/python/platform:benchmark",
-)
-
-alias(
-    name = "platform_analytics",
-    actual = "//tensorflow/python/platform:analytics",
-)
-
-py_strict_library(
-    name = "platform_test",
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/platform:test"],
-)
-
-alias(
-    name = "client_testlib",
-    actual = "//tensorflow/python/platform:client_testlib",
-)
-
-alias(
-    name = "pybind11_absl",
-    actual = "//tensorflow/python/lib/core:pybind11_absl",
-)
-
-alias(
-    name = "pybind11_proto",
-    actual = "//tensorflow/python/lib/core:pybind11_proto",
-)
-
-alias(
-    name = "py_func_lib",
-    actual = "//tensorflow/python/lib/core:py_func_lib",
-)
-
-alias(
-    name = "py_seq_tensor",
-    actual = "//tensorflow/python/lib/core:py_seq_tensor",
-)
-
-alias(
-    name = "py_util",
-    actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "py_exception_registry",
-    actual = "//tensorflow/python/lib/core:py_exception_registry",
-)
-
-alias(
-    name = "pybind11_lib",
-    actual = "//tensorflow/python/lib/core:pybind11_lib",
-)
-
-alias(
-    name = "pybind11_status_headers",
-    actual = "//tensorflow/python/lib/core:pybind11_status_headers",
-)
-
-alias(
-    name = "pybind11_status",
-    actual = "//tensorflow/python/lib/core:pybind11_status",
-)
-
-alias(
-    name = "lib",
-    actual = "//tensorflow/python/lib/io:lib",
-)
-
-alias(
-    name = "safe_pyobject_ptr",
-    actual = "//tensorflow/python/lib/core:safe_pyobject_ptr",
-)
-
-alias(
-    name = "ndarray_tensor",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor",
-)
-
-alias(
-    name = "ndarray_tensor_bridge",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor_bridge",
-)
-
-alias(
-    name = "ndarray_tensor_headers",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor_headers",
-)
-
-alias(
-    name = "python_op_gen_main",
-    actual = "//tensorflow/python/framework:python_op_gen_main",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "framework",
-    actual = "//tensorflow/python/framework",
-)
-
-alias(
-    name = "c_api_util",
-    actual = "//tensorflow/python/framework:c_api_util",
-)
-
-alias(
-    name = "constant_op",
-    actual = "//tensorflow/python/framework:constant_op",
-)
-
-alias(
-    name = "device_spec",
-    actual = "//tensorflow/python/framework:device_spec",
-)
-
-alias(
-    name = "device",
-    actual = "//tensorflow/python/framework:device",
-)
-
-alias(
-    name = "_dtypes",
-    actual = "//tensorflow/python/framework:_dtypes",
-)
-
-alias(
-    name = "dtypes",
-    actual = "//tensorflow/python/framework:dtypes",
-    visibility = visibility + ["//smartass:__subpackages__"],
-)
-
-alias(
-    name = "errors",
-    actual = "//tensorflow/python/framework:errors",
-)
-
-alias(
-    name = "error_interpolation",
-    actual = "//tensorflow/python/framework:error_interpolation",
-)
-
-alias(
-    name = "function",
-    actual = "//tensorflow/python/framework:function",
-    visibility = visibility + ["//smartass/brain:__subpackages__"],
-)
-
-alias(
-    name = "graph_to_function_def",
-    actual = "//tensorflow/python/framework:graph_to_function_def",
-)
-
-alias(
-    name = "function_def_to_graph",
-    actual = "//tensorflow/python/framework:function_def_to_graph",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-alias(
-    name = "graph_util",
-    actual = "//tensorflow/python/framework:graph_util",
-)
-
-alias(
-    name = "convert_to_constants",
-    actual = "//tensorflow/python/framework:convert_to_constants",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-alias(
-    name = "kernels",
-    actual = "//tensorflow/python/framework:kernels",
-)
-
-alias(
-    name = "op_def_registry",
-    actual = "//tensorflow/python/framework:op_def_registry",
-)
-
-alias(
-    name = "framework_ops",
-    actual = "//tensorflow/python/framework:ops",
-)
-
-alias(
-    name = "framework_indexed_slices",
-    actual = "//tensorflow/python/framework:indexed_slices",
-)
-
-alias(
-    name = "framework_for_generated_wrappers",
-    actual = "//tensorflow/python/framework:for_generated_wrappers",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "framework_for_generated_wrappers_v2",
-    actual = "//tensorflow/python/framework:for_generated_wrappers_v2",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "op_callbacks",
-    actual = "//tensorflow/python/framework:op_callbacks",
-)
-
-alias(
-    name = "indexed_slices",
-    actual = "//tensorflow/python/framework:indexed_slices",
-)
-
-alias(
-    name = "func_graph",
-    actual = "//tensorflow/python/framework:func_graph",
-)
-
-alias(
-    name = "auto_control_deps",
-    actual = "//tensorflow/python/framework:auto_control_deps",
-)
-
-alias(
-    name = "config",
-    actual = "//tensorflow/python/framework:config",
-)
-
-alias(
-    name = "random_seed",
-    actual = "//tensorflow/python/framework:random_seed",
-)
-
-alias(
-    name = "smart_cond",
-    actual = "//tensorflow/python/framework:smart_cond",
-)
-
-alias(
-    name = "sparse_tensor",
-    actual = "//tensorflow/python/framework:sparse_tensor",
-)
-
-alias(
-    name = "composite_tensor",
-    actual = "//tensorflow/python/framework:composite_tensor",
-    visibility = visibility,
-)
-
-alias(
-    name = "graph_building_benchmark",
-    actual = "//tensorflow/python/framework:graph_building_benchmark",
-)
-
-alias(
-    name = "tensor_shape",
-    actual = "//tensorflow/python/framework:tensor_shape",
-    visibility = visibility + ["//smartass/brain/configure/python:__pkg__"],
-)
-
-alias(
-    name = "type_spec",
-    actual = "//tensorflow/python/framework:type_spec",
-    visibility = visibility,
-)
-
-alias(
-    name = "tensor_spec",
-    actual = "//tensorflow/python/framework:tensor_spec",
-)
-
-alias(
-    name = "tensor_util",
-    actual = "//tensorflow/python/framework:tensor_util",
-)
-
-alias(
-    name = "versions",
-    actual = "//tensorflow/python/framework:versions",
-)
-
-alias(
-    name = "framework_test_lib",
-    actual = "//tensorflow/python/framework:test_lib",
-    visibility = visibility + [
-        "//tensorflow_estimator/python/estimator:__subpackages__",
-    ],
-)
-
-alias(
-    name = "is_mlir_bridge_test_true",
-    actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
-)
-
-alias(
-    name = "tfrt_utils",
-    actual = "//tensorflow/python/framework:tfrt_utils",
-)
-
-alias(
-    name = "framework_combinations",
-    actual = "//tensorflow/python/framework:combinations",
-)
-
-alias(
-    name = "framework_importer_test",
-    actual = "//tensorflow/python/framework:importer_test",
-)
-
-alias(
-    name = "framework_test_combinations_lib",
-    actual = "//tensorflow/python/framework:test_combinations_lib",
-)
-
-alias(
-    name = "framework_kernels_test",
-    actual = "//tensorflow/python/framework:kernels_test",
-)
-
-alias(
-    name = "framework_ops_test",
-    actual = "//tensorflow/python/framework:ops_test",
-)
-
-alias(
-    name = "framework_test_util_test",
-    actual = "//tensorflow/python/framework:test_util_test",
-)
-
-alias(
-    name = "function_def_to_graph_test",
-    actual = "//tensorflow/python/framework:function_def_to_graph_test",
-)
-
-alias(
-    name = "op_def_library_test",
-    actual = "//tensorflow/python/framework:op_def_library_test",
-)
-
-alias(
-    name = "config_test",
-    actual = "//tensorflow/python/framework:config_test",
-)
-
-alias(
-    name = "is_mlir_bridge_test_false",
-    actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
-)
-
-alias(
-    name = "memory_checker",
-    actual = "//tensorflow/python/framework:memory_checker",
-)
-
-alias(
-    name = "test_ops",
-    actual = "//tensorflow/python/framework:test_ops",
-)
-
-alias(
-    name = "test_ops_kernels",
-    actual = "//tensorflow/python/framework:test_ops_kernels",
-)
-
-alias(
-    name = "basic_session_run_hooks",
-    actual = "//tensorflow/python/training:basic_session_run_hooks",
-)
-
-alias(
-    name = "checkpoint_management",
-    actual = "//tensorflow/python/training:checkpoint_management",
-)
-
-alias(
-    name = "py_checkpoint_reader",
-    actual = "//tensorflow/python/training:py_checkpoint_reader",
-)
-
-alias(
-    name = "saver",
-    actual = "//tensorflow/python/training:saver",
-)
-
-alias(
-    name = "session_run_hook",
-    actual = "//tensorflow/python/training:session_run_hook",
-)
-
-alias(
-    name = "checkpoint",
-    actual = "//tensorflow/python/checkpoint:checkpoint",
-)
-
-alias(
-    name = "checkpoint_lib",
-    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
-)
-
-alias(
-    name = "trackable",
-    actual = "//tensorflow/python/trackable:trackable",
-)
-
-alias(
-    name = "training",
-    actual = "//tensorflow/python/training:training",
-)
-
-alias(
-    name = "training_lib",
-    actual = "//tensorflow/python/training:training_lib",
-)
-
-alias(
-    name = "training_server_lib",
-    actual = "//tensorflow/python/training:server_lib",
-)
-
-alias(
-    name = "training_util",
-    actual = "//tensorflow/python/training:training_util",
-)
-
-alias(
-    name = "loss_scale",
-    actual = "//tensorflow/python/training/experimental:loss_scale",
-)
-
-alias(
-    name = "loss_scale_optimizer",
-    actual = "//tensorflow/python/training/experimental:loss_scale_optimizer",
-)
-
-alias(
-    name = "mixed_precision",
-    actual = "//tensorflow/python/training/experimental:mixed_precision",
-)
-
-alias(
-    name = "mixed_precision_global_state",
-    actual = "//tensorflow/python/training/experimental:mixed_precision_global_state",
-)
-
-alias(
-    name = "tf_optimizer",
-    actual = "//tensorflow/python/grappler:tf_optimizer",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ops",
-    actual = "//tensorflow/python/user_ops:ops",
-)
-
-alias(
-    name = "layers_base",
-    actual = "//tensorflow/python/layers:layers_base",
-)
-
-alias(
-    name = "layers_util",
-    actual = "//tensorflow/python/layers:layers_util",
-)
-
-alias(
-    name = "layers",
-    actual = "//tensorflow/python/layers:layers",
-)
-
-py_strict_library(
-    name = "dtensor",
-    deps = [
-        "//tensorflow/dtensor/python:dtensor",
-    ],
-)
-
-py_strict_library(
-    name = "learning_rate_decay",
-    # This rule depends on a target that only python:__pkg__ has visibility for.
-    srcs = ["//tensorflow/python/training:learning_rate_decay.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
-)
-
 # copybara:uncomment_begin(google-only)
+# # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,

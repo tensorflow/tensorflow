@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_execute_op.h"
 
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -278,7 +280,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
   se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
   xla::TransferManager* const transfer_manager = backend->transfer_manager();
 
-  auto input_buffers = absl::make_unique<InputBuffers>(
+  auto input_buffers = std::make_unique<InputBuffers>(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
 
   // Allocates a buffer for the root tuple.
@@ -437,7 +439,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
       node_context->backend()->memory_allocator();
 
   auto output_buffers =
-      absl::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
+      std::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
 
   xla::Shape output_device_shape = output_buffers->buffers.on_device_shape();
 

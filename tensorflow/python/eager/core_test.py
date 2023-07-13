@@ -35,6 +35,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -91,7 +92,7 @@ class TFETest(test_util.TensorFlowTestCase):
         set([a, b])
 
   def testEquality(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       def _v1_check(a, b):
@@ -113,20 +114,20 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_a = constant_op.constant(1.0)
       constant_b = constant_op.constant(1.0)
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
       self._test_hashable(constant_a, constant_b, False)
 
       variable_a = variables.Variable(1.0)
       variable_b = variables.Variable(1.0)
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       _v1_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, True)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, False)
 
@@ -137,12 +138,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(numpy_a, numpy_b, False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityNan(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       def _v1_check(a, b):
@@ -164,20 +165,20 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_a = constant_op.constant(float('nan'))
       constant_b = constant_op.constant(float('nan'))
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
       self._test_hashable(constant_a, constant_b, False)
 
       variable_a = variables.Variable(float('nan'))
       variable_b = variables.Variable(float('nan'))
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       _v1_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, True)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, False)
 
@@ -187,12 +188,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(numpy_a, numpy_b, False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityCompare(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       tf_a = constant_op.constant([1, 2])
@@ -202,7 +203,7 @@ class TFETest(test_util.TensorFlowTestCase):
       np_b = np.array([1, 2])
       np_c = np.array([1, 1])
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       # We don't do element-wise comparison
       self.assertNotEqual(tf_a, tf_b)
       self.assertNotEqual(tf_a, tf_c)
@@ -216,7 +217,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertIn(tf_a, [tf_b, tf_a])
       self.assertNotIn(tf_a, [tf_b, tf_c])
 
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       # We do element-wise comparison but can't convert results array to bool
       with self.assertRaises(ValueError):
         bool(tf_a == tf_b)
@@ -266,12 +267,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(np.array(1) == np.array(2), False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityBroadcast(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       tf_a = constant_op.constant([1, 1])
@@ -285,13 +286,13 @@ class TFETest(test_util.TensorFlowTestCase):
       np_d = np.array([[1, 2], [1, 2]])
       np_e = np.array([1, 1, 1])
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       # We don't do element-wise comparison
       self.assertNotEqual(tf_a, tf_b)
       self.assertNotEqual(tf_a, tf_c)
       self.assertNotEqual(tf_a, tf_d)
 
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       # We do element-wise comparison but can't convert results array to bool
       with self.assertRaises(ValueError):
         bool(tf_a == tf_b)
@@ -322,9 +323,9 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertNotAllEqual(np_a, np_e)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   @test_util.disable_tfrt('Get execution mode not supported in TFRT.')
   def testContext(self):

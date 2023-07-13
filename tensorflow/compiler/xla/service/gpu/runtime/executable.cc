@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -57,7 +57,6 @@ using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
-using ::xla::runtime::success;
 using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
@@ -171,7 +170,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
-  // Options for the default XLA Runtim compilation pipeline.
+  // Options for the default XLA Runtime compilation pipeline.
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -344,12 +343,16 @@ Status GpuRuntimeExecutable::Execute(
 
   // Get the async communications stream for async collectives.
   se::StreamExecutor* executor = run_options->stream()->parent();
-  int device_ordinal = executor->device_ordinal();
+  se::StreamPriority stream_priority = se::StreamPriority::Default;
+  if (debug_options_.xla_gpu_enable_highest_priority_async_stream()) {
+    stream_priority = se::StreamPriority::Highest;
+  }
+
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
-  // executable run, so that concurrent executions can run independenty using a
+  // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
@@ -388,13 +391,13 @@ Status GpuRuntimeExecutable::Execute(
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
-  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
-  if (!ffi_state.ok()) return ffi_state.status();
+  TF_ASSIGN_OR_RETURN(FfiStateVector ffi_state,
+                      ffi_modules_state_.state_vector());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
@@ -410,6 +413,18 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
+
+#if GOOGLE_CUDA
+  // Instantiate all CUDA graphs before executing the main function.
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0) {
+    if (auto instantiated = graph_instances_.InstantiateAllGraphs(
+            run_options, executable, user_data, temp_buffer.opaque());
+        !instantiated.ok()) {
+      return InternalError("Failed to instantiate CUDA graphs: %s",
+                           instantiated.message());
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

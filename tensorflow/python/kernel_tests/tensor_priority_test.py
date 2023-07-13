@@ -16,6 +16,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.platform import test as test_lib
 
@@ -34,7 +35,7 @@ class TensorPriorityTest(test_lib.TestCase):
     for rhs in supported_rhs_without_delegation:
       tensor = ops.convert_to_tensor([[10.0, 20.0]])
       res = tensor + rhs
-      self.assertIsInstance(res, ops.Tensor)
+      self.assertIsInstance(res, tensor_lib.Tensor)
 
   def testUnsupportedRhsWithoutDelegation(self):
 

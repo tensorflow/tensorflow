@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 

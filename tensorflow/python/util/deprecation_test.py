@@ -23,7 +23,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1062,14 +1062,14 @@ class DeprecatedArgValuesTest(test.TestCase):
     def _fn(arg0):  # pylint: disable=unused-argument
       pass
 
-    ops.enable_tensor_equality()
+    tensor.enable_tensor_equality()
     initial_count = mock_warning.call_count
     # Check that we avoid error from explicit `var == None` check.
     _fn(arg0=variables.Variable(0))
     self.assertEqual(initial_count, mock_warning.call_count)
     _fn(arg0=None)
     self.assertEqual(initial_count + 1, mock_warning.call_count)
-    ops.disable_tensor_equality()
+    tensor.disable_tensor_equality()
 
 
 class DeprecationArgumentsTest(test.TestCase):

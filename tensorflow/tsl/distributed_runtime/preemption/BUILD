@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud", "tsl_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_grpc_cc_dependencies")
 load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
@@ -15,7 +15,7 @@ cc_library(
     name = "preemption_notifier",
     srcs = ["preemption_notifier.cc"],
     hdrs = ["preemption_notifier.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",

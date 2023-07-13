@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -377,7 +378,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
     for attr in functools.WRAPPER_ASSIGNMENTS:
       self.assertEqual(
           getattr(variables.Variable.__add__, attr),
-          getattr(ops.Tensor.__add__, attr))
+          getattr(tensor.Tensor.__add__, attr))
 
   @test_util.run_deprecated_v1
   def testOperators(self):

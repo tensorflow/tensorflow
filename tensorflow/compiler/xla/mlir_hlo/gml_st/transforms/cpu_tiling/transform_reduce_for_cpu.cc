@@ -227,7 +227,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     // Input.
     Value input = reduceOp.getInputs().front();
     FailureOr<OpFoldResult> inputSizeOfr =
-        tensor::createDimValue(rewriter, loc, input, 0);
+        tensor::getMixedSize(rewriter, loc, input, 0);
     if (failed(inputSizeOfr))
       return rewriter.notifyMatchFailure(reduceOp, "cannot get input size");
 

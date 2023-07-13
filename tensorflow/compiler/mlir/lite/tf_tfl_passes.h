@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {

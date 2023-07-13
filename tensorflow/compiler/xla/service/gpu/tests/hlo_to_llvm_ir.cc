@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
@@ -71,10 +75,10 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     llvm_module->print(llvm::outs(), nullptr);
   } else {
 #if GOOGLE_CUDA
-    TF_ASSIGN_OR_RETURN(
-        std::string ptx,
-        xla::gpu::nvptx::CompileToPtx(
-            llvm_module.get(), cuda_compute_capability, hlo_module->config()));
+    TF_ASSIGN_OR_RETURN(std::string ptx,
+                        xla::gpu::nvptx::CompileToPtx(
+                            llvm_module.get(), cuda_compute_capability,
+                            hlo_module->config().debug_options()));
     std::cout << ptx << std::endl;
 #else
     return {absl::StatusCode::kUnimplemented,

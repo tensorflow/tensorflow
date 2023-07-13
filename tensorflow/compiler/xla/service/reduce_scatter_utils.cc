@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -146,7 +148,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
-    if (offset->shape().rank() != 0) {
+    if (!ShapeUtil::IsEffectiveScalar(offset->shape())) {
       VLOG(2) << "Offset is not a scalar " << offset->ToString();
       return false;
     }

@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/utils/ret_macros.h"
 
@@ -28,10 +27,6 @@ namespace tflite::delegates::utils {
 // Returns kTfLiteOk if the status is ok;
 // Otherwise, log the error message and returns kTfLiteError.
 TfLiteStatus ConvertToTfLiteStatus(absl::Status status);
-
-// Constructs a TfLiteIntArray from std::vector.
-std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)>
-BuildTfLiteIntArray(const std::vector<int>& data);
 
 inline bool IsPowerOfTwo(size_t x) { return x && ((x & (x - 1)) == 0); }
 

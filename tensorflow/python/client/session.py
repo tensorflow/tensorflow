@@ -35,6 +35,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import stack
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
@@ -502,7 +503,7 @@ class _FetchHandler(object):
         self._fetches.append(fetch)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
-      if (isinstance(fetch, ops.Tensor) and
+      if (isinstance(fetch, tensor.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
         self._fetch_handles[fetch.ref()] = fetch.op.inputs[0].dtype
@@ -1158,7 +1159,7 @@ class BaseSession(SessionInterface):
             raise TypeError(
                 f'Cannot interpret feed_dict key as Tensor: {e.args[0]}')
 
-          if isinstance(subfeed_val, ops.Tensor):
+          if isinstance(subfeed_val, tensor.Tensor):
             raise TypeError(
                 'The value of a feed cannot be a tf.Tensor object. Acceptable '
                 'feed values include Python scalars, strings, lists, numpy '
@@ -1322,7 +1323,7 @@ class BaseSession(SessionInterface):
         self._call_tf_sessionrun(None, {}, [], target_list, None)
 
       return _single_operation_run
-    elif isinstance(fetches, ops.Tensor):
+    elif isinstance(fetches, tensor.Tensor):
       # Special case for fetching a single tensor, because the
       # function can return the result of `TF_Run()` directly.
       assert len(fetch_list) == 1

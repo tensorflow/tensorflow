@@ -48,6 +48,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -260,11 +261,10 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  a_ptr, n, b_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                             se::blas::Transpose::kTranspose, n,
+                                             m, k, a_ptr, n, b_ptr, m, &c_ptr,
+                                             n, GetNumericOptions()));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -286,11 +286,10 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(
-        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                  se::blas::Transpose::kTranspose, n, m, k,
-                                  b_ptr, n, a_ptr, m, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                             se::blas::Transpose::kTranspose, n,
+                                             m, k, b_ptr, n, a_ptr, m, &c_ptr,
+                                             n, GetNumericOptions()));
     return;
   }
 

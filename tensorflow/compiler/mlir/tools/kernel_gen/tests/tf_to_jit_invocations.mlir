@@ -39,10 +39,10 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-JFLT-LABEL: @unary_tanh
 // CHECK-JFLT-SAME:  %[[ARG0:.*]]: tensor<*xf32>
-// CHECK-JFLT-DAG:   %[[C4294967296:.*]] = arith.constant 4294967296
+// CHECK-JFLT-DAG:   %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:       %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-JFLT:       %[[NUM:.*]] = shape.num_elements %[[SHAPE]]
-// CHECK-JFLT:       %[[CMPI:.*]] = arith.cmpi sgt, %[[NUM]], %[[C4294967296]]
+// CHECK-JFLT:       %[[CMPI:.*]] = arith.cmpi sgt, %[[NUM]], %[[LIMIT]]
 // CHECK-JFLT:       %[[IF:.*]] = scf.if %[[CMPI]]
 // CHECK-JFLT:         %[[JIT:.*]] = tf_framework.jit_compile_from_str
 // CHECK-JFLT-SAME:        "module
@@ -91,7 +91,7 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 
 // CHECK-JFLT-LABEL: @binary_sub
 // CHECK-JFLT:  %[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>
-// CHECK-JFLT:  %[[LIMIT:.*]] = arith.constant 4294967296
+// CHECK-JFLT:  %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:  %[[SHAPE1:.*]] = shape.shape_of %[[ARG0]] : tensor<*xf32> -> tensor<?xindex>
 // CHECK-JFLT:  %[[ELEMENTCOUNT1:.*]] = shape.num_elements %[[SHAPE1]] : tensor<?xindex> -> index
 // CHECK-JFLT:  %[[COMP1:.*]] = arith.cmpi sgt, %[[ELEMENTCOUNT1]], %[[LIMIT]] : index

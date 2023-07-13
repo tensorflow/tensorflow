@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "utils/hlo_utils.h"
 
+#include <algorithm>
 #include <numeric>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"

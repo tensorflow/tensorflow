@@ -196,7 +196,7 @@ cc_library(
         ":smuggle_disallowed_ops",
         ":tf_stablehlo",
         ":unfuse_batch_norm_pass",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
@@ -238,11 +238,15 @@ cc_library(
     ],
     deps = [
         ":stablehlo_util",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -372,6 +376,9 @@ tf_cc_binary(
         "odml_to_stablehlo.cc",
     ],
     copts = ["-O3"],
+    deprecation = "odml_to_stablehlo is being deprecated, please use TFlite converter with flag: " +
+                  "converter.target_spec.supported_ops = " +
+                  " [tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS]",
     deps = [
         ":check_accepted_ops_pass",
         ":op_stat_pass",

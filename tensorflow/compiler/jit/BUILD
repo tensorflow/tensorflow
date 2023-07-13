@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_cuda_only_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_strict_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -510,6 +510,8 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":pjrt_tensor_buffer",
+        ":pjrt_tensor_buffer_util",
         ":variable_info",
         ":variable_info_util",
         ":xla_tensor",
@@ -519,6 +521,9 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
@@ -528,11 +533,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -568,12 +575,44 @@ tf_cc_test(
     ],
 )
 
+tf_cuda_only_cc_test(
+    name = "xla_launch_util_gpu_test",
+    srcs = ["xla_launch_util_gpu_test.cc"],
+    deps = [
+        ":device_compiler",
+        ":flags_headers",
+        ":pjrt_device_compiler_client",
+        ":pjrt_device_context",
+        ":variable_info",
+        ":variable_info_util",
+        ":xla_device_no_jit_rewrite_registration",
+        ":xla_gpu_jit",
+        ":xla_launch_util",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xla_compile_util",
     srcs = ["xla_compile_util.cc"],
     hdrs = ["xla_compile_util.h"],
     visibility = [
         ":internal",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
@@ -616,6 +655,7 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         ":internal",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
@@ -1313,7 +1353,7 @@ tf_cc_test(
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "xla_ops_py",
     kernels = ["//tensorflow/compiler/jit/ops:xla_ops"],
     visibility = [
@@ -1379,6 +1419,10 @@ cc_library(
     name = "device_compilation_profiler",
     srcs = ["device_compilation_profiler.cc"],
     hdrs = ["device_compilation_profiler.h"],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/common_runtime/gpu:__pkg__",
+    ],
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
@@ -1492,6 +1536,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_tensor_buffer",
+    hdrs = ["pjrt_tensor_buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "pjrt_tensor_buffer_util",
+    srcs = ["pjrt_tensor_buffer_util.cc"],
+    hdrs = ["pjrt_tensor_buffer_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_tensor_buffer",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
     name = "pjrt_device_context",
     srcs = [
         "pjrt_device_context.cc",
@@ -1501,15 +1569,20 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_tensor_buffer_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/tsl/framework:device_id_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 

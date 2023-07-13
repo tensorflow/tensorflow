@@ -17,6 +17,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 
+#include <algorithm>
+#include <numeric>
+#include <utility>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"

@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -61,7 +62,7 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-py_binary(
+py_strict_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
@@ -69,18 +70,22 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:cond",
-        "//tensorflow/python:control_flow_assert",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_v1",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:control_flow_assert",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:control_flow_util",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/training:saver",
         "@absl_py//absl:app",
         "@six_archive//:six",
     ],
@@ -91,7 +96,6 @@ genrule(
     testonly = 1,
     outs = [
         "test_graph_tfadd.pb",
-        "test_debuginfo_tfadd.pb",
         "test_graph_tfadd_with_ckpt.ckpt",
         "test_graph_tfadd_with_ckpt.pb",
         "test_graph_tfadd_with_ckpt_saver.ckpt",

@@ -34,7 +34,9 @@ load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
+load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -73,11 +75,13 @@ def _initialize_third_party():
     jpeg()
     kissfft()
     libprotobuf_mutator()
+    ml_dtypes()
     nasm()
     opencl_headers()
     pasta()
     psimd()
     pybind11_abseil()
+    pybind11_bazel()
     ruy()
     sobol_data()
     stablehlo()
@@ -200,9 +204,13 @@ def _tf_repositories():
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
+            "//third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
             "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder.patch",
         ],
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
@@ -211,15 +219,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
-        strip_prefix = "ComputeLibrary-22.11",
-        build_file = "//third_party/compute_library:BUILD",
-        patch_file = [
-            "//third_party/compute_library:compute_library.patch",
-            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
-            "//third_party/compute_library:acl_openmp_fix.patch",
-        ],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
+        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
+        strip_prefix = "ComputeLibrary-23.05.1",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -259,10 +261,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "b90430b2a9240df4459108b3e291be80ae92c68a47bc06ef2dc419c5724de061",
-        strip_prefix = "re2-a276a8c738735a0fe45a6ee590fe2df69bcf4502",
+        sha256 = "ef516fb84824a597c4d5d0d6d330daedb18363b5a99eda87d027e6bdd9cba299",
+        strip_prefix = "re2-03da4fc0857c285e3a26782f6bc8931c4c950df4",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/a276a8c738735a0fe45a6ee590fe2df69bcf4502.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/03da4fc0857c285e3a26782f6bc8931c4c950df4.tar.gz"),
     )
 
     tf_http_archive(
@@ -803,12 +805,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "rules_python",
-        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "build_bazel_rules_android",
         sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
         strip_prefix = "rules_android-0.1.1",
@@ -862,9 +858,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.0.tar.gz"),
-        sha256 = "eacf582fa8f696227988d08cfc46121770823839fe9e301a20fbce67e7cd70ec",
-        strip_prefix = "pybind11-2.10.0",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.4.tar.gz"),
+        sha256 = "832e2f309c57da9c1e6d4542dedd34b24e4192ecb4d62f6f4866a737454c9970",
+        strip_prefix = "pybind11-2.10.4",
         build_file = "//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )

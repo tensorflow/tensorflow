@@ -55,7 +55,7 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
 
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_.index(); }
-  const tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
+  tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
 
  private:
   const tensorflow::tpu::TpuCoreLocationExternal core_;

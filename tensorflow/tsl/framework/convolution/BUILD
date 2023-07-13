@@ -6,12 +6,12 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
         "-parse_headers",
     ],
-    licenses = ["notice"],
 )
 
 cc_library(
@@ -97,7 +97,7 @@ exports_files(
 )
 
 tsl_cc_test(
-    name = "spatial_convolutions_test",
+    name = "eigen_spatial_convolutions_test",
     size = "small",
     srcs = [
         "eigen_spatial_convolutions_test.cc",

@@ -246,6 +246,11 @@ running another validation. The `serialize()` and `deserialize()` methods in
 `ValidatedAccelerationConfigResult` make the storage and retrieval process
 easier.
 
+### Sample application
+
+To review an in-situ integration of the Acceleration Service, take a look at the
+[sample app](https://github.com/tensorflow/examples/tree/master/lite/examples/acceleration_service/android_play_services).
+
 ## Limitations
 
 The Acceleration Service has the current following limitations:

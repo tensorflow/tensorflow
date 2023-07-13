@@ -289,7 +289,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       if (split_provider_) {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kHasSplitProvider), true));
+            writer->WriteScalar(prefix(), kHasSplitProvider, true));
         TF_RETURN_IF_ERROR(split_provider_->Save(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -297,14 +297,14 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             writer));
       } else {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kNext), counter_->Peek()));
+            writer->WriteScalar(prefix(), kNext, counter_->Peek()));
       }
       return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (reader->Contains(full_name(kHasSplitProvider))) {
+      if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -312,7 +312,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             reader));
       } else {
         int64_t next;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNext), &next));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNext, &next));
         counter_->SetNext(next);
       }
       return OkStatus();

@@ -77,21 +77,6 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
                            &arg_core_mapping, &per_core_arg_shapes, client);
 }
 
-TEST(LegalizeTFTest, RecordsStreamzForMlirBridge) {
-  CellReader<Histogram> compilation_time(kCompilationTimeStreamzName);
-  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      XlaCompiler::CompilationResult result,
-      CompileMlirModule(
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED));
-
-  Histogram histogram =
-      compilation_time.Delta("mlir_bridge_op_fallback_disabled");
-  EXPECT_EQ(histogram.num(), 1);
-  EXPECT_EQ(compilation_status.Delta("kMlirModeSuccess"), 1);
-}
-
 TEST(LegalizeTFTest, RecordsStreamzForMlirOpFallback) {
   CellReader<Histogram> compilation_time(kCompilationTimeStreamzName);
 

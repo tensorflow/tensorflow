@@ -323,6 +323,8 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
+  void set_use_pjrt_allocator(bool v) { value |= (static_cast<int>(v) << 3); }
+  bool use_pjrt_allocator() const { return value & (0x1 << 3); }
   void Merge(AllocatorAttributes other) {
     value |= other.value;
     if (scope_id != other.scope_id) {

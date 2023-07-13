@@ -61,6 +61,12 @@ load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
+load(
+    "//tensorflow:py.default.bzl",
+    _plain_py_binary = "py_binary",
+    _plain_py_library = "py_library",
+    _plain_py_test = "py_test",
+)
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
@@ -485,11 +491,17 @@ def tf_opts_nortti():
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ]
 
+def tf_opts_force_rtti():
+    return select({
+        clean_dep("//tensorflow:force_rtti"): ["-frtti"],
+        "//conditions:default": [],
+    })
+
 def tf_opts_nortti_if_android():
-    return if_android(tf_opts_nortti())
+    return if_android(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_opts_nortti_if_mobile():
-    return if_mobile(tf_opts_nortti())
+    return if_mobile(tf_opts_nortti()) + tf_opts_force_rtti()
 
 def tf_defines_nortti():
     return [
@@ -519,7 +531,7 @@ def tf_opts_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
         full = [],
         lite = tf_opts_nortti(),
-    )
+    ) + tf_opts_force_rtti()
 
 def tf_defines_nortti_if_lite_protos():
     return tf_portable_full_lite_protos(
@@ -1308,32 +1320,6 @@ generate_op_reg_offsets = rule(
     implementation = _generate_op_reg_offsets_impl,
 )
 
-# Generates a Python library target wrapping the ops registered in "deps".
-#
-# Args:
-#   name: used as the name of the generated target and as a name component of
-#     the intermediate files.
-#   out: name of the python file created by this rule. If None, then
-#     "ops/gen_{name}.py" is used.
-#   hidden: Optional list of ops names to make private in the Python module.
-#     It is invalid to specify both "hidden" and "op_allowlist".
-#   visibility: passed to py_library.
-#   deps: list of dependencies for the intermediate tool used to generate the
-#     python target. NOTE these `deps` are not applied to the final python
-#     library target itself.
-#   require_shape_functions: Unused. Leave this as False.
-#   hidden_file: optional file that contains a list of op names to make private
-#     in the generated Python module. Each op name should be on a line by
-#     itself. Lines that start with characters that are invalid op name
-#     starting characters are treated as comments and ignored.
-#   generated_target_name: name of the generated target (overrides the
-#     "name" arg)
-#   op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
-#   op_allowlist: if not empty, only op names in this list will be wrapped. It
-#     is invalid to specify both "hidden" and "op_allowlist".
-#   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
-#     specified ops.
-
 def tf_gen_op_wrapper_py(
         name,
         out = None,
@@ -1349,7 +1335,41 @@ def tf_gen_op_wrapper_py(
         api_def_srcs = [],
         compatible_with = [],
         testonly = False,
-        copts = []):
+        copts = [],
+        extra_py_deps = None,
+        py_lib_rule = _plain_py_library):
+    """Generates a Python library target wrapping the ops registered in "deps".
+
+    Args:
+        name: used as the name of the generated target and as a name component of
+            the intermediate files.
+        out: name of the python file created by this rule. If None, then
+            "ops/gen_{name}.py" is used.
+        hidden: Optional list of ops names to make private in the Python module.
+            It is invalid to specify both "hidden" and "op_allowlist".
+        visibility: passed to py_library.
+        deps: list of dependencies for the intermediate tool used to generate the
+            python target. NOTE these `deps` are not applied to the final python
+            library target itself.
+        require_shape_functions: Unused. Leave this as False.
+        hidden_file: optional file that contains a list of op names to make private
+            in the generated Python module. Each op name should be on a line by
+            itself. Lines that start with characters that are invalid op name
+            starting characters are treated as comments and ignored.
+        generated_target_name: name of the generated target (overrides the
+            "name" arg)
+        op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
+        op_allowlist: if not empty, only op names in this list will be wrapped. It
+            is invalid to specify both "hidden" and "op_allowlist".
+        cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
+            specified ops.
+        api_def_srcs: undocumented.
+        compatible_with: undocumented.
+        testonly: undocumented.
+        copts: undocumented.
+        extra_py_deps: undocumented.
+        py_lib_rule: undocumented.
+    """
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1438,14 +1458,15 @@ def tf_gen_op_wrapper_py(
     # Make a py_library out of the generated python file.
     if not generated_target_name:
         generated_target_name = name
-    native.py_library(
+    py_deps = [clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2")]
+    if extra_py_deps:
+        py_deps += extra_py_deps
+    py_lib_rule(
         name = generated_target_name,
         srcs = [out],
         srcs_version = "PY3",
         visibility = visibility,
-        deps = [
-            clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
-        ],
+        deps = py_deps,
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
         # that wraps this one.
@@ -1557,7 +1578,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-# TODO(jakeharmon): Replace with or implement in terms of tsl_gpu_cc_test, which doesn't add a
+# TODO(jakeharmon): Replace with an implementation which doesn't add a
 # dependency on core:common_runtime
 def tf_gpu_cc_test(
         name,
@@ -2156,7 +2177,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()
+    return []
 
 check_deps = rule(
     _check_deps_impl,
@@ -2242,26 +2263,6 @@ def tf_custom_op_library(
         **kwargs
     )
 
-# Placeholder to use until bazel supports py_strict_binary.
-def py_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_library.
-def py_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_binary.
-def pytype_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_library.
-def pytype_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_test.
-def py_strict_test(name, **kwargs):
-    py_test(name = name, **kwargs)
-
 def tf_custom_op_py_library(
         name,
         srcs = [],
@@ -2272,7 +2273,8 @@ def tf_custom_op_py_library(
         deps = [],
         **kwargs):
     _ignore = [kernels]
-    native.py_library(
+    _make_tags_mutable(kwargs)
+    _plain_py_library(
         name = name,
         data = dso,
         srcs = srcs,
@@ -2457,17 +2459,17 @@ def pywrap_tensorflow_macro_opensource(
     # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
     # (there is only one currently) that is not in the same directory, otherwise Python will fail to
     # link the pyd (which is just a dll) because of missing dependencies.
-    _create_symlink("bfloat16.so", "//tensorflow/tsl/python/lib/core:bfloat16.so")
+    _create_symlink("ml_dtypes.so", "//tensorflow/tsl/python/lib/core:ml_dtypes.so")
 
-    native.py_library(
+    _plain_py_library(
         name = name,
         srcs = [":" + name + ".py"],
         srcs_version = "PY3",
         data = select({
             clean_dep("//tensorflow:windows"): [
                 ":" + cc_library_pyd_name,
-                ":bfloat16.so",
-                "//tensorflow/tsl/python/lib/core:bfloat16.so",
+                ":ml_dtypes.so",
+                "//tensorflow/tsl/python/lib/core:ml_dtypes.so",
             ],
             "//conditions:default": [
                 ":" + cc_shared_library_name,
@@ -2494,12 +2496,12 @@ pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = native.py_test, **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = _plain_py_test, **kwargs):
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
+    _make_tags_mutable(kwargs)
     test_rule(
-        # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
@@ -2522,13 +2524,14 @@ register_extension_info(
 # See https://github.com/tensorflow/tensorflow/issues/22390
 def py_binary(name, deps = [], **kwargs):
     # Add an extra target for dependencies to avoid nested select statement.
-    native.py_library(
+    _plain_py_library(
         name = name + "_deps",
         deps = deps,
     )
 
     # Python version placeholder
-    native.py_binary(
+    _make_tags_mutable(kwargs)
+    _plain_py_binary(
         name = name,
         deps = select({
             "//conditions:default": [":" + name + "_deps"],
@@ -2539,7 +2542,18 @@ def py_binary(name, deps = [], **kwargs):
 
 def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    native.py_library(name = name, **kwargs)
+    _make_tags_mutable(kwargs)
+    _plain_py_library(name = name, **kwargs)
+
+# Tensorflow uses rules_python 0.0.1, and in that version of rules_python,
+# the rules require the tags value to be a mutable list because they
+# modify it in-place. Later versions of rules_python don't have this
+# requirement.
+def _make_tags_mutable(kwargs):
+    if "tags" in kwargs and kwargs["tags"] != None:
+        # The value might be a frozen list, which looks just like
+        # a regular list. So always make a copy.
+        kwargs["tags"] = list(kwargs["tags"])
 
 def tf_py_test(
         name,
@@ -3148,7 +3162,7 @@ def pybind_extension_opensource(
         testonly = testonly,
     )
 
-    native.py_library(
+    _plain_py_library(
         name = name,
         data = select({
             clean_dep("//tensorflow:windows"): [pyd_file],
@@ -3247,6 +3261,12 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [
@@ -3359,10 +3379,10 @@ def if_mlir(if_true, if_false = []):
 def tf_enable_mlir_bridge():
     return select({
         str(Label("//tensorflow:enable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_true",
+            "//tensorflow/python/framework:is_mlir_bridge_test_true",
         ],
         str(Label("//tensorflow:disable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_false",
+            "//tensorflow/python/framework:is_mlir_bridge_test_false",
         ],
         "//conditions:default": [],
     })
@@ -3411,9 +3431,6 @@ def tf_grpc_cc_dependencies():
     return ["//tensorflow:grpc++"]
 
 def get_compatible_with_portable():
-    return []
-
-def get_compatible_with_cloud():
     return []
 
 def filegroup(**kwargs):

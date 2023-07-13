@@ -924,7 +924,7 @@ inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
   // memory usage low.
   std::vector<std::pair<int64_t, int64_t>> result;
   const int64_t step = 1 << 25;
-  for (int64_t i = 0; i < (1l << 32); i += step) {
+  for (int64_t i = 0; i < (int64_t{1} << 32); i += step) {
     result.push_back({i, i + step});
   }
   return result;

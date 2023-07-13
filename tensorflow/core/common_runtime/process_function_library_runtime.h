@@ -531,7 +531,7 @@ class ProcessFunctionLibraryRuntime {
       mdevice_data_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<
-      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      std::unordered_map<Device*, core::RefCountPtr<FunctionLibraryRuntime>>>
       flr_map_;
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;

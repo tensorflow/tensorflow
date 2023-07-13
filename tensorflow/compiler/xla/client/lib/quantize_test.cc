@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 
 #include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"

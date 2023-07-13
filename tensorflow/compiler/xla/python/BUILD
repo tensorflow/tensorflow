@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -212,8 +212,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -342,6 +340,7 @@ cc_library(
     deps = [
         ":exceptions",
         ":pprof_profile_builder",
+        ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":python_utils",
         ":status_casters",
@@ -366,6 +365,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
+        "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
@@ -383,6 +383,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -494,8 +495,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/synchronization",
         "@pybind11",
     ],
 )
@@ -620,7 +619,6 @@ xla_cc_test(
     srcs = ["outfeed_receiver_test.cc"],
     deps = [
         ":outfeed_receiver",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
@@ -629,9 +627,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -660,6 +656,28 @@ cc_library(
     ],
 )
 
+py_test(
+    name = "pytree_test",
+    srcs = ["pytree_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)
+
+tf_proto_library(
+    name = "pytree_proto",
+    srcs = ["pytree.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
@@ -673,6 +691,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":exceptions",
+        ":pytree_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -696,6 +715,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":refine_polymorphic_shapes",
         ":status_casters",
         ":types",
         "//tensorflow/compiler/xla:status",
@@ -708,6 +728,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -717,6 +738,28 @@ cc_library(
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
+    ],
+)
+
+cc_library(
+    name = "refine_polymorphic_shapes",
+    srcs = ["refine_polymorphic_shapes.cc"],
+    hdrs = ["refine_polymorphic_shapes.h"],
+    deps = [
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -738,10 +781,11 @@ cc_library(
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
         "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
+        "//tensorflow/tsl/profiler/convert:xplane_to_profile_instructions",
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "@pybind11",
     ],
 )
@@ -855,6 +899,12 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "py_host_callback_proto",
+    srcs = ["py_host_callback.proto"],
+    cc_api_version = 2,
+)
+
 # TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
 # xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
 # ABI separation between devices.
@@ -884,18 +934,6 @@ config_setting(
     name = "tpu_enabled",
     flag_values = {
         ":enable_tpu": "True",
-    },
-)
-
-bool_flag(
-    name = "enable_plugin_device",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "plugin_device_enabled",
-    flag_values = {
-        ":enable_plugin_device": "True",
     },
 )
 
@@ -935,9 +973,6 @@ tsl_pybind_extension(
     }) + select({
         ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
         "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
-        "//conditions:default": [],
     }),
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
@@ -969,6 +1004,7 @@ tsl_pybind_extension(
         ":py_client",
         ":python_ref_manager",
         ":pytree",
+        ":refine_polymorphic_shapes",
         ":status_casters",
         ":traceback",
         ":transfer_guard_lib",
@@ -1016,11 +1052,6 @@ tsl_pybind_extension(
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
             "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": [
-            "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
         ],
         "//conditions:default": [],
     }),

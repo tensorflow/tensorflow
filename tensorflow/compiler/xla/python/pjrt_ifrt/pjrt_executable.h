@@ -120,6 +120,11 @@ class PjRtExecutable final
     return pjrt_executable_->GetHloModules();
   }
 
+  StatusOr<absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>
+  GetCostAnalysis() const override {
+    return pjrt_executable_->GetCostAnalysis();
+  }
+
   static char ID;  // NOLINT
 
  protected:
@@ -242,6 +247,11 @@ class PjRtLoadedExecutable final
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->addressable_devices();
+  }
+
+  StatusOr<absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>
+  GetCostAnalysis() const override {
+    return pjrt_loaded_executable_->GetCostAnalysis();
   }
 
   static char ID;  // NOLINT

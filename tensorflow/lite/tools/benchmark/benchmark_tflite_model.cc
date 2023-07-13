@@ -922,8 +922,10 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
     TFLITE_LOG(ERROR) << "Failed to load model " << fd_or_graph_path;
     return kTfLiteError;
   }
-  model_ = tflite::FlatBufferModel::BuildFromModel(
-      model_loader_->GetModel()->GetModel());
+  model_ = tflite::FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(
+          model_loader_->GetModel()->allocation()->base()),
+      model_loader_->GetModel()->allocation()->bytes());
   TFLITE_LOG(INFO) << "Loaded model " << fd_or_graph_path;
   return kTfLiteOk;
 }

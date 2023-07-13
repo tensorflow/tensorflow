@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -241,7 +241,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   PriorityTracker priority_tracker;
   for (int64_t i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
     EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
-    result.push_back({highest_priority, Timespan::FromEndPoints(
+    result.push_back({highest_priority, tsl::profiler::Timespan::FromEndPoints(
                                             event_boundaries[i].time_ps,
                                             event_boundaries[i + 1].time_ps)});
   }
@@ -286,9 +286,9 @@ void StepDetails::AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e) {
   *collectives_[core_id].add_all_reduce_info() = e;
 }
 
-void StepDetails::AddDeviceMemoryTransferEvent(EventType event_type,
-                                               const Timespan& time_span,
-                                               uint64 bytes) {
+void StepDetails::AddDeviceMemoryTransferEvent(
+    EventType event_type, const tsl::profiler::Timespan& time_span,
+    uint64 bytes) {
   int index = 0;
   switch (event_type) {
     case HOST_TO_DEVICE:
@@ -312,14 +312,14 @@ void StepDetails::AddDeviceMemoryTransferEvent(EventType event_type,
       device_memory_transfers_[index].bytes_transferred() + bytes);
 }
 
-Timespan StepDetails::StepTime() const {
-  Timespan max_host_step_time;
-  Timespan max_device_step_time;
+tsl::profiler::Timespan StepDetails::StepTime() const {
+  tsl::profiler::Timespan max_host_step_time;
+  tsl::profiler::Timespan max_device_step_time;
   for (const auto& marker : markers_) {
-    Timespan& cur_max_step_time =
+    tsl::profiler::Timespan& cur_max_step_time =
         marker.type == StepMarkerType::kDeviceStepMarker ? max_device_step_time
                                                          : max_host_step_time;
-    const Timespan& new_step_time = marker.span;
+    const tsl::profiler::Timespan& new_step_time = marker.span;
     if (new_step_time.duration_ps() > cur_max_step_time.duration_ps())
       cur_max_step_time = new_step_time;
   }

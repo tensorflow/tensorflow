@@ -307,6 +307,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/config:flag_defs",
+            "//tensorflow/core/config:flags",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
             "@com_google_absl//absl/strings",
@@ -1095,7 +1097,6 @@ tf_cuda_library(
         ":c_api_internal",
         "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
-        "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
 )

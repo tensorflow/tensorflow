@@ -353,6 +353,8 @@ cc_library(
         ":xplane_utils",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -366,6 +368,7 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -413,6 +416,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
@@ -442,5 +446,18 @@ tsl_cc_test(
         "//tensorflow/tsl/profiler/lib:connected_traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
+    ],
+)
+
+cc_library(
+    name = "session_manager",
+    srcs = ["session_manager.cc"],
+    hdrs = ["session_manager.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

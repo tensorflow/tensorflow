@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -75,14 +78,15 @@ class MergeTfIfOpsPass
                                mlir::OperationPass<mlir::ModuleOp>> {
   llvm::StringRef getArgument() const final { return "tfrt-merge-tf-if-ops"; }
   llvm::StringRef getDescription() const final {
-    return "Merge stateless tf.If ops with the same arguments.";
+    return "Merge tf.If ops with the same arguments.";
   }
 
   void runOnOperation() override {
-    constexpr int kMaxIter = 10;
+    constexpr int kMaxIter = 20;
     auto module = getOperation();
 
     bool changed = true;
+
     for (int i = 0; i < kMaxIter && changed; ++i) {
       changed = false;
       for (auto func_op :
@@ -90,20 +94,28 @@ class MergeTfIfOpsPass
         changed |= ProcessFunction(func_op, i);
       }
 
-      if (changed) {
-        // Run inliner pass to expose more merge opportunities among the
-        // then-branch functions and the else-branch functions that are now
-        // respectively merged, for the next iteration.
-        mlir::OpPassManager pm(module.getOperationName());
-        pm.addPass(mlir::createInlinerPass());
-        if (mlir::failed(runPipeline(pm, module))) {
-          module.emitWarning(
-              absl::StrCat("could not run inliner pass within the "
-                           "tfrt-merge-tf-if-ops pass iteration ",
-                           i));
-          break;
-        }
+      mlir::OperationFingerPrint fingerprint(module);
+
+      // Run optimization passes to expose more merge opportunities among the
+      // then-branch functions and the else-branch functions that are now
+      // respectively merged, for the next iteration.
+      mlir::OpPassManager pm(module.getOperationName());
+      pm.addPass(mlir::createInlinerPass());
+      pm.addPass(mlir::createCSEPass());
+      pm.addPass(CreateDeduplicateIfResultPass());
+      pm.addPass(mlir::createInlinerPass());
+      pm.addPass(mlir::createCSEPass());
+      pm.addNestedPass<mlir::func::FuncOp>(
+          tfrt_compiler::CreateOptimizeTfForTfrtPass());
+      if (mlir::failed(runPipeline(pm, module))) {
+        module.emitWarning(
+            absl::StrCat("could not run inliner pass within the "
+                         "tfrt-merge-tf-if-ops pass iteration ",
+                         i));
+        break;
       }
+
+      changed |= fingerprint != mlir::OperationFingerPrint(module);
     }
   }
 
@@ -116,8 +128,8 @@ class MergeTfIfOpsPass
     for (mlir::Operation &op : op.front()) {
       auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(&op);
 
-      // Skip non tf.If ops and tf.If ops that are side-effecting.
-      if (!if_op || !if_op.getIsStateless()) continue;
+      // Skip non tf.If ops.
+      if (!if_op) continue;
 
       if_ops_to_merge[if_op].push_back(if_op);
     }
@@ -185,11 +197,15 @@ class MergeTfIfOpsPass
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPoint(if_ops.front());
 
+    bool is_stateless =
+        std::all_of(if_ops.begin(), if_ops.end(),
+                    [](mlir::TF::IfOp op) { return op.getIsStateless(); });
+
     // Create the merged tf.If op using the new branches.
     auto new_if_op = builder.create<mlir::TF::IfOp>(
         loc, new_result_types, if_ops.front().getCond(),
         if_ops.front().getInput(), then_branch_name, else_branch_name,
-        /*is_stateless=*/true);
+        is_stateless);
 
     // Replace the uses of results of the original tf.If ops with the results of
     // the merged tf.If op.

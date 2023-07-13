@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
-#include <algorithm>
-#include <vector>
+#include <cstdint>
+#include <memory>
+#include <utility>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,6 +67,11 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
   if (producer->opcode() == HloOpcode::kFusion) {
     return "the producer is a fusion";
   }
+
+  if (consumer->IsCustomFusion()) {
+    return "the consumer is a custom fusion";
+  }
+
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
@@ -75,36 +86,33 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
     return "fusing the producer would break read coalescing";
   }
 
-  if (NoFusionPossible fusible =
-          !IsProducerConsumerFusible(*producer, *consumer)) {
-    return !fusible;
+  if (auto fusible = IsProducerConsumerFusible(*producer, *consumer);
+      !fusible) {
+    return fusible;
   }
 
   if (CreatesHeavyComputation(*producer, *consumer)) {
     return "the fusion would create a heavy computation";
   }
 
-  if (NoFusionPossible fusible =
-          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    return !fusible;
-  }
-  return {};
+  return InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 
 FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                                 int64_t operand_index) {
-  if (NoFusionPossible fusible =
-          !ShouldFuseInexpensiveChecks(consumer, operand_index)) {
-    return !fusible;
+  if (auto fusible = ShouldFuseInexpensiveChecks(consumer, operand_index);
+      !fusible) {
+    return fusible;
   }
 
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (NoFusionPossible too_large =
-          !FusionFitsInBudget(*consumer, *producer, device_info_,
-                              /*is_consumer_producer_fusion=*/true)) {
-    return !too_large;
+  if (auto fits_budget =
+          FusionFitsInBudget(*consumer, *producer, device_info_,
+                             /*is_consumer_producer_fusion=*/true);
+      !fits_budget) {
+    return fits_budget;
   }
 
   if (consumer->opcode() != HloOpcode::kFusion) {
@@ -148,6 +156,11 @@ HloInstruction* GpuInstructionFusion::FuseInstruction(
       InstructionFusion::FuseInstruction(fusion_instruction, producer);
   evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
   return new_producer;
+}
+
+std::unique_ptr<FusionQueue> GpuInstructionFusion::GetFusionQueue(
+    HloComputation* computation) {
+  return InstructionFusion::GetFusionQueue(computation);
 }
 
 }  // namespace gpu

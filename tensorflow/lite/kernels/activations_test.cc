@@ -1351,6 +1351,27 @@ TEST_P(LogisticOpTest, SigmoidInt16General) {
                   kQuantizedToleranceInt16)));
 }
 
+TEST_P(SoftmaxOpTest, Softmax4DInplace) {
+  FloatActivationsOpModel m(GetRegistration(), 0.1f,
+                            {TensorType_FLOAT32, {1, 2, 1, 4}},
+                            TensorType_FLOAT32);
+  m.SetInput({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                             })));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST_P(SoftmaxOpTest, Softmax4D) {
   FloatActivationsOpModel m(GetRegistration(), 0.1f,
                             {TensorType_FLOAT32, {1, 2, 1, 4}},

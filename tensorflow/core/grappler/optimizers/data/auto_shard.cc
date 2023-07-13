@@ -784,10 +784,12 @@ Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
     default:
       Status s = ShardByFile(sink_node, num_workers, index, &flib, graph);
       if (absl::IsNotFound(s)) {
-        LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
-                        "as it failed to apply FILE sharding policy because of "
-                        "the following reason: "
-                     << s.message();
+        if (VLOG_IS_ON(2)) {
+          VLOG(2) << "AUTO sharding policy will apply DATA sharding policy "
+                     "as it failed to apply FILE sharding policy because of "
+                     "the following reason: "
+                  << s.message();
+        }
         *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(sink_node, num_workers, index, num_replicas, graph);
       }

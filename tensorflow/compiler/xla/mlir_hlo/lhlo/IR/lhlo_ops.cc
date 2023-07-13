@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <optional>
+#include <tuple>
 #include <unordered_set>
 
 #include "lhlo/utils/lhlo_utils.h"
@@ -39,10 +40,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"

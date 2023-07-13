@@ -19,10 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -33,11 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
@@ -155,8 +150,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
       mlir::mhlo::createFlattenTuplePass());
 
   // TF dialect passes
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateLegalizeHloToTfPass());
+  pass_manager->addPass(mlir::TF::CreateLegalizeHloToTfPass());
 
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
@@ -248,6 +242,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  if (pass_config.legalize_custom_tensor_list_ops) {
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTensorListPass());
+  }
 
   if (pass_config.lower_tensor_list_ops &&
       toco_flags.tf_quantization_mode().empty()) {
