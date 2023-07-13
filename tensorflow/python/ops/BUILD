@@ -762,6 +762,7 @@ py_library(
         ":math_ops_gen",
         ":shape_util",
         "//tensorflow/core/config:flags_py",
+        "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:common_shapes",
