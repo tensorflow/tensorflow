@@ -80,6 +80,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
+    debug_opts.set_xla_gpu_use_runtime_fusion(true);
     config.set_debug_options(debug_opts);
 
     auto result = backend().compiler()->RunHloPasses(
@@ -285,9 +286,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
     })");
 }
 
-// TODO(jlebar): leaky-relu fusion is disabled because some convolutions have 0
-// algorithm choices.  See the cc file.
-TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestLeakyRelu) {
+TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP()
@@ -994,6 +993,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
       ROOT elu = select(cmp, sum, expm1)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1038,6 +1040,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
       ROOT root = tuple(elu, not_elu) 
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1086,6 +1091,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
       ROOT relu = clamp(zeros, sum, sixes)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1125,6 +1133,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
       ROOT root = tuple(relu, not_relu)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1150,9 +1161,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
 
-// TODO(jlebar): leaky-relu fusion is disabled because some convolutions have 0
-// algorithm choices.  See the cc file.
-TEST_F(CudnnFusedConvRewriterHloTest, DISABLED_FuseLeakyRelu) {
+TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
@@ -1170,6 +1179,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DISABLED_FuseLeakyRelu) {
       ROOT leaky_relu = select(cmp, sum, mul)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1212,6 +1224,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
       ROOT root = tuple(leaky_relu, not_leaky_relu) 
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
