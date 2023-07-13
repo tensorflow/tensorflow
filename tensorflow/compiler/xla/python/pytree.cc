@@ -185,7 +185,12 @@ void PyTreeDef::FlattenIntoImpl(
   } else {
     node.kind = GetKind(handle, &node.custom);
     auto recurse = [this, &leaf_predicate, &leaves](py::handle child) {
+      if (Py_EnterRecursiveCall(
+              " in flatten; PyTree may have cyclical node references.")) {
+        return;
+      }
       FlattenInto(child, leaves, leaf_predicate);
+      Py_LeaveRecursiveCall();
     };
     switch (node.kind) {
       case PyTreeKind::kNone:
@@ -265,6 +270,11 @@ PyTreeDef::Flatten(py::handle x, std::optional<py::function> leaf_predicate) {
   std::vector<py::object> leaves;
   auto tree = std::make_unique<PyTreeDef>();
   tree->FlattenInto(x, leaves, leaf_predicate);
+  // Handle the unbounded recursion error for trees with cyclical node
+  // references.
+  if (PyErr_Occurred()) {
+    throw py::error_already_set();
+  }
   return std::make_pair(std::move(leaves), std::move(tree));
 }
 
