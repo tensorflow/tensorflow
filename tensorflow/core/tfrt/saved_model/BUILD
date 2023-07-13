@@ -147,8 +147,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tfrt_jitrt_passes",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",

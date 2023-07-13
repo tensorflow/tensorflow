@@ -64,7 +64,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/mlir/tfrt:transforms/update_op_cost_in_tfrt_mlir",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:import_model",

@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
@@ -76,7 +75,6 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       /*cancellation_manager=*/nullptr);
   TF_DCHECK_OK(status);
 
-  status = SetUpTfJitRtRequestContext(&request_context_builder);
   TF_DCHECK_OK(status);
 
   auto request_context = std::move(request_context_builder).build();

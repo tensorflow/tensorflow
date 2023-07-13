@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_jitrt_stub.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -128,7 +127,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // flow, which is converted back after the optimization passes are performed.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<func::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRemoveUnusedWhileResultsPass());
   pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
@@ -172,8 +171,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateTensorDeviceCopyConversionPass());
-
-  AddTfrtJitRtPasses(options, pm);
 
   // Rewriter operation sequences to device specific fusions.
   DeviceNameUtils::ParsedName parsed_name;

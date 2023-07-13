@@ -31,7 +31,6 @@ tf_cc_binary(
     deps = [
         ":bef_executor_lib",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_kernels_alwayslink",

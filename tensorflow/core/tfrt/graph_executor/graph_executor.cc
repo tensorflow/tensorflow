@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -238,8 +237,6 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   fallback_request_state.set_cancellation_manager(
       &request_info->cancellation_manager);
 
-  TF_RETURN_IF_ERROR(
-      tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   // Set priority in the builder.
   tfrt::RequestOptions request_options;
   request_options.priority = run_options.priority;

@@ -411,7 +411,6 @@ cc_library(
         ":cost_analysis",
         ":fallback_converter",
         ":tensor_array_side_effect_analysis",
-        ":tfrt_jitrt_stub",
         ":tfrt_pipeline_options",
         ":tpu_passes",
         ":transform_utils",
@@ -640,8 +639,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
     ],
 )
 
@@ -668,7 +665,6 @@ cc_library(
         ":test_tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_to_tfrt",
-        ":tfrt_jitrt_passes",
         ":transforms/gpu_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
@@ -750,7 +746,6 @@ tf_cc_binary(
     testonly = True,
     visibility = [":friends"],
     deps = [
-        ":tf_jitrt_kernels_alwayslink",
         "@tf_runtime//:dtype",
         "@tf_runtime//:simple_tracing_sink",
         "@tf_runtime//tools:bef_executor_expensive_kernels",
@@ -859,40 +854,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
-    name = "tfrt_jitrt_passes",
-    srcs = ["transforms/tfrt_jitrt_passes.cc"],
-    deps = [
-        ":fallback_converter",
-        ":tf_jitrt_opdefs",
-        ":tf_jitrt_pipeline",
-        ":tfrt_jitrt_stub",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_clustering",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@tf_runtime//:basic_kernels_opdefs",
-        "@tf_runtime//backends/jitrt:jitrt_opdefs",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tfrt_jitrt_stub",
-    srcs = ["transforms/tfrt_jitrt_stub.cc"],
-    hdrs = ["transforms/tfrt_jitrt_stub.h"],
-    deps = [
-        ":corert_converter",
-        ":tfrt_pipeline_options",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
