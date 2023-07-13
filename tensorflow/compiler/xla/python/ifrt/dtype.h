@@ -97,8 +97,8 @@ class DType {
   bool operator!=(const DType& other) const { return kind_ != other.kind_; }
 
   // Returns the byte size of a single element of this DType. Returns
-  // std::nullopt if there is no fixed size or not aligned to a byte boundary
-  // (such as kPred).
+  // std::nullopt if not aligned to a byte boundary or there is no fixed size
+  // (such as kString).
   std::optional<int> byte_size() const;
 
   // Returns the bit size of a single element of this DType. Returns
