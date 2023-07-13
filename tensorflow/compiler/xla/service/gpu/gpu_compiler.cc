@@ -1676,8 +1676,9 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   }
 
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be any other
-  // fusion output that accesses it in a different iteration order. To make sure
+  // iteration order as the fusion output. Also, there should not be two fusion
+  // outputs that consume the fusion parameter, because we do not want to share
+  // the same fusion operand with two different fusion outputs. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
@@ -1702,8 +1703,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // We still need to process the users of 'hlo_operand'. There can be other
-      // users in addition to the tuple user.
+      // The output should have at most 1 user: the tuple op (in case of a
+      // multi-output fusion)
+      if (hlo_operand->user_count() > 1) {
+        return false;
+      }
+      continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
@@ -1730,8 +1735,10 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
       } else if ((!hlo->IsElementwiseOnOperand(
                       hlo->operand_index(hlo_operand)) ||
                   hlo->opcode() == HloOpcode::kCopy) &&
-                 hlo->opcode() != HloOpcode::kBitcast &&
-                 hlo->opcode() != HloOpcode::kTuple) {
+                 hlo->opcode() != HloOpcode::kBitcast) {
+        // This check also catches the case that we reach a different fusion
+        // output, as that fusion output would have a tuple op as user, which we
+        // do not allow here.
         // Even if 'hlo' is not elementwise on the operand, it is ok if we are
         // coming from the second operand and 'hlo' is a DynamicUpdateSlice
         // which is the non_bitcast_root. This corresponds to the special case
@@ -1745,11 +1752,9 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
           return false;
         }
       }
-      if (visited.contains(hlo)) {
-        continue;
+      if (visited.insert(hlo).second) {
+        q.push(hlo);
       }
-      visited.insert(hlo);
-      q.push(hlo);
     }
   }
   return found_path_to_output;
