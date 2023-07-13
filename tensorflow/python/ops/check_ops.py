@@ -1671,7 +1671,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   Raises:
     ValueError:  If static checks determine any shape constraint is violated.
   """
-  assert_shapes(
+  return assert_shapes(
       shapes, data=data, summarize=summarize, message=message, name=name)
 
 
