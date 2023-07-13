@@ -3676,7 +3676,7 @@ def _wrap_pad(tensor, paddings, name=None):
       # Check for partial wrap.
       if lower_idx < shape(tensor)[i]:
         partial_slice_begin = zeros(rank(tensor_to_copy), dtype=dtypes.int32)
-        partial_slice_begin = gen_array_ops.tensor_scatter_nd_add(
+        partial_slice_begin = gen_array_ops.tensor_scatter_add(
           partial_slice_begin, 
           reshape(i, [1,1]), 
           (shape(tensor_to_copy)[i] - lower_idx)[..., None]
@@ -3688,7 +3688,7 @@ def _wrap_pad(tensor, paddings, name=None):
           ]
       else:
         length_to_update, value = [shape(tensor)[i], tensor_to_copy]
-      lower_begin = gen_array_ops.tensor_scatter_nd_sub(
+      lower_begin = gen_array_ops.tensor_scatter_sub(
         lower_begin, 
         reshape(i, [1,1]), 
         length_to_update[...,None]
@@ -3716,11 +3716,11 @@ def _wrap_pad(tensor, paddings, name=None):
           )
         length_to_update, value  = [
           upper_idx, 
-          slice(tensor_to_copy, partial_slice_begin, size)
+          slice(tensor_to_copy, partial_slice_begin, upper_size)
           ]
       else:
         length_to_update, value = [shape(tensor)[i], tensor_to_copy]
-      upper_begin = gen_array_ops.tensor_scatter_nd_add(
+      upper_begin = gen_array_ops.tensor_scatter_add(
         upper_begin,  
         reshape(i, [1,1]), 
         shape(tensor)[i][...,None]
