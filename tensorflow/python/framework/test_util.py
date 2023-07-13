@@ -2700,11 +2700,14 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
+      flattened_tensors = nest.flatten(tensors)
       if sess is None:
         with self.test_session() as sess:
-          return sess.run(tensors)
+          flattened_results = sess.run(flattened_tensors)
       else:
-        return sess.run(tensors)
+        flattened_results = sess.run(flattened_tensors)
+
+      return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager

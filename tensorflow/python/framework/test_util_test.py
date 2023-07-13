@@ -16,6 +16,7 @@
 
 import collections
 import copy
+import dataclasses
 import random
 import sys
 import threading
@@ -55,6 +56,26 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.protobuf import compare_test_pb2
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: ops.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+  def __eq__(self, other):
+    return self.mask == other.mask and self.value == other.value
 
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -909,6 +930,21 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                          "e": constant_op.constant(4)}}
 
     self.assertEqual(expected, self.evaluate(nested))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_custom_dataclass_evaluate(self):
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
+    mt_val = self.evaluate(mt)
+    self.assertEqual(mt_val.mask, True)
+    self.assertAllEqual(mt_val.value, [1])
+
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([1]))
+    mt2_val = self.evaluate(mt2)
+    self.assertEqual(mt_val, mt2_val)
+
+    mt3 = MaskedTensor(mask=True, value=constant_op.constant([2]))
+    mt3_val = self.evaluate(mt3)
+    self.assertNotEqual(mt_val, mt3_val)
 
   def test_run_in_graph_and_eager_modes(self):
     l = []
