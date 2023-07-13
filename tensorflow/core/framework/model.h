@@ -107,6 +107,13 @@ struct Parameter {
         max(max),
         state(std::move(state)) {}
 
+  explicit Parameter(const std::shared_ptr<Parameter> parameter)
+      : name(parameter->name),
+        value(parameter->value),
+        min(parameter->min),
+        max(parameter->max),
+        state(parameter->state) {}
+
   // Human-readable name of the parameter.
   const string name;
 
