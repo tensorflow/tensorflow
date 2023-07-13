@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
     "if_cuda_or_rocm",
     "if_google",
     "if_linux_x86_64",
@@ -192,15 +193,21 @@ tf_cuda_library(
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
         # Clean up so that PJRT can run on ARM.
-        if_linux_x86_64([
-            "//tensorflow/compiler/tf2xla:layout_util",
-            "//tensorflow/compiler/jit:flags",
-            "//tensorflow/compiler/jit:pjrt_device_context",
-            "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
-            "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
-            "//tensorflow/core/tfrt/common:pjrt_util",
-        ]) + if_cuda_or_rocm([
+        # Also it won't build with WeightWatcher which tracks OSS build binaries.
+        # TODO(b/290533709): Clean up this build rule.
+        select({
+            clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
+            clean_dep("//tensorflow:linux_x86_64"): [
+                "//tensorflow/compiler/tf2xla:layout_util",
+                "//tensorflow/compiler/jit:flags",
+                "//tensorflow/compiler/jit:pjrt_device_context",
+                "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+                "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+                "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+                "//tensorflow/core/tfrt/common:pjrt_util",
+            ],
+            "//conditions:default": [],
+        }) + if_cuda_or_rocm([
             "//tensorflow/compiler/xla/service:gpu_plugin_impl",  # for registering cuda compiler.
         ]),
     ),
