@@ -61,16 +61,24 @@ class AutotunerCompileUtil {
   static StatusOr<std::optional<AutotunerCompileUtil>> Create(
       const AutotuneConfig& config, const DebugOptions& opts);
 
+  struct ProfilingOutput {
+    ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
+        : duration(duration), output(std::move(buffer)) {}
+
+    absl::Duration duration;
+    ScopedShapedBuffer output;
+  };
+
   // Generates an executable first, given the module generator function in
   // `extractor`.
   //
   // Runs the resulting executable with the given extractor, cached with
   // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
   // `Status` otherwise.
-  StatusOr<std::optional<absl::Duration>> GenerateAndProfileExecutable(
+  StatusOr<std::optional<ProfilingOutput>> GenerateAndProfileExecutable(
       const AutotuneResult& config, const AutotuneCacheKey& cache_key,
       se::Stream* stream, absl::Span<se::DeviceMemoryBase const> input_buffers,
-      ShapedBuffer output_buffer, GenerateModuleFn extractor);
+      GenerateModuleFn extractor);
 
   // Generic method to compile a generated module from `extractor` in isolation.
   //
