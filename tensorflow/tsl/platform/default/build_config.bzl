@@ -663,6 +663,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:notification.h"),
         clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
         clean_dep("//tensorflow/tsl/platform/default:status.h"),
+        clean_dep("//tensorflow/tsl/platform/default:statusor.h"),
         clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
         clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
