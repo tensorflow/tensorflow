@@ -532,11 +532,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
 #ifdef ENABLE_ONEDNN_V3
       if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
         net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem});
-        net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem});
-        net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *context_.dst_scale_mem});
+            {{DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem},
+             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem},
+             { DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+               *context_.dst_scale_mem }});
       }
 #endif  // ENABLE_ONEDNN_V3
     } else if (!convFwdDims.fuse_bn_dims.empty()) {
@@ -569,11 +568,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
 #ifdef ENABLE_ONEDNN_V3
       if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
         net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem});
-        net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem});
-        net_args.insert(
-            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *context_.dst_scale_mem});
+            {{DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem},
+             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem},
+             { DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+               *context_.dst_scale_mem }});
       }
 #endif  // ENABLE_ONEDNN_V3
     }
@@ -2528,10 +2526,10 @@ class MklQuantizedConvOp
     const float* max_filter = max_filter_vector.flat<float>().data();
     const float int_const_scale_limit =
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
+
     // Re-scale bias if either of following 2 conditions are met:
     // 1. Bias is not const;
     // 2. Bias is const, bias has not been cached (first iteration).
-
     size_t depth = min_filter_vector.NumElements();
     bool scales_are_valid = (depth == scales_.size());
     scales_.resize(depth);
@@ -2564,9 +2562,10 @@ class MklQuantizedConvOp
         input_bias_->set_data_handle(bias_buf);
       }
 
-      if (!scaled_bias_buf_)
+      if (!scaled_bias_buf_) {
         AllocTmpBuffer<float>(context, &scaled_bias_tensor_,
                               conv_fwd_pd->bias_desc(), &scaled_bias_buf_);
+      }
       if (!scaled_bias_) {
         scaled_bias_ = new memory(conv_fwd_pd->bias_desc(), this->cpu_engine_,
                                   scaled_bias_buf_);
