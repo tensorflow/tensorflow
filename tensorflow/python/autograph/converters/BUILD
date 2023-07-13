@@ -6,15 +6,6 @@ package(
 )
 
 py_strict_library(
-    name = "__init__",
-    srcs = ["__init__.py"],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":list_comprehensions",
-    ],
-)
-
-py_strict_library(
     name = "slices",
     srcs = ["slices.py"],
     visibility = ["//tensorflow:__subpackages__"],
@@ -37,17 +28,6 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
         "//tensorflow/python/autograph/pyct/static_analysis:annos",
-    ],
-)
-
-py_strict_library(
-    name = "list_comprehensions",
-    srcs = ["list_comprehensions.py"],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/pyct:templates",
-        "@gast_archive//:gast",
     ],
 )
 
@@ -348,18 +328,6 @@ py_strict_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_strict_test(
-    name = "list_comprehensions_test",
-    srcs = ["list_comprehensions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":list_comprehensions",
-        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
