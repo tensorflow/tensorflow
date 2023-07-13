@@ -464,6 +464,7 @@ cc_library(
     ]) + if_android([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_google([
+        ":fingerprinting_utils",
         "//tensorflow/tools/proto_splitter/cc:util",
     ]),
     alwayslink = True,
@@ -485,6 +486,103 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# cc_library(
+#     name = "fingerprinting_utils_impl",
+#     srcs = [
+#         "fingerprinting_utils.cc",
+#         "fingerprinting_utils.h",
+#     ],
+#     visibility = [
+#         "//tensorflow:__pkg__",
+#     ],
+#     deps = [
+#         ":constants",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#         "@com_google_absl//absl/strings",
+#         "//third_party/riegeli/bytes:file_reader",
+#         "//third_party/riegeli/records:record_reader",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core/graph/regularization:simple_delete",
+#         "//tensorflow/core/graph/regularization:util",
+#         "//tensorflow/core/util/tensor_bundle:naming",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tools/proto_splitter:merge",
+#         "//tensorflow/tools/proto_splitter/cc:util",
+#         "//tensorflow/tsl/platform:protobuf",
+#     ],
+#     alwayslink = True,
+# )
+#
+# cc_library(
+#     name = "fingerprinting_utils",
+#     hdrs = ["fingerprinting_utils.h"],
+#     visibility = [
+#         "//tensorflow/cc/saved_model:__subpackages__",
+#     ],
+#     deps = if_static([
+#         ":fingerprinting_utils_impl",
+#         "@com_google_protobuf//:protobuf_headers",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#         "@com_google_absl//absl/strings",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tsl/platform:protobuf",
+#         "//third_party/riegeli/bytes:file_reader",
+#         "//third_party/riegeli/records:record_reader",
+#         "//tensorflow/core:lib",
+#     ]),
+# )
+#
+# tf_cc_test(
+#     name = "fingerprinting_utils_test",
+#     srcs = ["fingerprinting_utils_test.cc"],
+#     data = [
+#         "//tensorflow/tools/proto_splitter/testdata:many-field.cpb",
+#         "//tensorflow/tools/proto_splitter/testdata:split-standard.cpb",
+#     ],
+#     deps = [
+#         ":fingerprinting_utils",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/strings",
+#         "//third_party/protobuf",
+#         "//third_party/riegeli/bytes:file_reader",
+#         "//third_party/riegeli/records:record_reader",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core/platform:errors",
+#         "//tensorflow/core/platform:path",
+#         "//tensorflow/core/platform:protobuf",
+#         "//tensorflow/core/platform:test",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tools/proto_splitter/cc:util",
+#         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+#
+# tf_cc_test(
+#     name = "fingerprinting_chunked_test",
+#     size = "small",
+#     srcs = ["fingerprinting_chunked_test.cc"],
+#     data = [
+#         ":saved_model_fingerprinting_test_files",
+#         ":saved_model_test_files",
+#     ],
+#     deps = [
+#         ":fingerprinting",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core/platform:path",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 tf_cc_test(
     name = "fingerprinting_test",
