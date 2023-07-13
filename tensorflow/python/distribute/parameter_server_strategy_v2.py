@@ -824,7 +824,11 @@ class ParameterServerStrategyV2Extended(
       with ops.device("/job:ps/task:%d/device:CPU:0" %
                       (self._variable_count % self._num_ps)):
         var = next_creator(**kwargs)
-        logging.debug(
+        log_method = (
+            logging.info if os.getenv("TF_PSS_VERBOSE_VARIABLE_PLACEMENT")
+            else logging.debug
+        )
+        log_method(
             "Creating variable (name:%s, shape:%r) on "
             "/job:ps/task:%d/device:CPU:0", var.name, var.shape,
             (self._variable_count % self._num_ps))
