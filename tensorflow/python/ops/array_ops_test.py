@@ -149,10 +149,10 @@ class ArrayOpTest(test.TestCase):
     paddings = array_ops.constant([[1, 1,], [2, 2]])
     self.assertAllEqual(
       array_ops._wrap_pad(t, paddings), array_ops.constant([
-                                    [2, 3, 1, 2, 3, 1, 2],
-                                    [2, 3, 1, 2, 3, 1, 2],
-                                    [5, 6, 4, 5, 6, 4, 5],
-                                    [5, 6, 4, 5, 6, 4, 5]] )
+                                      [5, 6, 4, 5, 6, 4, 5],
+                                      [2, 3, 1, 2, 3, 1, 2],
+                                      [5, 6, 4, 5, 6, 4, 5],
+                                      [2, 3, 1, 2, 3, 1, 2]] )
     )
 
   def testWrapPadConcreteOp(self):
@@ -163,10 +163,10 @@ class ArrayOpTest(test.TestCase):
     paddings = array_ops.constant([[1, 1,], [2, 2]])
     self.assertAllEqual(
       wrap_pad_concrete(t, paddings), array_ops.constant([
-                                    [2, 3, 1, 2, 3, 1, 2],
-                                    [2, 3, 1, 2, 3, 1, 2],
-                                    [5, 6, 4, 5, 6, 4, 5],
-                                    [5, 6, 4, 5, 6, 4, 5]] )
+                                      [5, 6, 4, 5, 6, 4, 5],
+                                      [2, 3, 1, 2, 3, 1, 2],
+                                      [5, 6, 4, 5, 6, 4, 5],
+                                      [2, 3, 1, 2, 3, 1, 2]] )
     )
 
   def testShapeDefaultIn32(self):
