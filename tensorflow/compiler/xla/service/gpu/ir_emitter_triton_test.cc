@@ -876,6 +876,124 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
 
+TEST_F(TritonGemmTest, SineOutputIsNotFused) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = s8[7,101] parameter(0)
+  p1 = f32[101,16] parameter(1)
+  c = f32[7,101] convert(p0)
+  d = f32[7,16] dot(c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT r = f32[7,16] sine(d)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Sin(
+                  m::Fusion(m::Parameter(), m::Parameter())
+                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+}
+
+TEST_F(TritonGemmLevel2Test, NarrowingConvertOutputIsFused) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = s8[22,80] parameter(0)
+  p1 = f32[80,54] parameter(1)
+  c = f32[22,80] convert(p0)
+  d = f32[54,22] dot(p1, c),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  ROOT r = f16[54,22] convert(d)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/3e-2, /*arel=*/3e-2}));
+}
+
+TEST_F(TritonGemmLevel2Test, ParameterAfterDotIsFused) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[350,1280]{1,0} parameter(0)
+  p1 = s16[1280,690]{0,1} parameter(1)
+  p1c = bf16[1280,690]{0,1} convert(p1)
+  dot.21 = bf16[350,690]{1,0} dot(p0, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = bf16[350,690]{1,0} parameter(2)
+  ROOT r = bf16[350,690]{1,0} multiply(p2, dot.21)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+  if (!instr->IsCustomFusion()) {
+    instr = instr->operand(0);
+    ASSERT_TRUE(instr->IsCustomFusion());
+  }
+  EXPECT_THAT(
+      instr,
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+}
+
+TEST_F(TritonGemmLevel2Test, OutputFusionExecutesCorrectly) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[350,1280]{1,0} parameter(0)
+  p0c = bf16[350,1280]{1,0} convert(p0)
+  p1 = bf16[1280,690]{0,1} parameter(1)
+  d = bf16[350,690]{1,0} dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p3 = bf16[350,690]{1,0} parameter(3)
+  multiply.8811 = bf16[350,690]{1,0} multiply(d, p3)
+  neg.484 = bf16[350,690]{1,0} negate(multiply.8811)
+  p2 = bf16[350,690]{1,0} parameter(2)
+  ROOT multiply.8808 = bf16[350,690]{1,0} multiply(neg.484, p2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+  if (!instr->IsCustomFusion()) {
+    instr = instr->operand(0);
+    ASSERT_TRUE(instr->IsCustomFusion());
+  }
+  EXPECT_THAT(
+      instr,
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
+                           m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+}
+
 TEST_F(TritonGemmTest, Naming) {
   const char* hlo_text = R"(
 HloModule t
