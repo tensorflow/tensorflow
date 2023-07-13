@@ -1,0 +1,39 @@
+From 02357eb9c16250154d11740035e8896c0b51df01 Mon Sep 17 00:00:00 2001
+From: xiaoyu_tong <tongxiaoyu@iscas.ac.cn>
+Date: Wed, 5 Jul 2023 15:56:58 +0000
+Subject: [PATCH] hardcode-go-SDKS
+
+---
+ go/private/sdk.bzl | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/go/private/sdk.bzl b/go/private/sdk.bzl
+index ee53cb0b..63e3c895 100644
+--- a/go/private/sdk.bzl
++++ b/go/private/sdk.bzl
+@@ -43,6 +43,14 @@ def go_host_sdk(name, register_toolchains = True, **kwargs):
+     if register_toolchains:
+         _register_toolchains(name)
+ 
++GO_SDKS = {
++ "linux_amd64": ("go1.18.4.linux-amd64.tar.gz", "c9b099b68d93f5c5c8a8844a89f8db07eaa58270e3a1e01804f17f4cf8df02f5"),
++ "linux_arm64": ("go1.18.4.linux-arm64.tar.gz", "35014d92b50d97da41dade965df7ebeb9a715da600206aa59ce1b2d05527421f"),
++ "linux_armv6l": ("go1.18.4.linux-armv6l.tar.gz", "7dfeab572e49638b0f3d9901457f0622c27b73301c2b99db9f5e9568ff40460c"),
++ "linux_riscv64":("go1.21rc2.linux-riscv64.tar.gz","33ea0c09d1f10f034d9e4fbef4eaceb785f3433ba631eaacb01a0af40773b673")
++}
++
++
+ def _go_download_sdk_impl(ctx):
+     if not ctx.attr.goos and not ctx.attr.goarch:
+         goos, goarch = _detect_host_platform(ctx)
+@@ -431,6 +439,7 @@ def go_register_toolchains(version = None, nogo = None, go_version = None):
+             go_download_sdk(
+                 name = "go_sdk",
+                 version = version,
++		sdks = GO_SDKS,
+             )
+ 
+     if nogo:
+-- 
+2.25.1
+

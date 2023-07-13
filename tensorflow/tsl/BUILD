@@ -285,6 +285,12 @@ selects.config_setting_group(
 )
 
 config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},

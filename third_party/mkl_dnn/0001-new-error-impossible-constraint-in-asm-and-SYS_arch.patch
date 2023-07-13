@@ -1,0 +1,64 @@
+From 104102f2bedaca0f5832628365082bfedfb207c9 Mon Sep 17 00:00:00 2001
+From: xiaoyu_tong <tongxiaoyu@iscas.ac.cn>
+Date: Wed, 12 Jul 2023 06:05:56 +0000
+Subject: [PATCH] new-error-impossible-constraint-in-asm-and-SYS_arch
+
+---
+ src/cpu/jit_utils/linux_perf/linux_perf.cpp | 17 ++++++++++++++---
+ src/cpu/x64/cpu_isa_traits.cpp              |  6 +++---
+ 2 files changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/src/cpu/jit_utils/linux_perf/linux_perf.cpp b/src/cpu/jit_utils/linux_perf/linux_perf.cpp
+index 63fece085..252d21053 100644
+--- a/src/cpu/jit_utils/linux_perf/linux_perf.cpp
++++ b/src/cpu/jit_utils/linux_perf/linux_perf.cpp
+@@ -189,10 +189,21 @@ private:
+     static uint64_t get_timestamp(bool use_tsc) {
+ #if DNNL_X64
+         if (use_tsc) {
+-            uint32_t hi, lo;
+-            asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+-            return (((uint64_t)hi) << 32) | lo;
++           #if (__riscv)
++               {
++                uint32_t value;
++                asm volatile ("rdtime %0":"=r"(value));
++                return value;
++                }
++           #else
++               {
++                uint32_t hi, lo;
++                asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
++                return (((uint64_t)hi) << 32) | lo;
++                }
++            #endif
+         }
++
+ #else
+         if (use_tsc) {
+             fprintf(stderr,
+diff --git a/src/cpu/x64/cpu_isa_traits.cpp b/src/cpu/x64/cpu_isa_traits.cpp
+index eb9afd9f0..26b657544 100644
+--- a/src/cpu/x64/cpu_isa_traits.cpp
++++ b/src/cpu/x64/cpu_isa_traits.cpp
+@@ -338,14 +338,14 @@ namespace {
+ 
+ bool init() {
+     unsigned long bitmask = 0;
+-    long status = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
++    long status = syscall(SYS_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+     if (0 != status) return false;
+     if (bitmask & XFEATURE_MASK_XTILEDATA) return true;
+ 
+-    status = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
++    status = syscall(SYS_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
+     if (0 != status)
+         return false; // XFEATURE_XTILEDATA setup is failed, TMUL usage is not allowed
+-    status = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
++    status = syscall(SYS_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+ 
+     // XFEATURE_XTILEDATA setup is failed, can't use TMUL
+     if (0 != status || !(bitmask & XFEATURE_MASK_XTILEDATA)) return false;
+-- 
+2.25.1
+

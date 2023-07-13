@@ -102,6 +102,7 @@ _COPTS_LIST = select({
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
     "-DDNNL_ENABLE_ITT_TASKS",
+    "-DDNNL_TARGET_ARCH=RV64",
 ] + tf_openmp_copts()
 
 _INCLUDES_LIST = [
@@ -167,6 +168,7 @@ cc_library(
         "@org_tensorflow//tensorflow/tsl:linux_aarch64": ["-lrt"],
         "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["-lrt"],
         "@org_tensorflow//tensorflow/tsl:linux_ppc64le": ["-lrt"],
+        "@org_tensorflow//tensorflow/tsl:linux_riscv64": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
