@@ -61,13 +61,7 @@ class PjrtCompileTest(test.TestCase):
       x.assign(y)
       y.assign_add([1.0, 1.0])
 
-    # Currently PjRt only supports compilation and execution for the XLA_GPU
-    # device to unblock development. Support for non-XLA devices (CPU/GPU/single
-    # core TPU) is going to be added soon, after which support for XLA_* devices
-    # will be dropped.
-    # TODO(b/255826209): Modify the test as we progress towards supporting
-    # non-XLA devices.
-    with ops.device("/device:XLA_GPU:0"):
+    with ops.device("/device:GPU:0"):
       # Function call with scalars
       self.assertEqual(self.evaluate(foo(1, 2)), 4)
 

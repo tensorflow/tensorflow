@@ -78,12 +78,16 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #ifdef TF_GPU_USE_PJRT
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/stream_executor/device_host_allocator.h"
+#include "tensorflow/core/tfrt/common/global_state.h"
 #endif  // TF_GPU_USE_PJRT
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
@@ -112,6 +116,21 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+#ifdef TF_GPU_USE_PJRT
+using PjRtDeviceCompiler =
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
+
+void DeleteDeviceCompiler(const DeviceType& device_type) {
+  ResourceMgr* rm = tfrt_global::GetTFGlobalResourceMgr();
+  rm->Delete<PjRtDeviceCompiler>(rm->default_container(),
+                                 GetPjRtDeviceCompilerResourceName(device_type))
+      .IgnoreError();
+  rm->Delete<DeviceCompilationProfiler>(
+        rm->default_container(),
+        GetPjRtDeviceCompilationProfilerResourceName(device_type))
+      .IgnoreError();
+}
+#endif  // TF_GPU_USE_PJRT
 
 // Returns priority for the given virtual GPU id from the session options.
 // Returns 0 if no virtual devices are specified.
@@ -1755,15 +1774,22 @@ Status BaseGPUDeviceFactory::CreateDevices(
           /*should_stage_host_to_device_transfers=*/true,
           /*gpu_run_options=*/std::move(gpu_run_options));
 
-  return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
-                                                std::move(pjrt_client));
+  TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
+      DeviceType(DEVICE_GPU), std::move(pjrt_client)));
+  // We don't forsee a realistic scenario where the PjRtClient is deleted and
+  // replaced by a new one, except in unit tests. However, if this does happen,
+  // the DeviceCompiler that stores the PjRtLoadedExecutables built by the old
+  // PjRtClient needs to be deleted. A new DeviceCompiler using the current
+  // PjRtClient will be created on-demand when compilation is requested (if one
+  // doesn't exist already).
+  DeleteDeviceCompiler(DeviceType(DEVICE_GPU));
 #else
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_device_id,
                                        /*dev_locality=*/it->second,
                                        gpu_allocator, devices));
   }
-  return OkStatus();
 #endif  // TF_GPU_USE_PJRT
+  return OkStatus();
 }
 
 static string GetShortDeviceDescription(
