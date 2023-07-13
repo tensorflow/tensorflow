@@ -34,6 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import internal
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.nest_util import CustomNestProtocol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -492,6 +493,12 @@ def type_spec_from_value(element, use_fallback=True):
     return type(element)(*[
         type_spec_from_value(getattr(element, a.name)) for a in attrs
     ])
+
+  if isinstance(element, CustomNestProtocol):
+    # pylint: disable=protected-access
+    metadata, children = element.__tf_flatten__()
+    return element.__tf_unflatten__(metadata, type_spec_from_value(children))
+    # pylint: enable=protected-access
 
   if use_fallback:
     # As a fallback try converting the element to a tensor.
