@@ -100,6 +100,7 @@ def xla_cc_test(
                        clean_dep("//tensorflow/tsl/profiler/utils:time_utils_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:dnn_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
