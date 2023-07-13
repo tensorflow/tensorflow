@@ -29,11 +29,13 @@ load(
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
+    "if_tensorrt_exec",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
     "if_cuda",
+    "if_cuda_exec",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -463,6 +465,16 @@ def tf_copts(
         })
     )
 
+def tf_copts_exec(
+        android_optimization_level_override = "-O2",
+        is_external = False,
+        allow_exceptions = False):
+    return tf_copts(
+        android_optimization_level_override,
+        is_external,
+        allow_exceptions,
+    ) + if_cuda_exec(["-DGOOGLE_CUDA=1"]) + if_tensorrt_exec(["-DGOOGLE_TENSORRT=1"])
+
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
@@ -555,7 +567,7 @@ def tf_gen_op_libs(
     for n in op_lib_names:
         cc_library(
             name = n + "_op_lib",
-            copts = tf_copts(is_external = is_external),
+            copts = tf_copts_exec(is_external = is_external),
             features = features,
             srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
@@ -1389,7 +1401,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        copts = copts + tf_copts(),
+        copts = copts + tf_copts_exec(),
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
