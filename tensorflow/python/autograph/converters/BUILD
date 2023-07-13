@@ -85,28 +85,6 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "control_flow_deprecated_py2",
-    srcs = ["control_flow_deprecated_py2.py"],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/lang:directives",
-        "//tensorflow/python/autograph/pyct:anno",
-        "//tensorflow/python/autograph/pyct:ast_util",
-        "//tensorflow/python/autograph/pyct:cfg",
-        "//tensorflow/python/autograph/pyct:parser",
-        "//tensorflow/python/autograph/pyct:qual_names",
-        "//tensorflow/python/autograph/pyct:templates",
-        "//tensorflow/python/autograph/pyct/static_analysis:activity",
-        "//tensorflow/python/autograph/pyct/static_analysis:annos",
-        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
-        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
-        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
-        "@gast_archive//:gast",
-    ],
-)
-
-py_strict_library(
     name = "directives",
     srcs = ["directives.py"],
     visibility = ["//tensorflow:__subpackages__"],
