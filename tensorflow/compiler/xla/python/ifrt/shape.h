@@ -22,8 +22,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/python/ifrt/types.pb.h"
-#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,12 +41,6 @@ class Shape {
   Shape(Shape&&) = default;
   Shape& operator=(const Shape&) = default;
   Shape& operator=(Shape&&) = default;
-
-  // Constructs `Shape` from `ShapeProto`.
-  static StatusOr<Shape> FromProto(const ShapeProto& proto);
-
-  // Returns a `ShapeProto` representation.
-  ShapeProto ToProto() const;
 
   absl::Span<const int64_t> dims() const { return dims_; }
 
