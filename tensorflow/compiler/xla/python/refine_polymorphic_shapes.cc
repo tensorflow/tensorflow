@@ -41,8 +41,8 @@ namespace xla {
 
 namespace {
 
-constexpr absl::string_view shapeAssertionName = "shape_assertion";
-constexpr absl::string_view errorMessageAttrName = "error_message";
+constexpr llvm::StringRef shapeAssertionName = "shape_assertion";
+constexpr llvm::StringRef errorMessageAttrName = "error_message";
 // We bound the number of error_message_inputs for using llvm::formatv
 constexpr int maxErrorMessageInputs = 4;
 
