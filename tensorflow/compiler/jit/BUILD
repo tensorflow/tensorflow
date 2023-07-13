@@ -612,7 +612,6 @@ cc_library(
     hdrs = ["xla_compile_util.h"],
     visibility = [
         ":internal",
-        "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
@@ -655,7 +654,6 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         ":internal",
-        "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
@@ -1419,10 +1417,6 @@ cc_library(
     name = "device_compilation_profiler",
     srcs = ["device_compilation_profiler.cc"],
     hdrs = ["device_compilation_profiler.h"],
-    visibility = [
-        ":internal",
-        "//tensorflow/core/common_runtime/gpu:__pkg__",
-    ],
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
