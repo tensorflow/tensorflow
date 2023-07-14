@@ -111,7 +111,7 @@ std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     tsl::PlatformDeviceId platform_device_id, size_t pool_size,
-    bool reserve_memory, bool compute_stats)
+    bool reserve_memory, bool compute_stats, int stream_id)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
       reserve_memory_(reserve_memory) {
   ++number_instantiated_;
@@ -122,7 +122,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     GPUMachineManager(), platform_device_id)
+                     GPUMachineManager(), platform_device_id, stream_id)
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
