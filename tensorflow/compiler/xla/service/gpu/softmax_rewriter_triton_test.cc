@@ -577,17 +577,17 @@ add_computation {
   ROOT add = f32[] add(arg_0.1, arg_1.1)
 }
 ENTRY main {
-  param_0 = f32[127,125]{1,0} parameter(0)
+  param_0 = f32[127,625]{1,0} parameter(0)
   constant_neg_inf = f32[] constant(-inf)
   reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
-  bitcasted_subtract = f32[127,5,25] bitcast(subtract)
-  exponential = f32[127,5,25] exponential(bitcasted_subtract)
+  broadcast = f32[127,625]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,625]{1,0} subtract(param_0, broadcast)
+  bitcasted_subtract = f32[127,5,125] bitcast(subtract)
+  exponential = f32[127,5,125] exponential(bitcasted_subtract)
   constant_zero = f32[] constant(0)
   second_reduce = f32[127,5] reduce(exponential, constant_zero), dimensions={2}, to_apply=add_computation
-  second_broadcast = f32[127,5,25] broadcast(second_reduce), dimensions={0,1}
-  ROOT divide = f32[127,5,25] divide(exponential, second_broadcast)
+  second_broadcast = f32[127,5,125] broadcast(second_reduce), dimensions={0,1}
+  ROOT divide = f32[127,5,125] divide(exponential, second_broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -782,6 +782,27 @@ ENTRY main {
   reduce = f32[127]{0} reduce(bitcast_3, constant_neg_inf), dimensions={1}, to_apply=max_computation
   broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
   ROOT subtract = f32[127,125]{1,0} subtract(bitcast_2, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxRewriterTriton fusion_rewriter(gpu_version_);
+  EXPECT_FALSE(fusion_rewriter.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxRewriterTritonTest, DoNotFuseSoftmaxWithSmallRows) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,50]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,50]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,50]{1,0} subtract(param_0, broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
