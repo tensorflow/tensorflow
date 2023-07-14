@@ -1731,9 +1731,8 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  CHECK(
-      ForEachIndexParallelWithStatus(shape, base, count, incr, visitor_function)
-          .ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, base, count, incr,
+                                             visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -1748,7 +1747,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
-  CHECK(ForEachIndexParallelWithStatus(shape, visitor_function).ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
