@@ -21,9 +21,12 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/types.pb.h"
 
 namespace xla {
 namespace ifrt {
+
+class Client;
 
 // Short-term alias to reuse `xla::PjRtDevice` without a separate abstract type.
 using Device = ::xla::PjRtDevice;
@@ -41,6 +44,14 @@ class DeviceList {
   using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
 
   explicit DeviceList(Devices devices) : devices_(std::move(devices)) {}
+
+  // Constructs `DeviceList` from `DeviceListProto`. Device ids in the proto
+  // must be consistent with the devices owned by `client'.
+  static StatusOr<DeviceList> FromProto(Client* client,
+                                        const DeviceListProto& proto);
+
+  // Returns a `DeviceListProto` representation.
+  DeviceListProto ToProto() const;
 
   absl::Span<Device* const> devices() const { return devices_; }
 

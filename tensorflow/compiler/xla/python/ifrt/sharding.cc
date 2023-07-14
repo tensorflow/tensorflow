@@ -159,8 +159,10 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();
 }
 
-std::unique_ptr<Sharding> SingleDeviceSharding::Create(Device* device) {
-  return std::unique_ptr<Sharding>(new SingleDeviceSharding(device));
+std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
+    Device* device) {
+  return std::unique_ptr<SingleDeviceSharding>(
+      new SingleDeviceSharding(device));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -187,8 +189,9 @@ std::string SingleDeviceSharding::DebugString() const {
                          devices_.front()->ToString());
 }
 
-std::unique_ptr<Sharding> OpaqueSharding::Create(DeviceList devices) {
-  return std::unique_ptr<Sharding>(new OpaqueSharding(std::move(devices)));
+std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices) {
+  return std::unique_ptr<OpaqueSharding>(
+      new OpaqueSharding(std::move(devices)));
 }
 
 OpaqueSharding::OpaqueSharding(DeviceList devices)
@@ -217,10 +220,10 @@ std::string OpaqueSharding::DebugString() const {
       }));
 }
 
-std::unique_ptr<Sharding> ConcreteSharding::Create(
+std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceList devices, Shape shape, std::vector<Shape> shard_shapes) {
   CHECK_EQ(devices.size(), shard_shapes.size());
-  return std::unique_ptr<Sharding>(new ConcreteSharding(
+  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), std::move(shape), std::move(shard_shapes)));
 }
 
@@ -270,10 +273,9 @@ std::string ConcreteSharding::DebugString() const {
                     }));
 }
 
-std::unique_ptr<Sharding> ConcreteEvenSharding::Create(DeviceList devices,
-                                                       Shape shape,
-                                                       Shape shard_shape) {
-  return std::unique_ptr<Sharding>(new ConcreteEvenSharding(
+std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
+    DeviceList devices, Shape shape, Shape shard_shape) {
+  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
       std::move(devices), std::move(shape), std::move(shard_shape)));
 }
 
@@ -318,7 +320,7 @@ std::string ConcreteEvenSharding::DebugString() const {
       shape_.DebugString(), shard_shape_.DebugString());
 }
 
-StatusOr<std::unique_ptr<Sharding>> ShardingParamSharding::Create(
+StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
     ShardingParam sharding_param, DeviceList devices) {
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
@@ -329,7 +331,7 @@ StatusOr<std::unique_ptr<Sharding>> ShardingParamSharding::Create(
         "%d",
         device_count, devices.size());
   }
-  return std::unique_ptr<Sharding>(
+  return std::unique_ptr<ShardingParamSharding>(
       new ShardingParamSharding(std::move(sharding_param), std::move(devices)));
 }
 

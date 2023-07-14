@@ -110,6 +110,42 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "xla_sharding_proto",
+    srcs = ["xla_sharding.proto"],
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/python/ifrt:types_proto",
+    ],
+)
+
+cc_library(
+    name = "xla_sharding_serdes",
+    srcs = ["xla_sharding_serdes.cc"],
+    deps = [
+        ":xla_ifrt",
+        ":xla_sharding_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/python/ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:serdes",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
+    ],
+    alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "xla_sharding_serdes_test",
+    srcs = ["xla_sharding_serdes_test.cc"],
+    deps = [
+        ":xla_ifrt",
+        ":xla_sharding_serdes",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/python/ifrt:mock",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
     name = "xla_executable_impl_test_lib",
