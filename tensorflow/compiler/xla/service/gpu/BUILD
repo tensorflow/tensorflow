@@ -1247,6 +1247,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/tsl/platform:statusor",
     ]) + ["//tensorflow/tsl/platform:logging"],
 )
 

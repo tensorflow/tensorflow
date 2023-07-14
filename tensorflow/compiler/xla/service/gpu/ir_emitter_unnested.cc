@@ -1140,11 +1140,12 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(aux, GetAllocationSlice(matmul.getAux()));
   }
 
-  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                      cublas_lt::MatmulPlan::For(matmul));
+  TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),
+      a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1180,12 +1181,12 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
 
   BufferAllocation::Slice aux;  // Not used.
 
-  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                      cublas_lt::MatmulPlan::For(matmul));
-
+  TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),
+      a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
