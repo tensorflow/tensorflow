@@ -23,24 +23,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {

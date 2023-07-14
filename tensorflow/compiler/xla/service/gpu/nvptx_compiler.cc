@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 
-#include <stdlib.h>
-
 #include <fstream>
 #include <memory>
 #include <optional>

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {

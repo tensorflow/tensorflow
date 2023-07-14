@@ -495,6 +495,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/runtime:cpu_event",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",

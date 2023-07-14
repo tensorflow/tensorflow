@@ -5102,6 +5102,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",

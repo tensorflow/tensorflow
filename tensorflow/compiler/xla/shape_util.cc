@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
