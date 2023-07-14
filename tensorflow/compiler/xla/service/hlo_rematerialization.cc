@@ -40,18 +40,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/buffer_value.h"
-#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -586,7 +580,7 @@ class MemoryUsageTracker {
   bool HasUnplacedUsers(Item* item) const;
 
   // Returns the list of uses for a specific 'item'.
-  const UsesList GetItemUses(Item* item) const;
+  UsesList GetItemUses(Item* item) const;
 
   // Returns whether 'item' is currently in progress.
   bool IsInProgressItem(Item* item) const { return item == in_progress_item_; }
@@ -1532,7 +1526,7 @@ bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
   return false;
 }
 
-const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
+UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
   UsesList combined_users;
   for (BufferId buffer_id : item->buffers_defined) {
     const Buffer& buffer = buffers_.at(buffer_id);
