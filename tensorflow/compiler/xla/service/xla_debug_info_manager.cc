@@ -25,11 +25,11 @@ limitations under the License.
 namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
-    ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+    std::shared_ptr<const HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  CHECK(hlo_module != nullptr && module_id == hlo_module->unique_id());
+  CHECK(hlo_module != nullptr);
   absl::MutexLock lock(&mutex_);
-  auto result = modules_.try_emplace(module_id);
+  auto result = modules_.try_emplace(hlo_module->unique_id());
   CHECK(result.second);
   XlaModuleEntry& m = result.first->second;
   m.hlo_module = std::move(hlo_module);

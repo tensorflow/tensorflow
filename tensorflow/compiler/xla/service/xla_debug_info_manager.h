@@ -42,9 +42,9 @@ class XlaDebugInfoManager {
   }
 
   // Registers an active module to XlaDebugInfoManager.
-  // The module_id is expected to be unique per process.
+  // The module_id of the module is expected to be unique per process.
   void RegisterModule(
-      ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+      std::shared_ptr<const HloModule> hlo_module,
       std::shared_ptr<const BufferAssignmentProto> buffer_assignment);
 
   // Unregisters an active module.

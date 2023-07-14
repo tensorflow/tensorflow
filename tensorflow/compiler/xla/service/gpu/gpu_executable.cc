@@ -136,8 +136,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
   if (has_module() && enable_debug_info_manager_) {
-    XlaDebugInfoManager::Get()->RegisterModule(
-        module().unique_id(), shared_module(), debug_buffer_assignment_);
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
   }
 }
 
@@ -928,8 +928,10 @@ GpuExecutable::GpuExecutable(
       constants_(std::move(constants)),
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(true) {
-  XlaDebugInfoManager::Get()->RegisterModule(
-      module().unique_id(), shared_module(), debug_buffer_assignment_);
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
+  }
 }
 
 // Returns a list of functions exported from the `module` that should be loaded
