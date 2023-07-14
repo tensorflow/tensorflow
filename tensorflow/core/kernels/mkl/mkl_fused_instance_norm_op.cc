@@ -273,7 +273,7 @@ class MklFusedInstanceNormOp : public OpKernel {
   // Helper function to prepare scale and shift data in float type as
   // required by oneDNN library. Prior to oneDNN 3.x version, the library
   // requires the final scale and shift data to be passed in the same buffer
-  // wherase the 3.x version requires separate buffers for scale and shift
+  // whereas the 3.x version requires separate buffers for scale and shift
   // data.
   void SetupScaleShiftBuffer(OpKernelContext* ctx, const Tensor& scale_tensor,
                              const Tensor& shift_tensor,
