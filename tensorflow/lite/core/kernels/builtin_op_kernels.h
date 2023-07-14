@@ -95,6 +95,7 @@ TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
 TfLiteRegistration* Register_IF();
 TfLiteRegistration* Register_IMAG();
+TfLiteRegistration* Register_IRFFT2D();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_L2_POOL_2D();
 TfLiteRegistration* Register_LEAKY_RELU();

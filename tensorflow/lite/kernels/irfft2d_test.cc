@@ -20,14 +20,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 
 namespace {
 
@@ -41,8 +40,8 @@ class Irfft2dOpModel : public SingleOpModel {
     TensorType output_type = TensorType_FLOAT32;
     output_ = AddOutput({output_type, {}});
 
-    const std::vector<uint8_t> custom_option;
-    SetCustomOp("Irfft2d", custom_option, Register_IRFFT2D);
+    SetBuiltinOp(BuiltinOperator_IRFFT2D, BuiltinOptions_Irfft2dOptions,
+                 CreateIrfft2dOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -130,6 +129,6 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
 }
 
 }  // namespace
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

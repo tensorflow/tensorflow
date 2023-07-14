@@ -125,8 +125,6 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
     ops::builtin::BuiltinOpResolver* builtin_op_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    builtin_op_resolver_->AddCustom("IRFFT2D",
-                                    tflite::ops::custom::Register_IRFFT2D());
     builtin_op_resolver_->AddCustom(
         "AvgPool3D", tflite::ops::custom::Register_AVG_POOL_3D());
     builtin_op_resolver_->AddCustom(

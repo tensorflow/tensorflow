@@ -238,6 +238,7 @@ set(TEST_WITH_EXTERNAL_MAIN_LIST
   hashtable_lookup_test.cc
   hashtable_ops_test.cc
   if_test.cc
+  irfft2d_test.cc
   l2norm_test.cc
   local_response_norm_test.cc
   log_softmax_test.cc

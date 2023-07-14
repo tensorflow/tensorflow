@@ -536,6 +536,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
   AddBuiltin(BuiltinOperator_BITWISE_XOR, Register_BITWISE_XOR());
   AddBuiltin(BuiltinOperator_RIGHT_SHIFT, Register_RIGHT_SHIFT());
+  AddBuiltin(BuiltinOperator_RFFT2D, Register_RFFT2D());
+  AddBuiltin(BuiltinOperator_IRFFT2D, Register_IRFFT2D());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

@@ -202,6 +202,7 @@ typedef enum {
   kTfLiteBuiltinStablehloSlice = 172,
   kTfLiteBuiltinStablehloCustomCall = 173,
   kTfLiteBuiltinStablehloReduce = 174,
+  kTfLiteBuiltinIrfft2d = 175,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

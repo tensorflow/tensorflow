@@ -27,7 +27,6 @@ TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
-TfLiteRegistration* Register_IRFFT2D();
 TfLiteRegistration* Register_MAX_POOL_3D();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();

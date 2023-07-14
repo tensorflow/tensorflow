@@ -435,6 +435,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_SLICE = 172, // WARNING: No runtime support
   STABLEHLO_CUSTOM_CALL = 173, // WARNING: No runtime support
   STABLEHLO_REDUCE = 174, // WARNING: No runtime support
+  IRFFT2D = 175,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -566,6 +567,7 @@ union BuiltinOptions {
   BitcastOptions,
   BitwiseXorOptions,
   RightShiftOptions,
+  Irfft2dOptions,
   // DO NOT add new options this union, will cause failure in Java api
   // generation otherwise
   // Add new builtin options into builtin options 2 instead
@@ -1277,6 +1279,9 @@ table BitwiseXorOptions {
 }
 
 table RightShiftOptions {
+}
+
+table Irfft2dOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
