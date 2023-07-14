@@ -48,41 +48,6 @@ const auto kDimX = TilingScheme::DimX;
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 
-// Returns true if the fusion has consistent transpose heros.
-bool HasConsistentTransposeHeros(HloComputation* fusion) {
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
-  if (!HasAnyTiledTransposeRoot(fusion)) {
-    return false;
-  }
-  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
-  // We need the following invariant:
-  // For every tuple element:
-  //  -> EITHER it's a kCopy: S{L} -> S{L'}
-  //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      if (*tiled_transpose != *first_tiled_transpose) {
-        return false;
-      }
-    } else {
-      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-              root->shape(), transpose_in_shape,
-              /*ignore_element_type=*/true)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 // Returns true if the fusion output contains non-strided slices only.
 bool IsInputFusibleNonStridedSlices(const HloInstruction* root) {
   if (root->opcode() == HloOpcode::kTuple) {
@@ -258,13 +223,47 @@ int64_t NearestPowerOfTwo(int64_t v) {
 
 }  // namespace
 
-StatusOr<HloFusionAnalysis::EmitterFusionKind>
-HloFusionAnalysis::GetEmitterFusionKind() const {
+// Returns true if the fusion has consistent transpose heros.
+bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
+  if (!tiled_transpose_) {
+    return false;
+  }
+
+  auto* fusion = fusion_->fused_instructions_computation();
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
+  const HloInstruction* first_transpose =
+      &FindNonTrivialHero(*root_with_tiled_transpose_);
+  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  std::optional<TransposeDescription> first_tiled_transpose =
+      FindAnyTiledTranspose(*first_transpose);
+
+  // We need the following invariant:
+  // For every tuple element:
+  //  -> EITHER it's a kCopy: S{L} -> S{L'}
+  //  -> OR it's an elementwise op of shape S{L}
+  for (HloInstruction* root : hlo_roots) {
+    std::optional<TransposeDescription> tiled_transpose =
+        FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
+      if (*tiled_transpose != *first_tiled_transpose) {
+        return false;
+      }
+    } else {
+      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
+              root->shape(), transpose_in_shape,
+              /*ignore_element_type=*/true)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
+    const {
 #if GOOGLE_CUDA
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion_->backend_config<FusionBackendConfig>());
-  if (backend_config.kind() == kTritonGemmFusionKind ||
-      backend_config.kind() == kTritonSoftmaxFusionKind) {
+  if (fusion_backend_config_.kind() == kTritonGemmFusionKind ||
+      fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 #endif
@@ -273,7 +272,8 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
   if (HasAnyUnnestedReductionRoot(fused_computation)) {
     return EmitterFusionKind::kReduction;
   }
-  if (HasConsistentTransposeHeros(fused_computation)) {
+  // We expect that the last dimension is swapped with a different dimension.
+  if (HasConsistentTransposeHeros() && tiled_transpose_->permutation[2] != 2) {
     return EmitterFusionKind::kTranspose;
   }
 
@@ -297,7 +297,7 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
 
 StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
     bool use_experimental_block_size) {
-  TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind, GetEmitterFusionKind());
+  auto emitter_fusion_kind = GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
     case EmitterFusionKind::kLoop: {
       // Disable experimental block size if few_waves or row_vectorized enabled.
@@ -309,8 +309,7 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
                                        *loop_fusion_config);
     }
     case EmitterFusionKind::kReduction: {
-      TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
-                          GetReductionCodegenInfo());
+      auto* reduction_codegen_info = GetReductionCodegenInfo();
       const TilingScheme& tiling_scheme =
           reduction_codegen_info->GetTilingScheme();
       size_t blocks_y = reduction_codegen_info->GetIndexGroups().size();
@@ -321,7 +320,7 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
            /*y=*/1, /*z=*/1});
     }
     case EmitterFusionKind::kTranspose: {
-      TF_ASSIGN_OR_RETURN(auto tiling_scheme, GetTransposeTilingScheme());
+      auto* tiling_scheme = GetTransposeTilingScheme();
       return LaunchDimensions(tiling_scheme->GetNumberOfBlocksPhysical(),
                               tiling_scheme->GetNumThreadsPerBlockPhysical());
     }
@@ -330,8 +329,7 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
   }
 }
 
-StatusOr<const ReductionCodegenInfo*>
-HloFusionAnalysis::GetReductionCodegenInfo() {
+const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
   if (reduction_codegen_info_.has_value()) {
     return &reduction_codegen_info_.value();
   }
@@ -344,34 +342,27 @@ HloFusionAnalysis::GetReductionCodegenInfo() {
   // We always use the first reduce as representative to construct
   // ReductionCodegenInfo, since all the reductions are required to have the
   // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
-                      ComputeReductionCodegenInfo(first_reduce));
+  auto reduction_codegen_info = ComputeReductionCodegenInfo(first_reduce);
   reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
   return &reduction_codegen_info_.value();
 }
 
-StatusOr<const TilingScheme*> HloFusionAnalysis::GetTransposeTilingScheme() {
+const TilingScheme* HloFusionAnalysis::GetTransposeTilingScheme() {
   if (transpose_tiling_scheme_.has_value()) {
     return &transpose_tiling_scheme_.value();
   }
 
-  std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
-      **absl::c_find_if(fusion_roots_, [](HloInstruction* instr) {
-        return FindAnyTiledTranspose(*instr);
-      }));
-
-  // TODO(cheshire): have a more robust way of checking this.
-  TF_RET_CHECK(dims_and_order.has_value());
+  if (!tiled_transpose_) {
+    return nullptr;
+  }
 
   constexpr int kNumRows = 4;
-  TF_RET_CHECK(WarpSize() % kNumRows == 0);
+  static_assert(WarpSize() % kNumRows == 0);
 
   // 3D view over the input shape.
-  Vector3 dims = dims_and_order->dimensions;
-  Vector3 order = dims_and_order->permutation;
+  Vector3 dims = tiled_transpose_->dimensions;
+  Vector3 order = tiled_transpose_->permutation;
 
-  // We expect that the last dimension is swapped with a different dimension.
-  TF_RET_CHECK(order[2] != 2);
   Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
   Vector3 tile_sizes{1, 1, 1};
   tile_sizes[order[2]] = WarpSize() / kNumRows;
@@ -670,7 +661,7 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
   return 1;
 }
 
-StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
+ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
     HloInstruction* first_reduce) const {
   Shape input_shape = first_reduce->operand(0)->shape();
   ReductionDimensions reduction_dimensions =

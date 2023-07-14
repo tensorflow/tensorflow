@@ -17,10 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -43,38 +46,69 @@ class HloFusionAnalysis {
     kScatter,
   };
 
-  HloFusionAnalysis(const HloFusionInstruction* fusion,
-                    const GpuDeviceInfo* device_info,
-                    se::CudaComputeCapability compute_capability)
-      : fusion_(fusion),
-        fused_computation_(fusion->fused_instructions_computation()),
-        fusion_roots_(GetFusionRoots(fusion->fused_instructions_computation())),
-        device_info_(device_info),
-        compute_capability_(compute_capability) {}
+  static StatusOr<HloFusionAnalysis> Create(
+      const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
+      se::CudaComputeCapability compute_capability) {
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        fusion->backend_config<FusionBackendConfig>());
 
-  // Simple getters.
+    auto hlo_roots = GetFusionRoots(fusion->fused_instructions_computation());
+    HloInstruction* root_with_tiled_transpose;
+    std::optional<TransposeDescription> tiled_transpose;
+
+    for (auto* root : hlo_roots) {
+      if ((tiled_transpose = FindAnyTiledTranspose(*root))) {
+        root_with_tiled_transpose = root;
+        break;
+      }
+    }
+
+    return HloFusionAnalysis(fusion, std::move(backend_config), device_info,
+                             compute_capability, root_with_tiled_transpose,
+                             tiled_transpose);
+  }
+
   const HloComputation* fused_computation() const { return fused_computation_; }
   absl::Span<HloInstruction* const> fusion_roots() const {
     return absl::MakeSpan(fusion_roots_);
   }
 
-  // Determine the fusion type for the emitter.
-  StatusOr<EmitterFusionKind> GetEmitterFusionKind() const;
+  // Determines the fusion type for the emitter.
+  EmitterFusionKind GetEmitterFusionKind() const;
 
-  // Determine the launch dimensions for the fusion.
+  // Determines the launch dimensions for the fusion. The fusion kind must be
+  // one of `kLoop`, `kReduction` or `kTranspose`.
   StatusOr<LaunchDimensions> GetLaunchDimensions(
       bool use_experimental_block_size = false);
 
-  // Calculate reduction information (kind: kReduction).
-  StatusOr<const ReductionCodegenInfo*> GetReductionCodegenInfo();
+  // Calculates the reduction information. Returns `nullptr` if the fusion is
+  // not a reduction.
+  const ReductionCodegenInfo* GetReductionCodegenInfo();
 
-  // Calculate transpose tiling information (kind: kTranspose).
-  StatusOr<const TilingScheme*> GetTransposeTilingScheme();
+  // Calculates the transpose tiling information. Returns `nullptr` if the
+  // fusion is not a transpose.
+  const TilingScheme* GetTransposeTilingScheme();
 
-  // Calculate loop fusion config (kind: kLoop).
+  // Calculates the loop fusion config. Returns `nullptr` if the fusion is not a
+  // loop.
   const LaunchDimensionsConfig* GetLoopFusionConfig();
 
  private:
+  HloFusionAnalysis(const HloFusionInstruction* fusion,
+                    FusionBackendConfig fusion_backend_config,
+                    const GpuDeviceInfo* device_info,
+                    se::CudaComputeCapability compute_capability,
+                    HloInstruction* root_with_tiled_transpose,
+                    std::optional<TransposeDescription> tiled_transpose)
+      : fusion_(fusion),
+        fusion_backend_config_(std::move(fusion_backend_config)),
+        fused_computation_(fusion->fused_instructions_computation()),
+        fusion_roots_(GetFusionRoots(fusion->fused_instructions_computation())),
+        device_info_(device_info),
+        compute_capability_(compute_capability),
+        root_with_tiled_transpose_(root_with_tiled_transpose),
+        tiled_transpose_(tiled_transpose) {}
+
   const Shape& GetElementShape() const;
   int SmallestInputDtypeBits() const;
   int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize() const;
@@ -88,14 +122,18 @@ class HloFusionAnalysis {
                              bool reduction_is_race_free) const;
   int CalculateVirtualThreadScalingFactorForReduction(
       const ReductionDimensions& reduction_dimensions) const;
-  StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
+  ReductionCodegenInfo ComputeReductionCodegenInfo(
       HloInstruction* first_reduce) const;
+  bool HasConsistentTransposeHeros() const;
 
   const HloFusionInstruction* fusion_;
+  FusionBackendConfig fusion_backend_config_;
   const HloComputation* fused_computation_;
   std::vector<HloInstruction*> fusion_roots_;
   const GpuDeviceInfo* device_info_;
   se::CudaComputeCapability compute_capability_;
+  HloInstruction* root_with_tiled_transpose_;
+  std::optional<TransposeDescription> tiled_transpose_;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;
   std::optional<TilingScheme> transpose_tiling_scheme_;

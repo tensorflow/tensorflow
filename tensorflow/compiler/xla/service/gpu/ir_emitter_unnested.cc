@@ -75,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -100,7 +99,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fused_mha_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
@@ -139,7 +137,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
-#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -1989,8 +1986,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
 
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(auto tiling_scheme,
-                      fusion_analysis.GetTransposeTilingScheme());
+  auto* tiling_scheme = fusion_analysis.GetTransposeTilingScheme();
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions());
 
@@ -2042,12 +2038,13 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 
   // Create HloFusionAnalysis instance.
   GpuDeviceInfo device_info = ir_emitter_context_->gpu_device_info();
-  HloFusionAnalysis fusion_analysis(
-      &fusion, &device_info, ir_emitter_context_->cuda_compute_capability());
+  TF_ASSIGN_OR_RETURN(auto fusion_analysis,
+                      HloFusionAnalysis::Create(
+                          &fusion, &device_info,
+                          ir_emitter_context_->cuda_compute_capability()));
 
   // Dispatch to the fusion specific emitter.
-  TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind,
-                      fusion_analysis.GetEmitterFusionKind());
+  auto emitter_fusion_kind = fusion_analysis.GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
 #if GOOGLE_CUDA
@@ -4875,8 +4872,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
 
 Status IrEmitterUnnested::EmitUnnestedReduction(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
-                      fusion_analysis.GetReductionCodegenInfo());
+  auto* reduction_codegen_info = fusion_analysis.GetReductionCodegenInfo();
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions());
 
