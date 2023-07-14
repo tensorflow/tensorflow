@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 
@@ -92,6 +93,11 @@ void XlaDebugInfoManager::StopTracing(
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }
+}
+
+bool XlaDebugInfoManager::TracksModule(ModuleIdentifier module_id) const {
+  absl::MutexLock lock(&mutex_);
+  return modules_.find(module_id) != modules_.end();
 }
 
 }  // namespace xla

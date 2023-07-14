@@ -2514,6 +2514,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",

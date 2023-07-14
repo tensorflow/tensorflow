@@ -190,7 +190,10 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
   (*new_hlo_module)->config().set_debug_options(opts_);
 
   StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
-      std::move(*new_hlo_module), &stream_executor_, &allocator_);
+      std::move(*new_hlo_module), &stream_executor_,
+      Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
+                               /*layout_canonicalization_callback=*/{},
+                               /*enable_debug_info_manager=*/false});
   if (out.status().code() == absl::StatusCode::kResourceExhausted) {
     // Being out of shared memory budget is an expected failure.
     return std::unique_ptr<Executable>();

@@ -126,7 +126,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
       constants_(std::move(params.constants)),
-      output_info_(std::move(params.output_info)) {
+      output_info_(std::move(params.output_info)),
+      enable_debug_info_manager_(params.enable_debug_info_manager) {
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
@@ -134,14 +135,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
-  if (has_module()) {
+  if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(
         module().unique_id(), shared_module(), debug_buffer_assignment_);
   }
 }
 
 GpuExecutable::~GpuExecutable() {
-  if (has_module()) {
+  if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
 
@@ -925,7 +926,8 @@ GpuExecutable::GpuExecutable(
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
       constants_(std::move(constants)),
-      output_info_(std::move(output_info)) {
+      output_info_(std::move(output_info)),
+      enable_debug_info_manager_(true) {
   XlaDebugInfoManager::Get()->RegisterModule(
       module().unique_id(), shared_module(), debug_buffer_assignment_);
 }

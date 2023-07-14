@@ -1473,7 +1473,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                .xla_gpu_enable_persistent_temp_buffers(),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module)}));
+           std::move(module), options.enable_debug_info_manager}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);

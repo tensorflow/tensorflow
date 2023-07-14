@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_XLA_DEBUG_INFO_MANAGER_H_
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -57,6 +59,9 @@ class XlaDebugInfoManager {
   // modules that were alive since StartTracing().
   void StopTracing(
       std::vector<std::unique_ptr<HloProto>>* module_debug_info = nullptr);
+
+  // Returns whether 'module_id' is tracked by XlaDebugInfoManager.
+  bool TracksModule(ModuleIdentifier module_id) const;
 
   friend class XlaDebugInfoManagerTestPeer;
 
