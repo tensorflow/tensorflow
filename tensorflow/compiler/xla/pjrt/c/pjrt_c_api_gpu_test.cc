@@ -119,9 +119,7 @@ std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
 
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
-                      ::pjrt::ConvertToPjRtNamedValueList(options));
+    std::vector<PJRT_NamedValue>& c_options) {
   PJRT_Client_Create_Args args;
   args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -153,8 +151,11 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};
-      TF_ASSERT_OK_AND_ASSIGN(PJRT_Client_Create_Args create_arg,
-                              BuildCreateArg(kv_callback_data.get(), options));
+      TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                              ::pjrt::ConvertToPjRtNamedValueList(options));
+      TF_ASSERT_OK_AND_ASSIGN(
+          PJRT_Client_Create_Args create_arg,
+          BuildCreateArg(kv_callback_data.get(), c_options));
       PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
       EXPECT_EQ(error, nullptr) << error->status.message();
 
