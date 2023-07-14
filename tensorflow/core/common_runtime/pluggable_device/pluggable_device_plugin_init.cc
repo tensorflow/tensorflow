@@ -131,7 +131,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
 
   TF_RETURN_IF_ERROR(CopyTensor::Register(
       DeviceType(device_type), DeviceType(device_type),
-      PjRtDevice_DeviceToDeviceCopy,
+      PjRtDeviceToDeviceCopy,
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";

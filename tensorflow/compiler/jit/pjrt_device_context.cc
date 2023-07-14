@@ -198,7 +198,7 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
   result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
 }
 
-void PjRtDevice_DeviceToDeviceCopy(
+void PjRtDeviceToDeviceCopy(
     DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
     Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
     AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
