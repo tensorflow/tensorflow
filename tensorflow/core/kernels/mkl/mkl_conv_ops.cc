@@ -620,7 +620,7 @@ class MklConvOp : public OpKernel {
         context,
         !(context->HasAttr("padding_list") &&
           context->HasAttr("explicit_paddings")),
-        errors::InvalidArgument("Can only have 1 `padding` list at most"));
+        absl::InvalidArgumentError("Can only have 1 `padding` list at most"));
     if (context->HasAttr("padding_list")) {
       OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
     }
@@ -632,17 +632,17 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str_));
     OP_REQUIRES(context, FormatFromString(data_format_str_, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 or 5 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 or 5 dimensions"));
 
     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
     OP_REQUIRES(
         context, stride_n == 1 && stride_c == 1,
-        errors::Unimplemented("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+        absl::UnimplementedError("Current implementation does not yet support "
+                                 "strides in the batch and depth dimensions."));
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     is_filter_const_ = false;
@@ -654,28 +654,29 @@ class MklConvOp : public OpKernel {
     }
 
     if (strides_.size() == 4) {
-      OP_REQUIRES(context, dilations_.size() == 4,
-                  errors::InvalidArgument("Sliding window dilations field must "
-                                          "specify 4 dimensions"));
+      OP_REQUIRES(
+          context, dilations_.size() == 4,
+          absl::InvalidArgumentError("Sliding window dilations field must "
+                                     "specify 4 dimensions"));
       const int64 dilation_n = GetTensorDim(dilations_, data_format_, 'N');
       const int64 dilation_c = GetTensorDim(dilations_, data_format_, 'C');
       const int64 dilation_h = GetTensorDim(dilations_, data_format_, 'H');
       const int64 dilation_w = GetTensorDim(dilations_, data_format_, 'W');
       OP_REQUIRES(context, dilation_n == 1 && dilation_c == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Current implementation does not yet support "
                       "dilations in the batch and depth dimensions."));
       OP_REQUIRES(
           context, dilation_h > 0 && dilation_w > 0,
-          errors::InvalidArgument("Dilated rates should be larger than 0."));
+          absl::InvalidArgumentError("Dilated rates should be larger than 0."));
     } else if (strides_.size() == 5) {
       OP_REQUIRES(context, dilations_.size() == 5,
-                  errors::InvalidArgument("Dilation rates field must "
-                                          "specify 5 dimensions"));
+                  absl::InvalidArgumentError("Dilation rates field must "
+                                             "specify 5 dimensions"));
       OP_REQUIRES(context,
                   (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
                    GetTensorDim(dilations_, data_format_, 'C') == 1),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
@@ -683,7 +684,7 @@ class MklConvOp : public OpKernel {
           (GetTensorDim(dilations_, data_format_, '0') > 0 &&
            GetTensorDim(dilations_, data_format_, '1') > 0 &&
            GetTensorDim(dilations_, data_format_, '2') > 0),
-          errors::InvalidArgument("Dilated rates should be larger than 0."));
+          absl::InvalidArgumentError("Dilated rates should be larger than 0."));
     }
   }
 
@@ -694,8 +695,8 @@ class MklConvOp : public OpKernel {
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
       OP_REQUIRES(
           context, filter_tensor.NumElements() > 0,
-          errors::InvalidArgument("filter must not have zero elements "
-                                  "(i.e. all dimensions must be non-zero)"));
+          absl::InvalidArgumentError("filter must not have zero elements "
+                                     "(i.e. all dimensions must be non-zero)"));
 
       if (std::is_same<Tinput, float>::value) {
         (void)SetFPMathMode();
@@ -707,8 +708,8 @@ class MklConvOp : public OpKernel {
                   native_format);
 
       OP_REQUIRES(context, !filter_mkl_shape.IsMklTensor(),
-                  errors::InvalidArgument("Filter should not be in "
-                                          "Mkl Layout"));
+                  absl::InvalidArgumentError("Filter should not be in "
+                                             "Mkl Layout"));
 
       MklDnnData<Tinput> src(&cpu_engine_);
       MklDnnData<Tfilter> filter(&cpu_engine_);
@@ -780,18 +781,18 @@ class MklConvOp : public OpKernel {
       bool is_conv3d = (strides_.size() == 5);
 
       if (!is_conv2d && !is_conv3d) {
-        OP_REQUIRES(
-            context, !pad_enabled,
-            errors::InvalidArgument("Pad + Conv fusion only works for 2D/3D"));
+        OP_REQUIRES(context, !pad_enabled,
+                    absl::InvalidArgumentError(
+                        "Pad + Conv fusion only works for 2D/3D"));
         OP_REQUIRES(
             context, !fuse_pad_,
-            errors::InvalidArgument("Pad+Conv fusion only works for 2D/3D"));
+            absl::InvalidArgumentError("Pad+Conv fusion only works for 2D/3D"));
       }
 
       // TODO(intel-tf) 3-D support for Depthwise is not there
       if (is_depthwise) {
         OP_REQUIRES(context, is_conv2d,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Only 2D convolution is supported for depthwise."));
       }
 
@@ -804,7 +805,7 @@ class MklConvOp : public OpKernel {
       auto mkl_fmt_tag = MklTensorFormatToMklDnnDataFormat(tf_fmt);
       // NOTE: `mkl_fmt_tag` will be `format_tag::undef` for ReLU
       OP_REQUIRES(context, mkl_fmt_tag != memory::format_tag::undef,
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
 
       // If input is in MKL layout, then simply grab the layout; otherwise,
       // construct TF layout for input.
@@ -862,8 +863,9 @@ class MklConvOp : public OpKernel {
         // Inputs to FusedBatchNorm have same 1D shape
         fuse_bn_shape = MklGetInput(context, kInputIndex_BN_Mean).shape();
         OP_REQUIRES(context, fuse_bn_shape.dims() == 1,
-                    errors::InvalidArgument("FusedBatchNorm must be 1D, not: ",
-                                            fuse_bn_shape.DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("FusedBatchNorm must be 1D, not: ",
+                                     fuse_bn_shape.DebugString())));
 
         // Note - MKL-DNN expects {1, C, 1, 1} for binary post-op even for NHWC
         fuse_bn_dims = {1, fuse_bn_shape.dim_size(0), 1, 1};
@@ -991,9 +993,9 @@ class MklConvOp : public OpKernel {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
           __FILE__, ":", __LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 
@@ -1006,8 +1008,9 @@ class MklConvOp : public OpKernel {
     } else {
       const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
       OP_REQUIRES(context, paddings_tf.dims() == 2,
-                  errors::InvalidArgument("paddings must be 2-dimensional: ",
-                                          paddings_tf.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("paddings must be 2-dimensional: ",
+                                   paddings_tf.shape().DebugString())));
       // Flatten tensor to get individual paddings.
       paddings = static_cast<Tpadding*>(
           const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
@@ -1102,9 +1105,9 @@ class MklConvOp : public OpKernel {
 
   virtual void ComputeBNScale(OpKernelContext* context, float epsilon,
                               int bn_variance_index, Tinput* scale_buf_ptr) {
-    OP_REQUIRES(
-        context, false,
-        errors::Unimplemented("Compute BN scale not expected in base class"));
+    OP_REQUIRES(context, false,
+                absl::UnimplementedError(
+                    "Compute BN scale not expected in base class"));
     return;
   }
 
@@ -1215,7 +1218,7 @@ class MklConvOp : public OpKernel {
         auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
             output_mkl_shape->GetTfDataFormat());
         OP_REQUIRES(context, output_format_tag != memory::format_tag::undef,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "MklConvOp: AddN fusion: Invalid data format"));
         auto add_md =
             add_mkl_shape.IsMklTensor()
@@ -1493,14 +1496,14 @@ class MklFusedConvOp
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
     OP_REQUIRES(context, !fused_ops.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Fused Conv2D must have at least one fused op."));
 
     // TODO(intel-tf): Compact the code for activation checking
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
       this->set_fuse_biasadd(true);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"Relu"}) {
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
@@ -1519,26 +1522,26 @@ class MklFusedConvOp
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
       this->SET_FUSE_ACTIVATION_FOR_RELU6;
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"}) {
       this->set_fuse_biasadd(true);
@@ -1548,21 +1551,21 @@ class MklFusedConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
       OP_REQUIRES(
           context, num_args == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"}) {
       float epsilon;
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
@@ -1571,7 +1574,7 @@ class MklFusedConvOp
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
       this->SET_FUSE_ACTIVATION_FOR_RELU6;
@@ -1580,7 +1583,7 @@ class MklFusedConvOp
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
@@ -1592,7 +1595,7 @@ class MklFusedConvOp
                      context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
@@ -1603,7 +1606,7 @@ class MklFusedConvOp
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
@@ -1613,7 +1616,7 @@ class MklFusedConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
       OP_REQUIRES(
           context, num_args == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
       this->set_fuse_biasadd(true);
@@ -1621,7 +1624,7 @@ class MklFusedConvOp
       this->SET_FUSE_ACTIVATION_FOR_RELU6;
       OP_REQUIRES(
           context, num_args == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
       this->set_fuse_biasadd(true);
@@ -1629,7 +1632,7 @@ class MklFusedConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
       OP_REQUIRES(
           context, num_args == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops ==
                std::vector<string>{"BiasAdd", "Add", "LeakyRelu"}) {
@@ -1642,24 +1645,25 @@ class MklFusedConvOp
                                 leakyrelu_alpha);
       OP_REQUIRES(
           context, num_args == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Mish"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_mish, 1.0);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "_FusedConv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "_MklSwish"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
       OP_REQUIRES(context, num_args == 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Fused Conv2D must have one extra argument: bias."));
     } else {
       OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+                  absl::UnimplementedError(
+                      absl::StrCat("Fusion is not implemented: [",
+                                   absl::StrJoin(fused_ops, ","), "]")));
     }
 
     if (pad_enabled) {
@@ -1706,7 +1710,7 @@ class MklFusedDepthwiseConvOp
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
     OP_REQUIRES(context, !fused_ops.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Fused DepthwiseConv2D must have at least one fused op."));
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
@@ -1722,13 +1726,14 @@ class MklFusedDepthwiseConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
     } else {
       OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+                  absl::UnimplementedError(
+                      absl::StrCat("Fusion is not implemented: [",
+                                   absl::StrJoin(fused_ops, ","), "]")));
     }
 
     OP_REQUIRES(
         context, num_args == 1,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Fused DepthwiseConv2D must have one extra argument: bias."));
 
     if (pad_enabled) {
@@ -1796,7 +1801,7 @@ class MklQuantizedConvOp
     // TODO(intel-tf): num_fused_ops and legacy_fused_ops should go away once
     // old API is abandoned.
     OP_REQUIRES(context, !(fused_ops_attr.size() > 0 && num_fused_ops > 0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "QuantizedConv fused ops should be only available through "
                     "either new API or old API, got both."));
 
@@ -1813,8 +1818,9 @@ class MklQuantizedConvOp
           std::find(supported_fusions.begin(), supported_fusions.end(),
                     fused_ops_) != supported_fusions.end();
       OP_REQUIRES(context, is_fusion_supported,
-                  errors::InvalidArgument("Unsupported QuantizedConv fusion: [",
-                                          absl::StrJoin(fused_ops_, ","), "]"));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Unsupported QuantizedConv fusion: [",
+                                   absl::StrJoin(fused_ops_, ","), "]")));
     }
 
     // Set the flag for every fused op.
@@ -1838,9 +1844,10 @@ class MklQuantizedConvOp
     const bool fuse_requantize = IsFused(oneDNNFusedOps::kRequantize);
     OP_REQUIRES_OK(context, context->GetAttr("out_type", &out_dt));
     if (fuse_requantize) {
-      OP_REQUIRES(context, out_dt == DT_QINT8 || out_dt == DT_QUINT8,
-                  errors::InvalidArgument("QuantizedConv: unsupported output "
-                                          "type when Requantize is fused."));
+      OP_REQUIRES(
+          context, out_dt == DT_QINT8 || out_dt == DT_QUINT8,
+          absl::InvalidArgumentError("QuantizedConv: unsupported output "
+                                     "type when Requantize is fused."));
     }
 
     if (context->HasAttr("Tsummand")) {
@@ -1848,7 +1855,7 @@ class MklQuantizedConvOp
       if (!this->get_fuse_add()) {
         OP_REQUIRES(
             context, summand_dt == out_dt,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "QuantizedConv: incorrect summand data type. When Sum is not "
                 "fused, Tsummand attribute must have same value as out_type."));
       }
@@ -1874,7 +1881,7 @@ class MklQuantizedConvOp
 
     OP_REQUIRES(
         context, is_filter_const,
-        errors::InvalidArgument("QuantizedConv: filter must be a constant"));
+        absl::InvalidArgumentError("QuantizedConv: filter must be a constant"));
 
     if (num_fused_ops == -1) {
       // If num_fused_ops is -1 then the new API (ops) are being used.
@@ -2020,13 +2027,13 @@ class MklQuantizedConvOp
           context->input(max_input_idx_).template scalar<float>()();
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
-      OP_REQUIRES(
-          context,
-          ((min_filter_vector.NumElements() > 0) &&
-           (max_filter_vector.NumElements() > 0) &&
-           (min_filter_vector.shape() == max_filter_vector.shape())),
-          errors::InvalidArgument("`min_ and max_filter` must have same"
-                                  "shape and contain at least one element."));
+      OP_REQUIRES(context,
+                  ((min_filter_vector.NumElements() > 0) &&
+                   (max_filter_vector.NumElements() > 0) &&
+                   (min_filter_vector.shape() == max_filter_vector.shape())),
+                  absl::InvalidArgumentError(
+                      "`min_ and max_filter` must have same"
+                      "shape and contain at least one element."));
 
       // min_freezed_output and max_freezed_output are the actual range
       // for the output.
@@ -2086,15 +2093,15 @@ class MklQuantizedConvOp
         OP_REQUIRES(
             context,
             TensorShapeUtils::IsScalar(min_freezed_output_tensor.shape()),
-            errors::InvalidArgument(
-                "`min_freezed_output` must be rank 0 but is rank ",
-                min_freezed_output_tensor.dims()));
+            absl::InvalidArgumentError(
+                absl::StrCat("`min_freezed_output` must be rank 0 but is rank ",
+                             min_freezed_output_tensor.dims())));
         OP_REQUIRES(
             context,
             TensorShapeUtils::IsScalar(max_freezed_output_tensor.shape()),
-            errors::InvalidArgument(
-                "`max_freezed_output` must be rank 0 but is rank ",
-                max_freezed_output_tensor.dims()));
+            absl::InvalidArgumentError(
+                absl::StrCat("`max_freezed_output` must be rank 0 but is rank ",
+                             max_freezed_output_tensor.dims())));
         const Tensor& min_freezed_summand_tensor =
             context->input(min_summand_idx_);
         const Tensor& max_freezed_summand_tensor =
@@ -2102,15 +2109,15 @@ class MklQuantizedConvOp
         OP_REQUIRES(
             context,
             TensorShapeUtils::IsScalar(min_freezed_summand_tensor.shape()),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "`min_freezed_summand` must be rank 0 but is rank ",
-                min_freezed_summand_tensor.dims()));
+                min_freezed_summand_tensor.dims())));
         OP_REQUIRES(
             context,
             TensorShapeUtils::IsScalar(max_freezed_summand_tensor.shape()),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "`max_freezed_summand` must be rank 0 but is rank ",
-                max_freezed_summand_tensor.dims()));
+                max_freezed_summand_tensor.dims())));
         const float min_freezed_output =
             min_freezed_output_tensor.template scalar<float>()();
         const float max_freezed_output =
@@ -2185,7 +2192,7 @@ class MklQuantizedConvOp
         OP_REQUIRES(context,
                     context->forward_input_to_output_with_shape(
                         summand_idx, 0, summand.shape(), output_tensor),
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Summand cannot be forwarded in the current fusion."));
         return;
       }
@@ -2466,13 +2473,14 @@ class MklFusedConv3DOp
     std::vector<int> padding_list;
     OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list));
     if (padding_list.empty()) {
-      OP_REQUIRES(context, !fused_ops.empty(),
-                  errors::InvalidArgument("Fused Conv3D must have at least one "
-                                          "fused op when Pad is not fused."));
+      OP_REQUIRES(
+          context, !fused_ops.empty(),
+          absl::InvalidArgumentError("Fused Conv3D must have at least one "
+                                     "fused op when Pad is not fused."));
       if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
           fused_ops.end()) {
         OP_REQUIRES(context, num_args == 1,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Fused Conv3D must have one extra argument: bias."));
       } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
                      fused_ops.end() &&
@@ -2480,7 +2488,7 @@ class MklFusedConv3DOp
                      fused_ops.end()) {
         OP_REQUIRES(
             context, num_args == 2,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "Fused Conv3D must have two extra arguments: bias and add."));
       }
     }
@@ -2533,8 +2541,9 @@ class MklFusedConv3DOp
     } else {
       if (padding_list.empty()) {
         OP_REQUIRES(context, false,
-                    errors::Unimplemented("Fusion is not implemented: [",
-                                          absl::StrJoin(fused_ops, ","), "]"));
+                    absl::UnimplementedError(
+                        absl::StrCat("Fusion is not implemented: [",
+                                     absl::StrJoin(fused_ops, ","), "]")));
       }
     }
   }
