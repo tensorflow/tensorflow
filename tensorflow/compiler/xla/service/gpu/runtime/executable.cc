@@ -428,7 +428,10 @@ Status GpuRuntimeExecutable::Execute(
 
     for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
       auto mem = buffer_allocations.GetDeviceAddress(i);
-      if (mem.size() > device_ptr_size) device_ptr = mem.opaque();
+      if (mem.size() > device_ptr_size) {
+        device_ptr = mem.opaque();
+        device_ptr_size = mem.size();
+      }
     }
 
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
