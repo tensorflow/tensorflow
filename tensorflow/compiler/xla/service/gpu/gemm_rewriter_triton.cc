@@ -1434,6 +1434,8 @@ bool ShouldTritonHandleGEMM(const HloInstruction& dot,
   // Data-narrowing conversion after the dot is profitable to fuse.
   if (dot.user_count() == 1 &&
       dot.users()[0]->opcode() == HloOpcode::kConvert &&
+      IsSupportedDataType(dot.users()[0]->shape().element_type(),
+                          gpu_version) &&
       InputMinusOutputBytes(*dot.users()[0]) > -kIoToleranceBytes) {
     return true;
   }

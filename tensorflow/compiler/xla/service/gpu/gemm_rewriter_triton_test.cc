@@ -112,6 +112,19 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Broadcast())));
 }
 
+TEST_F(GemmRewriterTritonTest, DoNotTriggerOnUnsupportedOutputConversions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f16[128,256] parameter(0)
+  p1 = f16[256,512] parameter(1)
+  r = f16[128,512] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT c = u8[128,512] convert(r)
+})"));
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+}
+
 using TritonDotAnalysisTest = HloTestBase;
 
 TEST_F(TritonDotAnalysisTest, NopBitcasts) {
