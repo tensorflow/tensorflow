@@ -58,6 +58,11 @@ class XlaCallModuleLoader {
   // Validates that the module only contains ops from valid dialects.
   tsl::Status ValidateDialect();
 
+  // Validates that the module represents a statically-shaped StableHLO program,
+  // otherwise all sorts of weirdness might happen in the HLO exporter which is
+  // much easier to detect here.
+  absl::Status ValidateStaticShapes();
+
   // Lowers the StableHLO module to MHLO in place.
   absl::Status LowerModuleToMhlo();
 

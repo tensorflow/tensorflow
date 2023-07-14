@@ -33,9 +33,12 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
                                      bool enable_shape_assertions);
 
 // Like the above but with serialized input and output modules.
+// If `validate_static_shapes` is true, then checks that only static shapes
+// are left after refinement.
 absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
                                      llvm::raw_ostream &os,
-                                     bool enable_shape_assertions);
+                                     bool enable_shape_assertions,
+                                     bool validate_static_shapes);
 
 // Validates that the module has only static shapes.
 absl::Status ValidateStaticShapes(mlir::ModuleOp module);
