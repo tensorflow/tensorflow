@@ -55,6 +55,16 @@ int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+BackendOptions& BackendOptions::set_gpu_stream_group_index(
+    int stream_group_index) {
+  gpu_stream_group_index_ = stream_group_index;
+  return *this;
+}
+
+int BackendOptions::gpu_stream_group_index() const {
+  return gpu_stream_group_index_;
+}
+
 BackendOptions& BackendOptions::set_allowed_devices(
     const std::optional<std::set<int>>& allowed_devices) {
   allowed_devices_ = allowed_devices;
@@ -84,7 +94,8 @@ struct Backend::IntraOpThreadPool {
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(
       auto stream_executors,
-      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
+      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices(),
+                                       options.gpu_stream_group_index()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,

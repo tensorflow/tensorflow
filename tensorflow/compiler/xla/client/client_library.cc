@@ -31,11 +31,13 @@ namespace xla {
 LocalClientOptions::LocalClientOptions(
     se::Platform* platform, int number_of_replicas,
     int intra_op_parallelism_threads,
-    const std::optional<std::set<int>>& allowed_devices)
+    const std::optional<std::set<int>>& allowed_devices,
+    int gpu_stream_group_index)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads),
-      allowed_devices_(allowed_devices) {}
+      allowed_devices_(allowed_devices),
+      gpu_stream_group_index_(gpu_stream_group_index) {}
 
 LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
@@ -62,6 +64,16 @@ LocalClientOptions& LocalClientOptions::set_intra_op_parallelism_threads(
 
 int LocalClientOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
+}
+
+LocalClientOptions& LocalClientOptions::set_gpu_stream_group_index(
+    int stream_group_index) {
+  gpu_stream_group_index_ = stream_group_index;
+  return *this;
+}
+
+int LocalClientOptions::gpu_stream_group_index() const {
+  return gpu_stream_group_index_;
 }
 
 LocalClientOptions& LocalClientOptions::set_allowed_devices(
@@ -95,6 +107,7 @@ ClientLibrary::~ClientLibrary() = default;
     const LocalClientOptions& options) {
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
+  int gpu_stream_group_index = options.gpu_stream_group_index();
   ClientLibrary& client_library = Singleton();
   absl::MutexLock lock(&client_library.service_mutex_);
 
@@ -104,7 +117,10 @@ ClientLibrary::~ClientLibrary() = default;
 
   auto it = client_library.local_instances_.find(platform->id());
   if (it != client_library.local_instances_.end()) {
-    return it->second->client.get();
+    if (it->second.size() > gpu_stream_group_index &&
+        it->second[gpu_stream_group_index] != nullptr) {
+      return it->second[gpu_stream_group_index]->client.get();
+    }
   }
 
   ServiceOptions service_options;
@@ -113,14 +129,24 @@ ClientLibrary::~ClientLibrary() = default;
   service_options.set_intra_op_parallelism_threads(
       options.intra_op_parallelism_threads());
   service_options.set_allowed_devices(options.allowed_devices());
+  service_options.set_gpu_stream_group_index(gpu_stream_group_index);
   auto instance = std::make_unique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));
   instance->client = std::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
 
-  client_library.local_instances_.insert(
-      std::make_pair(platform->id(), std::move(instance)));
+  if (it == client_library.local_instances_.end()) {
+    client_library.local_instances_.insert(std::make_pair(
+        platform->id(), std::vector<std::unique_ptr<LocalInstance>>()));
+  }
+  if (client_library.local_instances_[platform->id()].size() <=
+      gpu_stream_group_index) {
+    client_library.local_instances_[platform->id()].resize(
+        gpu_stream_group_index + 1);
+  }
+  client_library.local_instances_[platform->id()][gpu_stream_group_index].reset(
+      instance.release());
   return cl;
 }
 
@@ -136,7 +162,9 @@ ClientLibrary::~ClientLibrary() = default;
   absl::MutexLock lock(&client_library.service_mutex_);
   auto it = client_library.local_instances_.find(platform->id());
   CHECK(it != client_library.local_instances_.end());
-  return it->second->service.get();
+  for (int i = 0; i < it->second.size(); ++i) {
+    if (it->second[i] != nullptr) return it->second[i]->service.get();
+  }
 }
 
 /* static */ StatusOr<CompileOnlyClient*>

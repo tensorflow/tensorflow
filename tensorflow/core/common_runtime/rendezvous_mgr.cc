@@ -143,7 +143,7 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
                      0 /*dev_to_dev_stream_index*/, std::move(done),
-                     sync_dst_compute, false);
+                     sync_dst_compute, send_args.tensor_holder);
 }
 
 void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,

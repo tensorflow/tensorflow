@@ -329,7 +329,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done, bool sync_dst_compute,
-                                 bool sync_dst_recv) {
+                                 TensorHolder* tensor_holder) {
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
@@ -402,7 +402,8 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
   }
 
-  if (gpu_stream_merge && !sync_dst_recv && !do_staging) {
+  if (gpu_stream_merge && tensor_holder != nullptr && !do_staging) {
+    tensor_holder->AddTensor(*cpu_tensor);
     input_ref.Unref();
     done(OkStatus());
   } else {

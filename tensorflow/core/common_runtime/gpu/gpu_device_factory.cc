@@ -110,6 +110,13 @@ class StreamDeviceFactory : public BaseGPUDeviceFactory {
  public:
   StreamDeviceFactory() { is_multi_stream_ = true; }
 
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    // We don't know how many Stream Devices to create until we specify it
+    // explicitly through the SessionConfig. Even if we did, a Stream Device
+    // is not considered "physical". Therefore, we do nothing here.
+    return OkStatus();
+  }
+
  private:
   std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const string& name, Bytes memory_limit,
@@ -140,13 +147,18 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
       force_gpu_compatible_ =
           options.config.gpu_options().force_gpu_compatible();
     }
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_PER_STREAM_HOST_ALLOCATOR",
+                                   /*default_val=*/false,
+                                   &use_per_stream_host_allocator_));
   }
   ~GPUCompatibleCPUDevice() override {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
-      return ps->GetGpuHostAllocator(gpu_options_, numa_node_, stream_id_);
+      return ps->GetGpuHostAllocator(
+          gpu_options_, numa_node_,
+          use_per_stream_host_allocator_ ? stream_id_ : 0);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
@@ -157,6 +169,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   bool force_gpu_compatible_ = false;
   int numa_node_;
   GPUOptions gpu_options_;
+  bool use_per_stream_host_allocator_ = false;
 };
 
 //------------------------------------------------------------------------------
@@ -187,7 +200,7 @@ class StreamCompatibleCPUDevice : public GPUCompatibleCPUDevice {
 // The associated factory.
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override {
+  virtual Status ListPhysicalDevices(std::vector<string>* devices) override {
     devices->push_back("/physical_device:CPU:0");
 
     return OkStatus();
@@ -244,6 +257,13 @@ REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 70);
 class StreamCompatibleCPUDeviceFactory : public GPUCompatibleCPUDeviceFactory {
  public:
   StreamCompatibleCPUDeviceFactory() { is_multi_stream_ = true; }
+
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    // We don't know how many StreamCPU Devices to create until we specify it
+    // explicitly through the SessionConfig. Even if we did, a Stream Device is
+    // not considered "physical". Therefore, we do nothing here.
+    return OkStatus();
+  }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("STREAM_CPU", StreamCompatibleCPUDeviceFactory);
 

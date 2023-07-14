@@ -1034,7 +1034,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/strings",
     ],
 )

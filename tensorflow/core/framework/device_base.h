@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_holder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -78,10 +79,10 @@ class DeviceContext : public core::RefCounted {
   // "cpu_tensor" is a tensor on a CPU. Copies "cpu_tensor" into
   // "device_tensor" which is on a non-CPU device "device". "device_tensor"
   // must be allocated to be of the same size as "cpu_tensor".
-  virtual void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                                     Tensor* device_tensor, StatusCallback done,
-                                     bool sync_dst_compute = true,
-                                     bool sync_dst_recv = true) const {
+  virtual void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute = true,
+      TensorHolder* tensor_holder = nullptr) const {
     done(errors::Internal("Unrecognized device type in CPU-to-device Copy"));
   }
 
@@ -285,11 +286,20 @@ class DeviceBase {
                           "CopyTensorInSameDevice"));
   }
 
+  // Sets the stream index of a stream device.
+  void SetStreamId(int stream_id) { stream_id_ = stream_id; }
+
+  // Gets the stream index of a stream device.
+  int GetStreamId() { return stream_id_; }
+
  protected:
   // Does not take ownership.
   void set_tensorflow_device_thread_pool(tsl::thread::ThreadPool* thread_pool) {
     device_thread_pool_ = thread_pool;
   }
+
+  // Stream index of a stream device.
+  int stream_id_ = 0;
 
  private:
   tsl::Env* const env_;

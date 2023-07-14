@@ -75,8 +75,7 @@ class ProcessFunctionLibraryRuntime {
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const SessionMetadata* session_metadata = nullptr,
       Rendezvous::Factory rendezvous_factory = Rendezvous::Factory(),
-      StatsPublisherFactory stats_publisher_factory = CreateNoOpStatsPublisher,
-      int stream_id = -1);
+      StatsPublisherFactory stats_publisher_factory = CreateNoOpStatsPublisher);
 
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -215,7 +214,7 @@ class ProcessFunctionLibraryRuntime {
 
   // Initialize the set of local and remote devices and corresponding flr for op
   // device selection.
-  void InitializeDeviceAndFlr(int stream_id = -1);
+  void InitializeDeviceAndFlr();
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 

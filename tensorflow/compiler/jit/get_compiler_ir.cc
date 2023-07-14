@@ -291,8 +291,12 @@ StatusOr<std::string> GetCompilerIr(
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(dev);
 
   XlaDeviceCompiler* xla_device_compiler;
+  int stream_id = dev->GetStreamId();
+  std::string name = stream_id > 0
+                         ? strings::StrCat("xla_device_compiler_", stream_id)
+                         : "xla_device_compiler";
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<XlaDeviceCompiler>(
-      rmgr->default_container(), "xla_device_compiler", &xla_device_compiler,
+      rmgr->default_container(), name, &xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(dev, flr, platform_info,
                                       xla_device_compiler);

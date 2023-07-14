@@ -79,7 +79,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/determinism.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -591,21 +590,6 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
   OpKernel* op_kernel = item.kernel;
   Device* device = immutable_state_.params().device;
   const bool is_expensive = kernel_stats_->IsExpensive(item);
-
-  static const bool gpu_stream_merge = [] {
-    bool gpu_stream_merge;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
-                                   /*default_val=*/false, &gpu_stream_merge));
-    return gpu_stream_merge;
-  }();
-  if (gpu_stream_merge && item.is_send_to_gpu &&
-      (op_kernel->type_string() == "_HostSend" ||
-       (op_kernel->type_string() == "_Send" &&
-        device->parsed_name().type.find("CPU") != string::npos)) &&
-      params->inputs[0].tensor->NumElements() > 0) {
-    CHECK(item.num_inputs == 1);
-    params->tensor_holder->AddTensor(*(params->inputs[0].tensor));
-  }
 
   if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
     tracing::ScopedRegion region(tracing::EventCategory::kCompute,

@@ -24,10 +24,10 @@ class VirtualDeviceContext : public DeviceContext {
  public:
   VirtualDeviceContext() = default;
 
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute,
-                             bool sync_dst_recv = true) const override;
+  void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute,
+      TensorHolder* tensor_holder = nullptr) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
@@ -38,7 +38,8 @@ class VirtualDeviceContext : public DeviceContext {
 
 void VirtualDeviceContext::CopyCPUTensorToDevice(
     const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
-    StatusCallback done, bool sync_dst_compute, bool sync_dst_recv) const {
+    StatusCallback done, bool sync_dst_compute,
+    TensorHolder* tensor_holder) const {
   *device_tensor = *cpu_tensor;
   done(OkStatus());
 }

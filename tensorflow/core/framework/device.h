@@ -199,15 +199,11 @@ class Device : public DeviceBase {
 
   virtual const Device* GetRealDevice() const { return this; }
 
-  void SetStreamId(int stream_id) { stream_id_ = stream_id; }
-
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
     rmgr_ = nullptr;
   }
-
-  int stream_id_ = 0;
 
  private:
   DeviceAttributes device_attributes_;

@@ -1085,9 +1085,14 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
     resource_name.remove_prefix(last_slash + 1);
   }
 
-  // Get engine cache.
+  // Get engine cache. Each stream group should have its own cache to avoid
+  // sharing the same engine_context.
+  int stream_id = ctx->device()->GetStreamId();
+  std::string name = stream_id > 0 ? strings::StrCat(std::string(resource_name),
+                                                     "_", stream_id)
+                                   : std::string(resource_name);
   return ctx->resource_manager()->LookupOrCreate(
-      std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
+      std::string(kTfTrtContainerName), name, cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return OkStatus();

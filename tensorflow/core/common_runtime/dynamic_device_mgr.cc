@@ -27,17 +27,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-mutex DynamicDeviceMgr::mgrs_mu_;
-std::unordered_map<const Device*,
-                   std::unique_ptr<DynamicDeviceMgr::StreamGroupMgr>>
-    DynamicDeviceMgr::stream_group_mgrs_;
-size_t DynamicDeviceMgr::max_stream_num_;
-
-DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
+DynamicDeviceMgr::DynamicDeviceMgr()
+    : cpu_device_(nullptr), stream_group_count_(0) {}
 
 DynamicDeviceMgr::DynamicDeviceMgr(
     std::vector<std::unique_ptr<Device>>&& devices)
-    : cpu_device_(nullptr) {
+    : cpu_device_(nullptr), stream_group_count_(0) {
   Status status = AddDevices(std::move(devices));
   CHECK(status.ok());  // Crash OK
   InitStreamDevice();
@@ -285,18 +280,13 @@ void DynamicDeviceMgr::InitStreamDevice() {
     }
   }
 
-  mutex_lock l(mgrs_mu_);
-  // Create stream group map and managers.
+  // Create stream group map.
   Device* gpu;
   for (auto& item : gpu_id2num) {
     TF_CHECK_OK(
         LookupDevice(strings::StrCat("/device:GPU:", item.first), &gpu));
     stream_device_map_[gpu] = std::vector<Device*>(item.second);
-    max_stream_num_ =
-        max_stream_num_ > item.second ? max_stream_num_ : item.second;
-    if (stream_group_mgrs_.find(gpu) == stream_group_mgrs_.end()) {
-      stream_group_mgrs_[gpu] = absl::make_unique<StreamGroupMgr>(item.second);
-    }
+    if (stream_group_count_ < item.second) stream_group_count_ = item.second;
   }
   Device* cpu;
   for (auto& item : cpu_id2num) {
@@ -305,7 +295,7 @@ void DynamicDeviceMgr::InitStreamDevice() {
     stream_device_map_[cpu] = std::vector<Device*>(item.second);
   }
 
-  // Fill in the stream group map and set real device.
+  // Fill in the stream group map and set real device for the stream devices.
   Device* real_device;
   for (auto& item : dynamic_devices_) {
     Device* d = item.first;
@@ -317,147 +307,25 @@ void DynamicDeviceMgr::InitStreamDevice() {
       d->SetRealDevice(real_device);
     }
   }
-}
 
-size_t DynamicDeviceMgr::GetMaxStreamNum() const {
-  tf_shared_lock l(mgrs_mu_);
-  return max_stream_num_;
-}
-
-size_t DynamicDeviceMgr::GetStreamNum(const Device* device) const {
-  tf_shared_lock l(mgrs_mu_);
-  if (stream_device_map_.find(device) == stream_device_map_.end()) {
-    return 0;
+  for (auto& item : gpu_id2num) {
+    DCHECK_EQ(item.second, stream_group_count_);
   }
-  return stream_device_map_.at(device).size();
+  for (auto& item : cpu_id2num) {
+    DCHECK_EQ(item.second, stream_group_count_);
+  }
 }
+
+int DynamicDeviceMgr::StreamGroupCount() const { return stream_group_count_; }
 
 Device* DynamicDeviceMgr::LookupStream(const Device* device,
                                        const int stream_id) const {
-  tf_shared_lock l(mgrs_mu_);
   if (stream_id < 0 ||
       stream_device_map_.find(device) == stream_device_map_.end() ||
       stream_device_map_.at(device).size() <= stream_id) {
     return const_cast<Device*>(device);
   }
   return stream_device_map_.at(device).at(stream_id);
-}
-
-int DynamicDeviceMgr::RequireStreamGroup(const Device* device) const {
-  if (device->parsed_name().type != "GPU" &&
-      device->parsed_name().type != "gpu") {
-    return -1;
-  }
-  tf_shared_lock l(mgrs_mu_);
-  return stream_group_mgrs_.find(device) == stream_group_mgrs_.end()
-             ? -1
-             : stream_group_mgrs_[device]->RequireStreamGroup();
-}
-
-void DynamicDeviceMgr::ReleaseStreamGroup(const Device* device,
-                                          const int stream_id) const {
-  if (device->parsed_name().type == "GPU" ||
-      device->parsed_name().type == "gpu") {
-    tf_shared_lock l(mgrs_mu_);
-    if (stream_group_mgrs_.find(device) != stream_group_mgrs_.end()) {
-      DCHECK_NE(stream_id, -1);
-      stream_group_mgrs_[device]->ReleaseStreamGroup(stream_id);
-    }
-  }
-}
-
-DynamicDeviceMgr::StreamGroupMgr::StreamGroupMgr(const size_t total_num)
-    : total_num_(total_num) {
-  stream_group_heap_.resize(total_num);
-  for (int i = 0; i < total_num; ++i) {
-    stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
-    id2heap_map_.insert(std::make_pair(i, i));
-  }
-}
-
-void DynamicDeviceMgr::StreamGroupMgr::swap(const size_t idx1,
-                                            const size_t idx2) {
-  id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
-  id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
-  std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
-}
-
-void DynamicDeviceMgr::StreamGroupMgr::reset_accumulators() {
-  VLOG(2) << "One of the Stream Group Node reaches access limit"
-          << ", reset...";
-  for (auto& node : stream_group_heap_) {
-    node->accumulator_ = 0;
-  }
-}
-
-int DynamicDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
-  mutex_lock l(mu_);
-  int ret(stream_group_heap_[0]->id_);
-  ++stream_group_heap_[0]->workload_;
-  if (++stream_group_heap_[0]->accumulator_ == 0xFFFFFFFFFFFFFFFFull) {
-    reset_accumulators();
-  }
-  size_t ptr(0);
-  while (true) {
-    if (2 * ptr + 2 >= total_num_) {
-      if (2 * ptr + 2 == total_num_ &&
-          stream_group_heap_[ptr]->workload_ >
-              stream_group_heap_[2 * ptr + 1]->workload_) {
-        swap(ptr, 2 * ptr + 1);
-      }
-      break;
-    }
-    if (stream_group_heap_[2 * ptr + 1]->workload_ <
-        stream_group_heap_[2 * ptr + 2]->workload_) {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 1]->workload_) {
-        swap(ptr, 2 * ptr + 1);
-        ptr = 2 * ptr + 1;
-      } else {
-        break;
-      }
-    } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
-               stream_group_heap_[2 * ptr + 2]->workload_) {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 2]->workload_) {
-        swap(ptr, 2 * ptr + 2);
-        ptr = 2 * ptr + 2;
-      } else {
-        break;
-      }
-    } else {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 1]->workload_) {
-        if (stream_group_heap_[2 * ptr + 1]->accumulator_ <
-            stream_group_heap_[2 * ptr + 2]->accumulator_) {
-          swap(ptr, 2 * ptr + 1);
-          ptr = 2 * ptr + 1;
-        } else {
-          swap(ptr, 2 * ptr + 2);
-          ptr = 2 * ptr + 2;
-        }
-      } else {
-        break;
-      }
-    }
-  }
-  return ret;
-}
-
-void DynamicDeviceMgr::StreamGroupMgr::ReleaseStreamGroup(const int stream_id) {
-  mutex_lock l(mu_);
-  size_t ptr = id2heap_map_[stream_id];
-  --stream_group_heap_[ptr]->workload_;
-  while (ptr != 0) {
-    size_t parent = (ptr + 1) / 2 - 1;
-    if (stream_group_heap_[ptr]->workload_ <
-        stream_group_heap_[parent]->workload_) {
-      swap(ptr, parent);
-      ptr = parent;
-    } else {
-      break;
-    }
-  }
 }
 
 }  // namespace tensorflow

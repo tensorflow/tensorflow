@@ -51,10 +51,10 @@ class PluggableDeviceContext : public DeviceContext {
   }
   int stream_id() const { return stream_id_; }
 
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done,
-                             bool sync_dst_compute,
-                             bool sync_dst_recv = true) const override;
+  void CopyCPUTensorToDevice(
+      const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
+      StatusCallback done, bool sync_dst_compute,
+      TensorHolder* tensor_holder = nullptr) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,

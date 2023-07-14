@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_reference.h"
+#include "tensorflow/core/framework/tensor_holder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -559,17 +559,6 @@ struct GraphCollector {
     mutex_lock ml(mu);
     return dirty;
   }
-};
-
-// Hold some tensors temporarily until the object is destructured.
-class TensorHolder {
- public:
-  ~TensorHolder();
-  void AddTensor(const Tensor& tensor);
-
- private:
-  mutex lock_;
-  std::vector<std::unique_ptr<TensorReference>> tensors_ TF_GUARDED_BY(lock_);
 };
 
 class OpKernelContext {

@@ -112,7 +112,8 @@ void XlaDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 
 void XlaDeviceContext::CopyCPUTensorToDevice(
     const Tensor* cpu_tensor, Device* device, Tensor* device_tensor,
-    StatusCallback done, bool sync_dst_compute, bool sync_dst_recv) const {
+    StatusCallback done, bool sync_dst_compute,
+    TensorHolder* tensor_holder) const {
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
     done(OkStatus());
