@@ -126,9 +126,8 @@ tf_cc_test(
     srcs = ["cost_recorder_test.cc"],
     deps = [
         ":cost_recorder",
+        ":op_cost_map_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
