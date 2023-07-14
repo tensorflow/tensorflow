@@ -184,10 +184,10 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
 
   // Compute windowed output sizes for rows and columns.
   int64_t out_rows = 0, out_cols = 0;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
       input_rows, filter_rows, dilation_rows, stride_rows, params.padding,
       &out_rows, &pad_rows_before, &pad_rows_after));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
       input_cols, filter_cols, dilation_cols, stride_cols, params.padding,
       &out_cols, &pad_cols_before, &pad_cols_after));
 

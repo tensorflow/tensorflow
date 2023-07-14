@@ -502,7 +502,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       int64_t output_size;
       int64_t pad_low_int64;
       int64_t pad_high_int64;
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
               input_spatial_dim[i]),
           conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
