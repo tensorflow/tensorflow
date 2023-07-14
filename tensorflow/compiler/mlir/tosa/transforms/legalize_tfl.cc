@@ -2146,8 +2146,8 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
 
   Value shape = tfl_reshape_op.getShape();
-  ShapedType shape_type = shape.getType().dyn_cast<ShapedType>();
-  ShapedType output_type = tfl_reshape_op.getType().dyn_cast<ShapedType>();
+  auto shape_type = cast<ShapedType>(shape.getType());
+  auto output_type = cast<ShapedType>(tfl_reshape_op.getType());
 
   int64_t rank = ShapedType::kDynamic;
   if (output_type.hasRank()) rank = output_type.getRank();
