@@ -198,8 +198,12 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
+  int stream_id = ctx->device()->GetStreamId();
+  std::string name = stream_id > 0
+                         ? strings::StrCat("xla_device_compiler_", stream_id)
+                         : "xla_device_compiler";
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
-      rm->default_container(), "xla_device_compiler", xla_device_compiler,
+      rm->default_container(), name, xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
                                       platform_info_, xla_device_compiler);
