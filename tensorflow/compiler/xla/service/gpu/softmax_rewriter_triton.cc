@@ -69,6 +69,10 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
 bool BitcastIsTilingNoop(HloInstruction* bitcast) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
 
+  if (bitcast->shape().rank() == 0) {
+    return true;
+  }
+
   // In the Softmax rewriter for now, tiling is derived from a hero reduction
   // operation, which should be reducing its input on the last axis. Therefore,
   // a bitcast is always a no-op with regards to a tile if
