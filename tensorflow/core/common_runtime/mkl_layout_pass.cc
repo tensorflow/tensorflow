@@ -396,7 +396,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 #endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
     rinfo_.push_back({csinfo_.avg_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool_grad),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
@@ -722,7 +722,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 #endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
 
 #ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.squared_difference,
@@ -735,7 +735,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 #endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
-                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+                      CopyAttrsAll, RewriteIfX86, kRewriteForOpNameChange});
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
@@ -1463,6 +1463,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // Default rewrite rule to be used in scenario 1 for rewrite.
   // @return - true (since we want to always rewrite)
   static bool AlwaysRewrite(const Node* n) { return true; }
+  static bool RewriteIfX86(const Node* n) {
+#ifdef DNNL_AARCH64_USE_ACL
+    return false;
+#else
+    return true;
+#endif
+  }
 
   // Rewrite rule which considers "context" of the current node to decide if we
   // should rewrite. By "context" we currently mean all the inputs of current

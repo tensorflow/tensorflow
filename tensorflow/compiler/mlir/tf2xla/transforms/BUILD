@@ -4,7 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -15,7 +15,7 @@ package(
 
 gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -35,7 +35,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -54,7 +54,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [

@@ -17,12 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <ostream>
-#include <string>
 
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -78,28 +74,9 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
   return -1;
 }
 
-// Check if the last dimensions worth up to cache line size
-// participate in transpose. If so, then we want to use max number of threads
-// per block for communication via shared memory. Use the default pipeline
-// otherwise.
-bool IsTransposeDimensionWithinCacheLine(mlir::mhlo::TransposeOp transpose,
-                                         GpuDeviceInfo gpu_device_info) {
-  const int64_t kCacheLineBits = 1024;
-  int64_t total_bytes =
-      transpose.getResult().getType().getElementTypeBitWidth();
-  auto perm = transpose.getPermutation().getValues<int64_t>();
-  auto result_shape = transpose.getResult().getType().getShape();
-  for (int64_t i = perm.size() - 1; total_bytes < kCacheLineBits && i >= 0;
-       --i) {
-    if (perm[i] != i) return true;
-    total_bytes *= result_shape[i];
-  }
-  return false;
-}
-
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config, mlir::Operation* op) {
+    LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -110,18 +87,6 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
     const int kWarpSchedulers = 4;
     int64_t block_size = std::min<int64_t>(
         gpu_device_info.threads_per_warp * kWarpSchedulers, num_elements);
-    auto fusion = mlir::dyn_cast_or_null<mlir::lmhlo::FusionOp>(op);
-    if (!fusion) {
-      return block_size;
-    }
-    for (mlir::Operation& op : fusion.getRegion().front()) {
-      auto transpose = mlir::dyn_cast<mlir::mhlo::TransposeOp>(op);
-      if (transpose &&
-          IsTransposeDimensionWithinCacheLine(transpose, gpu_device_info)) {
-        return std::min<int64_t>(gpu_device_info.threads_per_block_limit,
-                                 num_elements);
-      }
-    }
     VLOG(2) << "Block size: " << block_size;
     return block_size;
   }();
@@ -236,12 +201,11 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    bool use_experimental_block_size, LaunchDimensionsConfig dim_config,
-    mlir::Operation* op) {
-  if (use_experimental_block_size && op != nullptr) {
+    bool use_experimental_block_size, LaunchDimensionsConfig dim_config) {
+  if (use_experimental_block_size) {
     VLOG(2) << "Experimental block size is enabled";
     return CalculateLaunchDimensionsImplExperimental(shape, gpu_device_info,
-                                                     dim_config, op);
+                                                     dim_config);
   }
   return CalculateLaunchDimensionsImpl(shape, gpu_device_info, dim_config);
 }

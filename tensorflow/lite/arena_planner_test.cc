@@ -709,6 +709,25 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithOptionals) {
   EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
 }
 
+TEST_F(ArenaPlannerTest, SimpleGraphWithOptionalOutput) {
+  TestGraph graph({0, -1, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op, with optional
+                  },
+                  {-1, 3});
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
+  EXPECT_EQ(GetOffset(5), 12);
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
+}
+
 TEST_F(ArenaPlannerTest, SimpleGraphWithLargeTensor) {
   TestGraph graph({0, -1},
                   {

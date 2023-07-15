@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -1030,7 +1031,7 @@ def _slice_helper(tensor, slice_spec, var=None):
     appear in TensorFlow's generated documentation.
 
   Args:
-    tensor: An ops.Tensor object.
+    tensor: An tensor.Tensor object.
     slice_spec: The arguments to Tensor.__getitem__.
     var: In the case of variable slice assignment, the Variable object to slice
       (i.e. tensor is the read-only view of this variable).
@@ -1048,9 +1049,11 @@ def _slice_helper(tensor, slice_spec, var=None):
   if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
     return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
-  if isinstance(slice_spec, bool) or \
-  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
-  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
+  if (isinstance(slice_spec, bool)
+      or (isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool)
+      or (isinstance(slice_spec, np.ndarray)
+          and slice_spec.dtype == bool)):
     return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
@@ -1067,7 +1070,7 @@ def _slice_helper(tensor, slice_spec, var=None):
       # Finds the best dtype for begin, end, and strides.
       dtype = None
       for t in [s.start, s.stop, s.step]:
-        if t is None or not isinstance(t, ops.Tensor):
+        if t is None or not isinstance(t, tensor_lib.Tensor):
           continue
         if t.dtype == dtypes.int64:
           dtype = dtypes.int64
@@ -1117,8 +1120,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       begin.append(s)
       end.append(s + 1)
       # TODO(mdan): Investigate why we can't set int32 here.
-      if isinstance(s, ops.Tensor) and (s.dtype == dtypes.int16 or
-                                        s.dtype == dtypes.int64):
+      if (
+          isinstance(s, tensor_lib.Tensor)
+          and (s.dtype == dtypes.int16 or s.dtype == dtypes.int64)):
         strides.append(constant_op.constant(1, dtype=s.dtype))
       else:
         strides.append(1)
@@ -1413,7 +1417,7 @@ def _SliceHelperVar(var, slice_spec):
   return _slice_helper(var.value(), slice_spec, var)
 
 
-ops.Tensor._override_operator("__getitem__", _slice_helper)
+tensor_lib.Tensor._override_operator("__getitem__", _slice_helper)
 
 
 @tf_export("parallel_stack")
@@ -2887,7 +2891,7 @@ def zeros(shape, dtype=dtypes.float32, name=None, layout=None):
     else:
       zero = 0
 
-    if not isinstance(shape, ops.Tensor):
+    if not isinstance(shape, tensor_lib.Tensor):
       try:
         if not context.executing_eagerly():
           # Create a constant if it won't be very big. Otherwise, create a fill
@@ -3202,7 +3206,7 @@ def ones(shape, dtype=dtypes.float32, name=None, layout=None):
       one = np.ones([]).astype(dtype.as_numpy_dtype)
     else:
       one = 1
-    if not isinstance(shape, ops.Tensor):
+    if not isinstance(shape, tensor_lib.Tensor):
       try:
         if not context.executing_eagerly():
           # Create a constant if it won't be very big. Otherwise, create a fill
@@ -3403,7 +3407,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
     dense_shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
     dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
   else:
-    if isinstance(shape, ops.Tensor):
+    if isinstance(shape, tensor_lib.Tensor):
       rank = shape.get_shape()[0]
       dense_shape_default = tensor_util.constant_value_as_shape(shape)
     else:
@@ -3590,7 +3594,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     paddings_constant = _get_paddings_constant(paddings)
     input_shape = (
         tensor_shape.TensorShape(tensor.shape)
-        if isinstance(tensor, ops.Tensor) else result.op.inputs[0].shape)
+        if isinstance(tensor, tensor_lib.Tensor) else result.op.inputs[0].shape)
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
       new_shape = []
@@ -3618,7 +3622,7 @@ def _get_paddings_constant(paddings):
     A nested list or numbers or `None`, in which `None` indicates unknown
     padding size.
   """
-  if isinstance(paddings, ops.Tensor):
+  if isinstance(paddings, tensor_lib.Tensor):
     return tensor_util.constant_value(paddings, partial=True)
   elif isinstance(paddings, (list, tuple)):
     return [_get_paddings_constant(x) for x in paddings]
@@ -4402,7 +4406,7 @@ def one_hot(indices,
 def _all_dimensions(x):
   """Returns a 1D-tensor listing all dimensions in x."""
   # Fast path: avoid creating Rank and Range ops if ndims is known.
-  if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+  if isinstance(x, tensor_lib.Tensor) and x.get_shape().ndims is not None:
     return constant_op.constant(
         np.arange(x.get_shape().ndims), dtype=dtypes.int32)
   if (isinstance(x, sparse_tensor.SparseTensor) and

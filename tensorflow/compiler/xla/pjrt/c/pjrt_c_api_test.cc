@@ -32,12 +32,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -283,6 +286,7 @@ class PjrtCApiTest : public ::testing::Test {
         .struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE,
         .priv = nullptr,
         .src = src_buffer,
+        .host_layout = nullptr,
         .dst = nullptr,
         .dst_size = 0,
         .event = nullptr,
@@ -862,6 +866,31 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   destroy_args.event = event;
   error.reset(api_->PJRT_Event_Destroy(&destroy_args));
   EXPECT_EQ(error, nullptr);
+}
+
+TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
+  PJRT_Buffer_ToHostBuffer_Args args;
+  args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.src = buffer_.get();
+  Shape host_shape = ShapeUtil::MakeShape(F32, {4});
+  auto literal = std::make_shared<Literal>(host_shape);
+  args.host_layout = nullptr;
+  args.dst = literal->untyped_data();
+  args.dst_size = ShapeUtil::ByteSizeOfElements(host_shape);
+  args.event = nullptr;
+
+  PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
+  PjRtFuture<absl::Status> transfer_to_host =
+      ::pjrt::ConvertCEventToCppFuture(args.event, api_);
+  TF_CHECK_OK(transfer_to_host.Await());
+
+  EXPECT_EQ(error, nullptr);
+  ASSERT_EQ(literal->data<float>().size(), 4);
+  std::vector<float> float_data(4);
+  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>(float_data),
+                                     *literal));
 }
 
 // --------------------------------- Helpers -----------------------------------

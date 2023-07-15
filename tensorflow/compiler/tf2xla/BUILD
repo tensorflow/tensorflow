@@ -254,7 +254,11 @@ cc_library(
         ":xla_compiled_cpu_runtime_hdrs",
     ],
     copts = runtime_copts() + tf_openmp_copts(),
-    defines = ["EIGEN_NEON_GEBP_NR=4"],
+    defines = [
+        "EIGEN_NEON_GEBP_NR=4",
+        # TODO(b/238649163): remove this once no longer necessary.
+        "EIGEN_USE_AVX512_GEMM_KERNELS=0",
+    ],
     features = [
         "fully_static_link",
         "-parse_headers",

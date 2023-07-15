@@ -221,6 +221,27 @@ class SharedBatchScheduler
 
     // If true, the padding will not be appended.
     bool disable_padding = false;
+
+    // If true, queue implementation would split high priority and low priority
+    // inputs into two sub queues.
+    bool enable_priority_queue = false;
+
+    // A separate set of queue options for different priority inputs.
+    // Use iff `enable_priority_queue` is true.
+    struct PriorityQueueOptions {
+      // See QueueOptions.max_execution_batch_size
+      size_t max_execution_batch_size = 0;
+      // See QueueOptions.batch_timeout_micros
+      int64_t batch_timeout_micros = 0;
+      // See QueueOptions.input_batch_size_limit
+      size_t input_batch_size_limit = 0;
+      // See QueueOptions.max_enqueued_batches
+      size_t max_enqueued_batches = 0;
+    };
+    // A subset of queue options for high priority input.
+    PriorityQueueOptions high_priority_queue_options;
+    // A subset of queue options for low priority input.
+    PriorityQueueOptions low_priority_queue_options;
   };
   Status AddQueue(const QueueOptions& options,
                   std::function<void(std::unique_ptr<Batch<TaskType>>)>
@@ -464,6 +485,14 @@ class Queue {
   // Used iff `QueueOptions.enable_lazy_split` is true.
   std::deque<std::unique_ptr<Batch<BatchInputTaskHandle<TaskType>>>>
       task_handle_batches_ TF_GUARDED_BY(mu_);
+
+  // The enqueued batches for low priority input
+  std::deque<std::unique_ptr<Batch<TaskType>>> low_priority_batches_
+      TF_GUARDED_BY(mu_);
+
+  // The enqueued batches for high priority input
+  std::deque<std::unique_ptr<Batch<TaskType>>> high_priority_batches_
+      TF_GUARDED_BY(mu_);
 
   // The counter of the TraceMe context ids.
   uint64 traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;

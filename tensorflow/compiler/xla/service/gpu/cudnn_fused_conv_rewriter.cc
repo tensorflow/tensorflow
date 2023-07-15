@@ -18,13 +18,10 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -62,17 +59,24 @@ bool IsConvDepthwise(const HloInstruction* instr) {
   return input_feature_count == feature_group_count;
 }
 
+// We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+// because the fused CUDNN functions are slower for some of those.
 bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
   return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
 }
 
-bool IsExponentialMinusOne(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kExpm1;
-}
-
-bool HasThreeUsers(const HloInstruction* instr) {
-  int64_t user_count = instr->user_count();
-  return user_count == 3;
+// elu, relu6, and leaky-relu activations are supported in cudnn via the
+// "runtime fusion" engine, which JIT compiles C++ code.  This can be slow to
+// compile, so we guard it with a debug option.
+//
+// nvidia currently recommends that we enable this only on Ampere+, but we've
+// tested on Turing (sm75) and it seems to work fine.
+//
+// Note that as of writing, xla_gpu_use_runtime_fusion is disabled by default
+// due to apparent bugs in cudnn 8.9.0.  See debug_options_flags.cc for details.
+bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
+                                 se::CudaComputeCapability cc) {
+  return debug_opts.xla_gpu_use_runtime_fusion() && cc.IsAtLeast(7, 5);
 }
 
 // Can instr be converted to type `dst_ty` without losing any precision?  For
@@ -227,9 +231,7 @@ struct ConvConvertTypes {
 // gte(custom-call<float>(int8_x, int8_w))
 StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
   bool changed = false;
-  // Note: We are eliminating F16->F32 due to the benchmark/test
-  // waymo/ml/deploy/sync_test/local:perception_occlusion_net_sync_test_v100
-  // not able to find an appropriate cuDNN function.
+  // Note: We are eliminating F16->F32 because it fails on internal tests.
   std::array<ConvConvertTypes, 3> types{{
       {S32, F32},
       {S8, F32},
@@ -252,8 +254,6 @@ StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
     HloInstruction* gte = nullptr;
     HloInstruction* alpha = nullptr;
 
-    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
-    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::MultiplyAnyOrder(
         m::GetTupleElement(
             &gte, m::Op(&conv).WithPredicate(IsNonDepthwiseConvCustomCall), 0)
@@ -303,8 +303,6 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     HloInstruction* gte = nullptr;
     HloInstruction* addend = nullptr;
 
-    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
-    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::AddAnyOrder(
         m::GetTupleElement(&gte,
                            m::Op(&conv)
@@ -515,40 +513,39 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
 }
 
 StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
+  if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
+                                   cc)) {
+    return false;
+  }
+
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-    const DebugOptions& debug_options =
-        instr->GetModule()->config().debug_options();
-    if (!debug_options.xla_gpu_use_runtime_fusion() ||
-        !cc.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      return false;
-    }
-
-    HloInstruction* gte;
+    HloInstruction *gte1, *gte2, *gte3;
     HloInstruction* conv;
     HloInstruction* expm1;
 
-    // In Elu computation, the GetTupleElement node will have three users:
-    // Compare, ExponentialMinusOnem, and Select.
-    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
-    // because the fused CUDNN functions are slower for some of those.
-    auto gte_pattern =
-        m::GetTupleElement(&gte,
-                           m::Op(&conv)
-                               .WithPredicate(IsNonDepthwiseConvCustomCall)
-                               .WithOneUse())
-            .WithElementType(F16)
-            .WithPredicate(HasThreeUsers);
     if (!Match(instr,
-               m::Select(m::Compare(gte_pattern,
+               m::Select(m::Compare(m::GetTupleElement(&gte1, m::Op()),
                                     m::Broadcast(m::ConstantEffectiveScalar(0)))
                              .WithComparisonDirection(ComparisonDirection::kGt)
                              .WithOneUse(),
-                         gte_pattern,
+                         m::GetTupleElement(
+                             &gte2,
+                             m::Op(&conv)
+                                 .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                 .WithOneUse(),
+                             /*tuple_index=*/0)
+                             // TODO(jlebar): Why only fp16?
+                             .WithElementType(F16),
                          m::Op(&expm1)
-                             .WithPredicate(IsExponentialMinusOne)
-                             .WithOperand(0, gte_pattern)
+                             .WithOpcode(HloOpcode::kExpm1)
+                             .WithOperand(0, m::GetTupleElement(&gte3, m::Op()))
                              .WithOneUse()))) {
+      continue;
+    }
+
+    // The three GTEs should be the same, and these should be the only uses.
+    if (gte1 != gte2 || gte2 != gte3 || gte1->user_count() != 3) {
       continue;
     }
 
@@ -589,7 +586,7 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
     TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     config.set_activation_mode(se::dnn::kElu);
     TF_RETURN_IF_ERROR(conv->set_backend_config(config));
-    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte1));
     changed = true;
   }
   return changed;
@@ -600,8 +597,6 @@ StatusOr<bool> FuseRelu(HloComputation* comp) {
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte;
     HloInstruction* conv;
-    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
-    // because the fused CUDNN functions are slower for some of those.
     if (!Match(instr,
                m::MaximumAnyOrder(
                    m::Broadcast(m::ConstantEffectiveScalar(0)),
@@ -627,6 +622,115 @@ StatusOr<bool> FuseRelu(HloComputation* comp) {
     config.set_activation_mode(se::dnn::kRelu);
     TF_RETURN_IF_ERROR(conv->set_backend_config(config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
+  if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
+                                   cc)) {
+    return false;
+  }
+
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction *gte, *conv;
+    if (!Match(
+            instr,
+            m::Clamp(m::Broadcast(m::ConstantEffectiveScalar(0)),
+                     m::GetTupleElement(
+                         &gte, m::Op(&conv)
+                                   .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                   .WithOneUse())
+                         // TODO(jlebar): Why only fp16?
+                         .WithElementType(F16)
+                         .WithOneUse(),
+                     m::Broadcast(m::ConstantEffectiveScalar(6))))) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    // cudnn runtime fusions seem to be very slow when a side input is present.
+    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+    if (conv->operands().size() > 3) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseRelu6: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kRelu6);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
+                             se::CudaComputeCapability cc) {
+  if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
+                                   cc)) {
+    return false;
+  }
+
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction *gte1, *gte2, *gte3, *conv, *alpha;
+    if (!Match(instr,
+               m::Select(
+                   m::Compare(m::GetTupleElement(&gte1, m::Op()),
+                              m::Broadcast(m::ConstantEffectiveScalar(0)))
+                       .WithComparisonDirection(ComparisonDirection::kGt)
+                       .WithOneUse(),
+                   m::GetTupleElement(
+                       &gte2, m::Op(&conv)
+                                  .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                  .WithOneUse())
+                       // TODO(jlebar): Why only fp16?
+                       .WithElementType(F16),
+                   m::Multiply(m::GetTupleElement(&gte3, m::Op()),
+                               m::Broadcast(m::ConstantEffectiveScalar(&alpha)))
+                       .WithOneUse()))) {
+      continue;
+    }
+
+    // The three GTEs should be the same, and these should be the only uses.
+    if (gte1 != gte2 || gte2 != gte3 || gte1->user_count() != 3) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    // cudnn runtime fusions seem to be very slow when a side input is present.
+    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+    if (conv->operands().size() > 3) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseLeakyRelu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kLeakyRelu);
+    TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
+    config.set_leakyrelu_alpha(alpha_f64.GetFirstElement<double>());
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte1));
     changed = true;
   }
   return changed;
@@ -845,37 +949,37 @@ void VlogStats(HloModule* module) {
       VLOG(3) << instr->ToString();
 
       if (instr->custom_call_target() == kCudnnConvForwardCallTarget) {
-        stats["01 non-fused forward convs"]++;
+        ++stats["01 non-fused forward convs"];
       } else if (instr->custom_call_target() ==
                  kCudnnConvBiasActivationForwardCallTarget) {
-        stats["02 fused forward convs"]++;
+        ++stats["02 fused forward convs"];
       }
 
       PrimitiveType conv_in_ty = instr->operand(0)->shape().element_type();
       PrimitiveType conv_out_ty = instr->shape().tuple_shapes(0).element_type();
       if (conv_in_ty == F32) {
-        stats["10 f32 convs"]++;
+        ++stats["10 f32 convs"];
       } else if (conv_in_ty == F16) {
-        stats["11 f16 convs"]++;
+        ++stats["11 f16 convs"];
       } else if (conv_in_ty == S8) {
         if (conv_out_ty == S8) {
-          stats["12 s8->s8 convs"]++;
+          ++stats["12 s8->s8 convs"];
         } else if (conv_out_ty == F32) {
-          stats["13 s8->f32 convs"]++;
+          ++stats["13 s8->f32 convs"];
         } else {
           LOG(ERROR) << "Unexpected conv: " << instr->ToString();
         }
       }
 
       if (instr->operand_count() > 2) {
-        stats["20 convs with bias"]++;
+        ++stats["20 convs with bias"];
         if (Match(instr->operand(2),
                   m::Broadcast(m::ConstantEffectiveScalar(0)))) {
-          stats["21 convs with 0 bias"]++;
+          ++stats["21 convs with 0 bias"];
         }
       }
       if (instr->operand_count() > 3) {
-        stats["22 convs with side-input"]++;
+        ++stats["22 convs with side-input"];
       }
 
       auto config = instr->backend_config<CudnnConvBackendConfig>();
@@ -885,14 +989,14 @@ void VlogStats(HloModule* module) {
       }
 
       if (config->conv_result_scale() != 1) {
-        stats["30 convs with result scale"]++;
+        ++stats["30 convs with result scale"];
       }
       if (config->side_input_scale() != 0 && config->side_input_scale() != 1) {
-        stats["31 convs with side-input scale"]++;
+        ++stats["31 convs with side-input scale"];
       }
-      stats[absl::StrCat(
+      ++stats[absl::StrCat(
           "32 convs with activation mode ",
-          se::dnn::ActivationMode_Name(config->activation_mode()))]++;
+          se::dnn::ActivationMode_Name(config->activation_mode()))];
     }
   }
 
@@ -939,6 +1043,10 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu6(comp, compute_capability_));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseLeakyRelu(comp, compute_capability_));
+    any_changed |= changed;
 
     TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
     any_changed |= changed;
@@ -958,9 +1066,13 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
     any_changed |= changed;
     TF_ASSIGN_OR_RETURN(changed, FuseElu(comp, compute_capability_));
     any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu6(comp, compute_capability_));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseLeakyRelu(comp, compute_capability_));
+    any_changed |= changed;
 
-    // Check that we don't have any convs outputing integer types other than s8.
-    // cudnn does not support these.  They should have been transformed to
+    // Check that we don't have any convs outputting integer types other than
+    // s8 - cudnn does not support these.  They should have been transformed to
     // int8->int8 or int8->float above.
     TF_RETURN_IF_ERROR(CheckNoIllegalIntegerConvs(comp));
   }

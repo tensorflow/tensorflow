@@ -42,7 +42,30 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
-  opts.set_xla_gpu_use_runtime_fusion(true);
+
+  // As of cudnn 8.9.0, enabling cudnn runtime fusion sometimes causes a
+  // situation where cudnn returns 0 algorithms for an otherwise-valid conv,
+  // causing compilation to fail.  Examples of failing convs:
+  //
+  // // failing kLeakyRelu, b/290967578
+  // (f16[2,256,768,16]{3,2,1,0}, u8[0]{0})
+  //   custom-call(f16[2,256,768,3]{3,2,1,0} %a, f16[16,3,3,3]{3,2,1,0} %b,
+  //   f16[16]{0} %c), window={size=3x3 pad=1_1x1_1},
+  //   dim_labels=b01f_o01i->b01f, operand_precision={highest,highest},
+  //   custom_call_target="__cudnn$convBiasActivationForward",
+  //   backend_config={"activation_mode":"kLeakyRelu","conv_result_scale":1,
+  //                   "side_input_scale":0,"leakyrelu_alpha":0.199951171875}
+  //
+  // // failing kRelu6, b/291011396
+  // (f16[1,384,1024,32]{3,2,1,0}, u8[0]{0})
+  //   custom-call(f16[1,769,2049,3]{3,2,1,0} %a, f16[32,3,3,3]{3,2,1,0} %b,
+  //   f16[32]{0} %c), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f,
+  //   operand_precision={highest,highest},
+  //   custom_call_target="__cudnn$convBiasActivationForward",
+  //   backend_config={"activation_mode":"kRelu6","conv_result_scale":1,
+  //                   "side_input_scale":0,"leakyrelu_alpha":0}
+  opts.set_xla_gpu_use_runtime_fusion(false);
+
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
@@ -81,10 +104,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
   // integration.
-  opts.set_xla_gpu_cuda_graph_level(0);
-  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(2);
+  opts.set_xla_gpu_cuda_graph_level(1);
+  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
-  opts.set_xla_gpu_cuda_graph_min_graph_size(2);
+  opts.set_xla_gpu_cuda_graph_min_graph_size(5);
   opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
@@ -138,6 +161,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
   opts.set_xla_gpu_enable_triton_softmax_fusion(false);
+  opts.set_xla_gpu_triton_fusion_level(1);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -145,7 +169,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
-  opts.set_xla_gpu_enable_experimental_block_size(false);
+  opts.set_xla_gpu_enable_experimental_block_size(true);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(false);
@@ -1130,6 +1154,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Forces any reductions during matrix multiplications to use the "
       "accumulator type and not the output type. The precision of the dot "
       "operation may not increase that much if there is output fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_triton_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_triton_fusion_level),
+      debug_options->xla_gpu_triton_fusion_level(),
+      "Triton fusion level, higher levels mean more fused operations."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

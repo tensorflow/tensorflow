@@ -89,6 +89,19 @@ class FingerprintingTest(test.TestCase):
                          "12074714563970609759",  # saved_object_graph_hash
                          ]))
 
+  def test_read_chunked_saved_model_fingerprint(self):
+    if is_oss:
+      self.skipTest("Experimental image format disabled in OSS.")
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/chunked_saved_model/chunked_model")
+    fingerprint = fingerprint_pb2.FingerprintDef().FromString(
+        pywrap_fingerprinting.CreateFingerprintDef(export_dir))
+    self.assertGreater(fingerprint.saved_model_checksum, 0)
+    self.assertEqual(fingerprint.graph_def_program_hash, 906548630859202535)
+    self.assertEqual(fingerprint.signature_def_hash, 1043582354059066488)
+    self.assertEqual(fingerprint.saved_object_graph_hash, 11894619660760763927)
+    self.assertEqual(fingerprint.checkpoint_hash, 0)
+
 
 if __name__ == "__main__":
   test.main()

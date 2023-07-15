@@ -40,7 +40,7 @@ void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
 // Sets the experimental_type` field in the node_def Protocol Buffer.
 void SetFullType(TF_Graph* graph, TF_Operation* op,
-                 const FullTypeDef& full_type);
+                 const TF_Buffer* full_type_proto);
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 

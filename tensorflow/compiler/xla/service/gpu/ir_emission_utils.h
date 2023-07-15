@@ -51,7 +51,7 @@ inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
+int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
@@ -175,7 +175,8 @@ Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions);
+bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
+                         const ReductionDimensions& reduction_dimensions);
 
 // Description of how to emit a given transposition.
 //

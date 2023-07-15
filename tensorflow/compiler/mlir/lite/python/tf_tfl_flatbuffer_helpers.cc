@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -346,6 +347,18 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
+
+  // Checks whether the model contains an `XlaCallModuleOp` operation which
+  // is a wrapper around StableHLO.
+  // This option is mutually exclusive to `enable_stablehlo_conversion`, the
+  // latter of which takes precedence.
+  // TODO(b/290109282): explore removing the enable_hlo_to_tf_conversion flag
+  // entirely, such that the added passes are no-ops in the non-shlo case.
+  module->walk([&](mlir::TF::XlaCallModuleOp xla_call_module_op) {
+    pass_config_copy.enable_hlo_to_tf_conversion = true;
+    mlir::WalkResult::interrupt();
+  });
+
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
       saved_model_tags, model_flags.saved_model_dir(), session, result);

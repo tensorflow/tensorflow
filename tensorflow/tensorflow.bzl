@@ -29,11 +29,13 @@ load(
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
+    "if_tensorrt_exec",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
     "if_cuda",
+    "if_cuda_exec",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -60,6 +62,12 @@ load(
 load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
+)
+load(
+    "//tensorflow:py.default.bzl",
+    _plain_py_binary = "py_binary",
+    _plain_py_library = "py_library",
+    _plain_py_test = "py_test",
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -457,6 +465,16 @@ def tf_copts(
         })
     )
 
+def tf_copts_exec(
+        android_optimization_level_override = "-O2",
+        is_external = False,
+        allow_exceptions = False):
+    return tf_copts(
+        android_optimization_level_override,
+        is_external,
+        allow_exceptions,
+    ) + if_cuda_exec(["-DGOOGLE_CUDA=1"]) + if_tensorrt_exec(["-DGOOGLE_TENSORRT=1"])
+
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
@@ -549,7 +567,7 @@ def tf_gen_op_libs(
     for n in op_lib_names:
         cc_library(
             name = n + "_op_lib",
-            copts = tf_copts(is_external = is_external),
+            copts = tf_copts_exec(is_external = is_external),
             features = features,
             srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
@@ -1314,32 +1332,6 @@ generate_op_reg_offsets = rule(
     implementation = _generate_op_reg_offsets_impl,
 )
 
-# Generates a Python library target wrapping the ops registered in "deps".
-#
-# Args:
-#   name: used as the name of the generated target and as a name component of
-#     the intermediate files.
-#   out: name of the python file created by this rule. If None, then
-#     "ops/gen_{name}.py" is used.
-#   hidden: Optional list of ops names to make private in the Python module.
-#     It is invalid to specify both "hidden" and "op_allowlist".
-#   visibility: passed to py_library.
-#   deps: list of dependencies for the intermediate tool used to generate the
-#     python target. NOTE these `deps` are not applied to the final python
-#     library target itself.
-#   require_shape_functions: Unused. Leave this as False.
-#   hidden_file: optional file that contains a list of op names to make private
-#     in the generated Python module. Each op name should be on a line by
-#     itself. Lines that start with characters that are invalid op name
-#     starting characters are treated as comments and ignored.
-#   generated_target_name: name of the generated target (overrides the
-#     "name" arg)
-#   op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
-#   op_allowlist: if not empty, only op names in this list will be wrapped. It
-#     is invalid to specify both "hidden" and "op_allowlist".
-#   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
-#     specified ops.
-
 def tf_gen_op_wrapper_py(
         name,
         out = None,
@@ -1357,7 +1349,39 @@ def tf_gen_op_wrapper_py(
         testonly = False,
         copts = [],
         extra_py_deps = None,
-        py_lib_rule = native.py_library):
+        py_lib_rule = _plain_py_library):
+    """Generates a Python library target wrapping the ops registered in "deps".
+
+    Args:
+        name: used as the name of the generated target and as a name component of
+            the intermediate files.
+        out: name of the python file created by this rule. If None, then
+            "ops/gen_{name}.py" is used.
+        hidden: Optional list of ops names to make private in the Python module.
+            It is invalid to specify both "hidden" and "op_allowlist".
+        visibility: passed to py_library.
+        deps: list of dependencies for the intermediate tool used to generate the
+            python target. NOTE these `deps` are not applied to the final python
+            library target itself.
+        require_shape_functions: Unused. Leave this as False.
+        hidden_file: optional file that contains a list of op names to make private
+            in the generated Python module. Each op name should be on a line by
+            itself. Lines that start with characters that are invalid op name
+            starting characters are treated as comments and ignored.
+        generated_target_name: name of the generated target (overrides the
+            "name" arg)
+        op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
+        op_allowlist: if not empty, only op names in this list will be wrapped. It
+            is invalid to specify both "hidden" and "op_allowlist".
+        cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
+            specified ops.
+        api_def_srcs: undocumented.
+        compatible_with: undocumented.
+        testonly: undocumented.
+        copts: undocumented.
+        extra_py_deps: undocumented.
+        py_lib_rule: undocumented.
+    """
     _ = require_shape_functions  # Unused.
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
@@ -1377,7 +1401,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        copts = copts + tf_copts(),
+        copts = copts + tf_copts_exec(),
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
@@ -1566,7 +1590,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-# TODO(jakeharmon): Replace with or implement in terms of tsl_gpu_cc_test, which doesn't add a
+# TODO(jakeharmon): Replace with an implementation which doesn't add a
 # dependency on core:common_runtime
 def tf_gpu_cc_test(
         name,
@@ -2261,7 +2285,8 @@ def tf_custom_op_py_library(
         deps = [],
         **kwargs):
     _ignore = [kernels]
-    native.py_library(
+    _make_tags_mutable(kwargs)
+    _plain_py_library(
         name = name,
         data = dso,
         srcs = srcs,
@@ -2448,7 +2473,7 @@ def pywrap_tensorflow_macro_opensource(
     # link the pyd (which is just a dll) because of missing dependencies.
     _create_symlink("ml_dtypes.so", "//tensorflow/tsl/python/lib/core:ml_dtypes.so")
 
-    native.py_library(
+    _plain_py_library(
         name = name,
         srcs = [":" + name + ".py"],
         srcs_version = "PY3",
@@ -2483,10 +2508,11 @@ pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = native.py_test, **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = _plain_py_test, **kwargs):
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
+    _make_tags_mutable(kwargs)
     test_rule(
         deps = select({
             "//conditions:default": deps,
@@ -2510,13 +2536,14 @@ register_extension_info(
 # See https://github.com/tensorflow/tensorflow/issues/22390
 def py_binary(name, deps = [], **kwargs):
     # Add an extra target for dependencies to avoid nested select statement.
-    native.py_library(
+    _plain_py_library(
         name = name + "_deps",
         deps = deps,
     )
 
     # Python version placeholder
-    native.py_binary(
+    _make_tags_mutable(kwargs)
+    _plain_py_binary(
         name = name,
         deps = select({
             "//conditions:default": [":" + name + "_deps"],
@@ -2527,7 +2554,18 @@ def py_binary(name, deps = [], **kwargs):
 
 def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    native.py_library(name = name, **kwargs)
+    _make_tags_mutable(kwargs)
+    _plain_py_library(name = name, **kwargs)
+
+# Tensorflow uses rules_python 0.0.1, and in that version of rules_python,
+# the rules require the tags value to be a mutable list because they
+# modify it in-place. Later versions of rules_python don't have this
+# requirement.
+def _make_tags_mutable(kwargs):
+    if "tags" in kwargs and kwargs["tags"] != None:
+        # The value might be a frozen list, which looks just like
+        # a regular list. So always make a copy.
+        kwargs["tags"] = list(kwargs["tags"])
 
 def tf_py_test(
         name,
@@ -3136,7 +3174,7 @@ def pybind_extension_opensource(
         testonly = testonly,
     )
 
-    native.py_library(
+    _plain_py_library(
         name = name,
         data = select({
             clean_dep("//tensorflow:windows"): [pyd_file],
@@ -3405,9 +3443,6 @@ def tf_grpc_cc_dependencies():
     return ["//tensorflow:grpc++"]
 
 def get_compatible_with_portable():
-    return []
-
-def get_compatible_with_cloud():
     return []
 
 def filegroup(**kwargs):

@@ -33,6 +33,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -687,7 +688,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       full_output_shape = [x * num_cores_per_replica for x in output_shape] + [
           feature.table.dim
       ]
-      if gradient is not None and not isinstance(gradient, ops.Tensor):
+      if gradient is not None and not isinstance(gradient, tensor_lib.Tensor):
         raise ValueError(
             f"found non-tensor type: {type(gradient)} at path {path}.")
       if gradient is not None:
@@ -992,7 +993,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
-      if isinstance(inp, ops.Tensor):
+      if isinstance(inp, tensor_lib.Tensor):
         self._add_data_for_tensor(inp, weight, indices_or_row_splits, values,
                                   weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
@@ -1310,7 +1311,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       def _split_fn(ts, idx):
         if ts is None:
           return None
-        elif isinstance(ts, ops.Tensor):
+        elif isinstance(ts, tensor_lib.Tensor):
           return array_ops.split(
               ts,
               num_or_size_splits=self._num_cores_per_replica,
@@ -1389,7 +1390,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         tensor = maybe_tensor
 
-      if isinstance(tensor, ops.Tensor):
+      if isinstance(tensor, tensor_lib.Tensor):
         input_shapes.append(
             self._get_input_shape_for_tensor(tensor, feature, per_replica, path)
         )

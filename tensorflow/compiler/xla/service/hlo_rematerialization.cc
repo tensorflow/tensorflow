@@ -40,18 +40,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/buffer_value.h"
-#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -498,13 +492,10 @@ UsesList GetUsers(const InstructionList& instruction_list,
 // (LogicalBuffers) at the current point in the instruction sequence.
 class MemoryUsageTracker {
  public:
-  MemoryUsageTracker(
-      const HloComputation* computation,
-      const HloRematerialization::ShapeSizeFunction& size_function,
-      const HloRematerialization::CompactShapeFunction& compact_shape_function,
-      const TuplePointsToAnalysis& points_to_analysis,
-      const InstructionList& instruction_list,
-      HloRematerialization::RematerializationMode mode);
+  MemoryUsageTracker(const HloRematerialization::Options& options,
+                     const HloComputation* computation,
+                     const TuplePointsToAnalysis& points_to_analysis,
+                     const InstructionList& instruction_list);
 
   // Starts the placement of the given instruction. This adds the sizes of the
   // LogicalBuffers defined by the instruction to the current memory
@@ -589,7 +580,7 @@ class MemoryUsageTracker {
   bool HasUnplacedUsers(Item* item) const;
 
   // Returns the list of uses for a specific 'item'.
-  const UsesList GetItemUses(Item* item) const;
+  UsesList GetItemUses(Item* item) const;
 
   // Returns whether 'item' is currently in progress.
   bool IsInProgressItem(Item* item) const { return item == in_progress_item_; }
@@ -608,6 +599,8 @@ class MemoryUsageTracker {
   }
 
   const HloComputation* computation() const { return computation_; }
+
+  const HloRematerialization::Options& options() const { return options_; }
 
   // Check invariants of the data structure. This is expensive to call.
   bool Check() const;
@@ -758,11 +751,14 @@ class MemoryUsageTracker {
       }
       return users_set.size();
     };
-    buffers_.push_back(Buffer{
-        buffer_id, defining_instruction, size_function_(shape), shape, live_out,
-        has_indirect_uses, index, uses, get_num_of_unique_users(uses)});
+    buffers_.push_back(Buffer{buffer_id, defining_instruction,
+                              options_.size_function(shape), shape, live_out,
+                              has_indirect_uses, index, uses,
+                              get_num_of_unique_users(uses)});
     return buffers_.back();
   }
+
+  const HloRematerialization::Options& options_;
 
   const HloComputation* computation_;
 
@@ -770,13 +766,6 @@ class MemoryUsageTracker {
   // computation_. This is the order in which instructions are placed
   // (BeginInstruction/EndInstruction calls).
   const InstructionList& instruction_list_;
-
-  // Size function returns the bytes of a given buffer.
-  const HloRematerialization::ShapeSizeFunction& size_function_;
-
-  // Converts a shape into compact form, returns the same shape if a shape is
-  // already considered compact.
-  const HloRematerialization::CompactShapeFunction& compact_shape_function_;
 
   // A map that caches existing known compact shape for each instruction.
   absl::flat_hash_map<const HloInstruction*, Shape> compact_shape_;
@@ -788,23 +777,18 @@ class MemoryUsageTracker {
   // between the calling of BeginInstruction and EndInstruction.
   Item* in_progress_item_ = nullptr;
 
-  HloRematerialization::RematerializationMode mode_;
   // All buffers in the computation.
   std::vector<Buffer> buffers_;
 };
 
 MemoryUsageTracker::MemoryUsageTracker(
+    const HloRematerialization::Options& options,
     const HloComputation* computation,
-    const HloRematerialization::ShapeSizeFunction& size_function,
-    const HloRematerialization::CompactShapeFunction& compact_shape_function,
     const TuplePointsToAnalysis& points_to_analysis,
-    const InstructionList& instruction_list,
-    HloRematerialization::RematerializationMode mode)
-    : computation_(computation),
-      instruction_list_(instruction_list),
-      size_function_(size_function),
-      compact_shape_function_(compact_shape_function),
-      mode_(mode) {
+    const InstructionList& instruction_list)
+    : options_(options),
+      computation_(computation),
+      instruction_list_(instruction_list) {
   PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
@@ -958,7 +942,7 @@ int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
     const Buffer& buffer = buffers_.at(buffer_id);
     memory_reduced += buffer.size;
 
-    int64_t compact_shape_size = size_function_(compact_shape);
+    int64_t compact_shape_size = options_.size_function(compact_shape);
     // Account for buffers that are compressed after instruction.
     memory_reduced -= compact_shape_size;
   }
@@ -1027,9 +1011,10 @@ Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
                                                    Item* compressed_item,
                                                    Item* uncompressed_item) {
   // Original buffer is now dead.
-  memory_usage_ -= size_function_(original_item->instruction->shape());
+  memory_usage_ -= options_.size_function(original_item->instruction->shape());
   // Compressed buffer is now alive.
-  memory_usage_ += size_function_(compressed_item->instruction->shape());
+  memory_usage_ +=
+      options_.size_function(compressed_item->instruction->shape());
 
   UsesList placed_users;
   UsesList unplaced_users;
@@ -1261,7 +1246,8 @@ StatusOr<Shape> MemoryUsageTracker::GetCompactShape(const HloInstruction* hlo) {
     return it->second;
   }
   const Shape& original_shape = hlo->shape();
-  TF_ASSIGN_OR_RETURN(Shape min_shape, compact_shape_function_(original_shape));
+  TF_ASSIGN_OR_RETURN(Shape min_shape,
+                      options_.compact_shape_function(original_shape));
   compact_shape_[hlo] = min_shape;
   return min_shape;
 }
@@ -1424,10 +1410,10 @@ MemoryUsageTracker::PickRematerializationCandidates(
         auto* item = block[0];
         auto* candidate = item->instruction;
         if (item->buffers_output.size() == 1 &&
-            (mode_ ==
+            (options_.mode ==
                  HloRematerialization::RematerializationMode::kCompressOnly ||
-             mode_ == HloRematerialization::RematerializationMode::
-                          kRecomputeAndCompress)) {
+             options_.mode == HloRematerialization::RematerializationMode::
+                                  kRecomputeAndCompress)) {
           // Only consider compressing single output instruction.
           const Buffer& output_buffer = buffers_.at(item->buffers_output[0]);
 
@@ -1442,8 +1428,10 @@ MemoryUsageTracker::PickRematerializationCandidates(
               // while performing the compression/uncompression, only perform
               // the compression if the sum of the two sizes is less than the
               // peak memory.
-              const int64_t size = size_function_(item->instruction->shape());
-              const int64_t reduced_size = size_function_(compact_shape);
+              const int64_t size =
+                  options_.size_function(item->instruction->shape());
+              const int64_t reduced_size =
+                  options_.size_function(compact_shape);
               effort++;
               if (memory_reduced > 0 &&
                   size + reduced_size < peak_memory_bytes) {
@@ -1464,7 +1452,8 @@ MemoryUsageTracker::PickRematerializationCandidates(
         }
       }
       // Do not consider recomputation in compress-only mode.
-      if (mode_ == HloRematerialization::RematerializationMode::kCompressOnly) {
+      if (options_.mode ==
+          HloRematerialization::RematerializationMode::kCompressOnly) {
         // break out of this loop. Move on to the next start_item.
         break;
       }
@@ -1537,7 +1526,7 @@ bool MemoryUsageTracker::HasUnplacedUsers(Item* item) const {
   return false;
 }
 
-const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
+UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
   UsesList combined_users;
   for (BufferId buffer_id : item->buffers_defined) {
     const Buffer& buffer = buffers_.at(buffer_id);
@@ -1861,9 +1850,8 @@ StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
     const HloComputation* computation, const HloInstructionSequence& order,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   InstructionList instruction_list(order);
-  MemoryUsageTracker tracker(computation, size_function_,
-                             compact_shape_function_, *points_to_analysis_,
-                             instruction_list, mode_);
+  MemoryUsageTracker tracker(options_, computation, *points_to_analysis_,
+                             instruction_list);
   int64_t peak_memory = tracker.memory_usage();
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
@@ -1927,9 +1915,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
   InstructionList instruction_list(schedule->sequence(computation));
-  MemoryUsageTracker memory_tracker(
-      computation, size_function_, compact_shape_function_,
-      *points_to_analysis_, instruction_list, mode_);
+  MemoryUsageTracker memory_tracker(options_, computation, *points_to_analysis_,
+                                    instruction_list);
 
   instruction_list.PromoteNodesToSkip([&](Item* item) {
     return memory_tracker.AllocatedSize(item) >= min_remat_size;
@@ -2028,9 +2015,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           min_block_size = 1;
           max_block_size = 1;
         }
-        if (max_block_size > block_size_limit_ ||
+        if (max_block_size > options_.block_size_limit ||
             second_phase_effort >
-                block_rematerialization_factor_ * first_phase_effort) {
+                options_.block_rematerialization_factor * first_phase_effort) {
           break;
         }
       }
@@ -2112,7 +2099,7 @@ StatusOr<bool> HloRematerialization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "HloRematerialization() with memory limit of "
-          << HumanReadableNumBytes(memory_limit_bytes_);
+          << HumanReadableNumBytes(options_.memory_limit_bytes);
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
 
   // Initialize pass object state.
@@ -2132,13 +2119,12 @@ StatusOr<bool> HloRematerialization::Run(
   int64_t module_output_size = 0;
   ShapeUtil::ForEachSubshape(
       module->result_shape(),
-      [&module_output_size, module, this](const Shape& subshape,
-                                          const ShapeIndex& output_index) {
-        module_output_size += size_function_(subshape);
+      [&](const Shape& subshape, const ShapeIndex& output_index) {
+        module_output_size += options_.size_function(subshape);
       });
 
   const int64_t adjusted_memory_limit_bytes =
-      memory_limit_bytes_ - module_output_size;
+      std::max<int64_t>(0, options_.memory_limit_bytes - module_output_size);
   VLOG(1) << "Adjusted memory limit accounting for output ("
           << HumanReadableNumBytes(module_output_size)
           << "): " << HumanReadableNumBytes(adjusted_memory_limit_bytes);
@@ -2175,8 +2161,8 @@ StatusOr<bool> HloRematerialization::Run(
   TF_ASSIGN_OR_RETURN(
       bool changed,
       RematerializeComputation(module->entry_computation(), &module->schedule(),
-                               adjusted_memory_limit_bytes, min_remat_size_,
-                               execution_threads));
+                               adjusted_memory_limit_bytes,
+                               options_.min_remat_size, execution_threads));
   // Rematerialization can introduce dead code. This occurs if all uses of an
   // instruction are replaced with rematerializations of the instruction.
 
@@ -2207,19 +2193,19 @@ StatusOr<bool> HloRematerialization::Run(
           << HumanReadableNumBytes(reduced_peak_memory) << " ("
           << reduced_peak_memory << " bytes)";
 
-  if (sizes_ != nullptr) {
-    sizes_->before_bytes = before_peak_memory;
-    sizes_->after_bytes = current_peak_memory;
-  }
+  sizes_.before_bytes = before_peak_memory;
+  sizes_.after_bytes = current_peak_memory;
 
   XLA_VLOG_LINES(5, "After HloRematerialization:\n" + module->ToString());
 
-  if (current_peak_memory > memory_limit_bytes_) {
+  if (current_peak_memory > options_.memory_limit_bytes) {
     LOG(WARNING) << absl::StrFormat(
         "Can't reduce memory use below %s (%d bytes) by rematerialization; "
-        "only reduced to %s (%d bytes)",
-        HumanReadableNumBytes(memory_limit_bytes_), memory_limit_bytes_,
-        HumanReadableNumBytes(current_peak_memory), current_peak_memory);
+        "only reduced to %s (%d bytes), down from %s (%d bytes) originally",
+        HumanReadableNumBytes(options_.memory_limit_bytes),
+        options_.memory_limit_bytes, HumanReadableNumBytes(current_peak_memory),
+        current_peak_memory, HumanReadableNumBytes(before_peak_memory),
+        before_peak_memory);
   }
   return changed;
 }

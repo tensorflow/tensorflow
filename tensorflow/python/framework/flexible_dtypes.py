@@ -19,6 +19,8 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import weak_tensor
+from tensorflow.python.framework.tensor_shape import TensorShape
+from tensorflow.python.types import core as core_types
 from tensorflow.python.util import nest
 
 # PromoMode Enum that denotes safe and all mode.
@@ -372,6 +374,32 @@ _all_str_dtypes = (
 )
 
 
+def _is_acceptable_input_type(x):
+  """Determines if x is an acceptable input type for auto dtype conversion semantics."""
+  acceptable_types = [
+      core_types.Tensor,
+      core_types.TensorProtocol,
+      int,
+      float,
+      bool,
+      str,
+      bytes,
+      complex,
+      tuple,
+      list,
+      np.ndarray,
+      np.generic,
+      dtypes.DType,
+      np.dtype,
+      TensorShape,
+      weak_tensor.WeakTensor,
+  ]
+  for t in acceptable_types:
+    if isinstance(x, t):
+      return True
+  return False
+
+
 def _get_dtype_and_weakness(x):
   """Returns a TF type and weak type information from x.
 
@@ -438,12 +466,22 @@ def _result_type_impl(*arrays_and_dtypes):
 
     TypeError: when the promotion between the input dtypes is disabled in the
     current mode
+
+    NotImplementedError: when arrays_and_dtypes contains an unsupported input
+    type (e.g. CompositeTensor).
   """
   promo_safety_mode = ops.get_dtype_conversion_mode()
-  # Drop None inputs.
-  valid_arrays_and_dtypes = [
-      inp for inp in arrays_and_dtypes if inp is not None
-  ]
+  # Drop None inputs and check if input type is supported.
+  valid_arrays_and_dtypes = []
+  for inp in arrays_and_dtypes:
+    if inp is not None:
+      if _is_acceptable_input_type(inp):
+        valid_arrays_and_dtypes.append(inp)
+      else:
+        raise NotImplementedError(
+            'Auto dtype conversion semantics does not support'
+            f' {type(inp)} type.'
+        )
 
   dtypes_and_is_weak = [
       _get_dtype_and_weakness(x) for x in nest.flatten(valid_arrays_and_dtypes)

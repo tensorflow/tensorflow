@@ -395,6 +395,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
               tensor_handle, element_layouts, device_info, status.get());
         });
   py::class_<Mesh>(m, "Mesh")
+      .def(py::init([](Mesh& mesh) { return mesh; }), py::arg("mesh"),
+           "Create a copy of a mesh.")
       .def(py::init(&Mesh::CreateMesh))
       .def(py::init([](absl::string_view single_device) {
              auto mesh = Mesh::GetSingleDeviceMesh(single_device);

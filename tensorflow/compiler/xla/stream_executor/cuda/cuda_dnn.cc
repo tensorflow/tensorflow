@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_dnn.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
@@ -429,7 +435,7 @@ tsl::Status CudnnSupport::Init() {
       return tsl::Status(absl::StatusCode::kInternal, error);
     }
 
-    cudnn_.reset(new CudnnAccess(cudnn_handle));
+    cudnn_ = std::make_unique<CudnnAccess>(cudnn_handle);
 
     LOG(INFO) << "Loaded cuDNN version " << cudnnGetVersion();
     return ::tsl::OkStatus();
@@ -1689,13 +1695,11 @@ class CudnnRnnSequenceTensorDescriptor
     : public dnn::RnnSequenceTensorDescriptor {
   CudnnRnnSequenceTensorDescriptor(GpuExecutor* parent, int max_seq_length,
                                    int batch_size, int data_size,
-                                   cudnnDataType_t data_type,
                                    RNNDataDescriptor data_handle,
                                    TensorDescriptor handle)
       : max_seq_length_(max_seq_length),
         batch_size_(batch_size),
         data_size_(data_size),
-        data_type_(data_type),
         handle_(std::move(handle)),
         rnn_data_handle_(std::move(data_handle)),
         handles_(max_seq_length, handle_.get()) {}
@@ -1719,13 +1723,13 @@ class CudnnRnnSequenceTensorDescriptor
         /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides));
     return CudnnRnnSequenceTensorDescriptor(parent, max_seq_length, batch_size,
-                                            data_size, data_type, nullptr,
+                                            data_size, nullptr,
                                             std::move(tensor_desc));
   }
 
   static tsl::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
-      const absl::Span<const int>& seq_lengths, bool time_major,
+      absl::Span<const int> seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
       return tsl::Status(absl::StatusCode::kInvalidArgument,
@@ -1754,13 +1758,13 @@ class CudnnRnnSequenceTensorDescriptor
         /*batchSize=*/batch_size, /*vectorSize=*/data_size,
         /*seqLengthArray=*/seq_lengths_array,
         /*paddingFill*/ (void*)&padding_fill));
-    return CudnnRnnSequenceTensorDescriptor(
-        parent, max_seq_length, batch_size, data_size, data_type,
-        std::move(data_desc), std::move(tensor_desc));
+    return CudnnRnnSequenceTensorDescriptor(parent, max_seq_length, batch_size,
+                                            data_size, std::move(data_desc),
+                                            std::move(tensor_desc));
   }
 
   const cudnnTensorDescriptor_t* handles() const { return handles_.data(); }
-  const cudnnRNNDataDescriptor_t data_handle() const {
+  cudnnRNNDataDescriptor_t data_handle() const {
     return rnn_data_handle_.get();
   }
 
@@ -1773,7 +1777,6 @@ class CudnnRnnSequenceTensorDescriptor
   int max_seq_length_;
   int batch_size_;
   int data_size_;
-  cudnnDataType_t data_type_;
   TensorDescriptor handle_;
   RNNDataDescriptor rnn_data_handle_;
   std::vector<cudnnTensorDescriptor_t> handles_;  // Copies of handle_.
@@ -1788,8 +1791,7 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
       : handle_(CreateTensorDescriptor()),
         num_layers_(num_layers),
         batch_size_(batch_size),
-        data_size_(data_size),
-        data_type_(data_type) {
+        data_size_(data_size) {
     int dims[] = {num_layers, batch_size, data_size};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
     CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(
@@ -1809,7 +1811,6 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
   int num_layers_;
   int batch_size_;
   int data_size_;
-  cudnnDataType_t data_type_;
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnStateTensorDescriptor);
 };
 
@@ -4136,8 +4137,7 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
           << "\nConv: " << conv_desc.describe() << "\nOp: " << op.describe()
           << "\nOpGraph: " << opGraph.describe();
 
-  return std::unique_ptr<cudnn_frontend::OperationGraph>(
-      new cudnn_frontend::OperationGraph(std::move(opGraph)));
+  return std::make_unique<cudnn_frontend::OperationGraph>(std::move(opGraph));
 }
 
 bool SideInputNeeded(dnn::ActivationMode activation_mode, double conv_scale,
@@ -4465,8 +4465,7 @@ GetCudnnFusedOperationGraph(
           << (act_op.has_value() ? act_op->describe() : "(identity)")
           << "\nOpGraph: " << op_graph.describe();
 
-  return std::unique_ptr<cudnn_frontend::OperationGraph>(
-      new cudnn_frontend::OperationGraph(std::move(op_graph)));
+  return std::make_unique<cudnn_frontend::OperationGraph>(std::move(op_graph));
 }
 
 tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
@@ -6210,7 +6209,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
     size_t workspace_size = plan_.getWorkspaceSize();
     RETURN_MSG_IF_CUDNN_ERROR(plan_);
     bool should_add_scalars =
-        scalar_input_uids_.size() > 0 && scalar_input_values_.size() > 0;
+        !scalar_input_uids_.empty() && !scalar_input_values_.empty();
     CHECK(scalar_input_uids_.size() == scalar_input_values_.size());
     std::array<void*, sizeof...(Args)> data_ptrs = {inputs.opaque()...};
 
@@ -6223,7 +6222,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
       data_ptrs_vec.erase(data_ptrs_vec.begin() + 2);
     }
 
-    if (data_ptrs_vec[sizeof...(Args) - 1] == nullptr &&
+    if (!data_ptrs_vec.empty() && data_ptrs_vec.back() == nullptr &&
         !has_activation_output_) {
       data_ptrs_vec.pop_back();
     }
@@ -6426,7 +6425,7 @@ tsl::Status CreateOpRunners(
       // Frontend, but instead they get filtered out here.
       VLOG(4) << "Failed building runner from ExecutionPlan (i.e. failed "
                  "getting its workspace size): "
-              << runner_or.status().ToString();
+              << runner_or.status();
       continue;
     }
 

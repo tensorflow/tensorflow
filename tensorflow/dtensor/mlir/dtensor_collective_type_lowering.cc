@@ -121,21 +121,21 @@ mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
              << "Received '" << reduce_op.getReduceOpAttr().getValue().str()
              << "'";
   }
-  if (mlir::isa<mlir::IntegerType>(tensor_input_type.getElementType())) {
+  if (auto integer_type = mlir::dyn_cast<mlir::IntegerType>(
+          tensor_input_type.getElementType())) {
     int32_t min_width = 64;
     if (output_layout->mesh().is_tpu_mesh()) {
       min_width = 32;
     }
 
-    if (tensor_input_type.getElementType().getIntOrFloatBitWidth() >=
-        min_width) {
+    if (integer_type.getWidth() >= min_width) {
       return mlir::success();
     }
     auto input_type = mlir::RankedTensorType::get(
         tensor_input_type.getShape(), builder.getIntegerType(min_width));
 
     auto output_type = mlir::RankedTensorType::get(
-        tensor_output_type.getShape(), tensor_input_type.getElementType());
+        tensor_output_type.getShape(), integer_type);
     return WrapOpWithCasts(input_type, output_type, reduce_op);
   }
   if (mlir::isa<mlir::BFloat16Type>(tensor_input_type.getElementType())) {

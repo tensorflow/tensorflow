@@ -197,6 +197,9 @@ class ExecutableBuildOptions {
   }
 
   absl::string_view fdo_profile() const { return fdo_profile_; }
+  void set_fdo_profile(const std::string& fdo_profile) {
+    fdo_profile_ = fdo_profile;
+  }
   std::string* mutable_fdo_profile() { return &fdo_profile_; }
 
   // Returns a string representation of the build options, suitable for

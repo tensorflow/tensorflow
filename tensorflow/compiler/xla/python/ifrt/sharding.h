@@ -72,7 +72,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   DeviceList devices_;
 };
 
-std::ostream& operator<<(std::ostream& os, const Shape& shape);
+std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
 
 // Single-device sharding.
 //

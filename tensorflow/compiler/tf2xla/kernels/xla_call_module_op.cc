@@ -217,7 +217,6 @@ class XlaCallModuleOp : public XlaOpKernel {
       input_shapes.push_back(*std::move(shape));
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
-    OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
     OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));

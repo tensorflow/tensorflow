@@ -154,7 +154,7 @@ py_strict_test(
         ":data_structures",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/ops:tensor_array_ops",

@@ -23,6 +23,7 @@ Readers](https://tensorflow.org/api_guides/python/io_ops) guide.
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_io_ops
@@ -275,7 +276,7 @@ class ReaderBase:
       key: A string scalar Tensor.
       value: A string scalar Tensor.
     """
-    if isinstance(queue, ops.Tensor):
+    if isinstance(queue, tensor_lib.Tensor):
       queue_ref = queue
     else:
       queue_ref = queue.queue_ref
@@ -307,7 +308,7 @@ class ReaderBase:
       keys: A 1-D string Tensor.
       values: A 1-D string Tensor.
     """
-    if isinstance(queue, ops.Tensor):
+    if isinstance(queue, tensor_lib.Tensor):
       queue_ref = queue
     else:
       queue_ref = queue.queue_ref

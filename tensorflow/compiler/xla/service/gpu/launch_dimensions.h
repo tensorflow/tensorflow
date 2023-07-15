@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/shape.h"
 
@@ -137,8 +136,7 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    bool use_experimental_block_size, LaunchDimensionsConfig dim_config = {},
-    mlir::Operation* op = nullptr);
+    bool use_experimental_block_size, LaunchDimensionsConfig dim_config = {});
 
 }  // namespace gpu
 }  // namespace xla

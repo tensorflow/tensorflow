@@ -867,6 +867,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
       .def("__repr__", &ExecutableBuildOptions::ToString)
+      .def_property("fdo_profile", &ExecutableBuildOptions::fdo_profile,
+                    &ExecutableBuildOptions::set_fdo_profile)
       .def_property(
           "result_layout",
           [](const ExecutableBuildOptions& options) -> std::optional<Shape> {

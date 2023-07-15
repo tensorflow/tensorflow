@@ -536,6 +536,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # Timed out on 2023-07-12
     ],
     deps = [
         ":xla_test",
@@ -746,6 +747,10 @@ tf_xla_py_strict_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/287111047): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -1114,6 +1119,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_ops",
@@ -1782,6 +1788,10 @@ tf_xla_py_strict_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/291130193): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -1931,6 +1941,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -2778,6 +2789,36 @@ tf_xla_py_strict_test(
     disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
     env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=platform"},
+    main = "xla_call_module_test.py",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/mlir/stablehlo",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
+    name = "xla_call_module_no_shape_assertions_check_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # cpu_ondemand overrides the TF_XLA_FLAGS
+    enable_mlir_bridge = False,
+    env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=shape_assertions"},
     main = "xla_call_module_test.py",
     python_version = "PY3",
     tags = [

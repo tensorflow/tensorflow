@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
@@ -290,6 +291,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
+  VLOG(1) << "TPU Bridge called stack trace is :"
+          << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
@@ -313,6 +316,8 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
+  VLOG(1) << "TPU V1 Compat Bridge called stack trace is :"
+          << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
     CreateTPUBridgePipelineV1(pm);
     // Add set of passes to lower back to graph (from tf_executor).
@@ -487,6 +492,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
+  VLOG(1) << "CPU/GPU Bridge called stack trace is :"
+          << tensorflow::CurrentStackTrace();
   Status status = mlir::TFTPU::RunTFXLABridge(
       module,
       [](OpPassManager &pm) {

@@ -501,6 +501,103 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
+// Checks that the two pairs of (Recv, RecvDone) and (Send, SendDone) do not
+// interleave.
+TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
+  const char* hlo_text = R"(
+  HloModule test
+  while_cond {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(25)
+    ROOT cond_result = pred[] compare(count, ub), direction=LT
+  }
+
+  while_body {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all-0 = token[] after-all()
+    recv-0 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all-0), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}}"
+    }
+    send-0 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all-0),
+      channel_id=1, control-predecessors={recv-0}, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}}"
+    }
+    recv-done-0 = (f32[1, 1024, 1024], token[]) recv-done(recv-0), channel_id=1
+    send-done-0 = token[] send-done(send-0), control-predecessors={recv-done-0}, channel_id=1
+    recv-data-0 = f32[1, 1024, 1024] get-tuple-element(recv-done-0), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+    replica = u32[] replica-id()
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    s1 = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+
+    after-all-1 = token[] after-all()
+    recv-1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all-1), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{1, 0}}"
+    }
+    send-1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all-1),
+      channel_id=2, control-predecessors={recv-1}, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{1, 0}}"
+    }
+    recv-done-1 = (f32[1, 1024, 1024], token[]) recv-done(recv-1), channel_id=2
+    send-done-1 = token[] send-done(send-1), control-predecessors={recv-done-1}, channel_id=2
+    recv-data-1 = f32[1, 1024, 1024] get-tuple-element(recv-done-1), index=0
+
+    s2 = f32[1, 1024, 1024] add(recv-data-0, s1)
+    s = f32[1, 1024, 1024] add(recv-data-1, s2)
+
+    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+    while_init = (u32[], f32[1, 1024, 1024]) tuple(c0, init)
+    while_result = (u32[], f32[1, 1024, 1024]) while(while_init),
+      body=while_body, condition=while_cond
+    ROOT entry_result = f32[1, 1024, 1024] get-tuple-element(while_result), index=1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                    /*enable_gpu_async_tracker=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  const std::vector<HloInstruction*>& instruction_sequence =
+      order.SequentialOrder(*while_body)->instructions();
+  auto get_index = [&](absl::string_view hlo_name) {
+    return absl::c_find_if(instruction_sequence,
+                           [hlo_name](HloInstruction* instruction) {
+                             return instruction->name() == hlo_name;
+                           }) -
+           instruction_sequence.begin();
+  };
+
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+
+  EXPECT_LT(get_index("recv-1"), get_index("send-1"));
+  EXPECT_LT(get_index("send-1"), get_index("recv-done-1"));
+  EXPECT_GE(get_index("send-done-1") - get_index("send-1"), 14);
+  EXPECT_LT(abs(get_index("send-done-1") - get_index("result")), 2);
+
+  EXPECT_LT(get_index("recv-done-0"), get_index("recv-1"));
+  EXPECT_LT(get_index("send-done-0"), get_index("send-1"));
+}
+
 class GpuHloScheduleParameterizedTest
     : public GpuHloScheduleTest,
       public ::testing::WithParamInterface<bool> {};

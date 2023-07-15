@@ -416,7 +416,10 @@ cc_test(
     size = "small",
     srcs = ["c_api_experimental_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",

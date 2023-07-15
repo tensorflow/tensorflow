@@ -1205,6 +1205,9 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
   if (config.side_input_scale() != 0 && config.side_input_scale() != 1) {
     props.emplace_back("side_input_scale", StrCat(config.side_input_scale()));
   }
+  if (config.activation_mode() == se::dnn::ActivationMode::kLeakyRelu) {
+    props.emplace_back("leakyrelu_alpha", StrCat(config.leakyrelu_alpha()));
+  }
   props.emplace_back(
       "activation_mode",
       se::dnn::ActivationModeString(

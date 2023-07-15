@@ -615,6 +615,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
 }
 
 // Extract additional attributes from an LLVM function that are not passed
@@ -792,7 +793,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).empty()) {
     const HloInstruction* lhs_param0 =
         *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin();
-    const DotFusionAnalysis::DimIterationSpec* lhs_nc_iter_spec =
+    const TensorIterationSpec::DimIterationSpec* lhs_nc_iter_spec =
         analysis.IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
                           lhs_noncontracting_dim_idx);
     lhs_nc_split = lhs_nc_iter_spec->size() > 1;
@@ -904,13 +905,26 @@ StatusOr<LaunchDimensions> MatMulImpl(
             ->at(0)
             .stride;
     CHECK_GE(stride_out_batch, 1);
-  } else if (lhs_nc_split) {
-    // Dimension of the output produced by the non-contracting LHS one
-    // is physically contiguous even if the producing LHS one is split.
-    // Because the major part of the split is implemented using the batch
-    // logic stride_out_batch is populated here as the stride of the minor
-    // part times its size.
-    stride_out_batch = stride_out_m * m;
+  }
+  {
+    const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
+        DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx);
+    if (spec->size() > 1) {
+      CHECK_EQ(spec->size(), 2);
+      // Support one specific kind of output transpose that splits the dimension
+      // originating from the split LHS non-contracting one.
+      CHECK(!have_batch);
+      CHECK(lhs_nc_split);
+      CHECK_EQ(spec->at(1).count, batch_size);
+      stride_out_batch = spec->at(1).stride;
+    } else if (lhs_nc_split) {
+      // Dimension of the output produced by the non-contracting LHS one
+      // is physically contiguous though the producing LHS one is split.
+      // Because the major part of the split is implemented using the batch
+      // logic stride_out_batch is populated here as the stride of the minor
+      // part times its size.
+      stride_out_batch = stride_out_m * m;
+    }
   }
 
   const int block_m = config.block_m();

@@ -39,8 +39,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -91,7 +91,7 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 # TODO(mdan): Should we have a single generic type for types that can be passed
 # to tf.cast?
-_AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
+_AUTOCAST_TYPES = (tensor_lib.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
 
@@ -822,7 +822,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       TypeError: If input_signature contains a non-TensorSpec object.
     """
     def check_type_return_shape(s):
-      if not isinstance(s, tensor_spec.TensorSpec):
+      if not isinstance(s, tensor_lib.TensorSpec):
         raise TypeError('Only TensorSpec signature types are supported, '
                         'but saw signature entry: {}.'.format(s))
       return s.shape
@@ -835,7 +835,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # dtype.
       dtype = input_dtypes[0]
     return nest.map_structure(
-        lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
+        lambda s: tensor_lib.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
   def _keras_tensor_symbolic_call(self, inputs, input_masks, args, kwargs):
@@ -847,7 +847,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # TODO(fchollet): consider py_func as an alternative, which
       # would enable us to run the underlying graph if needed.
       input_signature = nest.map_structure(
-          lambda x: tensor_spec.TensorSpec(shape=x.shape, dtype=x.dtype),
+          lambda x: tensor_lib.TensorSpec(shape=x.shape, dtype=x.dtype),
           inputs)
       output_signature = self.compute_output_signature(input_signature)
       return nest.map_structure(keras_tensor.KerasTensor, output_signature)

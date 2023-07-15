@@ -22,7 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.module import module
@@ -157,7 +157,7 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
 
   def test_weak_tensor_in_tf_func_with_spec(self):
     # Test weak tensor spec with matching input.
-    weak_tensor_spec = weak_tensor.WeakTensor.Spec(tensor_spec.TensorSpec([2]))
+    weak_tensor_spec = weak_tensor.WeakTensor.Spec(tensor.TensorSpec([2]))
     wt = weak_tensor.WeakTensor(constant_op.constant([1.0, 2.0]))
 
     @def_function.function(input_signature=[weak_tensor_spec])
@@ -185,8 +185,8 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
 
       @def_function.function
       def __call__(self, x):
-        if isinstance(x, ops.Tensor):
-          raise TypeError('Weak tensor should not be ops.Tensor type.')
+        if isinstance(x, tensor.Tensor):
+          raise TypeError('Weak tensor should not be tensor.Tensor type.')
         return x
 
     m = CustomModule()

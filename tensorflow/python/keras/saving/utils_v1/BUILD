@@ -39,6 +39,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",

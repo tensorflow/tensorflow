@@ -305,23 +305,6 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
-    name = "test_backend_util_oss",
-    srcs = ["test_backend_util.oss.py"],
-    deps = [
-        ":test_util",
-        "//tensorflow/dtensor/python:config",
-        "//tensorflow/dtensor/python:layout",
-        "//tensorflow/dtensor/python:tpu_util",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-pytype_strict_library(
-    name = "test_backend_name_oss",
-    srcs = ["test_backend_name.oss.py"],
-)
-
 dtensor_test(
     name = "multi_client_test",
     srcs = ["multi_client_test.py"],

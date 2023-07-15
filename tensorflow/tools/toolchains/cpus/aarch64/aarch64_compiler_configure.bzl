@@ -34,7 +34,6 @@ def aarch64_compiler_configure():
     ml2014_tf_aarch64_configs(
         name_container_map = {
             "ml2014_aarch64": "docker://localhost/tensorflow-build-aarch64",
-            "ml2014_aarch64-python3.8": "docker://localhost/tensorflow-build-aarch64:latest-python3.8",
             "ml2014_aarch64-python3.9": "docker://localhost/tensorflow-build-aarch64:latest-python3.9",
             "ml2014_aarch64-python3.10": "docker://localhost/tensorflow-build-aarch64:latest-python3.10",
             "ml2014_aarch64-python3.11": "docker://localhost/tensorflow-build-aarch64:latest-python3.11",
@@ -72,7 +71,6 @@ def aarch64_compiler_configure():
     ml2014_tf_aarch64_configs(
         name_container_map = {
             "ml2014_clang_aarch64": "docker://localhost/tensorflow-build-aarch64",
-            "ml2014_clang_aarch64-python3.8": "docker://localhost/tensorflow-build-aarch64:latest-python3.8",
             "ml2014_clang_aarch64-python3.9": "docker://localhost/tensorflow-build-aarch64:latest-python3.9",
             "ml2014_clang_aarch64-python3.10": "docker://localhost/tensorflow-build-aarch64:latest-python3.10",
             "ml2014_clang_aarch64-python3.11": "docker://localhost/tensorflow-build-aarch64:latest-python3.11",

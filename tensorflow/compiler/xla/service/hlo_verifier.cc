@@ -2682,6 +2682,19 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  Status HandleScatter(HloInstruction* scatter) override {
+    int64_t rank = scatter->operand(0)->shape().rank();
+    for (int64_t operand_dim :
+         scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
+      if (operand_dim > rank) {
+        return absl::OutOfRangeError(absl::StrCat(
+            "The provided scatter_dims_to_operand_dim was out of range.",
+            " (operand_dim: ", operand_dim, ", rank: ", rank, ")"));
+      }
+    }
+    return OkStatus();
+  }
+
   Status Preprocess(HloInstruction* instruction) override {
     auto [it, inserted] =
         instructions_by_name_.emplace(instruction->name(), instruction);

@@ -153,26 +153,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
-
-  // A set of flags to control auto-fusion: automatic clustering of Tensorflow
-  // operations and compiling outlined regions using MLIR based compilation
-  // stack.
-  //
-  // WARNING: These flags are experimental and are intended for manual testing
-  // of different auto-fusion strategies. They will be removed in the future.
-
-  ListOption<std::string> auto_fusion_oplist{
-      *this, "auto-fusion-oplist",
-      llvm::cl::desc("A list of Tensorflow operations to cluster together for "
-                     "JIT compilation. Alternatively use 'tier1', ..., 'all' "
-                     "to allow clustering for all operations included in the "
-                     "given clustering tier.")};
-
-  Option<int> auto_fusion_min_cluster_size{
-      *this, "auto-fusion-min-cluster-size",
-      llvm::cl::desc("Minimum size of the cluster that should be outlined for "
-                     "compilation"),
-      llvm::cl::init(2)};
 };
 
 }  // namespace tensorflow

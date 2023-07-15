@@ -42,19 +42,6 @@ bool HasDefaultLayout(const Shape& shape) {
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
 }
 
-bool IsSupportedReductionComputation(HloComputation* computation) {
-  static const absl::flat_hash_set<HloOpcode>* const kSupportedOpcodes =
-      new absl::flat_hash_set<HloOpcode>{HloOpcode::kAdd, HloOpcode::kMaximum};
-
-  HloInstruction* root = computation->root_instruction();
-  if (root->operand_count() != 2 ||
-      root->operand(0)->opcode() != HloOpcode::kParameter ||
-      root->operand(1)->opcode() != HloOpcode::kParameter) {
-    return false;
-  }
-  return kSupportedOpcodes->contains(root->opcode());
-}
-
 bool IsTritonSupportedInstruction(const HloInstruction* instr) {
   // TODO(bchetioui): expand with non-trivial instructions.
   if (instr->IsElementwise()) {

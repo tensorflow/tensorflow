@@ -99,7 +99,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
     // Base case: everything fits.
-    if (ReductionIsRaceFree(reduction_dimensions)) {
+    if (ReductionIsRaceFree(hlo->GetModule()->config(), reduction_dimensions)) {
       VLOG(3) << "Base case: dimensions fit";
       return OkStatus();
     }

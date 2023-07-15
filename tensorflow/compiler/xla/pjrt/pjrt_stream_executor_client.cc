@@ -1088,7 +1088,21 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
     std::function<void()> on_delete_callback) {
   se::DeviceMemoryBase buffer(device_ptr, ShapeUtil::ByteSizeOf(shape));
-  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
+
+  absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 2>
+      definition_events;
+  definition_events.emplace_back(
+      std::make_shared<BufferSequencingEvent>(this->thread_pool()));
+  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
+                      local_device->event_pool().ThenAllocateAndRecordEvent(
+                          local_device->compute_stream()));
+  definition_events.back()->SetSequencingEvent(std::move(event),
+                                               local_device->compute_stream());
+
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
       /*allocator=*/nullptr, device->local_hardware_id(),
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
@@ -1343,48 +1357,65 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
     AcquireHoldLocked(&device_buffer);
   }
 
-  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
-  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(on_device_shape_);
-  StatusOr<EventPool::Handle> event_or =
-      local_device->event_pool().AllocateEvent(stream->parent());
-  if (!event_or.ok()) {
-    return PjRtFuture<Status>(event_or.status());
-  }
-
-  GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
-  // We never call device functions from the `done` callback.
-  transfer_metadata.callback_is_host_callback_safe = true;
+  auto promise = PjRtFuture<Status>::CreatePromise();
+  auto usage_event =
+      std::make_shared<BufferSequencingEvent>(client_->thread_pool());
 
   TransferManager* transfer_manager =
       client_->client()->backend().transfer_manager();
 
-  TransferManager::TransferMetadata* transfer_metadata_ptr =
-      (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
-          ? &transfer_metadata
-          : nullptr;
+  auto tracked_device_buffer = device_buffer.buffer();
 
-  auto promise = PjRtFuture<Status>::CreatePromise();
-  transfer_manager->TransferLiteralFromDevice(
-      stream, shaped_buffer, literal,
-      [promise](Status status) mutable { promise.Set(status); },
-      transfer_metadata_ptr);
+  // When using the ComputeSynchronized allocation model, retain a
+  // reference to the device_buffer until the copy completes, to
+  // ensure that the buffer isn't deleted or donated while it is still
+  // in use. The choice of retaining a reference at the host is a
+  // heuristic; the alternative is to ensure, before freeing the
+  // buffer, that the compute stream is synchronized past the
+  // transfer, but it seems better to hold onto the buffer too long
+  // than to stall the compute stream, particularly since the
+  // overwhelmingly common use case of CopyToHostAsync will hold onto
+  // the reference long enough to read the buffer in a subsequent call
+  // to ToLiteral.
+  device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  auto usage_event =
-      std::make_shared<BufferSequencingEvent>(client_->thread_pool());
-  local_device->event_pool().ThenRecordEvent(stream, event_or.value());
-  usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
-  // When using the ComputeSynchronized allocation model, retain a reference to
-  // the device_buffer until the copy completes, to ensure that the buffer isn't
-  // deleted or donated while it is still in use. The choice of retaining a
-  // reference at the host is a heuristic; the alternative is to ensure, before
-  // freeing the buffer, that the compute stream is synchronized past the
-  // transfer, but it seems better to hold onto the buffer too long than to
-  // stall the compute stream, particularly since the overwhelmingly common
-  // use case of CopyToHostAsync will hold onto the reference long enough to
-  // read the buffer in a subsequent call to ToLiteral.
-  RecordUsage(std::move(device_buffer), local_device, local_device, usage_event,
-              stream,
-              /*prefer_to_retain_reference=*/true);
+  auto async_to_literal = [usage_event, tracked_device_buffer, stream,
+                           transfer_manager = std::move(transfer_manager),
+                           on_device_shape{on_device_shape_}, literal, promise,
+                           local_device]() mutable {
+    StatusOr<EventPool::Handle> event_or =
+        local_device->event_pool().AllocateEvent(stream->parent());
+    if (!event_or.ok()) {
+      promise.Set(event_or.status());
+      return;
+    }
+    WaitForBufferDefinitionEventsOnStream(*tracked_device_buffer, stream);
+    ShapedBuffer shaped_buffer =
+        tracked_device_buffer->AsShapedBuffer(on_device_shape);
+
+    GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
+    // We never call device functions from the `done` callback.
+    transfer_metadata.callback_is_host_callback_safe = true;
+
+    TransferManager::TransferMetadata* transfer_metadata_ptr =
+        (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
+            ? &transfer_metadata
+            : nullptr;
+
+    transfer_manager->TransferLiteralFromDevice(
+        stream, shaped_buffer, literal,
+        [promise](Status status) mutable { promise.Set(status); },
+        transfer_metadata_ptr);
+
+    local_device->event_pool().ThenRecordEvent(stream, event_or.value());
+    usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
+
+    local_device->ThenRelease(stream, tracked_device_buffer);
+  };
+
+  tracked_device_buffer->definition_events()[0]->ExecuteOrAddToFutureTasks(
+      absl::StrFormat("async_to_literal_%p", literal),
+      std::move(async_to_literal));
 
   return PjRtFuture<Status>(
       std::move(promise),
@@ -1720,29 +1751,29 @@ struct TupleHandle {
 };
 
 Status CheckCompatibleShapes(bool strict_shape_checking,
-                             const Shape& buffer_shape,
+                             const Shape& buffer_on_device_shape,
                              const Shape& execution_shape,
                              const TransferManager& transfer_manager,
                              int parameter_index) {
   // TODO(misard) Support casting of tuple parameters.
-  if (strict_shape_checking || buffer_shape.IsTuple()) {
-    if (!ShapeUtil::Equal(buffer_shape, execution_shape)) {
+  if (strict_shape_checking || buffer_on_device_shape.IsTuple()) {
+    if (!ShapeUtil::Compatible(buffer_on_device_shape, execution_shape)) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
           "shape %s",
           ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
-          ShapeUtil::HumanStringWithLayout(buffer_shape));
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   } else {
-    if (transfer_manager.GetByteSizeRequirement(buffer_shape) !=
+    if (transfer_manager.GetByteSizeRequirement(buffer_on_device_shape) !=
         transfer_manager.GetByteSizeRequirement(execution_shape)) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
           "shape %s",
           ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
-          ShapeUtil::HumanStringWithLayout(buffer_shape));
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   }
   return OkStatus();

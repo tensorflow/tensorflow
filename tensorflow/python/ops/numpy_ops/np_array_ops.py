@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -39,7 +40,6 @@ from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
-from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 
 
@@ -51,7 +51,6 @@ def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name
   return zeros(shape, dtype)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('empty_like')
 def empty_like(a, dtype=None):
   return zeros_like(a, dtype)
@@ -64,7 +63,6 @@ def zeros(shape, dtype=float):  # pylint: disable=redefined-outer-name
   return array_ops.zeros(shape, dtype=dtype)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('zeros_like')
 def zeros_like(a, dtype=None):  # pylint: disable=missing-docstring
   dtype = np_utils.result_type_unary(a, dtype)
@@ -80,7 +78,6 @@ def ones(shape, dtype=float):  # pylint: disable=redefined-outer-name
   return array_ops.ones(shape, dtype=dtype)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('ones_like')
 def ones_like(a, dtype=None):
   dtype = np_utils.result_type_unary(a, dtype)
@@ -154,7 +151,7 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   """Main implementation of np.array()."""
   result_t = val
 
-  if not isinstance(result_t, ops.Tensor):
+  if not isinstance(result_t, tensor_lib.Tensor):
     dtype = np_utils.result_type_unary(result_t, dtype)
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
@@ -199,7 +196,6 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
 
 # TODO(wangpeng): investigate whether we can make `copy` default to False.
 # pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
-@dispatch.add_dispatch_support
 @np_utils.np_doc_only('array')
 def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
   """Since Tensors are immutable, a copy is made only if val is placed on a
@@ -216,7 +212,6 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
 # pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('asarray')
 def asarray(a, dtype=None):
   if dtype:
@@ -227,20 +222,17 @@ def asarray(a, dtype=None):
   return array(a, dtype, copy=False)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('asanyarray')
 def asanyarray(a, dtype=None):
   return asarray(a, dtype)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('ascontiguousarray')
 def ascontiguousarray(a, dtype=None):
   return array(a, dtype, ndmin=1)
 
 
 # Numerical ranges.
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arange')
 def arange(start, stop=None, step=1, dtype=None):
   """Returns `step`-separated values in the range [start, stop).
@@ -283,7 +275,6 @@ def arange(start, stop=None, step=1, dtype=None):
 
 
 # Building matrices.
-@dispatch.add_dispatch_support
 @np_utils.np_doc('diag')
 def diag(v, k=0):  # pylint: disable=missing-docstring
   """Raises an error if input is not 1- or 2-d."""
@@ -319,7 +310,6 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
   return result
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('diagonal')
 def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstring
   a = asarray(a)
@@ -351,7 +341,6 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   return a
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('diagflat')
 def diagflat(v, k=0):
   v = asarray(v)
@@ -420,7 +409,6 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
   return array_ops.boolean_mask(tensor=a_t, mask=condition_t, axis=axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('copy')
 def copy(a):
   return array(a, copy=True)
@@ -438,7 +426,6 @@ def _maybe_promote_to_int(a):
   return a
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('cumprod')
 def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   a = asarray(a, dtype=dtype)
@@ -455,7 +442,6 @@ def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   return math_ops.cumprod(a, axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('cumsum')
 def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   a = asarray(a, dtype=dtype)
@@ -472,7 +458,6 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   return math_ops.cumsum(a, axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('imag')
 def imag(val):
   val = asarray(val)
@@ -548,7 +533,7 @@ def _reduce(tf_fn,
       elif promote_int == _TO_FLOAT:
         a = math_ops.cast(a, np_dtypes.default_float_type())
 
-  if isinstance(axis, ops.Tensor) and axis.dtype not in (
+  if isinstance(axis, tensor_lib.Tensor) and axis.dtype not in (
       dtypes.int32, dtypes.int64):
     axis = math_ops.cast(axis, dtypes.int64)
 
@@ -570,7 +555,6 @@ def size(x, axis=None):  # pylint: disable=missing-docstring
     return array_ops.size_v2(x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sum')
 def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
   return _reduce(
@@ -582,7 +566,6 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
       tf_bool_fn=math_ops.reduce_any)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('prod')
 def prod(a, axis=None, dtype=None, keepdims=None):
   return _reduce(
@@ -594,7 +577,6 @@ def prod(a, axis=None, dtype=None, keepdims=None):
       tf_bool_fn=math_ops.reduce_all)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('mean', unsupported_params=['out'])
 def mean(a, axis=None, dtype=None, out=None, keepdims=None):
   if out is not None:
@@ -608,7 +590,6 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=None):
       promote_int=_TO_FLOAT)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('amax', unsupported_params=['out'])
 def amax(a, axis=None, out=None, keepdims=None):
   if out is not None:
@@ -624,7 +605,6 @@ def amax(a, axis=None, out=None, keepdims=None):
       preserve_bool=True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('amin', unsupported_params=['out'])
 def amin(a, axis=None, out=None, keepdims=None):
   if out is not None:
@@ -640,7 +620,6 @@ def amin(a, axis=None, out=None, keepdims=None):
       preserve_bool=True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('var')
 def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
   if dtype:
@@ -688,7 +667,6 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: d
   return result
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('std')
 def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstring
   return _reduce(
@@ -700,14 +678,12 @@ def std(a, axis=None, keepdims=None):  # pylint: disable=missing-function-docstr
       promote_int=_TO_FLOAT)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('ravel')
 def ravel(a):  # pylint: disable=missing-docstring
   a = asarray(a)
   return array_ops.reshape(a, [-1])
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('real')
 def real(val):
   val = asarray(val)
@@ -747,7 +723,6 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   return result
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('around')
 def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = asarray(a)
@@ -770,7 +745,6 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
 setattr(np_arrays.ndarray, '__round__', around)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('reshape')
 def reshape(a, newshape, order='C'):
   """order argument can only b 'C' or 'F'."""
@@ -801,21 +775,18 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
   return reshape(a, newshape, order=order)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('expand_dims')
 def expand_dims(a, axis):
   a = asarray(a)
   return array_ops.expand_dims(a, axis=axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('squeeze')
 def squeeze(a, axis=None):
   a = asarray(a)
   return array_ops.squeeze(a, axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('flatten', link=np_utils.NoLink())
 def flatten(a, order='C'):
   a = asarray(a)
@@ -830,7 +801,6 @@ def flatten(a, order='C'):
                      '(column major).')
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
@@ -839,7 +809,6 @@ def transpose(a, axes=None):
   return array_ops.transpose(a=a, perm=axes)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('swapaxes')
 def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = asarray(a)
@@ -872,7 +841,6 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   return a
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('moveaxis')
 def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   """Raises ValueError if source, destination not in (-ndim(a), ndim(a))."""
@@ -1096,7 +1064,7 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('stack')
 def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+  if isinstance(arrays, (np_arrays.ndarray, tensor_lib.Tensor)):
     arrays = asarray(arrays)
     if axis == 0:
       return arrays
@@ -1280,7 +1248,6 @@ def tril(m, k=0):  # pylint: disable=missing-docstring
       array_ops.broadcast_to(mask, array_ops.shape(m)), m, z)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('triu')
 def triu(m, k=0):  # pylint: disable=missing-docstring
   m = asarray(m)
@@ -1302,7 +1269,6 @@ def triu(m, k=0):  # pylint: disable=missing-docstring
       array_ops.broadcast_to(mask, array_ops.shape(m)), z, m)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('flip')
 def flip(m, axis=None):  # pylint: disable=missing-docstring
   m = asarray(m)
@@ -1315,13 +1281,11 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   return array_ops.reverse(m, [axis])
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('flipud')
 def flipud(m):  # pylint: disable=missing-docstring
   return flip(m, 0)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('fliplr')
 def fliplr(m):  # pylint: disable=missing-docstring
   return flip(m, 1)
@@ -1340,7 +1304,6 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   return array_ops.reshape(a, original_shape)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
   m_rank = array_ops.rank(m)
@@ -1361,7 +1324,6 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
       return flip(transpose(m, perm), ax2)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('vander')
 def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,invalid-name
   x = asarray(x)
@@ -1520,19 +1482,16 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
 
 # pylint: disable=redefined-builtin,undefined-variable
-@dispatch.add_dispatch_support
 @np_utils.np_doc('max', link=np_utils.AliasOf('amax'))
 def max(a, axis=None, keepdims=None):
   return amax(a, axis=axis, keepdims=keepdims)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('min', link=np_utils.AliasOf('amin'))
 def min(a, axis=None, keepdims=None):
   return amin(a, axis=axis, keepdims=keepdims)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('round', link=np_utils.AliasOf('around'))
 def round(a, decimals=0):
   return around(a, decimals=decimals)
@@ -1880,10 +1839,17 @@ def _as_spec_tuple(slice_spec):
 
 def _getitem(self, slice_spec):
   """Implementation of ndarray.__getitem__."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     return array_ops.boolean_mask(tensor=self, mask=slice_spec)
 
   if not isinstance(slice_spec, tuple):
@@ -1895,10 +1861,17 @@ def _getitem(self, slice_spec):
 
 def _with_index_update_helper(update_method, a, slice_spec, updates):
   """Implementation of ndarray._with_index_*."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     slice_spec = nonzero(slice_spec)
 
   if not isinstance(slice_spec, tuple):

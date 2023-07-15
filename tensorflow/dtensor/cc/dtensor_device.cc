@@ -1839,8 +1839,8 @@ void DTensorDevice::ExecuteMultiDeviceOperation(
   int output_offset = 0;
   for (int i = 0; i < num_output_layouts; i++) {
     const Layout& output_layout = function.output_layouts[i];
+    const int num_devices = function.num_local_outputs[i];
     std::vector<TensorHandlePtr> layout_outputs;
-    const int num_devices = output_layout.num_devices();
     for (int j = 0; j < num_devices; j++) {
       const int output_idx = output_offset + j;
       layout_outputs.emplace_back(std::move(eager_outputs[output_idx]));

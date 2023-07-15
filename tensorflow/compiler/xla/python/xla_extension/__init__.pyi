@@ -268,6 +268,7 @@ class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
   result_layout: Optional[Shape]
+  fdo_profile: Optional[bytes]
   num_replicas: int
   num_partitions: int
   debug_options: DebugOptions

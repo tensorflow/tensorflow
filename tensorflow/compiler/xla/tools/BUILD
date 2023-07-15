@@ -418,6 +418,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",

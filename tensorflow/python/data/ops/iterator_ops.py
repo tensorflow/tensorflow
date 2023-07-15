@@ -30,8 +30,8 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
@@ -219,7 +219,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -293,7 +293,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -930,7 +930,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec([], dtypes.resource),)
+    return (tensor.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
     return (value._iterator_resource,)  # pylint: disable=protected-access

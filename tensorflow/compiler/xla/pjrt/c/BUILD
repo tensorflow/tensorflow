@@ -160,6 +160,8 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -168,6 +170,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",

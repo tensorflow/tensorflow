@@ -340,16 +340,8 @@ class Layout {
   static bool IsShardedDimension(const absl::string_view name) {
     return !IsUnshardedDimension(name);
   }
-  static bool IsUnshardedSpec(const ShardingSpec& spec) {
-    return IsUnshardedDimension(spec.sharding_spec());
-  }
-  static bool IsShardedSpec(const ShardingSpec& spec) {
-    return !IsUnshardedDimension(spec.sharding_spec());
-  }
   static StatusOr<Layout> GetLayout(
       const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh);
-  static StatusOr<Layout> GetLayout(
-      const std::vector<ShardingSpec>& sharding_specs, const Mesh& mesh);
   static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh);
 
   // Makes a new layout from this one dropping the given dimensions.
@@ -391,14 +383,8 @@ class Layout {
       const PartialTensorShape& global_shape) const;
 
   int64 rank() const { return sharding_specs_.size(); }
-  size_t num_shards_for_dim(const ShardingSpec& dim) const;
   size_t num_shards_for_dim(int) const;
   std::vector<int32> num_shards() const;
-
-  const ShardingSpec& dim(int64 idx) const { return sharding_specs_[idx]; }
-  absl::Span<const ShardingSpec> sharding_specs() const {
-    return sharding_specs_;
-  }
 
   // Computes the corresponding shard vector to this layout.
   ShardVector GetShardVector() const;
@@ -426,7 +412,7 @@ class Layout {
   }
 
  private:
-  std::vector<ShardingSpec> sharding_specs_;
+  std::vector<std::string> sharding_specs_;
   Mesh mesh_;
 };
 

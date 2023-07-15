@@ -13539,6 +13539,25 @@ ENTRY %entry (p0: f32[8], p1: f32[1]) -> (f32[1], token[]) {
   EXPECT_THAT(outfeed->operand(0), op::Shape("(u32[2]{0})"));
 }
 
+TEST_F(SpmdPartitioningTest, PadUneven) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[128,13,257] parameter(0), sharding={devices=[1,2,1]0,1}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[128,14,257] pad(%param0, %const), padding=0_0x0_1x0_0,
+    sharding={devices=[1,2,1]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Select(), op::Shape("f32[128,7,257]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

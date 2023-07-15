@@ -55,7 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_jitrt_stub.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -85,7 +84,6 @@ void getDependentConversionDialects(mlir::DialectRegistry &registry) {
                   tfrt::fallback_async::FallbackAsyncDialect,
                   tfrt::compiler::TFRTDialect>();
   mlir::func::registerAllExtensions(registry);
-  RegisterJitRtDialects(registry);
 }
 
 mlir::Value GetFunctionInputChain(mlir::Operation *op) {
@@ -1564,9 +1562,6 @@ class TfToTfrtConversionPass
     SetUpTFToTFRTConversionLegality(&target, func_type_converter,
                                     corert_converter.chain_type());
 
-    PopulateJitRtConversionPatterns(&target, &context, &patterns,
-                                    &corert_converter);
-
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
         &symbol_table, &cost_analysis, &tensor_array_side_effect_analysis,
@@ -1688,9 +1683,6 @@ class TfToTfrtConversionPass
 
       chain_value = create_op;
     }
-
-    chain_value =
-        CreateJitRtFallbackCompileKernel(builder, module, chain_value);
 
     builder.create<tfrt::compiler::ReturnOp>(func_op.getLoc(), chain_value);
   }

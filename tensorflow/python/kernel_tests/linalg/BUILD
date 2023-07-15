@@ -132,7 +132,9 @@ cuda_py_strict_test(
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
@@ -557,7 +559,9 @@ cuda_py_strict_test(
     shard_count = 5,
     tags = ["optonly"],
     deps = [
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",

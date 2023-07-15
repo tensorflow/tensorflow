@@ -43,14 +43,22 @@ ConcurrentRegionStatus::~ConcurrentRegionStatus() {
   DCHECK(!IsInConcurrentRegion());
 }
 
+// Assign a stream in a round-robin fashion. Either the capture stream or one of
+// the borrowed streams is returned.
 se::Stream* ConcurrentRegionStatus::GetNextStream() {
   DCHECK(IsInConcurrentRegion());
   if (borrowed_streams_.empty()) {
     return nullptr;
   }
-  int index = stream_index_ % borrowed_streams_.size();
+
+  int index = stream_index_ % (borrowed_streams_.size() + 1);
   stream_index_++;
-  return borrowed_streams_[index].get();
+
+  if (index == 0) {
+    return capture_stream_;
+  }
+
+  return borrowed_streams_[index - 1].get();
 }
 
 absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
@@ -68,10 +76,9 @@ absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
     }
   }
 
-  // Switch borrowed streams into capture mode. If the number of kernel launches
-  // in the region is less than the number of borrowed streams, only synchronize
-  // enough streams to run the kernels.
-  for (int i = 0; i < std::min<size_t>(size, num_borrowed_streams_); ++i) {
+  // Switch borrowed streams into capture mode. We only synchronize enough
+  // streams to run the kernels.
+  for (int i = 0; i < std::min<size_t>(size - 1, num_borrowed_streams_); ++i) {
     borrowed_streams_[i]->ThenWaitFor(capture_stream);
   }
 
@@ -84,7 +91,7 @@ void ConcurrentRegionStatus::EndConcurrentRegion() {
   DCHECK(IsInConcurrentRegion());
 
   // Synchronize main capture stream with all borrowed streams in capture mode.
-  for (int i = 0; i < std::min<size_t>(region_size_, num_borrowed_streams_);
+  for (int i = 0; i < std::min<size_t>(region_size_ - 1, num_borrowed_streams_);
        ++i) {
     capture_stream_->ThenWaitFor(borrowed_streams_[i].get());
   }

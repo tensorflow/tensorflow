@@ -296,24 +296,24 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
 }
 
 StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
-    bool use_experimental_block_size) const {
+    bool use_experimental_block_size) {
   TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind, GetEmitterFusionKind());
   switch (emitter_fusion_kind) {
     case EmitterFusionKind::kLoop: {
       // Disable experimental block size if few_waves or row_vectorized enabled.
       auto loop_fusion_config = GetLoopFusionConfig();
-      use_experimental_block_size &= !(loop_fusion_config.row_vectorized) &&
-                                     !(loop_fusion_config.few_waves);
+      use_experimental_block_size &= !(loop_fusion_config->row_vectorized) &&
+                                     !(loop_fusion_config->few_waves);
       return CalculateLaunchDimensions(GetElementShape(), *device_info_,
                                        use_experimental_block_size,
-                                       loop_fusion_config);
+                                       *loop_fusion_config);
     }
     case EmitterFusionKind::kReduction: {
       TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
                           GetReductionCodegenInfo());
       const TilingScheme& tiling_scheme =
-          reduction_codegen_info.GetTilingScheme();
-      size_t blocks_y = reduction_codegen_info.GetIndexGroups().size();
+          reduction_codegen_info->GetTilingScheme();
+      size_t blocks_y = reduction_codegen_info->GetIndexGroups().size();
       return LaunchDimensions(
           {/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
            /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1},
@@ -322,16 +322,20 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
     }
     case EmitterFusionKind::kTranspose: {
       TF_ASSIGN_OR_RETURN(auto tiling_scheme, GetTransposeTilingScheme());
-      return LaunchDimensions(tiling_scheme.GetNumberOfBlocksPhysical(),
-                              tiling_scheme.GetNumThreadsPerBlockPhysical());
+      return LaunchDimensions(tiling_scheme->GetNumberOfBlocksPhysical(),
+                              tiling_scheme->GetNumThreadsPerBlockPhysical());
     }
     default:
       return Unimplemented("GetLaunchDimensions");
   }
 }
 
-StatusOr<ReductionCodegenInfo> HloFusionAnalysis::GetReductionCodegenInfo()
-    const {
+StatusOr<const ReductionCodegenInfo*>
+HloFusionAnalysis::GetReductionCodegenInfo() {
+  if (reduction_codegen_info_.has_value()) {
+    return &reduction_codegen_info_.value();
+  }
+
   HloInstruction* first_reduce =
       *absl::c_find_if(fusion_roots_, [](HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
@@ -340,10 +344,17 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::GetReductionCodegenInfo()
   // We always use the first reduce as representative to construct
   // ReductionCodegenInfo, since all the reductions are required to have the
   // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  return ComputeReductionCodegenInfo(first_reduce);
+  TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
+                      ComputeReductionCodegenInfo(first_reduce));
+  reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
+  return &reduction_codegen_info_.value();
 }
 
-StatusOr<TilingScheme> HloFusionAnalysis::GetTransposeTilingScheme() const {
+StatusOr<const TilingScheme*> HloFusionAnalysis::GetTransposeTilingScheme() {
+  if (transpose_tiling_scheme_.has_value()) {
+    return &transpose_tiling_scheme_.value();
+  }
+
   std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
       **absl::c_find_if(fusion_roots_, [](HloInstruction* instr) {
         return FindAnyTiledTranspose(*instr);
@@ -367,7 +378,7 @@ StatusOr<TilingScheme> HloFusionAnalysis::GetTransposeTilingScheme() const {
   Vector3 num_threads{1, 1, WarpSize()};
   num_threads[order[2]] = kNumRows;
 
-  return TilingScheme(
+  TilingScheme tiling_scheme(
       /*permuted_dims*/ permuted_dims,
       /*tile_sizes=*/tile_sizes,
       /*num_threads=*/num_threads,
@@ -375,9 +386,15 @@ StatusOr<TilingScheme> HloFusionAnalysis::GetTransposeTilingScheme() const {
       /*vector_size=*/1,
       /*scaling_factor=*/1,
       /*tiling_dimensions=*/{order[2], 2});
+  transpose_tiling_scheme_.emplace(std::move(tiling_scheme));
+  return &transpose_tiling_scheme_.value();
 }
 
-LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
+const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
+  if (loop_fusion_config_.has_value()) {
+    return &loop_fusion_config_.value();
+  }
+
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
@@ -428,7 +445,8 @@ LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
     launch_config.row_vectorized = false;
     launch_config.few_waves = false;
   }
-  return launch_config;
+  loop_fusion_config_.emplace(std::move(launch_config));
+  return &loop_fusion_config_.value();
 }
 
 const Shape& HloFusionAnalysis::GetElementShape() const {
@@ -675,7 +693,7 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
       // For multi-output fusions, reduce the block size further to decrease
       // register pressure when multiple outputs are computed by each thread.
       int64_t max_block_size =
-          std::max(MinThreadsXRowReduction(),
+          std::max(MinThreadsXRowReduction(first_reduce->GetModule()->config()),
                    static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
       return std::min(max_block_size,
                       RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
@@ -692,7 +710,8 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
   const int64_t shmem_budget = device_info_->shared_memory_per_block;
-  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
+  bool reduction_is_race_free = ReductionIsRaceFree(
+      first_reduce->GetModule()->config(), reduction_dimensions);
   bool vectorize =
       // Vectorization might cause us to run out of budget.
       (shmem_usage * 2 <= shmem_budget) &&
@@ -716,19 +735,11 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
 
       // Limit register pressure for MOF, but still use a minimum of 2.
       num_partial_results /= fan_out;
+      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
+      // the unroll factor, we should have set this reduction as unvectorized.
       num_partial_results = std::max(num_partial_results, 2);
     } else {
       num_partial_results = 2;
-    }
-
-    // Take into account MaxBeneficialColumnReductionUnrollBasedOnBlockSize.
-    // (We can't go below 2 for the unroll factor -- if we wanted to use 1 as
-    // the unroll factor, we should have set this reduction as unvectorized.)
-    num_partial_results =
-        std::clamp<int>(num_partial_results, 2,
-                        MaxBeneficialColumnReductionUnrollBasedOnBlockSize());
-    if (num_partial_results % 2 != 0) {
-      --num_partial_results;
     }
   }
 
@@ -762,7 +773,7 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
                              virtual_thread_scaling_factor);
   return ReductionCodegenInfo(
       tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, std::move(instr_index_groups));
+      reduction_is_race_free, std::move(instr_index_groups), first_reduce);
 }
 
 }  // namespace gpu
