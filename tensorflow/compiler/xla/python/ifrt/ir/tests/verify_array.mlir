@@ -17,12 +17,30 @@ func.func @good_array() {
   return
 }
 
+#devices = #ifrt<devices[0,1,2,3]>
+func.func @good_array_with_aliased_devices() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, 4x1 to [0,1] on 2x2, #devices>
+  return
+}
+
 // -----
 
 func.func @array_devices_should_be_distinct() {
-  // expected-error@+2 {{`devices` has duplicated id 0}}
+  // expected-error@+3 {{Device list has duplicate id 0}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'devices_attr'}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x1 to [0] on 2, [0,0]>
+  return
+}
+
+// -----
+
+func.func @array_devices_should_be_non_negative() {
+  // expected-error@+3 {{Device list has negative id -1}}
+  // expected-error@+2 {{failed to parse Ifrt_ArrayType parameter 'devices_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x4xi32>, 1x1 to [0] on 2, [-1,0]>
   return
 }
 

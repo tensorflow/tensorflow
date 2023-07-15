@@ -40,7 +40,9 @@ class FloatSupport {
   // instruction.
   PrimitiveType HighPrecisionType() const {
     if (low_precision_type_ == F8E5M2 || low_precision_type_ == F8E4M3FN ||
-        low_precision_type_ == F8E4M3B11FNUZ) {
+        low_precision_type_ == F8E4M3B11FNUZ ||
+        low_precision_type_ == F8E5M2FNUZ ||
+        low_precision_type_ == F8E4M3FNUZ) {
       return F16;
     }
     DCHECK_EQ(low_precision_type_, BF16);

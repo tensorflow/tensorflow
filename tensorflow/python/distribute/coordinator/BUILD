@@ -130,7 +130,8 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -151,13 +152,15 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:training_lib",
+        "//tensorflow/python/training:coordinator",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -170,6 +173,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nomsan",
     ],
     deps = [
         ":fault_tolerance_test_base",
@@ -189,6 +193,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nomsan",  # TODO(b/290211396)
     ],
     deps = [
         ":cluster_coordinator",
@@ -214,14 +219,20 @@ tf_py_strict_test(
     name = "metric_utils_test",
     srcs = ["metric_utils_test.py"],
     python_version = "PY3",
+    shard_count = 3,
     deps = [
         ":cluster_coordinator",
         ":metric_utils",
+        "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/training:coordinator",
         "//tensorflow/python/training:server_lib",
     ],
 )

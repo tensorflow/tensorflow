@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
@@ -34,16 +35,23 @@ namespace {
 #define GEN_PASS_DEF_DTENSORSETDEFAULTSHARDING
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
-// Assigns inputs/outputs for TPU computation to logical core 0.
+// Sets the input/output sharding for the device cluster.
 void SetDefaultSharding(mlir::tf_device::ClusterFuncOp cluster,
-                        mlir::OpBuilder* builder) {
-  const std::string logical_core_0_sharding =
-      xla::sharding_builder::AssignDevice(0).SerializeAsString();
+                        mlir::OpBuilder* builder, bool multi_device_mode) {
+  std::string sharding;
+  if (multi_device_mode) {
+    // Assigns inputs/outputs for TPU computation to "replicated" so XLA
+    // does not change their shape or attempt further SPMD expansion.
+    sharding = xla::sharding_builder::Replicate().SerializeAsString();
+  } else {
+    // Assigns inputs/outputs for TPU computation to logical core 0.
+    sharding = xla::sharding_builder::AssignDevice(0).SerializeAsString();
+  }
 
   llvm::SmallVector<llvm::StringRef, 4> input_sharding(cluster.getNumOperands(),
-                                                       logical_core_0_sharding);
-  llvm::SmallVector<llvm::StringRef, 4> output_sharding(
-      cluster.getNumResults(), logical_core_0_sharding);
+                                                       sharding);
+  llvm::SmallVector<llvm::StringRef, 4> output_sharding(cluster.getNumResults(),
+                                                        sharding);
 
   cluster->setAttr("input_sharding_configuration",
                    builder->getStrArrayAttr(input_sharding));
@@ -65,7 +73,13 @@ struct DTensorSetDefaultSharding
           cluster_func->getAttrOfType<mlir::StringAttr>("_tpu_replicate");
       if (!replicate_attr) return;
 
-      SetDefaultSharding(cluster_func, &builder);
+      auto module_op = cluster_func->getParentOfType<mlir::ModuleOp>();
+      auto multi_device_attr = module_op->getAttrOfType<mlir::BoolAttr>(
+          dtensor::kEnableMultiDeviceMode);
+      bool multi_device_mode =
+          multi_device_attr && multi_device_attr.getValue();
+
+      SetDefaultSharding(cluster_func, &builder, multi_device_mode);
     });
   }
 };

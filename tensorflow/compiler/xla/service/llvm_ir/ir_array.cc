@@ -560,6 +560,8 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* b) const {
+  if (shape_ == new_shape) return *this;
+
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(

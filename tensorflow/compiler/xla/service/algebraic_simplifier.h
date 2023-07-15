@@ -79,6 +79,23 @@ class AlgebraicSimplifierOptions {
 
   bool is_layout_sensitive() const { return is_layout_sensitive_; }
 
+  void set_use_associative_reordering(bool use_associative_reordering) {
+    use_associative_reordering_ = use_associative_reordering;
+  }
+
+  bool use_associative_reordering() const {
+    return use_associative_reordering_;
+  }
+
+  void set_associative_reordering_threshold(
+      double associative_reordering_threshold) {
+    associative_reordering_threshold_ = associative_reordering_threshold;
+  }
+
+  double associative_reordering_threshold() const {
+    return associative_reordering_threshold_;
+  }
+
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
@@ -199,10 +216,22 @@ class AlgebraicSimplifierOptions {
 
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
-  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
-  // true.
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan
+  // unconditionally true.
   bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
   void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
+
+  // When true, always replaces Reduce(concat({a,b,...})) with
+  // map(reduce(a),map(reduce(b),...,)). If false, only does the replacement if
+  // the shapes of a,b,... have the same dimensions.
+  bool enable_unconditional_reduce_of_concat_replacement() const {
+    return enable_unconditional_reduce_of_concat_replacement_;
+  }
+  void set_enable_unconditional_reduce_of_concat_replacement(
+      bool enable_unconditional_reduce_of_concat_replacement) {
+    enable_unconditional_reduce_of_concat_replacement_ =
+        enable_unconditional_reduce_of_concat_replacement;
+  }
 
  private:
   // Metadata struct can be used to store any metadata information encapsulated
@@ -211,7 +240,7 @@ class AlgebraicSimplifierOptions {
   // cudnn_batchnorm_forward_training_metadata can be used to store the name of
   // a custom call. If the custom call is
   // __cudnn$batchNormalizationForwardTraining, the output with index 2 is
-  // guaranteed to be postive. This property has been used to recursively
+  // guaranteed to be positive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
     std::string cudnn_batchnorm_forward_training_metadata{""};
@@ -234,6 +263,9 @@ class AlgebraicSimplifierOptions {
   bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
+  bool enable_unconditional_reduce_of_concat_replacement_{true};
+  bool use_associative_reordering_{false};
+  double associative_reordering_threshold_{2.0};
   Metadata metadata_;
 };
 
@@ -410,6 +442,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  private:
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
+
+  // Moves the transpose to the broadcast if possible. Can also be called with a
+  // bitcast transpose.
+  Status SimplifyTransposeOfBroadcast(HloInstruction* transpose,
+                                      absl::Span<const int64_t> dimensions);
 
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.

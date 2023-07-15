@@ -160,6 +160,55 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
+using PJRT_KeyValueGetCFunc =
+    std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
+
+using PJRT_KeyValuePutCFunc =
+    std::function<PJRT_Error*(PJRT_KeyValuePutCallback_Args* args)>;
+
+// Groups data needed to support key value get/put callbacks.
+struct PJRT_KeyValueCallbackData {
+  PJRT_KeyValueCallbackData() = default;
+  PJRT_KeyValueCallbackData(const PJRT_KeyValueCallbackData&) = delete;
+
+  xla::PjRtClient::KeyValueGetCallback kv_get;
+  xla::PjRtClient::KeyValuePutCallback kv_put;
+  // kv_get_c_func and kv_put_c_func are holding pointers to kv_get and kv_put.
+  pjrt::PJRT_KeyValueGetCFunc kv_get_c_func;
+  pjrt::PJRT_KeyValuePutCFunc kv_put_c_func;
+  // c_kv_get and c_kv_put are holding pointers to kv_get_c_func and
+  // kv_put_c_func.
+  PJRT_KeyValueGetCallback c_kv_get;
+  PJRT_KeyValuePutCallback c_kv_put;
+};
+
+// The returned &kv_get_c_func and &kv_put_c_func must be set as
+// PJRT_Client_Create_Args.kv_get_user_arg and
+// PJRT_Client_Create_Args.kv_put_user_arg, respectively. The entire
+// PJRT_KeyValueCallbackData must be kept alive as long as c_kv_get and c_kv_put
+// may be called.
+std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
+    xla::PjRtClient::KeyValueGetCallback kv_get,
+    xla::PjRtClient::KeyValuePutCallback kv_put);
+
+// Data needed to support PJRT_Buffer_MemoryLayout. `minor_to_major` holds the
+// data in PJRT_Buffer_MemoryLayout_Tiled.minor_to_major. `tile_dims` and
+// `tile_dim_sizes` holds the data in PJRT_Buffer_MemoryLayout_Tiled.tile_dims
+// and PJRT_Buffer_MemoryLayout_Tiled.tile_dim_sizes.
+struct BufferMemoryLayoutData {
+  PJRT_Buffer_MemoryLayout c_layout;
+  std::vector<int64_t> minor_to_major;
+  std::vector<int64_t> tile_dims;
+  std::vector<size_t> tile_dim_sizes;
+};
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    const xla::Layout* cpp_layout);
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    absl::Span<int64_t const> byte_strides);
+
+xla::StatusOr<xla::Layout> ConvertToLayout(
+    const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

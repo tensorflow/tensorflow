@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -254,6 +255,11 @@ class XlaCallModuleDeserializationPass
     : public impl::XlaCallModuleDeserializationPassBase<
           XlaCallModuleDeserializationPass> {
  public:
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    XlaCallModuleDeserializationPassBase::getDependentDialects(registry);
+    mlir::func::registerAllExtensions(registry);
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
     SymbolTableCollection symbol_tables;

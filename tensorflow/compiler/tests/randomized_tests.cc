@@ -1256,8 +1256,8 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
           std::uniform_int_distribution<int>(1, d.kernel_dims[i])(generator());
       int64_t pad_dummy;
       s = GetWindowedOutputSize(d.input_dims[i], d.kernel_dims[i],
-                                d.stride_dims[i], d.padding, &d.output_dims[i],
-                                &pad_dummy);
+                                /*dilation_rate=*/1, d.stride_dims[i],
+                                d.padding, &d.output_dims[i], &pad_dummy);
     } while (!s.ok());
   }
   return d;

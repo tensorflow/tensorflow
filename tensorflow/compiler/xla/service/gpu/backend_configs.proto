@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "tensorflow/compiler/xla/autotuning.proto";
 import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/tsl/protobuf/autotuning.proto";
 
 // Backend configs for XLA:GPU.
 //
@@ -38,6 +38,15 @@ message CudnnConvBackendConfig {
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.
   double side_input_scale = 5;
+
+  // The negative slope coefficient alpha for leaky_relu activation, used only
+  // when activation_mode is kLeakyRelu.
+  //
+  // leakyrelu(x) is defined as x > 0 ? x : alpha * x.
+  //
+  // Since this is a proto3 proto, leakyrelu_alpha is 0 if not specified (in
+  // which case the leakyrelu activation is equivalent to relu).
+  double leakyrelu_alpha = 8;
 
   // If the filter (and bias, if present) have been reordered, set this flag.
   // It's placed into a `oneof` block to skip the serialization when not set.
@@ -97,6 +106,10 @@ message CollectiveBackendConfig {
   bool is_sync = 1;
 }
 
+message ReificationCost {
+  double end_to_end_cycles = 1;  // Total execution time of the reified op.
+}
+
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -111,11 +124,14 @@ message FusionBackendConfig {
 
   // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
   // present, we use the default Triton config.
-  tensorflow.AutotuneResult.TritonGemmKey triton_gemm_config = 2;
-  // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
-  // cudnn.
+  AutotuneResult.TritonGemmKey triton_gemm_config = 2;
+
+  // Cost model prediction.
+  ReificationCost reification_cost = 3;
 }
 
+// Backend config for a fused Multi-Headed Attention (fMHA) that runs through
+// cudnn.
 message CudnnfMHABackendConfig {
   // Opaque algorithm number and tuning knobs chosen for this fMHA.
   stream_executor.dnn.AlgorithmProto algorithm = 8;

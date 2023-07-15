@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -68,8 +69,9 @@ ENTRY entry {
 })")
                                                   .value();
 
-  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
-      *module->entry_computation()->root_instruction()->operand(0));
+  std::unique_ptr<HloModule> extracted_module =
+      AutotunerUtil::ExtractInstructionIntoNewModule(
+          *module->entry_computation()->root_instruction()->operand(0));
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -106,10 +108,11 @@ ENTRY entry {
                                                   .value();
 
   std::unique_ptr<HloModule> extracted_module =
-      ExtractComputationIntoNewModule(*module->entry_computation()
-                                           ->root_instruction()
-                                           ->operand(0)
-                                           ->fused_instructions_computation());
+      AutotunerUtil::ExtractComputationIntoNewModule(
+          *module->entry_computation()
+               ->root_instruction()
+               ->operand(0)
+               ->fused_instructions_computation());
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -151,9 +154,11 @@ class TritonAutotunerTest : public HloTestBase {
                                              .cuda_compute_capability());
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
+    DebugOptions opts;
     pipeline.AddPass<TritonAutotuner>(
-        DeviceConfig{backend().default_stream_executor(),
-                     backend().memory_allocator()},
+        AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
+                                    backend().memory_allocator()},
+                       opts},
         &thread_pool);
 
     RunAndFilecheckHloRewrite(
@@ -174,28 +179,36 @@ class TritonAutotunerTest : public HloTestBase {
   }
 };
 
+class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
+        true);
+    return debug_options;
+  }
+};
+
 TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
-  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(compute_capability);
-  EXPECT_FALSE(
-      std::any_of(configs.begin(), configs.end(),
-                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
-                    return key.num_stages() > 2;
-                  }));
+  EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
+                           [](const AutotuneResult::TritonGemmKey& key) {
+                             return key.num_stages() > 2;
+                           }));
 }
 
 TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
-  const std::vector<tensorflow::AutotuneResult::TritonGemmKey> configs =
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
       GetPossibleMatmulAutotuneConfigs(compute_capability);
-  EXPECT_TRUE(
-      std::any_of(configs.begin(), configs.end(),
-                  [](const tensorflow::AutotuneResult::TritonGemmKey& key) {
-                    return key.num_stages() > 2;
-                  }));
+  EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
+                          [](const AutotuneResult::TritonGemmKey& key) {
+                            return key.num_stages() > 2;
+                          }));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {
@@ -212,10 +225,10 @@ ENTRY e {
 }
 )";
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -236,10 +249,10 @@ ENTRY e {
 )";
 
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -264,11 +277,43 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
-; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK: ROOT %fusion.1
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: kCustom
+; CHECK-NEXT: kLoop
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/4, /*arel=*/1e-1}));
+}
+
+TEST_F(TritonAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  // Shapes with K >> M, N have to force split-K configurations.
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+ENTRY e {
+  p0 = s8[7,8192] parameter(0)
+  p0c = bf16[7,8192] convert(p0)
+  p1 = bf16[8192,18] parameter(1)
+  ROOT dot.0 = bf16[7,18] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: reduce
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: kCustom
+; CHECK-NEXT: kLoop
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 // TODO(b/281489442): Write a testcase called
@@ -296,7 +341,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TritonAutotuner::ClearAutotuneResults();
+  AutotunerUtil::ClearAutotuneResults();
 
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
     MatchOptimizedHlo(kHloText, R"(
@@ -315,6 +360,36 @@ ENTRY e {
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
                          ::testing::Range(0, 5));
+
+class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerExhaustiveTest, DISABLED_CompileOnly) {
+  const std::string hlo = R"(
+HloModule module
+
+ENTRY e {
+  x = s8[16,16] parameter(0)
+  c = f16[16,16] convert(x)
+  y = f16[16,16] parameter(1)
+  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK:   %triton_gemm_out_computation (
+// CHECK:   ROOT %out.1 = f16[16,16]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// CHECK:   ROOT %triton_gemm_out = f16[16,16]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
+// CHECK-SAME: "block_m":
+)");
+}
 
 }  // namespace
 }  // namespace gpu

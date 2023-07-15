@@ -5,7 +5,7 @@
 // CHECK-SAME: %[[ARG0:.*]]: tensor<i32>
 func.func @main(%arg0: tensor<i32>) {
   // CHECK:      "tf_device.cluster"
-  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"
   // CHECK-NEXT:   %[[ID_TO_ORDINAL:.*]] = "tf.Const"
   // CHECK-SAME:   value = dense<0>
@@ -97,7 +97,7 @@ func.func @main(%arg0: tensor<i32>) {
   // CHECK-NEXT:     "tf.Yield"
   // CHECK:          "tf.Yield"
   // CHECK:      "tf_device.cluster"
-  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[ID_TO_ORDINAL_2:.*]] = "tf.Const"
   // CHECK-SAME:   value = dense<0>
   // CHECK-NEXT:   %[[SIZE_TYPE_2:.*]] = "tf.Const"
@@ -158,7 +158,7 @@ func.func @main(%arg0: tensor<i32>) {
   // CHECK-NEXT:     "tf.Yield"
   // CHECK:          "tf.Yield"
   // CHECK:      "tf_device.cluster"
-  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
+  // CHECK-NEXT:   %[[PROGRAM_KEY:.*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[ID_TO_ORDINAL_2:.*]] = "tf.Const"
   // CHECK-SAME:   value = dense<0>
   // CHECK-NEXT:   %[[SIZE_TYPE_2:.*]] = "tf.Const"

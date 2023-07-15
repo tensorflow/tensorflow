@@ -158,7 +158,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   static constexpr absl::string_view kPipelineEnd = "pipeline-end";
   std::string pipeline_name = std::string(name());
 
-  TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, kPipelineStart));
+  TF_RETURN_IF_ERROR(
+      RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
   SetInstructionMetadata(*hlo);
@@ -208,16 +209,20 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass->name();
       // Embed RunInvariantCheckers into lambda to enable recording of errors
-      auto run_invariant_checkers_lambda = [this](HloT* hlo,
-                                                  absl::string_view pass_name) {
-        auto status = RunInvariantCheckers(hlo, pass_name);
-        if (!status.ok()) {
-          compilation_stats_->RecordPassError(
-              pass_name, absl::StatusCodeToString(status.code()));
-        }
-        return status;
-      };
-      TF_RETURN_IF_ERROR(run_invariant_checkers_lambda(hlo, pass_name));
+      auto run_invariant_checkers_lambda =
+          [this](
+              HloT* hlo, absl::string_view pass_name,
+              const absl::flat_hash_set<absl::string_view>& execution_threads) {
+            auto status =
+                RunInvariantCheckers(hlo, pass_name, execution_threads);
+            if (!status.ok()) {
+              compilation_stats_->RecordPassError(
+                  pass_name, absl::StatusCodeToString(status.code()));
+            }
+            return status;
+          };
+      TF_RETURN_IF_ERROR(
+          run_invariant_checkers_lambda(hlo, pass_name, execution_threads));
     }
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);

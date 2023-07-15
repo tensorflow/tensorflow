@@ -1,3 +1,4 @@
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package_group(
@@ -64,11 +65,11 @@ cc_library(
         "value.h",
     ],
     deps = [
+        ":serdes",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
@@ -88,9 +89,9 @@ xla_cc_test(
     name = "array_test",
     size = "small",
     srcs = ["array_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
+        ":mock",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -100,7 +101,6 @@ xla_cc_test(
     name = "future_test",
     size = "small",
     srcs = ["future_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -114,7 +114,6 @@ xla_cc_test(
     name = "index_domain_test",
     size = "small",
     srcs = ["index_domain_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -125,7 +124,6 @@ xla_cc_test(
     name = "index_test",
     size = "small",
     srcs = ["index_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -136,7 +134,6 @@ xla_cc_test(
     name = "shape_test",
     size = "small",
     srcs = ["shape_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -147,7 +144,6 @@ xla_cc_test(
     name = "sharding_test",
     size = "small",
     srcs = ["sharding_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "//tensorflow/compiler/xla/python/ifrt/ir",
@@ -204,7 +200,6 @@ cc_library(
 xla_cc_test(
     name = "array_test_no_impl",
     srcs = [],
-    tags = ["nomsan"],
     deps = [
         ":array_impl_test_lib",
         ":no_impl_test_main",
@@ -226,7 +221,6 @@ cc_library(
 xla_cc_test(
     name = "client_test_no_impl",
     srcs = [],
-    tags = ["nomsan"],
     deps = [
         ":client_impl_test_lib",
         ":no_impl_test_main",
@@ -253,9 +247,65 @@ cc_library(
 xla_cc_test(
     name = "tuple_test_no_impl",
     srcs = [],
-    tags = ["nomsan"],
     deps = [
         ":no_impl_test_main",
         ":tuple_impl_test_lib",
     ],
+)
+
+cc_library(
+    name = "mock",
+    testonly = True,
+    srcs = ["mock.cc"],
+    hdrs = ["mock.h"],
+    deps = [
+        ":ifrt",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/pjrt:pjrt_device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tf_runtime//:ref_count",
+    ],
+)
+
+cc_library(
+    name = "serdes",
+    srcs = ["serdes.cc"],
+    hdrs = ["serdes.h"],
+    deps = [
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "serdes_test",
+    srcs = ["serdes_test.cc"],
+    deps = [
+        ":serdes",
+        ":serdes_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_proto_library(
+    name = "serdes_proto",
+    srcs = ["serdes.proto"],
 )

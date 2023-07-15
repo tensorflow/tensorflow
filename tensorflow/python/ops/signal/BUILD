@@ -23,6 +23,11 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+)
+
+py_strict_library(
     name = "fft_ops",
     srcs = ["fft_ops.py"],
     deps = [
@@ -47,6 +52,7 @@ py_strict_library(
         ":shape_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -102,6 +108,7 @@ py_strict_library(
     name = "signal",
     srcs = ["signal.py"],
     deps = [
+        ":__init__",
         ":dct_ops",
         ":fft_ops",
         ":mel_ops",

@@ -29,8 +29,10 @@ namespace tensorflow {
 class PjRtDeviceContext : public DeviceContext {
  public:
   explicit PjRtDeviceContext(
-      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns)
-      : shape_determination_fns_(std::move(shape_determination_fns)) {}
+      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+      bool use_pjrt_tensor_buffer = false)
+      : shape_determination_fns_(std::move(shape_determination_fns)),
+        use_pjrt_tensor_buffer_(use_pjrt_tensor_buffer) {}
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
@@ -42,8 +44,12 @@ class PjRtDeviceContext : public DeviceContext {
                               Tensor* output_tensor,
                               StatusCallback done) const override;
 
+  bool use_pjrt_tensor_buffer() const { return use_pjrt_tensor_buffer_; }
+
  private:
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns_;
+  // Note: we currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
+  bool use_pjrt_tensor_buffer_;
 };
 
 }  // namespace tensorflow

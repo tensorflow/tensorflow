@@ -294,12 +294,9 @@ PjRtLoadedExecutable::CreateInternal(
     } else {
       tile_shape = shape;
     }
-    std::vector<Shape> per_device_shapes(
-        /*n=*/pjrt_loaded_executable->addressable_devices().size(),
-        /*v=*/Shape(tile_shape.dimensions()));
-    output_shardings.push_back(OpaqueSharding::Create(
-        devices, OpaqueSharding::MakeDisassembleFuncFromShapes(
-                     std::move(per_device_shapes))));
+    output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
+        devices, /*shape=*/ifrt::Shape(shape.dimensions()),
+        /*shard_shape=*/ifrt::Shape(tile_shape.dimensions())));
     return OkStatus();
   };
   auto append_token = [&] {

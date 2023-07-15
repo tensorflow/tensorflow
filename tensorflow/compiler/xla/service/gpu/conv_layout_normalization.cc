@@ -146,6 +146,7 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   normalized_conv->set_feature_group_count(hlo->feature_group_count());
   normalized_conv->set_raw_backend_config_string(
       hlo->raw_backend_config_string());
+  *normalized_conv->mutable_precision_config() = hlo->precision_config();
   normalized_conv->parent()->parent()->SetAndUniquifyInstrName(normalized_conv,
                                                                hlo->name());
 

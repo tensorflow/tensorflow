@@ -72,6 +72,7 @@ _JOB_WORKER_STRING_IDENTIFIER = "/job:worker"
 RemoteValueStatus = remote_value.RemoteValueStatus
 RemoteValue = remote_value.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
+RemoteVariable = values_lib.RemoteVariable
 PerWorkerValues = values_lib.PerWorkerValues
 
 
@@ -292,15 +293,30 @@ class Closure(object):
 
 
 class ResourceClosure(Closure):
+  """A closure that builds a resource on a worker.
+
+  ResourceClosures keep a reference to the closure object, which is used to
+  rerun the closure upon recovery to ensure  workers have access to the
+  resources they need.
+  """
+
+  def _init_remote_value(self):
+    return RemoteValueImpl(self, self._output_type_spec)
 
   def build_output_remote_value(self):
     if self._output_remote_value_ref is None:
       # We need to remember the Closure object in the `RemoteValue` here.
-      ret = RemoteValueImpl(self, self._output_type_spec)
+      ret = self._init_remote_value()
       self._output_remote_value_ref = weakref.ref(ret)
       return ret
     else:
       return self._output_remote_value_ref()
+
+
+class PerWorkerVariableClosure(ResourceClosure):
+
+  def _init_remote_value(self):
+    return RemoteVariable(self, self._output_type_spec)
 
 
 class _CoordinatedClosureQueue(object):
@@ -314,7 +330,7 @@ class _CoordinatedClosureQueue(object):
     # that are "in generation". Once an error occurs, error generation is
     # incremented and all subsequent arriving closures (from inflight) are
     # considered "out of generation".
-    self._inflight_closure_count = 0
+    self.inflight_closure_count = 0
 
     self._queue_lock = threading.Lock()
 
@@ -343,6 +359,7 @@ class _CoordinatedClosureQueue(object):
           "In a `ClusterCoordinator`, creating an infinite closure queue can "
           "consume a significant amount of memory and even lead to OOM.")
     self._queue = queue.Queue(maxsize=_CLOSURE_QUEUE_MAX_SIZE)
+    metric_utils.monitor_int("queued_closures", self._queue.qsize())
     self._tagged_queue = collections.defaultdict(queue.Queue)
     self._error = None
 
@@ -364,6 +381,15 @@ class _CoordinatedClosureQueue(object):
   def _on_watchdog_timeout(self):
     logging.info("inflight_closure_count is %d", self._inflight_closure_count)
     logging.info("current error is %s:%r", self._error, self._error)
+
+  @property
+  def inflight_closure_count(self):
+    return self._inflight_closure_count
+
+  @inflight_closure_count.setter
+  def inflight_closure_count(self, value):
+    self._inflight_closure_count = value
+    metric_utils.monitor_int("inflight_closures", self._inflight_closure_count)
 
   def stop(self):
     with self._queue_lock:
@@ -387,6 +413,7 @@ class _CoordinatedClosureQueue(object):
     while True:
       try:
         closure = self._queue.get(block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._queue_free_slot_condition.notify()
         closure.mark_cancelled()
       except queue.Empty:
@@ -436,6 +463,7 @@ class _CoordinatedClosureQueue(object):
       with self._put_wait_lock, self._queue_lock:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
         self._queue.put(closure, block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._raise_if_error()
         self._closures_queued_condition.notify()
 
@@ -464,10 +492,11 @@ class _CoordinatedClosureQueue(object):
         closure = self._tagged_queue[tag].get(block=False)
         return closure
       closure = self._queue.get(block=False)
+      metric_utils.monitor_int("queued_closures", self._queue.qsize())
       assert closure.tag is None
       assert tag is None or self._tagged_queue[tag].empty()
       self._queue_free_slot_condition.notify()
-      self._inflight_closure_count += 1
+      self.inflight_closure_count += 1
       return closure
 
   def mark_finished(self):
@@ -475,7 +504,7 @@ class _CoordinatedClosureQueue(object):
     with self._queue_lock:
       if self._inflight_closure_count < 1:
         raise AssertionError("There is no inflight closures to mark_finished.")
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
       if self._queue.empty() and self._inflight_closure_count == 0:
@@ -493,8 +522,9 @@ class _CoordinatedClosureQueue(object):
       else:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
         self._queue.put(closure, block=False)
+        metric_utils.monitor_int("queued_closures", self._queue.qsize())
         self._closures_queued_condition.notify()
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
 
@@ -528,7 +558,7 @@ class _CoordinatedClosureQueue(object):
         raise AssertionError("There is no inflight closures to mark_failed.")
       if self._error is None:
         self._error = e
-      self._inflight_closure_count -= 1
+      self.inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
         self._no_inflight_closure_condition.notify_all()
       self._stop_waiting_condition.notify_all()
@@ -736,11 +766,16 @@ class CoordinationServicePreemptionHandler(object):
     raise PSUnavailableError(e)
 
   def _get_task_states(self):
+    """Get task states and reset to None if coordination service is down."""
     try:
       self._task_states = context.context().get_task_states(
           [("worker", self._num_workers), ("ps", self._num_ps)]
       )
-    except errors.UnavailableError:
+    except (errors.UnavailableError, errors.InternalError) as e:
+      if isinstance(
+          e, errors.InternalError
+      ) and "coordination service is not enabled" not in str(e).lower():
+        raise
       # Coordination service is down
       self._task_states = None
     with self._next_task_state_cond:
@@ -836,6 +871,7 @@ class WorkerPreemptionHandler(object):
     # manager did not attempt to cancel the blocking operations.
     if _is_worker_failure(e) and (
         not self._cluster.closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
+      metric_utils.monitor_increment_counter("worker_failures")
       return
     raise e
 
@@ -1156,7 +1192,7 @@ class Worker(object):
       del closure
 
   def create_resource(self, function, args=None, kwargs=None):
-    """Synchronously creates a per-worker resource represented by a `RemoteValue`.
+    """Asynchronously creates a per-worker resource represented by a `RemoteValue`.
 
     Args:
       function: the resource function to be run remotely. It should be a
@@ -1168,16 +1204,29 @@ class Worker(object):
       one or several RemoteValue objects depending on the function return
       values.
     """
-    # Some notes about the concurrency: currently all the activities related to
-    # the same worker such as creating resources, setting resources' aborted
-    # status, and executing closures happen on the same thread. This allows us
-    # to have simpler logic of concurrency.
-
     closure = ResourceClosure(
         function,
         self._cluster.resource_cancellation_mgr,
         args=args,
         kwargs=kwargs)
+    return self._register_and_schedule_resource_closure(closure)
+
+  def create_variable_resource(self, function, args=None, kwargs=None):
+    """Create a per-worker variable."""
+    closure = PerWorkerVariableClosure(
+        function,
+        self._cluster.resource_cancellation_mgr,
+        args=args,
+        kwargs=kwargs)
+    return self._register_and_schedule_resource_closure(closure)
+
+  def _register_and_schedule_resource_closure(self, closure):
+    """Build remote value for, register for reconstruction, and schedule."""
+    # Some notes about the concurrency: currently all the activities related to
+    # the same worker such as creating resources, setting resources' aborted
+    # status, and executing closures happen on the same thread. This allows us
+    # to have simpler logic of concurrency.
+
     resource_remote_value = closure.build_output_remote_value()
     with self._resource_tracking_lock:
       self._register_resource(resource_remote_value)
@@ -1634,6 +1683,13 @@ class ClusterCoordinator(object):
     results = []
     for w in self._cluster.workers:
       results.append(w.create_resource(fn, args=args, kwargs=kwargs))
+    return PerWorkerValues(tuple(results))
+
+  def _create_per_worker_variables(self, fn, args=None, kwargs=None):
+    """Asynchronously create variables on workers."""
+    results = []
+    for w in self._cluster.workers:
+      results.append(w.create_variable_resource(fn, args=args, kwargs=kwargs))
     return PerWorkerValues(tuple(results))
 
   def fetch(self, val):

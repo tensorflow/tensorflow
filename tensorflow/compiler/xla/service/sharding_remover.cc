@@ -52,8 +52,8 @@ StatusOr<bool> ShardingRemover::Run(
       }
       CHECK(instruction->operand_count() == 1)
           << "Sharding instruction must have exactly one operand";
-      TF_RETURN_IF_ERROR(
-          instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+      TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+          instruction->mutable_operand(0), name()));
       changed = true;
     }
   }

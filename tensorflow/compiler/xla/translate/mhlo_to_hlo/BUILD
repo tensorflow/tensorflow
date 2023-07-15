@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
@@ -122,7 +122,7 @@ cc_binary(
 
 gentbl_cc_library(
     name = "operator_writer_inc",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/xla/mlir_hlo:mhlo/IR/hlo_ops.td",
@@ -185,7 +185,6 @@ cc_library(
 xla_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",

@@ -475,7 +475,11 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   auto check_if_op_reuses_input = [](const string& op_name) {
     return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
            op_name == "SparseReshape" || op_name == "StridedSlice" ||
-           op_name == "RaggedTensorToVariant";
+           op_name == "RaggedTensorToVariant" || op_name == "TensorMapInsert";
+    // TensorMapInsert hashes a tensor using a string_view of the key tensor.
+    // If the key tensor is shared with TfLite, the memory be reused. The string
+    // view will also change - it stores a ptr and a size, not the data so the
+    // data must be conserved or a false collision will be detected.
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {

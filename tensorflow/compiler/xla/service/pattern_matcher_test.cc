@@ -1288,5 +1288,69 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
       root, m::CustomCall({"test_target"}, m::Parameter(1), m::Parameter(0))));
 }
 
+TEST_F(PatternMatcherTest, SharedSubpatternPreservesTheSemantics) {
+  auto scalar0 = m::SharedSubpattern(m::ConstantScalar(0));
+  auto pattern0 = m::AnyOf<HloInstruction>(m::Convert(scalar0), scalar0);
+
+  auto scalar1 = m::SharedSubpattern(m::ConstantScalar(1));
+  auto pattern1 = m::AnyOf<HloInstruction>(m::Convert(scalar1), scalar1);
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      ROOT constant = f16[] constant(0)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      constant = f16[] constant(0)
+      ROOT convert = f32[] convert(constant)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
+}
+
+TEST_F(PatternMatcherTest, SharedSubpatternCanBeNested) {
+  auto scalar0 = m::SharedSubpattern(match::ConstantScalar(0));
+  auto subpattern0 = m::SharedSubpattern(
+      m::AnyOf<HloInstruction>(m::Convert(scalar0), scalar0));
+  auto pattern0 =
+      m::AnyOf<HloInstruction>(m::Convert(subpattern0), subpattern0);
+
+  auto scalar1 = m::SharedSubpattern(match::ConstantScalar(1));
+  auto subpattern1 = m::SharedSubpattern(
+      m::AnyOf<HloInstruction>(m::Convert(scalar1), scalar1));
+  auto pattern1 =
+      m::AnyOf<HloInstruction>(m::Convert(subpattern1), subpattern1);
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      constant = f16[] constant(0)
+      convert = f32[] convert(constant)
+      ROOT convert1 = f32[] convert(convert)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
+}
+
 }  // namespace
 }  // namespace xla

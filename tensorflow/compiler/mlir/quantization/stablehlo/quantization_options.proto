@@ -82,12 +82,13 @@ message QuantizationComponentSpec {
     COMPONENT_BIAS = 3;
   }
 
-  // NEXT ID: 4
+  // NEXT ID: 5
   enum BitWidth {
     BIT_WIDTH_UNSPECIFIED = 0;
     BIT_WIDTH_4 = 1;
     BIT_WIDTH_8 = 2;
     BIT_WIDTH_16 = 3;
+    BIT_WIDTH_32 = 4;
   }
 
   // NEXT ID: 4

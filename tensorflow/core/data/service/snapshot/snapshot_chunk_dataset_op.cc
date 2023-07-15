@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -116,8 +117,8 @@ class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       reader_ = std::make_unique<snapshot_util::TFRecordReader>(
-          dataset()->chunk_file_, dataset()->compression_, dataset()->dtypes_,
-          kTFRecordReaderOutputBufferSize);
+          TranslateFileName(dataset()->chunk_file_), dataset()->compression_,
+          dataset()->dtypes_, kTFRecordReaderOutputBufferSize);
       return reader_->Initialize(ctx->env());
     }
 

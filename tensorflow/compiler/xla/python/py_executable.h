@@ -139,6 +139,13 @@ class PyLoadedExecutable
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
+  StatusOr<absl::flat_hash_map<
+      std::string,
+      std::variant<std::string, int64_t, std::vector<int64_t>, float>>>
+  GetCostAnalysis() const {
+    return ifrt_loaded_executable_->GetCostAnalysis();
+  }
+
   void Delete() {
     // TODO(hyeontaek): Return Status.
     TF_CHECK_OK(ifrt_loaded_executable_->Delete().Await());

@@ -1,5 +1,5 @@
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO --dump-input-filter=all
+// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=false" -split-input-file %s | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=legalize-chlo=true" -split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix CHLO --dump-input-filter=all
 // This test runs twice:
 //   1. Through FILECHECK_OPTS="" FileCheck with chlo legalization disabled since verifying
 //      that the chlo ops emit produces more useful tests.
@@ -633,6 +633,17 @@ func.func @matrix_diag_part(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32
       T = i32, align = "RIGHT_LEFT"
   } : (tensor<7x140x128xi32>, tensor<2xi32>, tensor<i32>) -> tensor<7x22x128xi32>
   func.return %2: tensor<7x22x128xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @matrix_diag_part_zero_dim_complex
+func.func @matrix_diag_part_zero_dim_complex(%arg0: tensor<4x0xcomplex<f32>>) -> tensor<0xcomplex<f32>> {
+  %cst = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  %cst_0 = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+  %0 = "tf.MatrixDiagPartV3"(%arg0, %cst, %cst_0) {align = "RIGHT_LEFT", device = ""} : (tensor<4x0xcomplex<f32>>, tensor<i32>, tensor<complex<f32>>) -> tensor<0xcomplex<f32>>
+  // CHECK: return %{{[0-9]*}} : tensor<0xcomplex<f32>>
+  return %0 : tensor<0xcomplex<f32>>
 }
 
 // -----

@@ -21,6 +21,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -102,7 +103,7 @@ class UtilsTest(test.TestCase):
     expected = array_ops.placeholder(dtypes.float32, 1, name="x")
     tensor_info = utils.build_tensor_info(expected)
     actual = utils.get_tensor_from_tensor_info(tensor_info)
-    self.assertIsInstance(actual, ops.Tensor)
+    self.assertIsInstance(actual, tensor.Tensor)
     self.assertEqual(expected.name, actual.name)
 
   @test_util.run_v1_only(
@@ -134,7 +135,7 @@ class UtilsTest(test.TestCase):
       array_ops.placeholder(dtypes.float32, 1, name="other")
     actual = utils.get_tensor_from_tensor_info(tensor_info,
                                                graph=expected_graph)
-    self.assertIsInstance(actual, ops.Tensor)
+    self.assertIsInstance(actual, tensor.Tensor)
     self.assertIs(actual.graph, expected_graph)
     self.assertEqual(expected.name, actual.name)
 

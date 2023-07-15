@@ -34,6 +34,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSpmdExpandableInterfaceVerificationPass(
     SpmdExpandableInterfaceVerificationPassOptions options = {});
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtDuplicatedCalleeEliminationPass();
+
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export

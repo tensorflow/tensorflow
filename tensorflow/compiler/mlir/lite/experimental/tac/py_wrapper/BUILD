@@ -100,6 +100,12 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
     ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     deps = [
         ":tac_wrapper_lib",

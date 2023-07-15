@@ -199,3 +199,77 @@ module attributes {dtensor.all_reduce_combiner.num_ops_in_group = 2} {
     "func.return"() : () -> ()
   }
 }
+
+// -----
+module attributes {dtensor.all_reduce_combiner.topological_distance = 2} {
+  // Check that when topologicial grouping is enabled in AllReduce combiner, the
+  // independent DTensorAllReduce ops of the same element type and group assign-
+  // ment are combined according to the topological distance between two ops.
+  //
+  // The following scenario would have 1 group of 7 AllReduces when topological
+  // distance is *not* set.
+  //   - level 1: %4, %5 (case: <= topo_dist, simple case with same level)
+  //   - level 2: %7 (case: <= topo_dist, simple case for eligible to group)
+  //   - level 4: %16 (case: <= topo_dist, out of order, test for topo sort)
+  //   - level 5: %15 (case: < topo_dist, out of order, test for topo sort)
+  //   - level 8: %14 (case: > topo_dist, ineligible to group and out of order),
+  //              %17 (case: > topo_dist, ineligible to group with 1st group,
+  //                           but should get grouped with %14)
+  //
+  // Detailed level computations are listed in the test below.
+  //
+  // With topological_distance set to 2, we expect the following grouping result
+  // - group 1: %4, %5, %7, %15, %16
+  // - group 2: %14, %17
+  //
+  // Note use of dummy AllReduces (with the same input) gaurantees ops to be
+  // grouped together if topologicial grouping is not enabled.
+  //
+  // CHECK-LABEL: func @main
+  func.func @main() {
+    // CHECK:      %[[ALL_REDUCE_1:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    // CHECK:      %[[ALL_REDUCE_2:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    // CHECK:      %[[ADD:.*]] = "tf.Add"
+    // CHECK-SAME:   (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %0 = "tf_device.cluster"() ({
+      // topological level 0 for all tf.Const
+      %1 = "tf.Const"() {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+      %2 = "tf.Const"() {value = dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+      // %4 topological_level: 1 = max(0, 0) + 1
+      %4 = "tf.DTensorAllReduce"(%1, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // %5 topological_level: 1 = max(0, 0) + 1
+      %5 = "tf.DTensorAllReduce"(%3, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // %6 topological_level: 1 = max(0, 0) + 1
+      %6 = "tf.Add"(%1, %3) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      // %7 topological_level: 2 = max(1, 0) + 1
+      %7 = "tf.DTensorAllReduce"(%6, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // Dummy Adds to construct depth in compute graph
+      // %8 topological_level: 2 = max(1, 0) + 1
+      // %9 topological_level: 3 = max(2, 0) + 1
+      // %10 topological_level: 4 = max(3, 0) + 1
+      // %11 topological_level: 5 = max(4, 0) + 1
+      // %12 topological_level: 6 = max(5, 0) + 1
+      // %13 topological_level: 7 = max(6, 0) + 1
+      %8 = "tf.Add"(%6, %3) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      %9 = "tf.Add"(%8, %1) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      %10 = "tf.Add"(%9, %3) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      %11 = "tf.Add"(%10, %1) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      %12 = "tf.Add"(%11, %3) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      %13 = "tf.Add"(%12, %1) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      // %14 topological_level: 8 = max(7, 0) + 1
+      %14 = "tf.DTensorAllReduce"(%13, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // %15 topological_level: 5 = max(4, 0) + 1
+      %15 = "tf.DTensorAllReduce"(%10, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // %16 topological_level: 4 = max(3, 0) + 1
+      %16 = "tf.DTensorAllReduce"(%9, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      // %17 topological_level: 8 = max(7, 0) + 1
+      %17 = "tf.DTensorAllReduce"(%13, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %18 = "tf.Add"(%15, %7) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      "tf_device.return"(%18) : (tensor<4x4xf32>) -> ()
+    }) : () -> tensor<4x4xf32>
+    "func.return"() : () -> ()
+  }
+}

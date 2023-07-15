@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -169,7 +170,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
-  // Options for the default XLA Runtim compilation pipeline.
+  // Options for the default XLA Runtime compilation pipeline.
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -412,6 +413,35 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
+
+#if GOOGLE_CUDA
+  // Instantiate all CUDA graphs before executing the main function.
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0 &&
+      !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
+    // To instantiate all Gpu graphs we have to pass a valid device pointer
+    // because some device operations in XLA (e.g. memcpy) query device
+    // information from a pointer. We have to find the largest allocation
+    // available, to guarantee that all memref slices are within bounds,
+    // otherwise we might get crashes from a Gpu driver.
+    void* device_ptr = temp_buffer.opaque();
+    size_t device_ptr_size = temp_buffer.size();
+
+    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
+      auto mem = buffer_allocations.GetDeviceAddress(i);
+      if (mem.size() > device_ptr_size) {
+        device_ptr = mem.opaque();
+        device_ptr_size = mem.size();
+      }
+    }
+
+    if (auto instantiated = graph_instances_.InstantiateAllGraphs(
+            run_options, executable, user_data, device_ptr);
+        !instantiated.ok()) {
+      return InternalError("Failed to instantiate CUDA graphs: %s",
+                           instantiated.message());
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

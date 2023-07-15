@@ -422,7 +422,8 @@ static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Allocas &a,
   LLVM::AllocaOp alloca = a.GetOrCreate(b, value.getType());
   // Start the lifetime of encoded value.
   b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
-  b.create<LLVM::StoreOp>(value, alloca);
+  // Use volatile store to suppress expensive LLVM optimizations.
+  b.create<LLVM::StoreOp>(value, alloca, /*alignment=*/0, /*isVolatile=*/true);
 
   return alloca;
 }
@@ -636,6 +637,8 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
   if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
+  if (type.isFloat8E4M3FNUZ()) return PrimitiveType::F8E4M3FNUZ;
+  if (type.isFloat8E5M2FNUZ()) return PrimitiveType::F8E5M2FNUZ;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;

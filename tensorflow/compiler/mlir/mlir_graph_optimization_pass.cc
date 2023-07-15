@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -134,6 +135,7 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
                   mlir::shape::ShapeDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();
+  mlir::func::registerAllExtensions(registry);
   // clang-format on
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -58,18 +59,23 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
+  auto platform = stream_exec->platform();
+  TF_ASSIGN_OR_RETURN(auto transfer_manager,
+                      TransferManager::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
   auto device_ordinal = stream_exec->device_ordinal();
   VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
           << " shape = " << ShapeUtil::HumanStringWithLayout(shape);
-  auto update_layout = [this](xla::Shape* subshape,
-                              const xla::ShapeIndex& index) {
+  auto update_layout = [&transfer_manager](xla::Shape* subshape,
+                                           const xla::ShapeIndex& index) {
     if (subshape->IsArray()) {
       CHECK(subshape->has_layout());
       if (!subshape->layout().tiles().empty()) {
         // Already in device shape.
         return;
       }
-      *subshape = HostShapeToDeviceShape(*subshape);
+      *subshape = transfer_manager->HostShapeToDeviceShape(*subshape);
     }
   };
   Shape device_shape = shape;
@@ -111,7 +117,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   for (auto& pair : result.MutableResult()->buffers()) {
     const ShapeIndex& result_index = pair.first;
     se::DeviceMemoryBase& result_buffer = pair.second;
-    int64_t allocation_bytes = ShapeSize(ShapeUtil::GetSubshape(
+    int64_t allocation_bytes = shape_size_fn(ShapeUtil::GetSubshape(
         result.Result().on_device_shape(), result_index));
     total_result_buffer_bytes += allocation_bytes;
 

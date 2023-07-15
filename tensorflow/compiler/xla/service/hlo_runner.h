@@ -32,13 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+class BufferAssignmentProto;
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
@@ -78,6 +79,14 @@ class HloRunner : public HloRunnerInterface {
                             bool run_hlo_passes,
                             ExecutionProfile* profile) override;
 
+  using HloRunnerInterface::ExecuteWithBufferAssignment;
+
+  StatusOr<Literal> ExecuteWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile) override;
+
   using HloRunnerInterface::ExecuteWithExecutable;
 
   StatusOr<Literal> ExecuteWithExecutable(
@@ -111,6 +120,12 @@ class HloRunner : public HloRunnerInterface {
       std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr);
 
+  StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* buffer_assignment_proto,
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
+      ExecutionProfile* profile = nullptr);
+
   StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
       Executable* executable, std::vector<ScopedShapedBuffer> arguments,
       ExecutionProfile* profile = nullptr);
@@ -119,6 +134,11 @@ class HloRunner : public HloRunnerInterface {
   // true, the HLO passes will be run as part of compilation.
   StatusOr<std::unique_ptr<Executable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+  StatusOr<std::unique_ptr<Executable>> CreateExecutableWithBufferAssignment(
+      std::unique_ptr<HloModule> module,
+      const BufferAssignmentProto* /*buffer_assignment_proto*/,
+      bool run_hlo_passes) override;
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -168,18 +188,11 @@ class HloRunner : public HloRunnerInterface {
     return device_shape_representation_fn_;
   }
 
-  // A lower level interface to execute an executable.
-  //
-  // If the executable has input-output aliasing with must-alias, then the
-  // ExecutionInput parameters must be owning (donated).
-  //
-  // If a custom stream is set, it is *not* synchronized with
-  // BlockHostUntilDone.
+ private:
   StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,
-      ExecutionProfile* profile = nullptr, se::Stream* stream = nullptr);
+      ExecutionProfile* profile);
 
- private:
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions

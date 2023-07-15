@@ -1653,21 +1653,28 @@ inline ::flatbuffers::Offset<CoreMLSettings> CreateCoreMLSettings(
 struct StableDelegateLoaderSettingsT : public ::flatbuffers::NativeTable {
   typedef StableDelegateLoaderSettings TableType;
   std::string delegate_path{};
+  std::string delegate_name{};
 };
 
 struct StableDelegateLoaderSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef StableDelegateLoaderSettingsT NativeTableType;
   typedef StableDelegateLoaderSettingsBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_DELEGATE_PATH = 4
+    VT_DELEGATE_PATH = 4,
+    VT_DELEGATE_NAME = 6
   };
   const ::flatbuffers::String *delegate_path() const {
     return GetPointer<const ::flatbuffers::String *>(VT_DELEGATE_PATH);
+  }
+  const ::flatbuffers::String *delegate_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_DELEGATE_NAME);
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DELEGATE_PATH) &&
            verifier.VerifyString(delegate_path()) &&
+           VerifyOffset(verifier, VT_DELEGATE_NAME) &&
+           verifier.VerifyString(delegate_name()) &&
            verifier.EndTable();
   }
   StableDelegateLoaderSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1682,6 +1689,9 @@ struct StableDelegateLoaderSettingsBuilder {
   void add_delegate_path(::flatbuffers::Offset<::flatbuffers::String> delegate_path) {
     fbb_.AddOffset(StableDelegateLoaderSettings::VT_DELEGATE_PATH, delegate_path);
   }
+  void add_delegate_name(::flatbuffers::Offset<::flatbuffers::String> delegate_name) {
+    fbb_.AddOffset(StableDelegateLoaderSettings::VT_DELEGATE_NAME, delegate_name);
+  }
   explicit StableDelegateLoaderSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1695,19 +1705,24 @@ struct StableDelegateLoaderSettingsBuilder {
 
 inline ::flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoaderSettings(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    ::flatbuffers::Offset<::flatbuffers::String> delegate_path = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> delegate_path = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> delegate_name = 0) {
   StableDelegateLoaderSettingsBuilder builder_(_fbb);
+  builder_.add_delegate_name(delegate_name);
   builder_.add_delegate_path(delegate_path);
   return builder_.Finish();
 }
 
 inline ::flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoaderSettingsDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    const char *delegate_path = nullptr) {
+    const char *delegate_path = nullptr,
+    const char *delegate_name = nullptr) {
   auto delegate_path__ = delegate_path ? _fbb.CreateString(delegate_path) : 0;
+  auto delegate_name__ = delegate_name ? _fbb.CreateString(delegate_name) : 0;
   return tflite::CreateStableDelegateLoaderSettings(
       _fbb,
-      delegate_path__);
+      delegate_path__,
+      delegate_name__);
 }
 
 ::flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateLoaderSettings(::flatbuffers::FlatBufferBuilder &_fbb, const StableDelegateLoaderSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2568,7 +2583,6 @@ inline ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettingsDirect(
 }
 
 ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettings(::flatbuffers::FlatBufferBuilder &_fbb, const ArmNNSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
-
 
 struct TFLiteSettingsT : public ::flatbuffers::NativeTable {
   typedef TFLiteSettings TableType;
@@ -4588,7 +4602,8 @@ inline ::flatbuffers::Offset<CoreMLSettings> CreateCoreMLSettings(::flatbuffers:
 
 inline bool operator==(const StableDelegateLoaderSettingsT &lhs, const StableDelegateLoaderSettingsT &rhs) {
   return
-      (lhs.delegate_path == rhs.delegate_path);
+      (lhs.delegate_path == rhs.delegate_path) &&
+      (lhs.delegate_name == rhs.delegate_name);
 }
 
 inline bool operator!=(const StableDelegateLoaderSettingsT &lhs, const StableDelegateLoaderSettingsT &rhs) {
@@ -4606,6 +4621,7 @@ inline void StableDelegateLoaderSettings::UnPackTo(StableDelegateLoaderSettingsT
   (void)_o;
   (void)_resolver;
   { auto _e = delegate_path(); if (_e) _o->delegate_path = _e->str(); }
+  { auto _e = delegate_name(); if (_e) _o->delegate_name = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<StableDelegateLoaderSettings> StableDelegateLoaderSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StableDelegateLoaderSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -4617,9 +4633,11 @@ inline ::flatbuffers::Offset<StableDelegateLoaderSettings> CreateStableDelegateL
   (void)_o;
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StableDelegateLoaderSettingsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _delegate_path = _o->delegate_path.empty() ? 0 : _fbb.CreateString(_o->delegate_path);
+  auto _delegate_name = _o->delegate_name.empty() ? 0 : _fbb.CreateString(_o->delegate_name);
   return tflite::CreateStableDelegateLoaderSettings(
       _fbb,
-      _delegate_path);
+      _delegate_path,
+      _delegate_name);
 }
 
 
@@ -5011,6 +5029,7 @@ inline ::flatbuffers::Offset<CPUSettings> CreateCPUSettings(::flatbuffers::FlatB
       _num_threads);
 }
 
+
 inline bool operator==(const ArmNNSettingsT &lhs, const ArmNNSettingsT &rhs) {
   return
       (lhs.backends == rhs.backends) &&
@@ -5055,6 +5074,7 @@ inline ::flatbuffers::Offset<ArmNNSettings> CreateArmNNSettings(::flatbuffers::F
       _additional_parameters);
 }
 
+
 inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
   return
       (lhs.delegate == rhs.delegate) &&
@@ -5095,7 +5115,8 @@ inline TFLiteSettingsT::TFLiteSettingsT(const TFLiteSettingsT &o)
         disable_default_delegates(o.disable_default_delegates),
         stable_delegate_loader_settings((o.stable_delegate_loader_settings) ? new tflite::StableDelegateLoaderSettingsT(*o.stable_delegate_loader_settings) : nullptr),
         google_edgetpu_settings((o.google_edgetpu_settings) ? new tflite::GoogleEdgeTpuSettingsT(*o.google_edgetpu_settings) : nullptr),
-        compilation_caching_settings((o.compilation_caching_settings) ? new tflite::CompilationCachingSettingsT(*o.compilation_caching_settings) : nullptr) {
+        compilation_caching_settings((o.compilation_caching_settings) ? new tflite::CompilationCachingSettingsT(*o.compilation_caching_settings) : nullptr),
+        armnn_settings((o.armnn_settings) ? new tflite::ArmNNSettingsT(*o.armnn_settings) : nullptr) {
 }
 
 inline TFLiteSettingsT &TFLiteSettingsT::operator=(TFLiteSettingsT o) FLATBUFFERS_NOEXCEPT {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_THUNK_H_
 
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"

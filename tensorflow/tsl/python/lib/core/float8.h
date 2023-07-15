@@ -18,25 +18,26 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
+
 namespace tsl {
 
-// Register the float8_e4m3fn numpy type. Returns true on success.
-bool RegisterNumpyFloat8e4m3fn();
+// Deprecated, use underlying methods.
+inline bool RegisterNumpyFloat8e4m3fn() { return ml_dtypes::RegisterTypes(); }
 
-// Returns a pointer to the float8_e4m3fn dtype object.
-PyObject* Float8e4m3fnDtype();
+inline PyObject* Float8e4m3fnDtype() {
+  return ml_dtypes::GetFloat8E4m3fnDtype();
+}
 
-// Returns the id number of the float8_e4m3fn numpy type.
-int Float8e4m3fnNumpyType();
+inline int Float8e4m3fnNumpyType() {
+  return ml_dtypes::GetFloat8E4m3fnTypeNum();
+}
 
-// Register the float8_e5m2 numpy type. Returns true on success.
-bool RegisterNumpyFloat8e5m2();
+inline bool RegisterNumpyFloat8e5m2() { return ml_dtypes::RegisterTypes(); }
 
-// Returns a pointer to the float8_e5m2 dtype object.
-PyObject* Float8e5m2Dtype();
+inline PyObject* Float8e5m2Dtype() { return ml_dtypes::GetFloat8E5m2Dtype(); }
 
-// Returns the id number of the float8_e5m2 numpy type.
-int Float8e5m2NumpyType();
+inline int Float8e5m2NumpyType() { return ml_dtypes::GetFloat8E5m2TypeNum(); }
 
 }  // namespace tsl
 

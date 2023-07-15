@@ -2814,6 +2814,288 @@ TEST(KernelTest, Case) {
   }
 }
 
+struct TestPromiseReturnOp : PromiseReturnOpBase<TestPromiseReturnOp> {
+  using PromiseReturnOpBase::PromiseReturnOpBase;
+
+  static constexpr char kName[] = "test_promise_return";
+
+  Promise& promise() const { return arguments()[0].Get<Promise>(); }
+  int32_t value() const { return arguments()[1].Get<int32_t>(); }
+  bool value_last_use() const { return last_uses()[1]; }
+};
+
+bc::Buffer CreatePromiseReturnExecutable() {
+  bc::Buffer buffer;
+  bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = bc::New<bc::Executable>(&allocator);
+
+  testing::SymbolTable kernels;
+  std::vector<std::string> names = {"await.i32", "test_promise_return",
+                                    "return"};
+  executable_ctor.construct_kernel_names(3).Assign(names);
+  kernels.Def(names);
+
+  auto functions_ctor = executable_ctor.construct_functions(2);
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("consumer");
+
+    testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(1).Assign({regs.Def("future")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(2);
+
+    {
+      // Await
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("await.i32"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("future")});
+      kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+    }
+
+    {
+      // Return
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+    function_ctor.construct_output_last_uses(1).Assign({true});
+  }
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(1);
+    function_ctor.construct_name("producer");
+
+    testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(2).Assign(
+        {regs.Def("promise"), regs.Def("value")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(1);
+
+    {
+      // test_promise_return
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("test_promise_return"));
+      kernel_ctor.construct_arguments(2).Assign(
+          {regs.Use("promise"), regs.Use("value")});
+      kernel_ctor.construct_last_uses(2).Assign({true, true});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+  }
+
+  return buffer;
+}
+
+TEST(KernelTest, PromiseReturn) {
+  auto buffer = CreatePromiseReturnExecutable();
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry registry;
+  RegisterBuiltinKernels(registry);
+  registry.Register<TestPromiseReturnOp>();
+  registry.Register("await.i32", &AwaitI32);
+
+  LoadedExecutable loaded_executable(executable, registry);
+
+  ExecutionContext consumer_context(&loaded_executable);
+
+  absl::Notification notification;
+  consumer_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  auto promise = Promise::Allocate<int32_t>();
+
+  Value output;
+  {
+    Value input(promise.GetFuture());
+
+    std::vector<uint8_t> last_uses = {true};
+    consumer_context.Call(loaded_executable.GetFunction("consumer"), last_uses,
+                          absl::Span<Value>(&input, 1),
+                          absl::Span<Value>(&output, 1));
+    Execute(consumer_context);
+  }
+
+  {
+    Value inputs[2];
+    inputs[0].Set(std::move(promise));
+    inputs[1].Set(100);
+
+    ExecutionContext producer_context(&loaded_executable);
+    std::vector<uint8_t> last_uses = {true, true};
+    producer_context.Call(loaded_executable.GetFunction("producer"), last_uses,
+                          absl::Span<Value>(inputs), absl::Span<Value>());
+    Execute(producer_context);
+  }
+
+  ASSERT_TRUE(notification.HasBeenNotified());
+  EXPECT_EQ(output.Get<int32_t>(), 100);
+}
+
+bc::Buffer CreatePromiseReturnNotScheduleImmediatelyExecutable() {
+  bc::Buffer buffer;
+  bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = bc::New<bc::Executable>(&allocator);
+
+  testing::AttributeTable attributes(executable_ctor.construct_attributes(1));
+
+  attributes.Add("func_idx", 2);
+
+  testing::SymbolTable kernels;
+  std::vector<std::string> names = {"await.i32", "call", "test_promise_return",
+                                    "return"};
+  executable_ctor.construct_kernel_names(4).Assign(names);
+  kernels.Def(names);
+
+  auto functions_ctor = executable_ctor.construct_functions(3);
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("consumer");
+
+    testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(1).Assign({regs.Def("future")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(2);
+
+    {
+      // Await
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("await.i32"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("future")});
+      kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+    }
+
+    {
+      // Return
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+    function_ctor.construct_output_last_uses(1).Assign({true});
+  }
+
+  {
+    testing::SymbolTable regs;
+
+    auto caller_ctor = functions_ctor.ConstructAt(1);
+    caller_ctor.construct_name("producer");
+    caller_ctor.construct_input_regs(2).Assign(
+        {regs.Def("promise"), regs.Def("value")});
+
+    auto kernels_ctor = caller_ctor.construct_kernels(2);
+    {
+      // Call
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("call"));
+      kernel_ctor.construct_arguments(2).Assign(
+          {regs.Use("promise"), regs.Use("value")});
+      kernel_ctor.construct_last_uses(2).Assign({true, true});
+      kernel_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("func_idx")});
+    }
+
+    {
+      // Return
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+    }
+
+    caller_ctor.set_num_regs(regs.size());
+  }
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(2);
+    function_ctor.construct_name("producer_callee");
+
+    testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(2).Assign(
+        {regs.Def("promise"), regs.Def("value")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(1);
+
+    {
+      // test_promise_return
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("test_promise_return"));
+      kernel_ctor.construct_arguments(2).Assign(
+          {regs.Use("promise"), regs.Use("value")});
+      kernel_ctor.construct_last_uses(2).Assign({true, true});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+  }
+
+  return buffer;
+}
+
+TEST(KernelTest, PromiseReturnNotScheduleImmediately) {
+  auto buffer = CreatePromiseReturnNotScheduleImmediatelyExecutable();
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry registry;
+  RegisterBuiltinKernels(registry);
+  registry.Register<TestPromiseReturnOp>();
+  registry.Register("await.i32", &AwaitI32);
+
+  LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+
+  ExecutionContext consumer_context(&loaded_executable);
+  consumer_context.set_work_queue(work_queue.get());
+
+  absl::Notification notification;
+  consumer_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  auto promise = Promise::Allocate<int32_t>();
+
+  Value output;
+  {
+    Value input(promise.GetFuture());
+
+    std::vector<uint8_t> last_uses = {true};
+    consumer_context.Call(loaded_executable.GetFunction("consumer"), last_uses,
+                          absl::Span<Value>(&input, 1),
+                          absl::Span<Value>(&output, 1));
+    Execute(consumer_context);
+  }
+
+  {
+    Value inputs[2];
+    inputs[0].Set(std::move(promise));
+    inputs[1].Set(100);
+
+    ExecutionContext producer_context(&loaded_executable);
+    consumer_context.set_work_queue(work_queue.get());
+
+    std::vector<uint8_t> last_uses = {true, true};
+    producer_context.Call(loaded_executable.GetFunction("producer"), last_uses,
+                          absl::Span<Value>(inputs), absl::Span<Value>());
+    Execute(producer_context);
+  }
+
+  notification.WaitForNotification();
+  EXPECT_EQ(output.Get<int32_t>(), 100);
+}
+
 void BM_SequentialAdd(benchmark::State& state) {
   auto buffer = CreateSequentialAddExecutable(99);
 

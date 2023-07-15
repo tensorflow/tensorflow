@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
 
@@ -109,8 +109,8 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 
 // Returns result with the smallest time which has not failed.
 // If deterministic output is requested, returns first (not failing) result.
-StatusOr<tensorflow::AutotuneResult> PickBestResult(
-    absl::Span<tensorflow::AutotuneResult const> profile_results,
+StatusOr<AutotuneResult> PickBestResult(
+    absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config);
 

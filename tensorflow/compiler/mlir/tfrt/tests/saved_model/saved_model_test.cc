@@ -101,8 +101,15 @@ TEST(SavedModelTest, CompileToBEF) {
   ASSERT_TRUE(module);
 
   tfrt::BefBuffer bef_buffer;
-  TfrtCompileOptions options;
-  TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer));
+
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
+  tfrt_stub::GraphExecutionOptions options(runtime.get());
+  tfrt::ResourceContext resource_context;
+  tfrt_stub::ModelRuntimeContext model_context(
+      &options, options.compile_options.saved_model_dir, &resource_context);
+  TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
+                                  &bef_buffer, model_context));
 }
 
 TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
@@ -118,14 +125,24 @@ TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
   ASSERT_TRUE(module);
 
   tfrt::BefBuffer bef_buffer;
-  TfrtCompileOptions options;
-  options.device_target = TfrtDeviceInfraTarget::kGpu;
-  options.use_bridge_for_gpu = true;
+
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
+  tfrt_stub::GraphExecutionOptions options(runtime.get());
+
+  options.compile_options.device_target = TfrtDeviceInfraTarget::kGpu;
+  options.compile_options.use_bridge_for_gpu = true;
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
       tfrt_stub::FallbackState::Create(SessionOptions(), FunctionDefLibrary()));
-  TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer,
+
+  tfrt::ResourceContext resource_context;
+  tfrt_stub::ModelRuntimeContext model_context(
+      &options, options.compile_options.saved_model_dir, &resource_context);
+
+  TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
+                                  &bef_buffer, model_context,
                                   fallback_state.get()));
 
   // The module contains an XLA function, as well as a while body and a while
@@ -149,14 +166,22 @@ TEST(SavedModelTest, ConvertTfMlirToBefExportingXlaReduceWindow) {
   ASSERT_TRUE(module);
 
   tfrt::BefBuffer bef_buffer;
-  TfrtCompileOptions options;
-  options.device_target = TfrtDeviceInfraTarget::kGpu;
-  options.use_bridge_for_gpu = true;
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
+  tfrt_stub::GraphExecutionOptions options(runtime.get());
+  options.compile_options.device_target = TfrtDeviceInfraTarget::kGpu;
+  options.compile_options.use_bridge_for_gpu = true;
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
       tfrt_stub::FallbackState::Create(SessionOptions(), FunctionDefLibrary()));
-  TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer,
+
+  tfrt::ResourceContext resource_context;
+  tfrt_stub::ModelRuntimeContext model_context(
+      &options, options.compile_options.saved_model_dir, &resource_context);
+
+  TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
+                                  &bef_buffer, model_context,
                                   fallback_state.get()));
 
   // The module contains an XLA function, as well as a sum_reducer function

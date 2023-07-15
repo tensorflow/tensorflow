@@ -6,10 +6,6 @@ load(
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
-load(
-    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -118,7 +114,6 @@ cc_library(
 xla_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":bit_cast",
         ":test",
@@ -152,7 +147,6 @@ cc_library(
 xla_cc_test(
     name = "comparison_util_test",
     srcs = ["comparison_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":comparison_util",
         ":test",
@@ -215,7 +209,6 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
-    tags = ["nomsan"],
     visibility = [":friends"],
     deps = [
         ":test",
@@ -256,7 +249,6 @@ xla_cc_test(
     name = "status_macros_test",
     size = "small",
     srcs = ["status_macros_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":status_macros",
         ":statusor",
@@ -331,7 +323,6 @@ cc_library(
 xla_cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":test",
         ":types",
@@ -357,7 +348,6 @@ cc_library(
 xla_cc_test(
     name = "permutation_util_test",
     srcs = ["permutation_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":permutation_util",
         ":test",
@@ -387,7 +377,6 @@ cc_library(
 xla_cc_test(
     name = "iterator_util_test",
     srcs = ["iterator_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":test",
         ":util",
@@ -455,7 +444,6 @@ cc_library(
 xla_cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status_macros",
@@ -474,7 +462,6 @@ xla_cc_test(
 xla_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":permutation_util",
         ":shape_util",
@@ -495,7 +482,6 @@ xla_cc_test(
 xla_cc_test(
     name = "primitive_util_test",
     srcs = ["primitive_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status_macros",
@@ -511,7 +497,6 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":test_helpers",
@@ -523,7 +508,6 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_test",
     srcs = ["layout_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status",
@@ -536,7 +520,6 @@ xla_cc_test(
 xla_cc_test(
     name = "index_util_test",
     srcs = ["index_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":test",
@@ -581,7 +564,6 @@ cc_library(
 xla_cc_test(
     name = "literal_test",
     srcs = ["literal_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":array3d",
@@ -694,7 +676,6 @@ cc_library(
 xla_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array",
         ":test",
@@ -718,7 +699,6 @@ cc_library(
 xla_cc_test(
     name = "array2d_test",
     srcs = ["array2d_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":test",
@@ -740,7 +720,6 @@ cc_library(
 xla_cc_test(
     name = "array3d_test",
     srcs = ["array3d_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array3d",
         ":test",
@@ -766,7 +745,6 @@ cc_library(
 xla_cc_test(
     name = "array4d_test",
     srcs = ["array4d_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array4d",
         ":test",
@@ -847,7 +825,6 @@ cc_library(
 xla_cc_test(
     name = "text_literal_reader_test",
     srcs = ["text_literal_reader_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":literal",
         ":shape_util",
@@ -881,7 +858,6 @@ cc_library(
 xla_cc_test(
     name = "text_literal_writer_test",
     srcs = ["text_literal_writer_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":literal",
         ":literal_util",
@@ -916,7 +892,6 @@ cc_library(
 xla_cc_test(
     name = "shape_tree_test",
     srcs = ["shape_tree_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_tree",
         ":shape_util",
@@ -962,7 +937,6 @@ cc_library(
 xla_cc_test(
     name = "window_util_test",
     srcs = ["window_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":test",
         ":window_util",
@@ -999,7 +973,6 @@ cc_library(
 xla_cc_test(
     name = "reference_util_test",
     srcs = ["reference_util_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":array3d",
@@ -1033,7 +1006,6 @@ cc_library(
 xla_cc_test(
     name = "parse_flags_from_env_test",
     srcs = ["parse_flags_from_env_test.cc"],
-    tags = ["nomsan"],
     deps =
         [
             ":parse_flags_from_env",
@@ -1087,7 +1059,6 @@ xla_cc_test(
         "debug_options_parsers.h",
         "debug_options_parsers_test.cc",
     ],
-    tags = ["nomsan"],
     deps =
         [
             ":xla_proto_cc",
@@ -1112,7 +1083,6 @@ cc_library(
 xla_cc_test(
     name = "refcounting_hash_map_test",
     srcs = ["refcounting_hash_map_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":refcounting_hash_map",
         ":test",
@@ -1142,7 +1112,7 @@ tf_proto_library(
     srcs = ["autotune_results.proto"],
     cc_api_version = 2,
     protodeps = [
-        "//tensorflow/tsl/protobuf:autotuning_proto",
+        ":autotuning_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1156,21 +1126,11 @@ xla_py_proto_library(
     ],
 )
 
-cc_library(
-    name = "autotune_serialize",
-    srcs = if_cuda_is_configured(["autotune_serialize.cc"]),
-    hdrs = if_cuda_is_configured(["autotune_serialize.h"]),
-    # TODO(aminim): There appears to be an in-progress refactoring in TF/XLA to
-    # mark rules as compatible_with GCE.  The rules that this depends on are
-    # not yet marked as compatible, so this one can't be either (yet).
-    compatible_with = [],
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":autotune_results_proto_cc",
-        ":statusor",
-        "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
-        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
-    ]),
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:dnn_proto"],
 )
 
 cc_library(

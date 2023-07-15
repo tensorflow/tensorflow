@@ -826,8 +826,10 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 
 }  // namespace
 
-void Graph::ToGraphDef(GraphDef* graph_def, bool include_flib_def) const {
-  ToGraphDefSubRange(graph_def, /*from_node_id=*/0, include_flib_def);
+void Graph::ToGraphDef(GraphDef* graph_def, bool include_flib_def,
+                       bool include_debug_info) const {
+  ToGraphDefSubRange(graph_def, /*from_node_id=*/0, include_flib_def,
+                     include_debug_info);
 }
 
 GraphDef Graph::ToGraphDefDebug() const {
@@ -837,12 +839,16 @@ GraphDef Graph::ToGraphDefDebug() const {
 }
 
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
-                               bool include_flib_def) const {
+                               bool include_flib_def,
+                               bool include_debug_info) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
 
   if (include_flib_def) {
     *graph_def->mutable_library() = ops_.ToProto();
+  }
+  if (include_debug_info) {
+    *graph_def->mutable_debug_info() = BuildDebugInfo();
   }
 
   graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));

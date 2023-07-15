@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,7 +13,7 @@ cc_library(
     name = "mlir_dump",
     srcs = ["mlir_dump.cc"],
     hdrs = ["mlir_dump.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:path",
@@ -31,7 +31,7 @@ cc_library(
 tf_cc_test(
     name = "mlir_dump_test",
     srcs = ["mlir_dump_test.cc"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":mlir_dump",
         "//tensorflow/tsl/platform:path",

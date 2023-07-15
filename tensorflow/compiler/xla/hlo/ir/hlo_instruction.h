@@ -1420,7 +1420,11 @@ class HloInstruction {
   //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  Status ReplaceAllUsesWith(HloInstruction* new_producer);
+  //
+  // trigger is a string used in the error message if the new and the
+  // current instruction don't have a compatible shape.
+  Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                            absl::string_view trigger = "");
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
@@ -1459,6 +1463,9 @@ class HloInstruction {
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  Status Visit(ConstDfsHloVisitor* visitor) const {
+    return const_cast<HloInstruction*>(this)->Visit(visitor);
+  }
 
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
@@ -1805,6 +1812,8 @@ class HloInstruction {
     return OkStatus();
   }
 
+  bool preserve_layout() const { return metadata_.preserve_layout(); }
+
   bool has_backend_config() const { return !backend_config_.empty(); }
 
   void clear_backend_config() { backend_config_.clear(); }
@@ -1888,6 +1897,9 @@ class HloInstruction {
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
     metadata_.set_deduplicated_name(std::move(deduplicated_name));
+  }
+  void set_metadata_preserve_layout(bool preserve_layout) {
+    metadata_.set_preserve_layout(preserve_layout);
   }
   const OpMetadata& metadata() const { return metadata_; }
 

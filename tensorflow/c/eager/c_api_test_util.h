@@ -145,4 +145,16 @@ tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
                                               int num_tasks,
                                               int num_virtual_gpus = 0);
 
+// Create a variable handle with name `variable_name` on a device with name
+// `device_name`.
+TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
+                                  const tensorflow::string& device_name,
+                                  const tensorflow::string& variable_name);
+
+// Create a variable with value `value` and name `variable_name` on a device
+// with name `device_name`.
+TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
+                                 const tensorflow::string& device_name,
+                                 const tensorflow::string& variable_name);
+
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

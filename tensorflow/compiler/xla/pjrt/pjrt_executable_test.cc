@@ -14,14 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::testing::StatusIs;
 
 TEST(CompileOptionsTest, Serialization) {
   CompileOptions src;
@@ -41,15 +47,47 @@ TEST(CompileOptionsTest, Serialization) {
   EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
 }
 
-TEST(FromProtoTest, MultiSliceConfigNotSupported) {
+TEST(CompileOptionsTest, MultiSliceConfigNotSupported) {
   CompileOptionsProto proto;
   *proto.mutable_serialized_multi_slice_config() = "multi_size_config";
 
   auto option = CompileOptions::FromProto(proto);
 
-  EXPECT_EQ(option.status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(option.status().message(),
-            "multi_slice_config not supported in CompileOptions::FromProto.");
+  EXPECT_THAT(
+      option.status(),
+      StatusIs(
+          absl::StatusCode::kUnimplemented,
+          "multi_slice_config not supported in CompileOptions::FromProto."));
+}
+
+TEST(ExecuteOptionsTest, Serialization) {
+  ExecuteOptions src;
+  src.arguments_are_tupled = true;
+  src.untuple_result = false;
+  src.launch_id = 1234;
+  src.strict_shape_checking = true;
+  src.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
+  src.non_donatable_input_indices = {2, 3};
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptions output,
+                          ExecuteOptions::FromProto(proto));
+  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto output_proto, src.ToProto());
+
+  EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
+}
+
+TEST(ExecuteOptionsTest, SendRecvNotSupported) {
+  ExecuteOptions options;
+  std::vector<std::vector<SendCallback>> send_callbacks(1);
+  options.send_callbacks = send_callbacks;
+  std::vector<std::vector<RecvCallback>> recv_callbacks(1);
+  options.recv_callbacks = recv_callbacks;
+
+  EXPECT_THAT(
+      options.ToProto(),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               "ExecuteOptions with send/recv calbacks is not serializable"));
 }
 
 }  // namespace

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -107,6 +108,8 @@ class BatchResourceBase : public ResourceBase {
     // this task's processing costs.
     RequestCost* request_cost = nullptr;
 
+    tsl::criticality::Criticality criticality;
+
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
@@ -165,6 +168,16 @@ class BatchResourceBase : public ResourceBase {
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting, bool disable_padding);
+
+  static BatcherT::QueueOptions GetBatcherQueueOptions(
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
+      bool enable_large_batch_splitting, bool disable_padding,
+      int32_t low_priority_max_batch_size,
+      int32_t low_priority_batch_timeout_micros,
+      int32_t low_priority_max_enqueued_batches,
+      const std::vector<int32>& low_priority_allowed_batch_sizes);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

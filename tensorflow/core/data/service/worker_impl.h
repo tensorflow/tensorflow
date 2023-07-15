@@ -113,7 +113,7 @@ class DataServiceWorkerImpl {
     // This is required to use it as a `flat_hash_map` key.
     template <typename H>
     friend H AbslHashValue(H h, const SnapshotTask& task) {
-      return H::combine(std::move(h), task.base_path, task.base_path);
+      return H::combine(std::move(h), task.base_path, task.stream_index);
     }
 
     friend bool operator==(const SnapshotTask& task1,

@@ -1268,6 +1268,22 @@ mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
                         value { i: 0 }
                       }
                       attr {
+                        key: "low_priority_max_batch_size"
+                        value { i: 1 }
+                      }
+                      attr {
+                        key: "low_priority_batch_timeout_micros"
+                        value { i: 0 }
+                      }
+                      attr {
+                        key: "low_priority_allowed_batch_sizes"
+                        value { list { i: 1 } }
+                      }
+                      attr {
+                        key: "low_priority_max_enqueued_batches"
+                        value { i: 1 }
+                      }
+                      attr {
                         key: "container"
                         value { s: "container" }
                       }
@@ -2300,6 +2316,125 @@ TEST(KernelTest, MapFnOpErrorWithPromiseSet) {
   EXPECT_THAT(execution_context.status(),
               ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
                                                    "Test Error"));
+}
+
+mlrt::bc::Buffer CreatePromiseReturnExecutable() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> names = {"tf_mlrt.await", "tf_mlrt.promise_return",
+                                    "return"};
+  executable_ctor.construct_kernel_names(3).Assign(names);
+  kernels.Def(names);
+
+  auto functions_ctor = executable_ctor.construct_functions(2);
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("consumer");
+
+    mlrt::testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(1).Assign({regs.Def("future")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(2);
+
+    {
+      // Await
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.await"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("future")});
+      kernel_ctor.construct_last_uses(1).Assign({true});
+      kernel_ctor.construct_results(1).Assign({regs.Def("result")});
+    }
+
+    {
+      // Return
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("result")});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign({regs.Use("result")});
+    function_ctor.construct_output_last_uses(1).Assign({true});
+  }
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(1);
+    function_ctor.construct_name("producer");
+
+    mlrt::testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(2).Assign(
+        {regs.Def("promise"), regs.Def("value")});
+
+    auto kernels_ctor = function_ctor.construct_kernels(1);
+
+    {
+      // promise_return
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.promise_return"));
+      kernel_ctor.construct_arguments(2).Assign(
+          {regs.Use("promise"), regs.Use("value")});
+      kernel_ctor.construct_last_uses(2).Assign({true, true});
+    }
+
+    function_ctor.set_num_regs(regs.size());
+  }
+
+  return buffer;
+}
+
+TEST(KernelTest, PromiseReturn) {
+  auto buffer = CreatePromiseReturnExecutable();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  mlrt::ExecutionContext consumer_context(&loaded_executable);
+
+  absl::Notification notification;
+  consumer_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  auto promise =
+      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+  tensorflow::Tensor expected(static_cast<int32_t>(100));
+
+  mlrt::Value output;
+  {
+    mlrt::Value input(promise.GetFuture());
+
+    std::vector<uint8_t> last_uses = {true};
+    consumer_context.Call(loaded_executable.GetFunction("consumer"), last_uses,
+                          absl::Span<mlrt::Value>(&input, 1),
+                          absl::Span<mlrt::Value>(&output, 1));
+    mlrt::Execute(consumer_context);
+  }
+
+  {
+    mlrt::Value inputs[2];
+    inputs[0].Set(std::move(promise));
+    inputs[1].Set(tensorflow::tfrt_stub::FallbackTensor(expected));
+
+    mlrt::ExecutionContext producer_context(&loaded_executable);
+    std::vector<uint8_t> last_uses = {true, true};
+    producer_context.Call(loaded_executable.GetFunction("producer"), last_uses,
+                          absl::Span<mlrt::Value>(inputs),
+                          absl::Span<mlrt::Value>());
+    mlrt::Execute(producer_context);
+  }
+
+  ASSERT_TRUE(notification.HasBeenNotified());
+  tensorflow::test::ExpectEqual(
+      output.Get<tfrt_stub::FallbackTensor>().tensor(), expected);
 }
 
 }  // namespace

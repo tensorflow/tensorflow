@@ -109,6 +109,7 @@ class CUDABlas : public blas::BlasSupport {
       const DeviceMemorySlice<T> &a_array, int lda,
       const DeviceMemorySlice<T> &b_array, int ldb, Scalar beta,
       const DeviceMemorySlice<T> &c_array, int ldc, int batch_count,
+      const NumericOptions &numeric_options,
       ScratchAllocator *scratch_allocator);
 
   // Guards the cuBLAS handle for this device.

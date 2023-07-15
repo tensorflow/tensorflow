@@ -132,6 +132,26 @@ TEST_F(ConstantsTest, OneCellF8e4m3b11fnuz) {
   ComputeAndCompareR1<float>(&builder, {2.0f}, {}, error_spec_);
 }
 
+TEST_F(ConstantsTest, OneCellF8e5m2fnuz) {
+  std::vector<tsl::float8_e5m2fnuz> constant = {tsl::float8_e5m2fnuz{2.0}};
+
+  XlaBuilder builder(TestName());
+  ConstantR1<tsl::float8_e5m2fnuz>(&builder, constant);
+
+  ComputeAndCompareR1<tsl::float8_e5m2fnuz>(&builder, constant, {},
+                                            error_spec_);
+}
+
+TEST_F(ConstantsTest, OneCellF8e4m3fnuz) {
+  std::vector<tsl::float8_e4m3fnuz> constant = {tsl::float8_e4m3fnuz{2.0}};
+
+  XlaBuilder builder(TestName());
+  ConstantR1<tsl::float8_e4m3fnuz>(&builder, constant);
+
+  ComputeAndCompareR1<tsl::float8_e4m3fnuz>(&builder, constant, {},
+                                            error_spec_);
+}
+
 TEST_F(ConstantsTest, EightCells) {
   std::vector<float> constant = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
 

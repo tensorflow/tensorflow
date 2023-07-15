@@ -27,8 +27,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -70,7 +70,7 @@ def _Identity(tensor, name=None):
   # TODO(b/246438937): Remove this when we expand ResourceVariables into
   # dt_resource tensors.
   tensor = variable_utils.convert_variables_to_tensors(tensor)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_array_ops.ref_identity(tensor, name=name)
     else:
@@ -84,7 +84,7 @@ def _Identity(tensor, name=None):
 
 def _NextIteration(tensor, name=None):
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return ref_next_iteration(tensor, name=name)
     else:
@@ -127,7 +127,7 @@ def _Enter(tensor,
       than its corresponding shape in `shape_invariant`.
   """
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
       result = gen_control_flow_ops.ref_enter(
           tensor, frame_name, is_constant, parallel_iterations, name=name)
@@ -162,7 +162,7 @@ def exit(tensor, name=None):  # pylint: disable=redefined-builtin
     The same tensor as `tensor`.
   """
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_control_flow_ops.ref_exit(tensor, name)
     else:
@@ -197,7 +197,7 @@ def switch(data, pred, dtype=None, name=None):
     data = ops.internal_convert_to_tensor_or_composite(
         data, dtype=dtype, name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       return gen_control_flow_ops.switch(data, pred, name=name)
     else:
       if not isinstance(data, composite_tensor.CompositeTensor):
@@ -249,7 +249,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   # var and data may be pinned to different devices, so we want to ops
   # created within ops.colocate_with(data) to ignore the existing stack.
   with ops.colocate_with(data, ignore_existing=True):
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return ref_switch(data, pred, name=name)
     return switch(data, pred, name=name)
@@ -287,7 +287,7 @@ def merge(inputs, name=None):
         ops.internal_convert_to_tensor_or_composite(inp, as_ref=True)
         for inp in inputs
     ]
-    if all(isinstance(v, ops.Tensor) for v in inputs):
+    if all(isinstance(v, tensor_lib.Tensor) for v in inputs):
       if all(v.dtype._is_ref_dtype for v in inputs):  # pylint: disable=protected-access
         return gen_control_flow_ops.ref_merge(inputs, name)
       else:
@@ -296,7 +296,7 @@ def merge(inputs, name=None):
       # If there is a mix of tensors and indexed slices, then convert the
       # tensors to indexed slices.
       if all(
-          isinstance(v, (indexed_slices.IndexedSlices, ops.Tensor))
+          isinstance(v, (indexed_slices.IndexedSlices, tensor_lib.Tensor))
           for v in inputs):
         inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
 
@@ -384,8 +384,8 @@ def _shape_invariant_to_type_spec(var, shape=None):
         "'shape' must be one of TypeSpec, TensorShape or None. "
         f"Received: {type(shape)}")
 
-  if isinstance(var, ops.Tensor):
-    return tensor_spec.TensorSpec(shape, var.dtype)
+  if isinstance(var, tensor_lib.Tensor):
+    return tensor_lib.TensorSpec(shape, var.dtype)
   else:
     try:
       return var._shape_invariant_to_type_spec(shape)  # pylint: disable=protected-access
@@ -408,7 +408,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
     ValueError: If any tensor in `merge_var` has a more specific shape than
       its corresponding tensor in `next_var`.
   """
-  if isinstance(merge_var, ops.Tensor):
+  if isinstance(merge_var, tensor_lib.Tensor):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
@@ -427,7 +427,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
 
 def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   """Add NextIteration and back edge from v to m."""
-  if isinstance(m, ops.Tensor):
+  if isinstance(m, tensor_lib.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
     if enforce_shape_invariant:
@@ -1632,7 +1632,7 @@ class WhileContext(ControlFlowContext):
     """Makes the values known to this context."""
     self._values = set()
     for x in values:
-      if isinstance(x, ops.Tensor):
+      if isinstance(x, tensor_lib.Tensor):
         self._values.add(x.name)
       else:
         raise TypeError("'values' must be a list of Tensors. "
@@ -1831,7 +1831,7 @@ class WhileContext(ControlFlowContext):
     graph = ops.get_default_graph()
     # pylint: disable=protected-access
     for e in enters:
-      if isinstance(e, ops.Tensor):
+      if isinstance(e, tensor_lib.Tensor):
         xs = [e]
       else:
         raise TypeError("'enters' must be a list of Tensors. "
@@ -1888,7 +1888,7 @@ def _AsTensorList(x, p):
     if isinstance(v, ops.Operation):
       v = with_dependencies([v], p)
     v = ops.convert_to_tensor_or_composite(v)
-    if isinstance(v, ops.Tensor):
+    if isinstance(v, tensor_lib.Tensor):
       l.append(array_ops.identity(v))
     else:
       l.append(
@@ -2150,7 +2150,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     ]
     if control_inputs:
       for c in control_inputs:
-        if isinstance(c, ops.Tensor):
+        if isinstance(c, tensor_lib.Tensor):
           c = c.op
         elif not isinstance(c, ops.Operation):
           raise TypeError(

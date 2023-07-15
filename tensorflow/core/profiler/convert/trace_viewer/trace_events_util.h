@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -49,15 +49,15 @@ struct TraceEventsComparator {
   }
 };
 
-// Creates a Timespan from a TraceEvent.
-inline Timespan EventSpan(const TraceEvent& event) {
-  return Timespan(event.timestamp_ps(), event.duration_ps());
+// Creates a tsl::profiler::Timespan from a TraceEvent.
+inline tsl::profiler::Timespan EventSpan(const TraceEvent& event) {
+  return tsl::profiler::Timespan(event.timestamp_ps(), event.duration_ps());
 }
 
-// Creates a Timespan from a Trace.
-inline Timespan TraceSpan(const Trace& trace) {
-  return Timespan::FromEndPoints(trace.min_timestamp_ps(),
-                                 trace.max_timestamp_ps());
+// Creates a tsl::profiler::Timespan from a Trace.
+inline tsl::profiler::Timespan TraceSpan(const Trace& trace) {
+  return tsl::profiler::Timespan::FromEndPoints(trace.min_timestamp_ps(),
+                                                trace.max_timestamp_ps());
 }
 
 // A flow of events in the trace-viewer.
@@ -75,8 +75,9 @@ inline bool IsCompleteFlow(const TraceEventFlow& flow) {
          flow.back()->flow_entry_type() == TraceEvent::FLOW_END;
 }
 
-// Updates the timestamps of a Trace to ensure it includes the given Timespan.
-void ExpandTraceSpan(const Timespan& span, Trace* trace);
+// Updates the timestamps of a Trace to ensure it includes the given
+// tsl::profiler::Timespan.
+void ExpandTraceSpan(const tsl::profiler::Timespan& span, Trace* trace);
 
 // Nway-merge implementation.
 

@@ -57,14 +57,6 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass();
 // Pass to fuse Linalg generic operations on Tensors.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
 
-// Creates `tf_device.cluster` operations according to the TF JitRt clustering
-// policy.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTfJitRtClusteringPass();
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateTfJitRtClusteringPass(llvm::ArrayRef<std::string> oplist,
-                            int min_cluster_size);
-
 // Pass to replace math ops with approximations.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateMathApproximationPass(llvm::ArrayRef<std::string> oplist = {});

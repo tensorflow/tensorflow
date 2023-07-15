@@ -114,10 +114,8 @@ tpu_py_strict_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:init_ops_v2",
@@ -129,6 +127,7 @@ tpu_py_strict_test(
         "//tensorflow/python/tpu:tpu_embedding_v2",
         "//tensorflow/python/tpu:tpu_embedding_v2_utils",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

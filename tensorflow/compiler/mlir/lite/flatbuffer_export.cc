@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 
 #include <stddef.h>
@@ -29,6 +28,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -101,18 +101,20 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/tstring.h"
 
@@ -547,7 +549,8 @@ class Translator {
                             toco_flags.select_user_tf_ops().end()),
         metadata_(metadata),
         supported_backends_(toco_flags.supported_backends().begin(),
-                            toco_flags.supported_backends().end()) {
+                            toco_flags.supported_backends().end()),
+        use_buffer_offset_(toco_flags.use_buffer_offset()) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -574,7 +577,8 @@ class Translator {
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
   // and returns std::nullopt on failure.
-  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value);
+  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value,
+                                                          int index);
 
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
@@ -695,6 +699,19 @@ class Translator {
   // Check compatibility with GPU delegate and returns the compatibility.
   bool CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer);
 
+  // Append constant and custom op buffers at the end of the flatbuffer and
+  // calculate the offsets
+  void AppendBufferData(std::string& result);
+
+  // Update constant & custom op buffer offsets
+  // Return false if fail to update offset
+  bool UpdateBufferOffsets(tflite::Model* mutable_model);
+
+  // check if Flatbuffer builder can no longer hold the given amount of the data
+  inline bool IsModelBiggerThan2GB(const uint64_t data_size) {
+    return data_size > flatbuffer_size_max - builder_.GetSize();
+  }
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -715,6 +732,22 @@ class Translator {
   // model.
   absl::flat_hash_map<std::string, int> subgraph_index_map_;
   absl::flat_hash_set<OpType> enabled_op_types_;
+
+  // Maps buffer data to corresponding buffer index
+  // in the idx map, the value is a pair of offset and size
+  absl::flat_hash_map<int, std::pair<uint64_t, uint64_t>> buffer_idx_map_;
+  absl::flat_hash_map<int, std::vector<uint8_t>> buffer_data_map_;
+
+  // Maps custom options data to corresponding node
+  // Key is set to be the list of input tensor indices and list of output tensor
+  // indices
+  // in the idx map, the value is a pair of offset and size
+  absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
+                      std::vector<uint8_t>>
+      custom_op_data_map_;
+  absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
+                      std::pair<uint64_t, uint64_t>>
+      custom_op_idx_map_;
 
   // Points to TensorFlow and TFLite dialects, respectively. nullptr if the
   // dialect is not registered.
@@ -750,6 +783,10 @@ class Translator {
   // dependencies contained in the ControlNodeOps. Will then be used to populate
   // metadata in the exported flatbuffer file.
   tflite::ModelControlDependencies model_control_dependencies_;
+
+  bool use_buffer_offset_ = false;
+
+  bool require_use_buffer_offset_ = false;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -773,7 +810,7 @@ std::string Translator::UniqueName(mlir::Value val) {
 }
 
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
-    mlir::Value value) {
+    mlir::Value value, int index) {
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
@@ -807,9 +844,18 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
     }
     auto packed_buffer = tflite::PackInt4ValuesDensely(data);
-    auto buffer_data =
-        builder_.CreateVector(packed_buffer.data(), packed_buffer.size());
-    return tflite::CreateBuffer(builder_, buffer_data);
+    if (use_buffer_offset_) {
+      buffer_data_map_[index] = packed_buffer;
+      return tflite::CreateBuffer(builder_, 0, 1, 1);
+    } else {
+      if (IsModelBiggerThan2GB(packed_buffer.size())) {
+        require_use_buffer_offset_ = true;
+        return empty_buffer_;
+      }
+      auto buffer_data =
+          builder_.CreateVector(packed_buffer.data(), packed_buffer.size());
+      return tflite::CreateBuffer(builder_, buffer_data);
+    }
   }
 
   tensorflow::Tensor tensor;
@@ -832,16 +878,39 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     }
     char* tensor_buffer;
     int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
-    auto buffer_data =
-        builder_.CreateVector(reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
-    free(tensor_buffer);
-    return tflite::CreateBuffer(builder_, buffer_data);
+    if (use_buffer_offset_) {
+      std::vector<uint8_t> buffer_data(tensor_buffer, tensor_buffer + bytes);
+      free(tensor_buffer);
+      buffer_data_map_[index] = buffer_data;
+      return tflite::CreateBuffer(builder_, 0, 1, 1);
+    } else {
+      if (IsModelBiggerThan2GB(bytes)) {
+        require_use_buffer_offset_ = true;
+        return empty_buffer_;
+      }
+      auto buffer_data = builder_.CreateVector(
+          reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
+      free(tensor_buffer);
+      return tflite::CreateBuffer(builder_, buffer_data);
+    }
   }
 
   absl::string_view tensor_data = tensor.tensor_data();
-  auto buffer_data = builder_.CreateVector(
-      reinterpret_cast<const uint8_t*>(tensor_data.data()), tensor_data.size());
-  return tflite::CreateBuffer(builder_, buffer_data);
+  if (use_buffer_offset_) {
+    std::vector<uint8_t> buffer_data(tensor_data.data(),
+                                     tensor_data.data() + tensor_data.size());
+    buffer_data_map_[index] = buffer_data;
+    return tflite::CreateBuffer(builder_, 0, 1, 1);
+  } else {
+    if (IsModelBiggerThan2GB(tensor_data.size())) {
+      require_use_buffer_offset_ = true;
+      return empty_buffer_;
+    }
+    auto buffer_data = builder_.CreateVector(
+        reinterpret_cast<const uint8_t*>(tensor_data.data()),
+        tensor_data.size());
+    return tflite::CreateBuffer(builder_, buffer_data);
+  }
 }
 
 std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
@@ -1126,6 +1195,7 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
   auto custom_option = f->GetBuffer();
   auto opcode_index =
       GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+
   return tflite::CreateOperator(
       builder_, opcode_index, builder_.CreateVector(operands),
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
@@ -1142,6 +1212,23 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
   memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
   auto opcode_index =
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
+  if (use_buffer_offset_) {
+    custom_op_data_map_[std::make_pair(operands, results)] =
+        custom_option_vector;
+    return tflite::CreateOperator(
+        builder_, opcode_index, builder_.CreateVector(operands),
+        builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+        /*builtin_options=*/0, 0, tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0,
+        1, 1);
+  }
+  if (IsModelBiggerThan2GB(custom_option_vector.size())) {
+    require_use_buffer_offset_ = true;
+    return tflite::CreateOperator(
+        builder_, opcode_index, builder_.CreateVector(operands),
+        builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+        /*builtin_options=*/0,
+        /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
+  }
   return tflite::CreateOperator(
       builder_, opcode_index, builder_.CreateVector(operands),
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
@@ -1164,6 +1251,10 @@ std::optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
     flex_builder->String(node_def_str);
   });
   flex_builder->Finish();
+  if (IsModelBiggerThan2GB(flex_builder->GetSize()) && !use_buffer_offset_) {
+    require_use_buffer_offset_ = true;
+    return builder_.CreateVector({});
+  }
   return builder_.CreateVector(flex_builder->GetBuffer());
 }
 
@@ -1547,7 +1638,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
     if (value.getDefiningOp()) {
-      auto buffer_or = BuildBuffer(value);
+      auto buffer_or = BuildBuffer(value, buffers_.size());
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
     } else {
@@ -1627,6 +1718,8 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       if (!build_tensor_and_buffer(val, index, tensor_name))
         return std::nullopt;
     }
+
+    if (require_use_buffer_offset_) return std::nullopt;
 
     // Skip constant ops as they don't represent a TFLite operator.
     if (IsConst(&inst)) continue;
@@ -1739,6 +1832,10 @@ Translator::CreateMetadataVector() {
   constexpr std::size_t kByteStringSize = 16;
   metadata.push_back(
       BuildMetadata("min_runtime_version", std::string(kByteStringSize, '\0')));
+  if (use_buffer_offset_) {
+    metadata.push_back(
+        BuildMetadata(tflite_metadata_buffer_location, "outside flatbuffers"));
+  }
   for (const auto& kv : metadata_) {
     const std::string& val = kv.second;
     // Only take the first kByteStringSize values.
@@ -1952,7 +2049,15 @@ std::optional<std::string> Translator::Translate(
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
                         metadata);
-  return translator.TranslateInternal();
+  auto ret = translator.TranslateInternal();
+  if (translator.require_use_buffer_offset_) {
+    auto new_toco_flags = toco_flags;
+    new_toco_flags.set_use_buffer_offset(true);
+    Translator new_translator(module, new_toco_flags, tags,
+                              op_or_arg_name_mapper, metadata);
+    return new_translator.TranslateInternal();
+  }
+  return ret;
 }
 
 bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
@@ -2019,7 +2124,7 @@ std::optional<std::string> Translator::TranslateInternal() {
   });
 
   // Assign the subgraph index. Among the given functions, it will put entry
-  // functions at the beginning of the list of the subgrahs.
+  // functions at the beginning of the list of the subgraphs.
   for (auto fn : entry_functions) {
     subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
     named_regions.emplace_back(fn.getName().str(), &fn.getBody());
@@ -2041,6 +2146,7 @@ std::optional<std::string> Translator::TranslateInternal() {
   // index in the subgraph list.
   int subgraph_index = 0;
   for (const auto& it : llvm::enumerate(named_regions)) {
+    if (require_use_buffer_offset_ && !use_buffer_offset_) return std::nullopt;
     auto subgraph_or =
         BuildSubGraph(it.value().first, it.value().second, subgraph_index);
     if (!subgraph_or) {
@@ -2086,6 +2192,8 @@ std::optional<std::string> Translator::TranslateInternal() {
                  << "\nSee instructions: "
                     "https://www.tensorflow.org/lite/guide/ops_custom";
   }
+
+  if (require_use_buffer_offset_) return std::nullopt;
 
   if (first_failed_func != -1) {
     std::string failed_flex_ops_summary =
@@ -2176,8 +2284,13 @@ std::optional<std::string> Translator::TranslateInternal() {
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
   // There is a limit of 2GB for a flatbuffer.
-  if (builder_.GetSize() > 2147483648) {
-    LOG(ERROR) << "Model size is bigger than 2gb";
+  bool flatbuffer_limit_exceeded = builder_.GetSize() > flatbuffer_size_max;
+  if (flatbuffer_limit_exceeded && require_use_buffer_offset_ == false) {
+    require_use_buffer_offset_ = true;
+    return std::nullopt;
+  }
+  if (flatbuffer_limit_exceeded) {
+    LOG(ERROR) << "Model structure size is bigger than 2gb";
     return std::nullopt;
   }
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
@@ -2188,9 +2301,109 @@ std::optional<std::string> Translator::TranslateInternal() {
     }
   }
 
+  auto result =
+      std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
+                  builder_.GetSize());
+
   // Return serialized string for the built FlatBuffer.
-  return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
-                     builder_.GetSize());
+  if (use_buffer_offset_) {
+    AppendBufferData(result);
+    auto mutable_model = tflite::GetMutableModel(result.data());
+    bool ret = UpdateBufferOffsets(mutable_model);
+    if (!ret) {
+      return std::nullopt;
+    }
+    return result;
+  }
+  return result;
+}
+
+void Translator::AppendBufferData(std::string& result) {
+  std::unordered_map<uint64_t, std::pair<int64_t, int64_t>> hashcode_to_pos;
+  // Pad to be 16 bytes aligned
+  while (result.size() % 16 != 0) result += '\0';
+  for (auto& it : buffer_data_map_) {
+    auto buffer = std::string(it.second.begin(), it.second.end());
+    int64_t index = it.first;
+    int64_t offset = result.size();
+    int64_t size = it.second.size();
+    uint64_t hash = tsl::Fingerprint64(buffer);
+    if (hashcode_to_pos.find(hash) == hashcode_to_pos.end()) {
+      hashcode_to_pos[hash] = std::make_pair(offset, size);
+      buffer_idx_map_[index] = std::make_pair(offset, size);
+      result += std::string(it.second.begin(), it.second.end());
+      // Pad to be 16 bytes aligned
+      while (result.size() % 16 != 0) result += '\0';
+    } else {
+      // only update offset/index.
+      buffer_idx_map_[index] = hashcode_to_pos[hash];
+    }
+  }
+  // pad 16 bytes for the last buffer for XNNPack
+  result += "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+  // pad to be 16 bytes aligned
+  while (result.size() % 16 != 0) result += '\0';
+
+  for (auto& it : custom_op_data_map_) {
+    while (result.size() % 16 != 0) result += '\0';
+    auto buffer = std::string(it.second.begin(), it.second.end());
+    int64_t offset = result.size();
+    int64_t size = it.second.size();
+    custom_op_idx_map_[it.first] = std::make_pair(offset, size);
+    result += buffer;
+  }
+  // pad to be 16 bytes aligned
+  while (result.size() % 16 != 0) result += '\0';
+}
+
+bool Translator::UpdateBufferOffsets(tflite::Model* mutable_model) {
+  auto buffers = mutable_model->mutable_buffers();
+  bool ret = true;
+  for (auto& it : buffer_idx_map_) {
+    tflite::Buffer* buffer = buffers->GetMutableObject(it.first);
+
+    ret &= buffer->mutate_offset(it.second.first);
+    ret &= buffer->mutate_size(it.second.second);
+  }
+
+  if (!ret) {
+    LOG(ERROR) << "failed to update buffer offsets\n";
+    return ret;
+  }
+
+  auto mutable_subgraphs = mutable_model->mutable_subgraphs();
+  for (auto msubgraph : *mutable_subgraphs) {
+    auto operators = msubgraph->mutable_operators();
+    for (auto op : *operators) {
+      auto opcode_idx = op->opcode_index();
+      auto opcodes = mutable_model->operator_codes();
+      auto opcode = (*opcodes)[opcode_idx]->builtin_code();
+      if (opcode == tflite::BuiltinOperator_CUSTOM) {
+        std::vector<int32_t> inputs(op->inputs()->begin(), op->inputs()->end());
+        std::vector<int32_t> outputs(op->outputs()->begin(),
+                                     op->outputs()->end());
+        for (auto& custom_op : custom_op_idx_map_) {
+          std::vector<int32_t> key_inputs = custom_op.first.first;
+          std::vector<int32_t> key_outputs = custom_op.first.second;
+          // TODO(b/287306548): we need more rigorous check to make sure the
+          // node we're updating is the right one for now we're just ensuring
+          // they have the same number of input, output and first output is the
+          // same
+          if (key_inputs.size() == inputs.size() &&
+              key_outputs.size() == outputs.size() &&
+              key_outputs[0] == outputs[0]) {
+            ret &=
+                op->mutate_large_custom_options_offset(custom_op.second.first);
+            ret &=
+                op->mutate_large_custom_options_size(custom_op.second.second);
+          }
+        }
+      }
+    }
+  }
+  if (!ret) LOG(ERROR) << "failed to update custom op offsets\n";
+
+  return ret;
 }
 
 BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(

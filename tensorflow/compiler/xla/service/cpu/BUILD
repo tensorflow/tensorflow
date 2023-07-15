@@ -74,13 +74,25 @@ filegroup(
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_fft.cc",
-        "runtime_single_threaded_matmul.cc",
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
         "runtime_topk.cc",
         # Multi-threaded support.
         "runtime_conv2d.cc",
         "runtime_conv3d.cc",
         "runtime_fft.cc",
-        "runtime_matmul.cc",
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
@@ -410,15 +422,16 @@ cc_library(
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
-        "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
@@ -426,6 +439,7 @@ cc_library(
         "@llvm-project//mlir:TensorToLinalg",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
     ],
@@ -944,7 +958,15 @@ cc_library(
 
 cc_library(
     name = "runtime_matmul",
-    srcs = ["runtime_matmul.cc"],
+    srcs = [
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
+    ],
     hdrs = ["runtime_matmul.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
@@ -1066,7 +1088,15 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_impl",
-    srcs = ["runtime_single_threaded_matmul.cc"],
+    srcs = [
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
+    ],
     hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
@@ -1181,7 +1211,6 @@ xla_cc_test(
         "runtime_fft_impl.h",
         "runtime_fft_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         ":runtime_single_threaded_fft",
         "//tensorflow/compiler/xla:types",
@@ -1196,7 +1225,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
@@ -1215,7 +1243,6 @@ xla_cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_runtime",
         "//tensorflow/compiler/xla:shape_util",
@@ -1258,7 +1285,6 @@ cc_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_fake",
@@ -1302,7 +1328,6 @@ xla_cc_test(
     name = "cpu_layout_assignment_test",
     size = "small",
     srcs = ["cpu_layout_assignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_layout_assignment",
         ":target_machine_features_fake",
@@ -1347,7 +1372,6 @@ cc_library(
 xla_cc_test(
     name = "conv_canonicalization_test",
     srcs = ["conv_canonicalization_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":conv_canonicalization",
         ":target_machine_features_fake",
@@ -1372,7 +1396,6 @@ cc_library(
 xla_cc_test(
     name = "shape_partition_test",
     srcs = ["shape_partition_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_partition",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1403,7 +1426,6 @@ cc_library(
 xla_cc_test(
     name = "parallel_task_assignment_test",
     srcs = ["parallel_task_assignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_executable",
         ":parallel_task_assignment",
@@ -1473,7 +1495,6 @@ xla_cc_test(
     name = "cpu_eigen_tensor_alignment_test",
     size = "small",
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_fake",
@@ -1487,10 +1508,7 @@ xla_cc_test(
     name = "vectorized_reduce_with_no_vector_registers_test",
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
-    tags = [
-        "no_aarch64",
-        "nomsan",
-    ],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",

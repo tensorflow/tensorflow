@@ -41,6 +41,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -60,7 +61,7 @@ PS = run_config.TaskType.PS
 
 def _get_replica_id_integer():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if isinstance(replica_id, ops.Tensor):
+  if isinstance(replica_id, tensor.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id
 

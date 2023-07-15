@@ -23,7 +23,7 @@ def Ifrt_SpmdExpandableInterface : OpInterface<"IfrtSpmdExpandable"> {
 
   let description = [{
     Interface to conduct SPMD expansion on ops. It contains the SPMD expansion
-    method as well as the layout computation methods as they are prerequisite 
+    method as well as the layout computation methods as they are prerequisite
     for SPMD expansion.
   }];
 
@@ -53,5 +53,14 @@ def Ifrt_SpmdExpandableInterface : OpInterface<"IfrtSpmdExpandable"> {
     >
   ];
 }
+
+// Verifies op used in a FuncOp with `ifrt.function` attr.
+def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
+
+// Verifies callee is a valid symbol ref to callee_op_type.
+// Provides `callee_op_type getCalleeOp(SymbolTableCollection)`.
+// Concrete type must have a SymbolRefAttr named `callee`.
+class IfrtCallLike<string callee_op_type>
+    : ParamNativeOpTrait<"xla::ifrt::IfrtCallLikeTrait", callee_op_type>;
 
 #endif // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_INTERFACES_TD_

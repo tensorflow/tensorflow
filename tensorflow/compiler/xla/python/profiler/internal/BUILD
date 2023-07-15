@@ -1,4 +1,4 @@
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -12,7 +12,7 @@ cc_library(
     name = "python_hooks",
     srcs = ["python_hooks.cc"],
     hdrs = ["python_hooks.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
     visibility = [

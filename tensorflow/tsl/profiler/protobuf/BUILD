@@ -118,3 +118,11 @@ tf_proto_library(
 #     deps = [":xplane_proto"],
 # )
 # copybara:uncomment_end
+
+tf_proto_library(
+    name = "profiled_instructions_proto",
+    srcs = ["profiled_instructions.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = set_external_visibility([":friends"]),
+)

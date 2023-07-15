@@ -38,6 +38,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Pass",

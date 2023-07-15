@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -43,10 +44,9 @@ CollectiveOpGroupMode GetGroupMode(CollectivePermuteStartOp op) {
       .value();
 }
 
-NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-    CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count) {
-  NcclCollectivePermuteConfig collective_permute_config;
+NcclP2PConfig GetNcclP2PConfig(CollectivePermuteStartOp op,
+                               int64_t replica_count, int64_t partition_count) {
+  NcclP2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
   config.operand_count = 1;
@@ -113,16 +113,13 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
                           op.getIsSync()),
-      config_(
-          GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
+      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 
-/*static*/ NcclCollectivePermuteConfig
-NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+/*static*/ NcclP2PConfig NcclCollectivePermuteStartThunk::GetNcclP2PConfig(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
-  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
-                                              partition_count);
+  return impl::GetNcclP2PConfig(op, replica_count, partition_count);
 }
 
 /*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
@@ -162,19 +159,18 @@ Status NcclCollectivePermuteStartThunk::RunNcclCollective(
           : current_logical_id.computation_id;
   std::string device_string = GetDeviceString(params.nccl_params);
 
-  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
-      NcclCollectivePermuteConfig::GetSourceTarget(config_.id_to_source_target,
-                                                   current_id);
+  const NcclP2PConfig::SourceTargetMapEntry source_target =
+      NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
   return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
                                           stream, comm, device_string,
                                           current_id);
 }
 
-Status RunCollectivePermute(
-    NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-    absl::string_view device_string, int64_t current_id) {
+Status RunCollectivePermute(NcclP2PConfig::SourceTargetMapEntry source_target,
+                            DeviceBufferPair& buffer, se::Stream& stream,
+                            ncclComm_t comm, absl::string_view device_string,
+                            int64_t current_id) {
 #if XLA_ENABLE_XCCL
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
@@ -202,7 +198,7 @@ Status RunCollectivePermute(
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
-          << device_ordinal;
+          << device_ordinal << "current_id " << current_id;
 
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;

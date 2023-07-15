@@ -18,6 +18,8 @@ from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as pywrap_fingerprinting
 
+is_oss = True  # Updated by copybara.
+
 
 class FingerprintingTest(test.TestCase):
   def test_create_fingerprint_def(self):
@@ -26,11 +28,12 @@ class FingerprintingTest(test.TestCase):
 
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
         pywrap_fingerprinting.CreateFingerprintDef(export_dir))
+
     # We cannot check the value of the saved_model_checksum due to
-    # non-determinism in serialization.
+    # non-determinism in saving.
     self.assertGreater(fingerprint.saved_model_checksum, 0)
     self.assertEqual(fingerprint.graph_def_program_hash, 10127142238652115842)
-    self.assertEqual(fingerprint.signature_def_hash, 5693392539583495303)
+    self.assertEqual(fingerprint.signature_def_hash, 15570736222402453744)
     self.assertEqual(fingerprint.saved_object_graph_hash, 3678101440349108924)
     # TODO(b/242348400): The checkpoint hash is non-deterministic, so we cannot
     # check its value here.
@@ -41,6 +44,7 @@ class FingerprintingTest(test.TestCase):
         "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
         pywrap_fingerprinting.ReadSavedModelFingerprint(export_dir))
+
     self.assertGreater(fingerprint.saved_model_checksum, 0)
     self.assertEqual(fingerprint.graph_def_program_hash, 706963557435316516)
     self.assertEqual(fingerprint.signature_def_hash, 5693392539583495303)
@@ -72,6 +76,31 @@ class FingerprintingTest(test.TestCase):
                          "5693392539583495303",  # signature_def_hash
                          "12074714563970609759",  # saved_object_graph_hash
                          ]))
+
+  def test_read_saved_model_singleprint_from_sm(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
+    singleprint = pywrap_fingerprinting.SingleprintFromSM(export_dir)
+    # checkpoint_hash is non-deterministic and not included
+    self.assertRegex(singleprint,
+                     "/".join([
+                         "706963557435316516",  # graph_def_program_hash
+                         "5693392539583495303",  # signature_def_hash
+                         "12074714563970609759",  # saved_object_graph_hash
+                         ]))
+
+  def test_read_chunked_saved_model_fingerprint(self):
+    if is_oss:
+      self.skipTest("Experimental image format disabled in OSS.")
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/chunked_saved_model/chunked_model")
+    fingerprint = fingerprint_pb2.FingerprintDef().FromString(
+        pywrap_fingerprinting.CreateFingerprintDef(export_dir))
+    self.assertGreater(fingerprint.saved_model_checksum, 0)
+    self.assertEqual(fingerprint.graph_def_program_hash, 906548630859202535)
+    self.assertEqual(fingerprint.signature_def_hash, 1043582354059066488)
+    self.assertEqual(fingerprint.saved_object_graph_hash, 11894619660760763927)
+    self.assertEqual(fingerprint.checkpoint_hash, 0)
 
 
 if __name__ == "__main__":

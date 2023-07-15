@@ -1183,7 +1183,8 @@ StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
-        input_resource_variable_dtypes_and_shapes) {
+        input_resource_variable_dtypes_and_shapes,
+    bool reuse_rendezvous_for_functions) {
   EagerContext& ctx = op.EagerContext();
 
   Fprint128 cache_key = op_cache_key;
@@ -1196,11 +1197,6 @@ StatusOr<Fprint128> GetKernelCacheKey(
   VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
   cache_key = tsl::FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
 
-  // When running in eager_op_as_function mode Send/Recv ops need to be
-  // placed on the same rendezvous to match the behaviour of eager mode.
-  bool reuse_rendezvous_for_functions =
-      (ctx.RunEagerOpAsFunction() && !op.is_function()) ||
-      ctx.GetReuseRendezvousForFunctions();
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
   cache_key = tsl::FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
@@ -1359,14 +1355,10 @@ Status GetOrCreateKernelAndDevice(
     }
   }
 
-  // Save the original value of reuse_rendezvous_for_functions from the context.
-  bool reuse_rendezvous_for_functions_original_value =
-      ctx.GetReuseRendezvousForFunctions();
   // When running in eager_op_as_function mode Send/Recv ops need to be
   // placed on the same rendezvous to match the behaviour of eager mode.
   bool reuse_rendezvous_for_functions =
-      (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
-      reuse_rendezvous_for_functions_original_value;
+      (ctx.RunEagerOpAsFunction() && !op->is_function());
 
   std::vector<Device*> input_device_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -1387,7 +1379,8 @@ Status GetOrCreateKernelAndDevice(
       Fprint128 cache_key,
       GetKernelCacheKey(*op, op->MutableAttrs()->CacheKey(op->DeviceName()),
                         input_device_ptrs,
-                        input_resource_variable_dtypes_and_shapes));
+                        input_resource_variable_dtypes_and_shapes,
+                        reuse_rendezvous_for_functions));
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   AbstractOperationPtr wrapped_op_releaser;
   // We can eliminate some overhead by running simple functions using regular
@@ -1519,12 +1512,8 @@ Status GetOrCreateKernelAndDevice(
       get_op_id = [&ctx]() { return ctx.RemoteMgr()->NextOpId(); };
 #endif  // IS_MOBILE_PLATFORM
 
-      ctx.reuse_rendezvous_for_functions_mu()->lock();
-      ctx.SetReuseRendezvousForFunctions(reuse_rendezvous_for_functions);
-      auto rendezvous_creator = ctx.RendezvousFactory();
-      ctx.SetReuseRendezvousForFunctions(
-          reuse_rendezvous_for_functions_original_value);
-      ctx.reuse_rendezvous_for_functions_mu()->unlock();
+      auto rendezvous_creator =
+          ctx.RendezvousFactory(reuse_rendezvous_for_functions);
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_device_ptrs),
           std::move(composite_devices),

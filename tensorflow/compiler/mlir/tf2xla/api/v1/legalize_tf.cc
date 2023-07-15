@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
+#include "tensorflow/tsl/platform/error_logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -95,6 +96,9 @@ constexpr char kOldBridgeWithFallbackModeSuccess[] =
 // Old Bridge failed in fallback (was run because MLIR bridge failed first).
 constexpr char kOldBridgeWithFallbackModeFailure[] =
     "kOldBridgeWithFallbackModeFailure";
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kBridgeComponent[] = "TFXLABridge";
 
 // Time the execution of kernels (in CPU cycles). Meant to be used as RAII.
 struct CompilationTimer {
@@ -179,14 +183,15 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client) {
-  XlaCompilationResult compilation_result;
+  auto compilation_result = std::make_unique<XlaCompilationResult>();
+
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {
     TF_RETURN_IF_ERROR(tf2xla::v0::CompileTensorflowGraphToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-        &compilation_result));
-    return compilation_result;
+        compilation_result.get()));
+    return *compilation_result;
   }
 
   // We could only end up here if the MLIR bridge was explicitly enabled or
@@ -205,7 +210,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
     mlir_bridge_status = CompileFromMlirToXlaHlo(
         enable_op_fallback, computation, metadata, device_type,
-        shape_determination_fns, use_tuple_args, &compilation_result,
+        shape_determination_fns, use_tuple_args, compilation_result.get(),
         custom_legalization_passes, arg_shapes, arg_core_mapping,
         per_core_arg_shapes);
 
@@ -222,13 +227,23 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     } else {
       mlir_second_phase_count->GetCell(kMlirModeSuccess)->IncrementBy(1);
     }
-    return compilation_result;
+    return *compilation_result;
   } else if (!enable_op_fallback) {
     // Don't fallback to the old bridge if op-by-op fallback isn't enabled.
     mlir_second_phase_count->GetCell(kMlirModeFailure)->IncrementBy(1);
+    if (!mlir_bridge_status.ok()) {
+      tsl::error_logging::Log(kBridgeComponent,
+                              "TFXLA_API_V1_BRIDGE_NO_FALLBACK",
+                              mlir_bridge_status.ToString())
+          .IgnoreError();
+    }
     return mlir_bridge_status;
+  } else {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_API_V1_BRIDGE_WITH_FALLBACK_FAIL",
+                            mlir_bridge_status.ToString())
+        .IgnoreError();
   }
-
   bool filtered_graph = false;
   if (mlir_bridge_status == CompileToHloGraphAnalysisFailedError()) {
     VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
@@ -247,7 +262,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   Status old_bridge_status = tf2xla::v0::CompileTensorflowGraphToHlo(
       computation, metadata, use_tuple_args, shape_determination_fns,
       arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-      &compilation_result);
+      compilation_result.get());
 
   // Record filter/failure stats only if the old bridge succeeds. This removes
   // noise from invalid inputs.
@@ -262,20 +277,24 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
       mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeFailure)
           ->IncrementBy(1);
     }
+    if (!old_bridge_status.ok()) {
+      tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_OLD_BRIDGE",
+                              mlir_bridge_status.ToString())
+          .IgnoreError();
+    }
     return old_bridge_status;
   }
 
   if (VLOG_IS_ON(2)) {
-    xla::DebugOptions debug_options;
     TF_ASSIGN_OR_RETURN(
         auto hlo_module_config,
         xla::HloModule::CreateModuleConfigFromProto(
-            compilation_result.computation->proto(), debug_options));
+            compilation_result->computation->proto(), xla::DebugOptions()));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::HloModule> hlo_module,
-        xla::HloModule::CreateFromProto(compilation_result.computation->proto(),
-                                        hlo_module_config));
+        xla::HloModule::CreateFromProto(
+            compilation_result->computation->proto(), hlo_module_config));
 
     std::string all_computations;
     for (auto computation : hlo_module->computations()) {
@@ -293,7 +312,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeSuccess)
         ->IncrementBy(1);
   }
-  return compilation_result;
+  return *compilation_result;
 }
 
 };  // namespace v1

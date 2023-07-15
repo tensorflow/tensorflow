@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1326,8 +1325,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseInt64(&parameter_number)) {
         return nullptr;
       }
+      const LocTy loc = lexer_.GetLoc();
       if (parameter_number < 0) {
-        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        Error(loc, "parameter number must be >= 0");
         return nullptr;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
@@ -1335,8 +1335,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       std::string param_name(name);
-      return builder->AddInstruction(HloInstruction::CreateParameter(
+      auto result = builder->AddParameter(HloInstruction::CreateParameter(
           parameter_number, *shape, param_name));
+      if (!result.ok()) {
+        Error(loc, result.status().message());
+        return nullptr;
+      }
+      return result.value();
     }
     case HloOpcode::kConstant: {
       Literal literal;
@@ -3108,7 +3113,8 @@ bool HloParserImpl::ParseFrontendAttributes(
 //         ('devices=' ('[' dims ']')* device_list)?
 //         ('metadata=' metadata)* '}'
 //
-// dims ::= int_list device_list ::= int_list
+// dims ::= int_list
+// device_list ::= int_list? ('<=[' int_list ']{' int_list '}')?
 // metadata ::= single_metadata |
 //              ('{' [single_metadata (',' single_metadata)*] '}')
 // last_tile_dims ::= sharding_type_list
@@ -3128,6 +3134,8 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   bool last_tile_dims = false;
   std::vector<int64_t> devices;
   std::vector<int64_t> tile_assignment_dimensions;
+  std::vector<int64_t> iota_reshape_dims;
+  std::vector<int> iota_transpose_perm;
   std::vector<OpSharding::Type> subgroup_types;
   while (lexer_.GetKind() != TokKind::kRbrace) {
     switch (lexer_.GetKind()) {
@@ -3166,16 +3174,71 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
           } while (EatIfPresent(TokKind::kComma));
 
           if (!ParseToken(TokKind::kRsquare,
-                          "expected ']' to start sharding devices shape")) {
+                          "expected ']' to end sharding devices shape")) {
             return false;
           }
-          do {
-            int64_t device;
-            if (!ParseInt64(&device)) {
+          if (lexer_.GetKind() == TokKind::kLeq) {
+            lexer_.Lex();
+            if (!ParseToken(
+                    TokKind::kLsquare,
+                    "expected '[' to start sharding iota_reshape_dims")) {
               return false;
             }
-            devices.push_back(device);
-          } while (EatIfPresent(TokKind::kComma));
+            do {
+              int64_t dim;
+              if (!ParseInt64(&dim)) {
+                return false;
+              }
+              iota_reshape_dims.push_back(dim);
+            } while (EatIfPresent(TokKind::kComma));
+            if (iota_reshape_dims.empty()) {
+              return TokenError("expected non-empty iota_reshape_dims");
+            }
+            if (!ParseToken(TokKind::kRsquare,
+                            "expected ']' to end sharding iota_reshape_dims")) {
+              return false;
+            }
+            if (iota_reshape_dims.size() == 1) {
+              iota_transpose_perm.push_back(0);
+            } else {
+              if (lexer_.GetKind() != TokKind::kIdent ||
+                  lexer_.GetStrVal() != "T") {
+                return TokenError(
+                    "expected 'T(' to start sharding devices "
+                    "iota_transpose_perm");
+              }
+              lexer_.Lex();
+              if (!ParseToken(TokKind::kLparen,
+                              "expected 'T(' to start sharding devices "
+                              "iota_transpose_perm")) {
+                return false;
+              }
+              do {
+                int64_t dim;
+                if (!ParseInt64(&dim)) {
+                  return false;
+                }
+                if (dim >= iota_reshape_dims.size()) {
+                  return TokenError(absl::StrFormat(
+                      "Out of range iota minor_to_major value %lld.", dim));
+                }
+                iota_transpose_perm.push_back(dim);
+              } while (EatIfPresent(TokKind::kComma));
+              if (!ParseToken(TokKind::kRparen,
+                              "expected ')' to end sharding devices "
+                              "iota_transpose_perm")) {
+                return false;
+              }
+            }
+          } else {
+            do {
+              int64_t device;
+              if (!ParseInt64(&device)) {
+                return false;
+              }
+              devices.push_back(device);
+            } while (EatIfPresent(TokKind::kComma));
+          }
         } else if (lexer_.GetStrVal() == "metadata") {
           lexer_.Lex();
           if (!ParseSingleOrListMetadata(sharding->mutable_metadata())) {
@@ -3225,10 +3288,6 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     }
     sharding->set_type(OpSharding::MANUAL);
   } else {
-    if (devices.size() <= 1) {
-      return Error(
-          loc, "non-maximal shardings must have more than one device assigned");
-    }
     if (tile_assignment_dimensions.empty()) {
       return Error(
           loc,
@@ -3239,8 +3298,30 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     for (int64_t dim : tile_assignment_dimensions) {
       sharding->add_tile_assignment_dimensions(dim);
     }
-    for (int64_t device : devices) {
-      sharding->add_tile_assignment_devices(device);
+    if (iota_transpose_perm.size() != iota_reshape_dims.size()) {
+      return Error(loc,
+                   absl::StrFormat(
+                       "iota_transpose_perm should have the same rank as "
+                       "iota_reshape_dims : expected %lld, saw %lld.",
+                       iota_reshape_dims.size(), iota_transpose_perm.size()));
+    }
+    if (!iota_reshape_dims.empty()) {
+      CHECK(devices.empty());
+      absl::c_copy(iota_reshape_dims,
+                   tsl::protobuf::RepeatedFieldBackInserter(
+                       sharding->mutable_iota_reshape_dims()));
+      absl::c_copy(iota_transpose_perm,
+                   tsl::protobuf::RepeatedFieldBackInserter(
+                       sharding->mutable_iota_transpose_perm()));
+    } else {
+      if (devices.size() <= 1) {
+        return Error(
+            loc,
+            "non-maximal shardings must have more than one device assigned");
+      }
+      for (int64_t device : devices) {
+        sharding->add_tile_assignment_devices(device);
+      }
     }
 
     if (last_tile_dims) {
@@ -3903,6 +3984,14 @@ struct MinMaxFiniteValue<tsl::float8_e4m3fn>
 template <>
 struct MinMaxFiniteValue<tsl::float8_e4m3b11>
     : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3b11> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e5m2fnuz>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2fnuz> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3fnuz>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fnuz> {};
 
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.
@@ -5682,6 +5771,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
+  optional<bool> preserve_layout;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -5690,6 +5780,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
                                 &deduplicated_name};
+  attrs["preserve_layout"] = {/*required=*/false, AttrTy::kBool,
+                              &preserve_layout};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5715,6 +5807,11 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (deduplicated_name) {
     metadata->set_deduplicated_name(*deduplicated_name);
+  }
+  if (preserve_layout) {
+    metadata->set_preserve_layout(*preserve_layout);
+  } else {
+    metadata->set_preserve_layout(false);
   }
   return true;
 }

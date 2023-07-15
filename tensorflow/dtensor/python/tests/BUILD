@@ -1,4 +1,4 @@
-load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google")
 load(
@@ -19,7 +19,7 @@ exports_files([
     "collective_test.py",
 ])
 
-pytype_library(
+pytype_strict_library(
     name = "test_util",
     testonly = if_google(
         True,
@@ -70,6 +70,22 @@ pytype_library(
 )
 
 dtensor_test(
+    name = "array_ops_test",
+    srcs = ["array_ops_test.py"],
+    additional_backends = [],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+dtensor_test(
     name = "config_test",
     srcs = ["config_test.py"],
     main = "config_test.py",
@@ -77,7 +93,7 @@ dtensor_test(
         ":test_util",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -269,7 +285,7 @@ dtensor_test(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "multi_client_test_util",
     testonly = if_google(
         True,
@@ -283,9 +299,9 @@ pytype_library(
     ],
     deps = [
         ":test_util",
-        "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
+        "@pypi_portpicker//:pkg",
     ],
 )
 

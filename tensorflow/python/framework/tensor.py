@@ -925,7 +925,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   >>> tf.TensorSpec.from_tensor(t)
   TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
 
-  Contains metadata for describing the the nature of `tf.Tensor` objects
+  Contains metadata for describing the nature of `tf.Tensor` objects
   accepted or returned by some TensorFlow APIs.
 
   For example, it can be used to constrain the type of inputs accepted by

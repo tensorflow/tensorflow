@@ -76,6 +76,8 @@ class Thunk {
     kNcclAllToAll,
     kNcclAllToAllStart,
     kNcclAllToAllDone,
+    kNcclSend,
+    kNcclRecv,
     kOutfeed,
     kReplicaId,
     kPartitionId,

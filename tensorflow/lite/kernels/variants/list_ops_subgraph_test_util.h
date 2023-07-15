@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 
-#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -30,14 +29,40 @@ namespace tflite {
 // Helper class for constructing complicated subgraphs for testing.
 class ListOpsSubgraphBuilder {
  public:
-  void AddConstSubgraph(Subgraph* subgraph);
+  // Populates the given Subgraph with ops to add the value of two constants
+  // created by `CreateConstantInt32Tensor`.
+  void BuildAddConstSubgraph(Subgraph* subgraph);
 
-  void AddReserveSubgraph(Subgraph* subgraph, TensorType element_type);
+  // Populates the given Subgraph with a "ListReserve" op whose elements
+  // have type `element_type`.
+  void BuildReserveSubgraph(Subgraph* subgraph, TensorType element_type);
+
+  // Populates the given Subgraph with "ListStack" op that takes in
+  // a "ListReserve". Element types are i32.
+  void BuildReserveStackSubgraph(Subgraph* subgraph);
+
+  // Populates the given Subgraph with a "While" op, whose cond and body
+  // subgraphs are located at index 1, 2 respectively. The input signatures
+  // of both subgraphs 1, 2 are expected to be (kTfLiteInt32, kTfLiteVariant).
+  void BuildWhileSubgraph(Subgraph* subgraph);
+
+  // Populates the given Subgraph with a single "Less" op which checks
+  // if a given int is less that the constant 3. Also takes a `kTfLiteVariant`
+  // tensor in order to be compliant with `BuildWhileSubgraph`.
+  void BuildLessThanSubgraph(Subgraph* subgraph);
+
+  // Populates the given Subgraph with a "ListSetItem" op which sets the element
+  // at given indice into given tensorlist. Additionally increment and return
+  // the given int by 1.
+  void BuildSetItemAndIncrementSubgraph(Subgraph* subgraph);
 
  private:
+  // Creates a constant tensor in given Subgraphs at given indice with
+  // corresponding data.
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,
                                  absl::Span<const int> shape,
                                  absl::Span<const int> data);
+
   // Custom options usually live in the flatbuffer, so they won't
   // be cleaned up by the `Interpreter`. When we create them in test
   // we need to free when test is done. So we provide a factory function

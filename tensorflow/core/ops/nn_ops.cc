@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -367,6 +368,24 @@ REGISTER_OP("BiasAddV1")
     .Input("bias: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BiasAddShape);
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Conv")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double, int32}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(
+        "data_format: { 'CHANNELS_FIRST', 'CHANNELS_LAST' } = 'CHANNELS_LAST' ")
+    .Attr("dilations: list(int) = []")
+    .Attr("batch_dims: int = 1")
+    .Attr("groups: int = 1")
+    .SetShapeFn(shape_inference::ConvShape);
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Conv2D")

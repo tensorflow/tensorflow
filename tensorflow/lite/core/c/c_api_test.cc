@@ -1288,6 +1288,79 @@ TEST(CApiSimple, CallbackOpResolver_V1) {
   }
 }
 
+const TfLiteRegistration_V3* dummy_find_builtin_op_v3(void* user_data,
+                                                      TfLiteBuiltinOperator op,
+                                                      int version) {
+  static TfLiteRegistration_V3 registration_v3{
+      nullptr,           nullptr, nullptr, nullptr, nullptr,
+      kTfLiteBuiltinAdd, nullptr, 1,       nullptr};
+  if (op == kTfLiteBuiltinAdd) {
+    return &registration_v3;
+  }
+  return nullptr;
+}
+
+const TfLiteRegistration_V3* dummy_find_custom_op_v3(void* user_data,
+                                                     const char* op,
+                                                     int version) {
+  static TfLiteRegistration_V3 registration_v3{
+      nullptr, nullptr, nullptr, nullptr, nullptr, kTfLiteBuiltinCustom,
+      "Sinh",  1,       nullptr};
+  if (strcmp(op, "Sinh") == 0) {
+    return &registration_v3;
+  }
+  return nullptr;
+}
+
+TEST(CApiSimple, CallbackOpResolver_V3) {
+  tflite::internal::CallbackOpResolver resolver;
+  struct TfLiteOpResolverCallbacks callbacks {};
+  callbacks.find_builtin_op_v3 = dummy_find_builtin_op_v3;
+  callbacks.find_custom_op_v3 = dummy_find_custom_op_v3;
+
+  resolver.SetCallbacks(callbacks);
+  auto reg_add = resolver.FindOp(
+      static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinAdd), 1);
+  ASSERT_NE(reg_add, nullptr);
+  EXPECT_EQ(reg_add->builtin_code, kTfLiteBuiltinAdd);
+  EXPECT_EQ(reg_add->version, 1);
+  EXPECT_EQ(reg_add->registration_external, nullptr);
+
+  EXPECT_EQ(
+      resolver.FindOp(
+          static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinConv2d), 1),
+      nullptr);
+
+  // Query kTfLiteBuiltinAdd multiple times to check if caching logic works.
+  for (int i = 0; i < 10; ++i) {
+    auto reg_add = resolver.FindOp(
+        static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinAdd), 1);
+    ASSERT_NE(reg_add, nullptr);
+    EXPECT_EQ(reg_add->builtin_code, kTfLiteBuiltinAdd);
+    EXPECT_EQ(reg_add->version, 1);
+    EXPECT_EQ(reg_add->registration_external, nullptr);
+  }
+
+  auto reg_sinh = resolver.FindOp("Sinh", 1);
+  ASSERT_NE(reg_sinh, nullptr);
+  EXPECT_EQ(reg_sinh->builtin_code, kTfLiteBuiltinCustom);
+  EXPECT_EQ(reg_sinh->custom_name, "Sinh");
+  EXPECT_EQ(reg_sinh->version, 1);
+  EXPECT_EQ(reg_sinh->registration_external, nullptr);
+
+  EXPECT_EQ(resolver.FindOp("Cosh", 1), nullptr);
+
+  // Query "Sinh" multiple times to check if caching logic works.
+  for (int i = 0; i < 10; ++i) {
+    auto reg_sinh = resolver.FindOp("Sinh", 1);
+    ASSERT_NE(reg_sinh, nullptr);
+    EXPECT_EQ(reg_sinh->builtin_code, kTfLiteBuiltinCustom);
+    EXPECT_EQ(reg_sinh->custom_name, "Sinh");
+    EXPECT_EQ(reg_sinh->version, 1);
+    EXPECT_EQ(reg_sinh->registration_external, nullptr);
+  }
+}
+
 const TfLiteRegistration_V2* dummy_find_builtin_op_v2(void* user_data,
                                                       TfLiteBuiltinOperator op,
                                                       int version) {

@@ -273,6 +273,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:stack",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:session_ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
@@ -369,7 +370,6 @@ tf_py_strict_test(
     tags = [
         "no_gpu",
         "no_oss",
-        "no_pip",
         "no_pip_gpu",
         "notap",
     ],

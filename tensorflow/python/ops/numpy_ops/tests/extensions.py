@@ -447,7 +447,7 @@ def eval_on_shapes(f, static_argnums=(), allow_static_outputs=False):
   def abstractify(args):
     def _abstractify(x):
       x = _canonicalize_jit_arg(x)
-      if isinstance(x, (ops.Tensor, tf_np.ndarray)):
+      if isinstance(x, (tensor_lib.Tensor, tf_np.ndarray)):
         return tensor_lib.TensorSpec(x.shape, x.dtype)
       else:
         return x
@@ -472,7 +472,7 @@ def eval_on_shapes(f, static_argnums=(), allow_static_outputs=False):
       def is_tensor_like(x):
         if hasattr(x, "_type_spec"):
           return True  # x is a CompositeTensor
-        return isinstance(x, (tf_np.ndarray, ops.Tensor))
+        return isinstance(x, (tf_np.ndarray, tensor_lib.Tensor))
       py_values = nest.map_structure(
           lambda x: None if is_tensor_like(x) else x, res
       )
@@ -494,7 +494,7 @@ def eval_on_shapes(f, static_argnums=(), allow_static_outputs=False):
   # pylint: disable=missing-docstring
   def f_return(*args):
     def to_tensor_spec(x):
-      if isinstance(x, ops.Tensor):
+      if isinstance(x, tensor_lib.Tensor):
         return tensor_lib.TensorSpec(x.shape, x.dtype)
       else:
         return x
@@ -1574,14 +1574,14 @@ def dataset_as_numpy(dataset):
 
   # Type check for Tensors and Datasets
   for ds_el in flat_ds:
-    if not isinstance(ds_el, (ops.Tensor, dataset_ops.DatasetV2)):
+    if not isinstance(ds_el, (tensor_lib.Tensor, dataset_ops.DatasetV2)):
       types = nest.map_structure(type, nested_ds)
       raise ValueError("Arguments to dataset_as_numpy must be (possibly nested "
                        "structure of) tf.Tensors or tf.data.Datasets. Got: %s" %
                        types)
 
   for ds_el in flat_ds:
-    if isinstance(ds_el, ops.Tensor):
+    if isinstance(ds_el, tensor_lib.Tensor):
       np_el = tf_np.asarray(ds_el)
     elif isinstance(ds_el, dataset_ops.DatasetV2):
       np_el = _eager_dataset_iterator(ds_el)
@@ -1888,7 +1888,7 @@ def pmap(f, axis_name=None, devices=None):
     flattened_input_args = nest.flatten(args)
     flattened_per_device_args = [[] for _ in devices]
     for arg in flattened_input_args:
-      if isinstance(arg, ops.Tensor):
+      if isinstance(arg, tensor_lib.Tensor):
         # TODO(nareshmodi): Try and use the dynamic shape instead.
         if (not arg.shape.rank) or arg.shape[0] != len(devices):
           # TODO(nareshmodi): Fix this restriction
@@ -1932,7 +1932,7 @@ def pmap(f, axis_name=None, devices=None):
       tensors = []
       for j, device in enumerate(devices):
         assert isinstance(
-            flattened_results[j][i], ops.Tensor
+            flattened_results[j][i], tensor_lib.Tensor
         ), "currently only tensor return items are supported"
         tensors.append(flattened_results[j][i])
       final_tree.append(ShardedNdArray(tensors))

@@ -53,6 +53,7 @@ cc_library(
         "hlo_sharding_metadata.h",
     ],
     deps = [
+        ":tile_assignment",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
@@ -122,6 +123,19 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tile_assignment",
+    srcs = ["tile_assignment.cc"],
+    hdrs = ["tile_assignment.h"],
+    deps = [
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:printer",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
 )

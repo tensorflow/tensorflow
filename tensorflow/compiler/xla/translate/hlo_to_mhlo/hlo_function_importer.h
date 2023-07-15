@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -281,6 +282,19 @@ class HloFunctionImporter {
   std::unordered_map<const xla::HloInstruction*, mlir::Value>
       instruction_value_map_;
 };
+
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO C++ sharding.
+// Always succeeds and returns a non-empty attribute.
+mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
+                                mlir::Builder* builder);
+
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO proto sharding.
+// Will fail and return an empty attribute if the proto sharding cannot be
+// converted to the C++ sharding.
+mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
+                                mlir::Builder* builder);
 
 }  // namespace xla
 

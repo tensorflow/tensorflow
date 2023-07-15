@@ -2110,8 +2110,8 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
       lhs_grouped = AlignGroupsWith(std::move(lhs_grouped), rhs_grouped);
       lhs = lhs.Reshard(UngroupSharding(lhs_grouped));
     }
-    auto reshaped_output_tiling = output_sharding.tile_assignment();
-    reshaped_output_tiling.Reshape(output_sharding_dims_adjusted_to_lhs);
+    auto reshaped_output_tiling = output_sharding.tile_assignment().Reshape(
+        output_sharding_dims_adjusted_to_lhs);
     output_grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnDims(
             output_sharding.ReplicateOnLastTileDim()
@@ -2154,23 +2154,23 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
         return PartitionedHlo(partially_sharded, partially_sharded->shape(),
                               per_group_partitioner_state);
       }
-      auto reshaped_tiling = operand.sharding().tile_assignment();
+      auto& original_tiling = operand.sharding().tile_assignment();
       // It's possible that the operand is not initially sharded on batch
       // dimensions in the same way as the output, although being tiled. In that
       // case, the current sharding_dims_adjusted_to_output may contain more
       // partitions than available devices. We remove partitioning on other
       // dimensions.
       if (Product(*sharding_dims_adjusted_to_output) >
-          reshaped_tiling.num_elements()) {
+          original_tiling.num_elements()) {
         if (Product(*sharding_dims_adjusted_to_output) %
-                reshaped_tiling.num_elements() !=
+                original_tiling.num_elements() !=
             0) {
           return std::nullopt;
         }
         int64_t ratio = Product(*sharding_dims_adjusted_to_output) /
-                        reshaped_tiling.num_elements();
+                        original_tiling.num_elements();
         if (operand.sharding().ReplicateOnLastTileDim() &&
-            reshaped_tiling.dimensions().back() % ratio == 0) {
+            original_tiling.dimensions().back() % ratio == 0) {
           sharding_dims_adjusted_to_output->back() /= ratio;
           if (sharding_dims_adjusted_to_output->back() == 1) {
             sharding_dims_adjusted_to_output->pop_back();
@@ -2194,10 +2194,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
       // batch dimensions, sharding_dims_adjusted_to_output currently contains
       // fewer partitions than available devices. We do not handle this case.
       if (Product(*sharding_dims_adjusted_to_output) <
-          reshaped_tiling.num_elements()) {
+          original_tiling.num_elements()) {
         return std::nullopt;
       }
-      reshaped_tiling.Reshape(*sharding_dims_adjusted_to_output);
+      auto reshaped_tiling =
+          original_tiling.Reshape(*sharding_dims_adjusted_to_output);
       auto grouped =
           AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
                               operand.base_shape().rank() <
@@ -2292,8 +2293,8 @@ GroupedSharding GetNonContractingPartitionGroupedShardingForMatchedOperand(
   }
   GroupedSharding output_grouped =
       hlo_sharding_util::GroupShardingOnDims(output_sharding, output_dims);
-  Array<int64_t> reshaped_matching_tiling = matching_sharding.tile_assignment();
-  reshaped_matching_tiling.Reshape(matching_sharding_dims);
+  auto reshaped_matching_tiling =
+      matching_sharding.tile_assignment().Reshape(matching_sharding_dims);
   return AlignGroupsWith(
       hlo_sharding_util::GroupShardingOnDims(
           matching_sharding.ReplicateOnLastTileDim()
@@ -2602,8 +2603,7 @@ GetDotGroupPartitionContractingLhsRhsShardings(
     for (const auto& dim : partitioned_contracting_dims) {
       rhs_tile_shape[dim.rhs] = lhs_tile_shape[dim.lhs];
     }
-    auto new_tile = rhs.sharding().tile_assignment();
-    new_tile.Reshape(rhs_tile_shape);
+    auto new_tile = rhs.sharding().tile_assignment().Reshape(rhs_tile_shape);
     rhs_sharding = rhs_sharding.ReplicateOnLastTileDim()
                        ? HloSharding::PartialTile(new_tile)
                        : HloSharding::Tile(new_tile);
@@ -2611,8 +2611,7 @@ GetDotGroupPartitionContractingLhsRhsShardings(
     for (const auto& dim : partitioned_contracting_dims) {
       lhs_tile_shape[dim.lhs] = rhs_tile_shape[dim.rhs];
     }
-    auto new_tile = lhs.sharding().tile_assignment();
-    new_tile.Reshape(lhs_tile_shape);
+    auto new_tile = lhs.sharding().tile_assignment().Reshape(lhs_tile_shape);
     lhs_sharding = lhs_sharding.ReplicateOnLastTileDim()
                        ? HloSharding::PartialTile(new_tile)
                        : HloSharding::Tile(new_tile);

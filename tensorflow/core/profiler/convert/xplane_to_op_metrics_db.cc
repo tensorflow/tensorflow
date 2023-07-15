@@ -38,12 +38,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/cost_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -63,7 +63,7 @@ struct TfActivity {
   // Type of this activity.
   TfActivityType activity_type;
   // Full TF op name and type of this activity (backed by XEvent::name).
-  TfOp tf_op;
+  tsl::profiler::TfOp tf_op;
   // Whether it is eagerly executed.
   bool is_eager;
 };
@@ -98,8 +98,8 @@ void ProcessOneTfActivity(const TfActivity& activity,
                 << " type=" << activity.tf_op.type;
         break;
       }
-      Timespan tf_op_span =
-          PicoSpan(info->start_timestamp_ps, activity.timestamp_ps);
+      tsl::profiler::Timespan tf_op_span = tsl::profiler::PicoSpan(
+          info->start_timestamp_ps, activity.timestamp_ps);
       tf_metrics_data->tf_metrics_db_builder.EnterOp(
           activity.tf_op.name, activity.tf_op.type, activity.is_eager,
           tf_op_span.duration_ps(), info->children_duration_ps);
@@ -107,7 +107,7 @@ void ProcessOneTfActivity(const TfActivity& activity,
       if (parent_info != nullptr) {
         parent_info->children_duration_ps += tf_op_span.duration_ps();
       }
-      if (IsInfeedEnqueueOp(activity.tf_op.type)) {
+      if (tsl::profiler::IsInfeedEnqueueOp(activity.tf_op.type)) {
         tf_metrics_data->tf_metrics_db_builder.EnterHostInfeedEnqueue(
             tf_op_span);
       }
@@ -133,14 +133,15 @@ void ProcessTfActivities(std::vector<TfActivity>* tf_activities,
       tf_activities->back().timestamp_ps - tf_activities->front().timestamp_ps);
 }
 
-void CollectTfActivities(const XLineVisitor& line,
-                         const absl::flat_hash_map<int64_t, TfOp>& tf_ops,
-                         std::vector<TfActivity>* tf_activities) {
+void CollectTfActivities(
+    const XLineVisitor& line,
+    const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops,
+    std::vector<TfActivity>* tf_activities) {
   uint32 tf_op_id = 0;
   tf_activities->reserve(line.NumEvents() * 2);
   line.ForEachEvent([&tf_ops, &tf_op_id,
                      &tf_activities](const XEventVisitor& event) {
-    const TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
+    const tsl::profiler::TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
     if (tf_op != nullptr) {
       ++tf_op_id;
       bool is_eager = false;
@@ -148,7 +149,7 @@ void CollectTfActivities(const XLineVisitor& line,
               event.GetStat(StatType::kIsEager)) {
         is_eager = stat->IntValue();
       }
-      Timespan span = event.GetTimespan();
+      tsl::profiler::Timespan span = event.GetTimespan();
       tf_activities->push_back(
           {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
       tf_activities->push_back(
@@ -213,6 +214,9 @@ void SetOpMetadataFromHloEventMetadata(
           }
           break;
         }
+        case StatType::kDeduplicatedName:
+          op_metrics->set_deduplicated_name(std::string(stat.StrOrRefValue()));
+          break;
         default:
           break;
       }
@@ -278,17 +282,18 @@ void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
 
 }  // namespace
 
-absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
-    const XPlane& host_trace) {
-  absl::flat_hash_map<int64_t, TfOp> tf_ops;
+absl::flat_hash_map<int64_t, tsl::profiler::TfOp>
+CollectTfOpsFromHostThreadsXPlane(const XPlane& host_trace) {
+  absl::flat_hash_map<int64_t, tsl::profiler::TfOp> tf_ops;
   for (const auto& id_metadata : host_trace.event_metadata()) {
     const XEventMetadata& metadata = id_metadata.second;
     // On the host, we have added some user-specified TraceMe's in addition to
     // the TraceMe's added to every TensorFlow op by the system. These
     // user-inserted TraceMe's have "unknown" type. We don't count them in
     // Tf-stats.
-    TfOp tf_op = ParseTfOpFullname(metadata.name());
-    if (tf_op.category != Category::kUnknown) {
+    tsl::profiler::TfOp tf_op =
+        tsl::profiler::ParseTfOpFullname(metadata.name());
+    if (tf_op.category != tsl::profiler::Category::kUnknown) {
       tf_ops.try_emplace(metadata.id(), tf_op);
     }
   }
@@ -297,7 +302,7 @@ absl::flat_hash_map<int64_t, TfOp> CollectTfOpsFromHostThreadsXPlane(
 
 TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
     const XLineVisitor& line,
-    const absl::flat_hash_map<int64_t, TfOp>& tf_ops) {
+    const absl::flat_hash_map<int64_t, tsl::profiler::TfOp>& tf_ops) {
   TfMetricsDbData tf_metrics_db_data;
   if (!tf_ops.empty()) {
     std::vector<TfActivity> tf_activities;
@@ -316,11 +321,11 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
 }
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
-  absl::flat_hash_map<int64_t, TfOp> tf_ops =
+  absl::flat_hash_map<int64_t, tsl::profiler::TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(host_trace);
   OpMetricsDb result;
   OpMetricsDbCombiner combiner(&result);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&tf_ops, &combiner](const XLineVisitor& line) {
     ConsumeTfMetricsDbData(
         ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
@@ -331,7 +336,7 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
     const XPlane& device_trace) {
   OpMetricsDb result;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   using OpMetricBySymbol =
       absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
   absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
@@ -347,7 +352,6 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
       if (key.symbol_id != kRootSymbolId) {
         OpMetrics& op_metrics = op_metric_by_symbol[key.symbol_id.value()];
         SetOpMetricsFromHloEvent(event, &op_metrics);
-        total_op_time_ps += op_metrics.self_time_ps();
       }
     });
   });
@@ -355,6 +359,7 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
   for (auto& [program_id, op_metric_by_symbol] : flat_op_metric) {
     for (auto& [symbol_id, op_metrics] : op_metric_by_symbol) {
       AdjustFlopsAndBytesAccessed(op_metrics);
+      total_op_time_ps += op_metrics.self_time_ps();
       result.add_metrics_db()->Swap(&op_metrics);
     }
   }
@@ -373,7 +378,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
   int64_t last_op_offset_ps = 0;
 
   TfOpRoofLineCostEstimator op_level_cost_estimator;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     line.ForEachEvent([&](const XEventVisitor& event) {
@@ -390,9 +395,10 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
         }
       });
       if (tf_op_full_name.empty()) return;
-      TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
+      tsl::profiler::TfOp tf_op =
+          tsl::profiler::ParseTfOpFullname(tf_op_full_name);
       TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-      if (tf_op.category != Category::kUnknown) {
+      if (tf_op.category != tsl::profiler::Category::kUnknown) {
         costs = op_level_cost_estimator.Predict(event);
       }
       device_op_metrics_db_builder.EnterOp(

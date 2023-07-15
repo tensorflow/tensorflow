@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -146,7 +148,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
-    if (offset->shape().rank() != 0) {
+    if (!ShapeUtil::IsEffectiveScalar(offset->shape())) {
       VLOG(2) << "Offset is not a scalar " << offset->ToString();
       return false;
     }
@@ -259,18 +261,6 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 }
 
 }  // namespace
-
-std::optional<ReduceScatterSpec> MatchReduceScatter(
-    const HloAllReduceInstruction* ar, int64_t num_partitions,
-    int64_t num_replicas, bool allow_multiple_split_dims,
-    bool allow_intervening_reshape, int64_t min_rank) {
-  HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>;
-  HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>;
-  return MatchReduceScatter(ar, num_partitions, num_replicas,
-                            allow_multiple_split_dims,
-                            allow_intervening_reshape, min_rank,
-                            match_partition_id, match_replica_id);
-}
 
 std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,

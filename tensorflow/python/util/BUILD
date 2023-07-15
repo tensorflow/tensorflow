@@ -253,7 +253,7 @@ tf_py_strict_test(
         ":tf_inspect",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -275,6 +275,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -513,7 +514,9 @@ tf_py_strict_test(
     srcs = ["nest_test.py"],
     main = "nest_test.py",
     python_version = "PY3",
-    deps = [":nest_test_main_lib"],
+    deps = [
+        ":nest_test_main_lib",
+    ],
 )
 
 py_strict_library(
@@ -531,6 +534,7 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1110,6 +1114,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",

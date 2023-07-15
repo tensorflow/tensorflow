@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -98,7 +99,7 @@ def _is_tensor(x):
   Returns:
     `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
-  return isinstance(x, (ops.Tensor, variables.Variable))
+  return isinstance(x, (tensor_lib.Tensor, variables.Variable))
 
 
 def _ImageDimensions(image, rank):

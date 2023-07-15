@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -150,8 +148,28 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
-                      ExecuteWithMovedDeviceBuffers(
+                      ExecuteWithMovedDeviceBuffersAndBufferAssignment(
                           /*module=*/std::move(module),
+                          /*buffer_assignment_proto=*/nullptr,
+                          /*arguments=*/std::move(argument_buffers),
+                          /*run_hlo_passes=*/run_hlo_passes,
+                          /*profile=*/profile));
+  return TransferLiteralFromDevice(result.Result());
+}
+
+StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
+    std::unique_ptr<HloModule> module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    absl::Span<const Literal* const> arguments, bool run_hlo_passes,
+    ExecutionProfile* profile) {
+  xla::UpdateEntryComputationLayout(module.get(),
+                                    device_shape_representation_fn_);
+  entry_computation_layout_ = &(module->entry_computation_layout());
+  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
+                      TransferLiteralsToDevice(arguments));
+  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
+                      ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+                          /*module=*/std::move(module), buffer_assignment_proto,
                           /*arguments=*/std::move(argument_buffers),
                           /*run_hlo_passes=*/run_hlo_passes,
                           /*profile=*/profile));
@@ -280,8 +298,21 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
     std::unique_ptr<HloModule> module,
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      CreateExecutable(std::move(module), run_hlo_passes));
+  return ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+      std::move(module), /*buffer_assignment_proto=*/nullptr,
+      std::move(arguments), run_hlo_passes, profile);
+}
+
+StatusOr<ExecutionOutput>
+HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+    std::unique_ptr<HloModule> module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
+    ExecutionProfile* profile) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      CreateExecutableWithBufferAssignment(
+          std::move(module), buffer_assignment_proto, run_hlo_passes));
   return ExecuteWithMovedDeviceBuffers(executable.get(), std::move(arguments),
                                        profile);
 }
@@ -312,27 +343,22 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
 
 StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
     Executable* executable, std::vector<ExecutionInput> arguments,
-    ExecutionProfile* profile, se::Stream* stream) {
+    ExecutionProfile* profile) {
   xla::UpdateEntryComputationLayout(&executable->module(),
                                     device_shape_representation_fn_);
 
-  std::optional<se::Stream> new_stream;
-  if (stream == nullptr) {
-    new_stream.emplace(backend().default_stream_executor());
-    new_stream->Init();
-    stream = &new_stream.value();
-  }
+  // Get service run options.
+  se::Stream stream(backend().default_stream_executor());
+  stream.Init();
   ServiceExecutableRunOptions service_run_options =
-      GetServiceRunOptionsForDevice(stream->parent()->device_ordinal(), stream,
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
                                     nullptr, RunId());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       executable->ExecuteOnStreamWrapper(&service_run_options,
                                                          std::move(arguments)));
-  if (new_stream.has_value()) {
-    TF_RETURN_IF_ERROR(new_stream.value().BlockHostUntilDone());
-  }
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }
 
@@ -598,9 +624,22 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
     std::unique_ptr<HloModule> module, bool run_hlo_passes) {
+  return CreateExecutableWithBufferAssignment(
+      std::move(module),
+      /*buffer_assignment_proto=*/nullptr, run_hlo_passes);
+}
+
+StatusOr<std::unique_ptr<Executable>>
+HloRunner::CreateExecutableWithBufferAssignment(
+    std::unique_ptr<HloModule> module,
+    const BufferAssignmentProto* buffer_assignment_proto, bool run_hlo_passes) {
   xla::UpdateEntryComputationLayout(module.get(),
                                     device_shape_representation_fn_);
   if (run_hlo_passes) {
+    if (buffer_assignment_proto != nullptr) {
+      LOG(WARNING) << "Ignoring buffer assignment provided because hlo passes "
+                      "are enabled.";
+    }
     auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
         auto executables,
@@ -609,9 +648,9 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
                                       backend().memory_allocator()));
     return std::move(executables[0]);
   }
-  return backend().compiler()->RunBackend(std::move(module),
-                                          backend().default_stream_executor(),
-                                          backend().memory_allocator());
+  return backend().compiler()->RunBackendWithBufferAssignment(
+      std::move(module), buffer_assignment_proto,
+      backend().default_stream_executor(), backend().memory_allocator());
 }
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(

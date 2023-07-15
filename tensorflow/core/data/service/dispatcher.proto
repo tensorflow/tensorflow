@@ -178,7 +178,7 @@ message ReleaseIterationClientRequest {
 // Next tag: 1
 message ReleaseIterationClientResponse {}
 
-// Next tag: 5
+// Next tag: 6
 message ClientHeartbeatRequest {
   reserved 3;
   // The iteration client id to heartbeat for.
@@ -194,6 +194,8 @@ message ClientHeartbeatRequest {
   oneof optional_blocked_round {
     int64 blocked_round = 4;
   }
+  // Target processing time in nanoseconds observed by the client.
+  double target_processing_time_nsec = 5;
 }
 
 // Next tag: 5

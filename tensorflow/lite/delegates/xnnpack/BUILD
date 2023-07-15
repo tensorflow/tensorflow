@@ -1267,6 +1267,21 @@ cc_test(
 )
 
 cc_test(
+    name = "sum_test",
+    srcs = ["sum_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reduce_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "minimum_test",
     srcs = ["minimum_test.cc"],
     linkopts = select({

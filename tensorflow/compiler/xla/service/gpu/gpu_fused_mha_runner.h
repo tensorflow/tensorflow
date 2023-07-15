@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <variant>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"

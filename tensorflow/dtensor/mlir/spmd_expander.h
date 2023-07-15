@@ -154,12 +154,22 @@ class SPMDExpanderRegistry {
       op_to_propagate_fn_map_;
 };
 
-#define REGISTER_SPMD(name, op, prop, ...)                     \
-  static ::tensorflow::InitOnStartupMarker const spmd_##name = \
-      InitOnStartupMarker{}                                    \
-      << SPMDExpanderRegistry::Global()->RegisterPropagateFn(  \
-             mlir::op ::getOperationName().str(),              \
+#define REGISTER_SPMD(name, op, prop, ...)                             \
+  static ::tensorflow::InitOnStartupMarker const spmd_##name =         \
+      InitOnStartupMarker{}                                            \
+      << dtensor::SPMDExpanderRegistry::Global()->RegisterPropagateFn( \
+             mlir::op::getOperationName().str(),                       \
              std::make_unique<prop>(__VA_ARGS__))
+
+// Register the SPMD expander by ops string name.
+// Comparing to REGISTER_SPMD, this macro allows registration for custom ops
+// that isn't a MLIR op. Note that the op_name should start with "tf.", e.g
+// REGISTER_SPMD_BY_OP_NAME(Foo, "tf.foo", expander_class).
+#define REGISTER_SPMD_BY_OP_NAME(expander_name, op_name, prop, ...)     \
+  static ::tensorflow::InitOnStartupMarker const spmd_##expander_name = \
+      InitOnStartupMarker{}                                             \
+      << dtensor::SPMDExpanderRegistry::Global()->RegisterPropagateFn(  \
+             op_name, std::make_unique<prop>(__VA_ARGS__))
 
 }  // namespace dtensor
 }  // namespace tensorflow

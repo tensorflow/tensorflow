@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -42,10 +41,12 @@ class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(HloComputation* computation,
                                    const GpuDeviceInfo& d,
+                                   se::CudaComputeCapability cc,
                                    HloCostAnalysis::ShapeSizeFunction f)
       : computation_(computation),
         shape_size_function_(f),
         gpu_device_info_(d),
+        compute_capability_(cc),
         dump_fusion_visualization_(computation->parent()
                                        ->config()
                                        .debug_options()
@@ -66,6 +67,7 @@ class FusionInstructionMerger {
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
   const GpuDeviceInfo& gpu_device_info_;
+  se::CudaComputeCapability compute_capability_;
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 
@@ -117,6 +119,9 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                                        user->name(), "| inside FusionMerger"),
                           *consumer);
     }
+
+    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_,
+                                                gpu_device_info_);
     changed_ = true;
   }
 
@@ -221,9 +226,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
       return "not fusing bitcast ops";
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
-    if (NoFusionPossible compatible =
-            !FusionHeroesAreCompatible(producer_hero, consumer_hero)) {
-      return !compatible;
+    if (auto compatible =
+            FusionHeroesAreCompatible(producer_hero, consumer_hero);
+        !compatible) {
+      return compatible;
     }
     FusionDecision fusible = IsProducerConsumerFusible(*producer, *user);
     if (!fusible) {
@@ -272,9 +278,15 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     }
   }
 
+  bool use_experimental_block_size =
+      producer->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_enable_experimental_block_size();
+
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_, producer->users(),
-      /*multi_output=*/false);
+      producer, &*cost_analysis_, gpu_device_info_, use_experimental_block_size,
+      compute_capability_, producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";
@@ -295,6 +307,7 @@ StatusOr<bool> FusionMerger::Run(
     XLA_VLOG_LINES(9, computation->ToString());
 
     FusionInstructionMerger fusion_merger(computation, gpu_device_info_,
+                                          compute_capability_,
                                           shape_size_function_);
     TF_RETURN_IF_ERROR(fusion_merger.Run());
     changed |= fusion_merger.changed();

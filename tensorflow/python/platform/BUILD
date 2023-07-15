@@ -289,6 +289,7 @@ py_strict_library(
 py_strict_library(
     name = "gfile",
     srcs = ["gfile.py"],
+    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:deprecation",
@@ -299,6 +300,7 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
+    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",

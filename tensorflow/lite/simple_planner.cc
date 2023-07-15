@@ -101,7 +101,9 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   // artificially adding one to their ref-counts so they are never selected
   // for deallocation.
   for (int tensor_index : graph_info_->outputs()) {
-    refcounts[tensor_index]++;
+    if (tensor_index != kTfLiteOptionalTensor) {
+      refcounts[tensor_index]++;
+    }
   }
 
   // Variable tensors also should be ensured to be never overwritten and need to

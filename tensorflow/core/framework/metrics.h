@@ -162,6 +162,9 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 // Records distributed tf.data snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
+// Records the current estimated optimal number of tf.data service workers.
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").

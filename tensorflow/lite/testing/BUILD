@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+
 # copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
@@ -117,7 +119,7 @@ test_suite(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mlir_convert",
     srcs = ["mlir_convert.py"],
     data = [
@@ -125,17 +127,16 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":_pywrap_string_util",
-        ":generate_examples_lib",
-        ":generate_examples_report",
+        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:test_util",
-        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "op_tests",
     srcs = glob(["op_tests/*.py"]),
     srcs_version = "PY3",
@@ -146,10 +147,14 @@ py_library(
         # copybara:uncomment_begin(b/186563810)
         # "//third_party/py/tensorflow_addons",
         # copybara:uncomment_end
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:rnn",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "generate_examples_lib",
     srcs = ["generate_examples_lib.py"],
     srcs_version = "PY3",
@@ -160,7 +165,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "zip_test_utils",
     srcs = ["zip_test_utils.py"],
     srcs_version = "PY3",
@@ -168,11 +173,14 @@ py_library(
         ":_pywrap_string_util",
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
+        "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
     python_version = "PY3",
@@ -180,14 +188,11 @@ py_binary(
     deps = [
         ":generate_examples_lib",
         ":mlir_convert",
-        ":op_tests",
-        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "generate_examples_report",
     srcs = ["generate_examples_report.py"],
     srcs_version = "PY3",

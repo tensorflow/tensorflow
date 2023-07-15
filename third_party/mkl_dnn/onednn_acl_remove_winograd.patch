@@ -1,0 +1,326 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
+index c46d697575..37f8ecbc06 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.cpp
++++ b/src/cpu/aarch64/acl_convolution_utils.cpp
+@@ -271,54 +271,6 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+     return status::success;
+ }
+ 
+-status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+-        memory_desc_t &weights_md, memory_desc_t &dst_md,
+-        memory_desc_t &bias_md, const convolution_desc_t &cd,
+-        const primitive_attr_t &attr) {
+-
+-    // Under these conditions, fallback to faster GEMM-based convolution
+-    // unless the user explicitly specifies Winograd algorithm
+-    // clang-format off
+-    if (one_of(true, src_md.dims[2] > 112, // ih
+-                src_md.dims[3] > 112, // iw
+-                src_md.dims[1] < 64, // ic
+-                dst_md.dims[1] < 64, // oc
+-                dnnl_get_max_threads() > 28)
+-            && cd.alg_kind == alg_kind::convolution_auto) {
+-        return status::unimplemented;
+-    }
+-    // clang-format on
+-
+-    // General Compute Library checks, memory tags are also set there
+-    CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
+-
+-    const bool shape_ok
+-            // only unit strides allowed
+-            = (acp.padstride_info.stride() == std::pair<uint, uint> {1, 1})
+-            // Note: Compute Library supports arbitrary padding for wino kernels
+-            // but we only allow small padding to be consistent with oneDNN
+-            && (acp.padstride_info.pad().first <= 1) // padding left/right
+-            && (acp.padstride_info.pad().second <= 1) // padding top/bottom
+-            // only non-dilated convolutions allowed
+-            && (acp.dilation_info == arm_compute::Size2D(1, 1));
+-
+-    ACL_CHECK_SUPPORT(!shape_ok, "shape not supported by winograd kernels");
+-
+-    // clang-format off
+-    // Validate convolution manually to check for return status
+-    ACL_CHECK_VALID(arm_compute::NEWinogradConvolutionLayer::validate(
+-        &acp.src_info,
+-        &acp.wei_info,
+-        acp.with_bias ? &acp.bia_info : nullptr,
+-        &acp.dst_info,
+-        acp.padstride_info,
+-        acp.act_info,
+-        true)); // enable_fast_math flag in ACL Winograd
+-    // clang-format on
+-
+-    return status::success;
+-}
+-
+ } // namespace acl_convolution_utils
+ 
+ } // namespace aarch64
+diff --git a/src/cpu/aarch64/acl_convolution_utils.hpp b/src/cpu/aarch64/acl_convolution_utils.hpp
+index 3e56245faf..0398ab06b9 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.hpp
++++ b/src/cpu/aarch64/acl_convolution_utils.hpp
+@@ -66,11 +66,6 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         memory_desc_t &bias_md, const convolution_desc_t &cd,
+         const primitive_attr_t &attr);
+ 
+-status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+-        memory_desc_t &weights_md, memory_desc_t &dst_md,
+-        memory_desc_t &bias_md, const convolution_desc_t &cd,
+-        const primitive_attr_t &attr);
+-
+ } // namespace acl_convolution_utils
+ 
+ template <typename conv_obj_t, typename conv_pd_t, typename src_data_t,
+diff --git a/src/cpu/aarch64/acl_winograd_convolution.cpp b/src/cpu/aarch64/acl_winograd_convolution.cpp
+deleted file mode 100644
+index b4eb5989fb..0000000000
+--- a/src/cpu/aarch64/acl_winograd_convolution.cpp
++++ /dev/null
+@@ -1,43 +0,0 @@
+-/*******************************************************************************
+-* Copyright 2020-2022 Arm Ltd. and affiliates
+-*
+-* Licensed under the Apache License, Version 2.0 (the "License");
+-* you may not use this file except in compliance with the License.
+-* You may obtain a copy of the License at
+-*
+-*     http://www.apache.org/licenses/LICENSE-2.0
+-*
+-* Unless required by applicable law or agreed to in writing, software
+-* distributed under the License is distributed on an "AS IS" BASIS,
+-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-* See the License for the specific language governing permissions and
+-* limitations under the License.
+-*******************************************************************************/
+-
+-#include "cpu/aarch64/acl_winograd_convolution.hpp"
+-
+-namespace dnnl {
+-namespace impl {
+-namespace cpu {
+-namespace aarch64 {
+-
+-status_t acl_wino_convolution_fwd_t::execute_forward(
+-        const exec_ctx_t &ctx) const {
+-    // Lock here is needed because resource_mapper does not support
+-    // concurrent multithreaded access.
+-    std::lock_guard<std::mutex> _lock {this->mtx};
+-    // Retrieve primitive resource and configured Compute Library objects
+-    auto *acl_resource
+-            = ctx.get_resource_mapper()->get<acl_wino_resource_t>(this);
+-    acl_obj_t<arm_compute::NEWinogradConvolutionLayer> &acl_wino_obj
+-            = acl_resource->get_acl_obj();
+-
+-    return execute_forward_conv_acl<
+-            acl_obj_t<arm_compute::NEWinogradConvolutionLayer>, pd_t, data_t>(
+-            ctx, acl_wino_obj, pd());
+-}
+-
+-} // namespace aarch64
+-} // namespace cpu
+-} // namespace impl
+-} // namespace dnnl
+diff --git a/src/cpu/aarch64/acl_winograd_convolution.hpp b/src/cpu/aarch64/acl_winograd_convolution.hpp
+deleted file mode 100644
+index 215635fe3f..0000000000
+--- a/src/cpu/aarch64/acl_winograd_convolution.hpp
++++ /dev/null
+@@ -1,146 +0,0 @@
+-/*******************************************************************************
+-* Copyright 2020-2022 Arm Ltd. and affiliates
+-*
+-* Licensed under the Apache License, Version 2.0 (the "License");
+-* you may not use this file except in compliance with the License.
+-* You may obtain a copy of the License at
+-*
+-*     http://www.apache.org/licenses/LICENSE-2.0
+-*
+-* Unless required by applicable law or agreed to in writing, software
+-* distributed under the License is distributed on an "AS IS" BASIS,
+-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-* See the License for the specific language governing permissions and
+-* limitations under the License.
+-*******************************************************************************/
+-
+-#ifndef CPU_AARCH64_ACL_WINOGRAD_CONVOLUTION_HPP
+-#define CPU_AARCH64_ACL_WINOGRAD_CONVOLUTION_HPP
+-
+-#include "cpu/cpu_convolution_pd.hpp"
+-
+-#include "cpu/aarch64/acl_convolution_utils.hpp"
+-
+-namespace dnnl {
+-namespace impl {
+-namespace cpu {
+-namespace aarch64 {
+-
+-struct acl_wino_resource_t : public resource_t {
+-    acl_wino_resource_t()
+-        : acl_wino_obj_(utils::make_unique<
+-                acl_obj_t<arm_compute::NEWinogradConvolutionLayer>>()) {}
+-
+-    status_t configure(const acl_conv_conf_t &acp) {
+-        if (!acl_wino_obj_) return status::out_of_memory;
+-
+-        // Init Compute Library tensors based on info from descriptor
+-        acl_wino_obj_->src_tensor.allocator()->init(acp.src_info);
+-        acl_wino_obj_->wei_tensor.allocator()->init(acp.wei_info);
+-        acl_wino_obj_->dst_tensor.allocator()->init(acp.dst_info);
+-        acl_wino_obj_->bia_tensor.allocator()->init(acp.bia_info);
+-
+-        // clang-format off
+-        acl_wino_obj_->conv.configure(
+-            &acl_wino_obj_->src_tensor,
+-            &acl_wino_obj_->wei_tensor,
+-            acp.with_bias ? &acl_wino_obj_->bia_tensor : nullptr,
+-            &acl_wino_obj_->dst_tensor,
+-            acp.padstride_info,
+-            acp.act_info,
+-            true); // to support 5x5, 7x7 filter shapes in addition to 3x3
+-        // clang-format on
+-
+-        return status::success;
+-    }
+-
+-    acl_obj_t<arm_compute::NEWinogradConvolutionLayer> &get_acl_obj() const {
+-        return *acl_wino_obj_;
+-    }
+-
+-    DNNL_DISALLOW_COPY_AND_ASSIGN(acl_wino_resource_t);
+-
+-private:
+-    std::unique_ptr<acl_obj_t<arm_compute::NEWinogradConvolutionLayer>>
+-            acl_wino_obj_;
+-}; // acl_wino_resource_t
+-
+-struct acl_wino_convolution_fwd_t : public primitive_t {
+-    struct pd_t : public cpu_convolution_fwd_pd_t {
+-        pd_t(const convolution_desc_t *adesc, const primitive_attr_t *attr,
+-                const typename pd_t::base_class *hint_fwd_pd)
+-            : cpu_convolution_fwd_pd_t(adesc, attr, hint_fwd_pd)
+-            , acp_()
+-            , post_ops() {}
+-
+-        DECLARE_COMMON_PD_T(
+-                "wino:acl", acl_wino_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
+-
+-        status_t init(engine_t *engine) {
+-            bool ok = is_fwd()
+-                    && utils::one_of(desc()->alg_kind,
+-                            alg_kind::convolution_auto,
+-                            alg_kind::convolution_winograd)
+-                    && expect_data_types(data_type::f32, data_type::f32,
+-                            data_type::f32, data_type::f32, data_type::f32)
+-                    && attr()->has_default_values(
+-                            primitive_attr_t::skip_mask_t::post_ops,
+-                            data_type::f32)
+-                    && !has_zero_dim_memory();
+-            if (!ok) return status::unimplemented;
+-
+-            CHECK(acl_convolution_utils::init_conf_wino(acp_, src_md_,
+-                    weights_md_, dst_md_, bias_md_, *desc(), *attr()));
+-
+-            set_default_alg_kind(alg_kind::convolution_winograd);
+-
+-            CHECK(post_ops.init(
+-                    engine, attr_.post_ops_, dst_md_, acp_.act_info));
+-            acp_.use_dst_acc = post_ops.has_sum();
+-
+-            return status::success;
+-        }
+-
+-        acl_conv_conf_t acp_;
+-        acl_post_ops_t post_ops;
+-    };
+-
+-    acl_wino_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+-
+-    status_t create_resource(
+-            engine_t *engine, resource_mapper_t &mapper) const override {
+-        if (mapper.has_resource(this)) return status::success;
+-
+-        auto r = utils::make_unique<acl_wino_resource_t>();
+-        if (!r) return status::out_of_memory;
+-
+-        // Configure the resource based on information from primitive descriptor
+-        CHECK(r->configure(pd()->acp_));
+-        mapper.add(this, std::move(r));
+-
+-        CHECK(pd()->post_ops.create_resource(engine, mapper));
+-
+-        return status::success;
+-    }
+-
+-    ~acl_wino_convolution_fwd_t() {}
+-
+-    typedef typename prec_traits<data_type::f32>::type data_t;
+-
+-    status_t execute(const exec_ctx_t &ctx) const override {
+-        return execute_forward(ctx);
+-    }
+-
+-private:
+-    // To guard the const execute_forward(), the mutex must be 'mutable'
+-    mutable std::mutex mtx;
+-    status_t execute_forward(const exec_ctx_t &ctx) const;
+-    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+-}; // acl_wino_convolution_fwd_t
+-
+-} // namespace aarch64
+-} // namespace cpu
+-} // namespace impl
+-} // namespace dnnl
+-
+-#endif // CPU_AARCH64_ACL_WINOGRAD_CONVOLUTION_HPP
+diff --git a/src/cpu/cpu_convolution_list.cpp b/src/cpu/cpu_convolution_list.cpp
+index 4142dbc7e7..094c73aa36 100644
+--- a/src/cpu/cpu_convolution_list.cpp
++++ b/src/cpu/cpu_convolution_list.cpp
+@@ -65,7 +65,6 @@ using namespace dnnl::impl::cpu::x64;
+ #if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+ #include "cpu/aarch64/acl_gemm_convolution.hpp"
+ #include "cpu/aarch64/acl_indirect_gemm_convolution.hpp"
+-#include "cpu/aarch64/acl_winograd_convolution.hpp"
+ #endif
+ using namespace dnnl::impl::cpu::aarch64;
+ #endif
+@@ -100,7 +99,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
+             CPU_INSTANCE_SSE41(jit_sse41_1x1_convolution_fwd_t)
+             CPU_INSTANCE_AVX2(jit_avx2_convolution_fwd_t)
+             CPU_INSTANCE_SSE41(jit_sse41_convolution_fwd_t)
+-            CPU_INSTANCE_AARCH64_ACL(acl_wino_convolution_fwd_t)
+             CPU_INSTANCE_AARCH64(jit_sve_512_dw_convolution_fwd_t)
+             CPU_INSTANCE_AARCH64(jit_sve_512_1x1_convolution_fwd_f32_t)
+             CPU_INSTANCE_AARCH64(jit_sve_512_convolution_fwd_t<f32>)
+diff --git a/tests/gtests/test_iface_wino_convolution.cpp b/tests/gtests/test_iface_wino_convolution.cpp
+index 03861b1de4..2235ceae36 100644
+--- a/tests/gtests/test_iface_wino_convolution.cpp
++++ b/tests/gtests/test_iface_wino_convolution.cpp
+@@ -59,9 +59,6 @@ protected:
+         input_f16.wino_supported = is_gpu;
+         input_int8.wino_supported = is_cpu && has_avx512_core;
+         input_f32.backward_supported = is_cpu && impl::dnnl_thr_syncable();
+-#elif DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
+-        const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
+-        input_f32.wino_supported = is_cpu;
+ #endif
+ 
+ #else

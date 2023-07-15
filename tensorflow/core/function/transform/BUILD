@@ -16,10 +16,7 @@ pytype_strict_library(
         "transform.py",
     ],
     srcs_version = "PY3",
-    visibility = [
-        "//learning/brain/experimental/tfq:__subpackages__",
-        "//smartass/brain/configure/compile_service/python:__pkg__",
-    ],
+    visibility = ["//smartass/brain/configure/compile_service/python:__pkg__"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",
@@ -30,7 +27,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:default_gradient",
         "//tensorflow/python/ops:handle_data_util",
