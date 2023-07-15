@@ -1555,6 +1555,42 @@ func.func @broadcast_in_dim_general_case(%arg0: tensor<3x1x16xf32>) -> tensor<3x
   func.return %0 : tensor<3x8x8x16xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_tf_style(
+// CHECK-SAME:                               %[[ARG_0:.*]]: tensor<?x1x1x2x1xf32>,
+// CHECK-SAME:                               %[[ARG_1:.*]]: tensor<5xi32>) -> tensor<?x750x1x2x384xf32> {
+// CHECK          %[[VAL_0:.*]] = "tf.BroadcastTo"(%[[ARG_0]], %[[ARG_1]]) : (tensor<?x1x1x2x1xf32>, tensor<5xi32>) -> tensor<?x750x1x2x384xf32>
+// CHECK          return %[[VAL_0]] : tensor<?x750x1x2x384xf32>
+func.func @dynamic_broadcast_in_dim_tf_style(%arg0: tensor<?x1x1x2x1xf32>, %arg1: tensor<5xi32>) -> tensor<?x750x1x2x384xf32> {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 2, 3, 4]> : tensor<5xi64>} : (tensor<?x1x1x2x1xf32>, tensor<5xi32>) -> tensor<?x750x1x2x384xf32>
+  func.return %0 : tensor<?x750x1x2x384xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_general_case_expand_back_dims(
+// CHECK-SAME:                               %[[ARG_0:.*]]: tensor<?x3000xf32>,
+// CHECK-SAME:                               %[[ARG_1:.*]]: tensor<4xi32>) -> tensor<?x3000x2x4xf32> {
+// CHECK          %[[CST_0:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+// CHECK          %[[VAL_0:.*]] = "tf.ExpandDims"(%[[ARG_0]], %[[CST_0]]) : (tensor<?x3000xf32>, tensor<i64>) -> tensor<?x3000x1xf32>
+// CHECK          %[[CST_1:.*]] = "tf.Const"() {value = dense<3> : tensor<i64>} : () -> tensor<i64>
+// CHECK          %[[VAL_1:.*]] = "tf.ExpandDims"(%[[VAL_0]], %[[CST_1]]) : (tensor<?x3000x1xf32>, tensor<i64>) -> tensor<?x3000x1x1xf32>
+// CHECK          %[[VAL_2:.*]] = "tf.BroadcastTo"(%[[VAL_1]], %[[ARG_1]]) : (tensor<?x3000x1x1xf32>, tensor<4xi32>) -> tensor<?x3000x2x4xf32>
+// CHECK          return %[[VAL_2]] : tensor<?x3000x2x4xf32>
+func.func @dynamic_broadcast_in_dim_general_case_expand_back_dims(%arg0: tensor<?x3000xf32>, %arg1: tensor<4xi32>) -> tensor<?x3000x2x4xf32> {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x3000xf32>, tensor<4xi32>) -> tensor<?x3000x2x4xf32>
+  func.return %0 : tensor<?x3000x2x4xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_general_case_expand_middle_dim(
+// CHECK-SAME:                               %[[ARG_0:.*]]: tensor<?x750x768xf32>,
+// CHECK-SAME:                               %[[ARG_1:.*]]: tensor<4xi32>) -> tensor<?x750x1x768xf32> {
+// CHECK          %[[CST_0:.*]] = "tf.Const"() {value = dense<2> : tensor<i64>} : () -> tensor<i64>
+// CHECK          %[[VAL_0:.*]] = "tf.ExpandDims"(%[[ARG_0]], %[[CST_0]]) : (tensor<?x750x768xf32>, tensor<i64>) -> tensor<?x750x1x768xf32>
+// CHECK          %[[VAL_1:.*]] = "tf.BroadcastTo"(%[[VAL_0]], %[[ARG_1]]) : (tensor<?x750x1x768xf32>, tensor<4xi32>) -> tensor<?x750x1x768xf32>
+// CHECK          return %[[VAL_1]] : tensor<?x750x1x768xf32>
+func.func @dynamic_broadcast_in_dim_general_case_expand_middle_dim(%arg0: tensor<?x750x768xf32>, %arg1: tensor<4xi32>) -> tensor<?x750x1x768xf32> {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 3]> : tensor<3xi64>} : (tensor<?x750x768xf32>, tensor<4xi32>) -> tensor<?x750x1x768xf32>
+  func.return %0 : tensor<?x750x1x768xf32>
+}
+
 // CHECK-LABEL:   func @convert_dot_general(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<3x2x6x5x1xf32>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<3x2x4x6xf32>) -> tensor<3x5x1x4xf32> {

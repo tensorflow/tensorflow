@@ -39,6 +39,7 @@ def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
 
 // Return intermediate shape before broadcasting, wrapped in a constant op.
 def ExpandedShape : NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
+def ExpandedDynamicShape : NativeCodeCall<"ExpandedDynamicShape($_builder, $0, $1, $2)">;
 
 def : Pat<(MHLO_ConstantOp:$output $value), (TF_ConstOp $value),
           [(TF_Tensor $output)]>;
@@ -183,6 +184,17 @@ def : Pat<(MHLO_BroadcastInDimOp:$output $input, $broadcast_dimensions),
                   (ExpandedShape $input, $broadcast_dimensions, $output)),
               (ShapeToConst $output)),
           [(IsNotTFStyleBroadcast $broadcast_dimensions, $output)]>;
+// Dynamism op
+def : Pat<(MHLO_DynamicBroadcastInDimOp:$output $input, $output_dimensions,
+               $broadcast_dimensions, $expanding_dimensions_unused, $nonexpanding_dimensions_unused),
+          (TF_BroadcastToOp $input, $output_dimensions),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(MHLO_DynamicBroadcastInDimOp:$output $input, $output_dimensions,
+               $broadcast_dimensions, $expanding_dimensions_unused, $nonexpanding_dimensions_unused),
+          (TF_BroadcastToOp (ExpandedDynamicShape $input, $broadcast_dimensions, $output), $output_dimensions),
+          [(IsNotTFStyleBroadcast $broadcast_dimensions, $output)]>;
+
+
 def : Pat<(MHLO_TransposeOp $arg, $permutation),
           (TF_TransposeOp $arg, (TF_ConstOp $permutation))>;
 def : Pat<(MHLO_ReverseOp $op, $dims), (TF_ReverseV2Op $op, (TF_ConstOp $dims))>;
