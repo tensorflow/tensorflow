@@ -112,12 +112,10 @@ struct MklEinsumHelper {
     auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
                                          out_shape, trans_x, trans_y);
 
-    // Create the oneDNN wrapper over eigen threadpool and set max threads
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
     // in oneDNN.
     Eigen::ThreadPoolInterface* eigen_interface =
-        ctx->device()
-            ->tensorflow_cpu_worker_threads()
-            ->workers->AsEigenThreadPool();
+        EigenThreadPoolFromTfContext(ctx);
     tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                    ThreadPoolUseCallerThread());
     // Create or retrieve matmul primitive from cache.

@@ -135,12 +135,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
     auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
-    // Create the oneDNN wrapper over eigen threadpool and set max threads
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
     // in oneDNN.
     Eigen::ThreadPoolInterface* eigen_interface =
-        ctx->device()
-            ->tensorflow_cpu_worker_threads()
-            ->workers->AsEigenThreadPool();
+        EigenThreadPoolFromTfContext(ctx);
     tsl::OneDnnThreadPool eigen_tp(eigen_interface, ThreadPoolUseCallerThread(),
                                    st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =

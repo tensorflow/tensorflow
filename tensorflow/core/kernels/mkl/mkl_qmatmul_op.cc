@@ -245,12 +245,10 @@ class MklDnnQuantizedMatMulOp
       // Extend the basic parameters for data types and fusions.
       this->ExtendMklDnnMatMulFwdParams(context, matmul_fwd_dims);
 
-      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
       Eigen::ThreadPoolInterface* eigen_interface =
-          context->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(context);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       // Get a MatMul fwd from primitive pool.

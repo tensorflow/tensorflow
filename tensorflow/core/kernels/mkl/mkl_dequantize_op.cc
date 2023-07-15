@@ -72,12 +72,10 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<float> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
       Eigen::ThreadPoolInterface* eigen_interface =
-          ctx->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(ctx);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));

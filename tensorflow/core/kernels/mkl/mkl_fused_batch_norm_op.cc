@@ -837,12 +837,10 @@ class MklFusedBatchNormOp : public OpKernel {
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
                                       tensor_format_, src_md, activation_mode_);
 
-      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
       Eigen::ThreadPoolInterface* eigen_interface =
-          context->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(context);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       // Get forward batch-normalization op from the primitive caching pool.
@@ -1320,9 +1318,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                                       is_training_, tensor_format_, src_md,
                                       diff_dst_md);
       Eigen::ThreadPoolInterface* eigen_interface =
-          context->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(context);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =

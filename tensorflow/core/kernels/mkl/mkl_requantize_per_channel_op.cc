@@ -115,12 +115,10 @@ class MklRequantizePerChannelOp : public OpKernel {
                  cpu_engine_, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
 
-      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
       Eigen::ThreadPoolInterface* eigen_interface =
-          ctx->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(ctx);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       memory::dims dims_mkl_order =

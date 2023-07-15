@@ -143,12 +143,10 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
           pooling_prop_kind,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
           this->native_format_);
-      // Create the oneDNN wrapper over eigen threadpool and set max threads
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
       // in oneDNN.
       Eigen::ThreadPoolInterface* eigen_interface =
-          context->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(context);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
@@ -345,9 +343,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
           this->native_format_);
       Eigen::ThreadPoolInterface* eigen_interface =
-          context->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(context);
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread());
       MklPoolingBwdPrimitive<T>* pooling_bwd =

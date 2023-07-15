@@ -160,12 +160,10 @@ class BatchMatMulMkl : public OpKernel {
                                          out_shape, adj_x_, adj_y_);
 
     this->ExtendMklMatMulParams(ctx, *params);
-    // Create the oneDNN wrapper over eigen threapool and set max threads
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
     // in oneDNN.
     Eigen::ThreadPoolInterface* eigen_interface =
-        ctx->device()
-            ->tensorflow_cpu_worker_threads()
-            ->workers->AsEigenThreadPool();
+        EigenThreadPoolFromTfContext(ctx);
     tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                    ThreadPoolUseCallerThread());
     // Create or retrieve matmul primitive from cache.

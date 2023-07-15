@@ -649,6 +649,13 @@ class MklDnnShape {
   }
 };
 
+inline Eigen::ThreadPoolInterface* EigenThreadPoolFromTfContext(
+    OpKernelContext* context) {
+  return context->device()
+      ->tensorflow_cpu_worker_threads()
+      ->workers->AsEigenThreadPool();
+}
+
 // List of MklShape objects. Used in Concat/Split layers.
 typedef std::vector<MklDnnShape> MklDnnShapeList;
 
@@ -663,14 +670,12 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
   std::unique_ptr<stream> cpu_stream;
-  // Create the oneDNN wrapper over eigen threadpool and set max threads
+  // Create the oneDNN wrapper over Eigen threadpool and set max threads
   // in oneDNN.
   tsl::OneDnnThreadPool eigen_tp;
   if (context != nullptr) {
     Eigen::ThreadPoolInterface* eigen_interface =
-        context->device()
-            ->tensorflow_cpu_worker_threads()
-            ->workers->AsEigenThreadPool();
+        EigenThreadPoolFromTfContext(context);
     eigen_tp =
         tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
     cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
@@ -1606,9 +1611,7 @@ class MklDnnData {
       tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
         Eigen::ThreadPoolInterface* eigen_interface =
-            context->device()
-                ->tensorflow_cpu_worker_threads()
-                ->workers->AsEigenThreadPool();
+            EigenThreadPoolFromTfContext(context);
         eigen_tp =
             tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
@@ -1678,9 +1681,7 @@ class MklDnnData {
       tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
         Eigen::ThreadPoolInterface* eigen_interface =
-            context->device()
-                ->tensorflow_cpu_worker_threads()
-                ->workers->AsEigenThreadPool();
+            EigenThreadPoolFromTfContext(context);
         eigen_tp =
             tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
@@ -1794,9 +1795,7 @@ class MklDnnData {
     tsl::OneDnnThreadPool eigen_tp;
     if (ctx != nullptr) {
       Eigen::ThreadPoolInterface* eigen_interface =
-          ctx->device()
-              ->tensorflow_cpu_worker_threads()
-              ->workers->AsEigenThreadPool();
+          EigenThreadPoolFromTfContext(ctx);
       eigen_tp =
           tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
       cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
@@ -2272,6 +2271,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
           ((strides[0] != 1) || (strides[1] != 1)));
 }
+
 
 #undef ARE_MEMORY_DESCS_EQUAL
 #undef CREATE_MEMORY_DESC_USING_STRIDES
