@@ -161,7 +161,7 @@ xla_cc_test(
 
 cc_library(
     name = "test_util",
-    testonly = 1,
+    testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
@@ -192,7 +192,7 @@ cc_library(
 
 cc_library(
     name = "no_impl_test_main",
-    testonly = 1,
+    testonly = True,
     srcs = ["no_impl_test_main.cc"],
     deps = [
         "@com_google_googletest//:gtest",
@@ -201,7 +201,7 @@ cc_library(
 
 cc_library(
     name = "array_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["array_impl_test_lib.cc"],
     deps = [
         ":ifrt",
@@ -211,7 +211,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -225,14 +225,14 @@ xla_cc_test(
 
 cc_library(
     name = "client_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["client_impl_test_lib.cc"],
     deps = [
         ":ifrt",
         ":test_util",
         "//tensorflow/tsl/platform:test",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -247,7 +247,7 @@ xla_cc_test(
 
 cc_library(
     name = "tuple_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["tuple_impl_test_lib.cc"],
     deps = [
         ":ifrt",
@@ -258,7 +258,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:ref_count",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -339,7 +339,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@llvm-project//llvm:Support",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(

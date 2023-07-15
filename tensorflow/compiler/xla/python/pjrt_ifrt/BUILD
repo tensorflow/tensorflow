@@ -90,7 +90,7 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -130,7 +130,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt:serdes",
         "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -149,7 +149,7 @@ xla_cc_test(
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
     name = "xla_executable_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
         ":xla_ifrt",
@@ -160,7 +160,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
@@ -238,14 +238,14 @@ cc_library(
 
 cc_library(
     name = "tfrt_cpu_client_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["tfrt_cpu_client_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
