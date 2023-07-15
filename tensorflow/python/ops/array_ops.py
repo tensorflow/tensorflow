@@ -3697,10 +3697,10 @@ def _wrap_pad(tensor, paddings, name=None):
       # Pad tensor with one iteration.
       padded = gen_array_ops.tensor_strided_slice_update(
         input=padded, 
-        begin=gen_math_ops.cast(lower_begin, dtype=dtypes.int32), 
-        end=gen_math_ops.cast(end, dtype=dtypes.int32), 
-        strides=gen_math_ops.cast(strides, dtype=dtypes.int32), 
-        value=gen_math_ops.cast(value, dtype=padded.dtype)
+        begin=gen_math_ops.cast(lower_begin, dtypes.int32), 
+        end=gen_math_ops.cast(end, dtypes.int32), 
+        strides=gen_math_ops.cast(strides, dtypes.int32), 
+        value=gen_math_ops.cast(value, padded.dtype)
         )
       # Update lower_idx.
       lower_idx -= shape(value)[i]
@@ -3729,10 +3729,10 @@ def _wrap_pad(tensor, paddings, name=None):
       # Pad tensor with one iteration.
       padded = gen_array_ops.tensor_strided_slice_update(
         input=padded, 
-        begin=gen_math_ops.cast(upper_begin, dtype=dtypes.int32), 
-        end=gen_math_ops.cast(end, dtype=dtypes.int32), 
-        strides=gen_math_ops.cast(strides, dtype=dtypes.int32), 
-        value=gen_math_ops.cast(value, dtype=padded.dtype)
+        begin=gen_math_ops.cast(upper_begin, dtypes.int32), 
+        end=gen_math_ops.cast(end, dtypes.int32), 
+        strides=gen_math_ops.cast(strides, dtypes.int32), 
+        value=gen_math_ops.cast(value, padded.dtype)
         )
       # Update upper_idx.
       upper_idx -= shape(value)[i]
