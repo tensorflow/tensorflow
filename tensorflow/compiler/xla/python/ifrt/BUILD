@@ -149,6 +149,7 @@ xla_cc_test(
     srcs = ["sharding_test.cc"],
     deps = [
         ":ifrt",
+        ":sharding_test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
@@ -173,6 +174,19 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:ref_count",
+    ],
+)
+
+cc_library(
+    name = "sharding_test_util",
+    testonly = True,
+    srcs = ["sharding_test_util.cc"],
+    hdrs = ["sharding_test_util.h"],
+    deps = [
+        ":ifrt",
+        ":mock",
+        ":test_util",
+        "//tensorflow/tsl/platform:test",
     ],
 )
 
@@ -333,10 +347,9 @@ xla_cc_test(
     srcs = ["sharding_serdes_test.cc"],
     deps = [
         ":ifrt",
-        ":mock",
         ":serdes",
         ":sharding_serdes",
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":sharding_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

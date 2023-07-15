@@ -140,8 +140,8 @@ xla_cc_test(
         ":xla_ifrt",
         ":xla_sharding_serdes",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/python/ifrt:mock",
         "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -182,6 +182,8 @@ xla_cc_test(
     deps = [
         ":tfrt_cpu_client_test_lib",
         ":xla_ifrt",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
         "//tensorflow/compiler/xla/python/ifrt:tuple_impl_test_lib",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
