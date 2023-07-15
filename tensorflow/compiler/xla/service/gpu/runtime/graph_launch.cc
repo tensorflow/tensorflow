@@ -73,16 +73,68 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 // CUDA graphs caching.
 //===----------------------------------------------------------------------===//
 
-StreamExecutorGraphInstances* GraphInstances::operator()(
-    se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mutex_);
-  return &graphs_[executor];
+static absl::Mutex* GetGraphInstancesMutex() {
+  static auto* mu = new absl::Mutex();
+  return mu;
 }
 
-CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
+// Keep track of instantiated graphs on each StreamExecutor, we use this
+// information in the graph eviction policy.
+using GraphInstancesState = absl::flat_hash_map<se::StreamExecutor*, int64_t>;
+
+static GraphInstancesState& GetGraphInstancesState() {
+  static auto* state = new GraphInstancesState();
+  return *state;
+}
+
+static int64_t NotifyGraphInstancesCreated(se::StreamExecutor* executor,
+                                           int64_t num_graphs) {
+  absl::MutexLock lock(GetGraphInstancesMutex());
+  return GetGraphInstancesState()[executor] += num_graphs;
+}
+
+static int64_t NotifyGraphInstancesDestroyed(se::StreamExecutor* executor,
+                                             int64_t num_graphs) {
+  absl::MutexLock lock(GetGraphInstancesMutex());
+  return GetGraphInstancesState()[executor] -= num_graphs;
+}
+
+GraphInstances::GraphInstances(std::string module_name, int64_t num_graphs)
+    : impl_(std::make_shared<Impl>()) {
+  impl_->module_name = std::move(module_name);
+  impl_->num_graphs = num_graphs;
+  VLOG(3) << "Construct graph instances cache for: @" << impl_->module_name
+          << " (num_graphs = " << impl_->num_graphs << ")";
+}
+
+GraphInstances::~GraphInstances() {
+  VLOG(3) << "Destroy graph instances cache for: @" << impl_->module_name
+          << " (num_graphs = " << impl_->num_graphs << ")";
+
+  absl::MutexLock lock(&impl_->mu);
+  for (auto& [executor, state] : impl_->graphs) {
+    VLOG(3) << "Destroy " << impl_->num_graphs << " graphs for: @"
+            << impl_->module_name << " at executor: " << executor
+            << ". Total remaining graphs at given executor: "
+            << NotifyGraphInstancesDestroyed(executor, impl_->num_graphs);
+  }
+}
+
+StreamExecutorGraphInstances* GraphInstances::operator()(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mutex_);
-  return &counts_[executor];
+  absl::MutexLock lock(&impl_->mu);
+
+  auto it = impl_->graphs.try_emplace(executor);
+  if (it.second && impl_->num_graphs > 0) {
+    VLOG(3) << "Instantiate " << impl_->num_graphs << " graphs for: @"
+            << impl_->module_name << " at executor: " << executor
+            << ". Total graphs at given executor: "
+            << NotifyGraphInstancesCreated(executor, impl_->num_graphs);
+  }
+
+  State& state = it.first->second;
+  state.last_use_micros = tsl::Env::Default()->NowMicros();
+  return &state.instances;
 }
 
 bool GraphInstances::InstantiatedAllGraphs(
@@ -90,8 +142,8 @@ bool GraphInstances::InstantiatedAllGraphs(
     const Executable& executable) {
   if (executable.num_functions() == 1) return true;
 
-  absl::MutexLock lock(&mutex_);
-  return instantiated_.contains(run_options->stream()->parent());
+  absl::MutexLock lock(&impl_->mu);
+  return impl_->graphs[run_options->stream()->parent()].instantiated;
 }
 
 Status GraphInstances::InstantiateAllGraphs(
@@ -101,19 +153,18 @@ Status GraphInstances::InstantiateAllGraphs(
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&impl_->mu);
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  // All Gpu graphs are already instantiated for a given executor.
-  if (instantiated_.contains(executor)) return OkStatus();
+  State& state = impl_->graphs[executor];
 
-  VLOG(3) << "Instantate all Gpu graphs in executable " << executable.name();
+  // All Gpu graphs are already instantiated for a given executor.
+  if (state.instantiated) return OkStatus();
 
   TraceMe trace("cuda.graph.instantiate_all");
 
   // Initialize graph instances snapshot for a given executor.
-  StreamExecutorGraphInstances::Snapshot instances =
-      graphs_[executor].snapshot();
+  StreamExecutorGraphInstances::Snapshot instances = state.instances.snapshot();
 
   // Instantiate all Gpu graphs by calling graph capture functions with fake
   // arguments. Once we'll execute them first time for real, they'll be updated
@@ -172,8 +223,14 @@ Status GraphInstances::InstantiateAllGraphs(
 #endif  // GOOGLE_CUDA
   }
 
-  instantiated_.insert(executor);
+  state.instantiated = true;
   return OkStatus();
+}
+
+CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  return &counts_[executor];
 }
 
 //===----------------------------------------------------------------------===//
