@@ -2883,6 +2883,23 @@ func.func @testConv3dMisMatchBiasType(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tenso
 
 // -----
 
+// CHECK-LABEL: testComplex
+func.func @testComplex(%arg0: tensor<? x f64>,%arg1: tensor<? x f64>) -> tensor<?xcomplex<f64>> {
+  // CHECK: "tfl.complex"(%arg0)
+  %0 = "tfl.complex"(%arg0, %arg1): (tensor<? x f64>, tensor<? x f64>) -> tensor<?xcomplex<f64>>
+  func.return %0 : tensor<?xcomplex<f64>>
+}
+
+// -----
+
+func.func @testComplexWrongShape(%arg0: tensor<3 x f64>,%arg1: tensor<3 x f64>) -> tensor<4xcomplex<f32>> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.complex"(%arg0, %arg1): (tensor<3 x f64>, tensor<3 x f64>) -> tensor<4xcomplex<f32>>
+  func.return %0 : tensor<4xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: testComplexAbs
 func.func @testComplexAbs(%arg0: tensor<? x complex<f32>>) -> tensor<?xf32> {
   // CHECK: "tfl.complex_abs"(%arg0)
