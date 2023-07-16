@@ -5588,6 +5588,27 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
   let customOption = "Conv3DOptions";
 }
 
+def TFL_ComplexOp : TFL_Op<"complex", [
+  Pure,
+  ResultsBroadcastableShape]> {
+  let summary = "Converts two real numbers to a complex number.";
+
+  let description = [{
+Given real valued tensors `real` and `imag`, this operation returns a tensor of
+type `complex float` that is equivalent to \\(real + imag * j\\).
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64]>:$real,
+    TFL_TensorOf<[F32, F64]>:$imag
+  );
+
+  let results = (outs
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$output
+  );
+}
+
+
 def TFL_ComplexAbsOp : TFL_Op<"complex_abs", [
   Pure,
   SameOperandsAndResultShape]> {
