@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding_serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding_test_util.h"
@@ -39,11 +40,11 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
-  auto deserialized_options =
-      std::make_unique<DeserializeShardingOptions>(client());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
-      Deserialize(serialized, std::move(deserialized_options)));
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
 
   const auto* out_sharding = llvm::dyn_cast<HloSharding>(deserialized.get());
   ASSERT_NE(out_sharding, nullptr);

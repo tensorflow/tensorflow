@@ -54,9 +54,10 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
       return absl::InvalidArgumentError(
           "Failed to parse serialized HloSharding");
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
-                                          deserialize_sharding_options->client,
-                                          proto.devices()));
+    TF_ASSIGN_OR_RETURN(
+        auto devices,
+        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
+                              proto.devices()));
     TF_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
                         xla::HloSharding::FromProto(proto.xla_op_sharding()));
     return HloSharding::Create(std::move(devices), std::move(xla_hlo_sharding));

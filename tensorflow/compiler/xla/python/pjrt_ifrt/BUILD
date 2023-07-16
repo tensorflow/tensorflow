@@ -126,7 +126,6 @@ cc_library(
         ":xla_ifrt",
         ":xla_sharding_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:serdes",
         "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
     ],
@@ -142,6 +141,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
         "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
@@ -63,7 +62,7 @@ class SingleDeviceShardingSerDes
     }
     TF_ASSIGN_OR_RETURN(
         Device * device,
-        deserialize_sharding_options->client->LookupDevice(proto.device_id()));
+        deserialize_sharding_options->lookup_device(proto.device_id()));
     return SingleDeviceSharding::Create(device);
   }
 
@@ -96,9 +95,10 @@ class OpaqueShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized OpaqueSharding");
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
-                                          deserialize_sharding_options->client,
-                                          proto.devices()));
+    TF_ASSIGN_OR_RETURN(
+        auto devices,
+        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
+                              proto.devices()));
     return OpaqueSharding::Create(std::move(devices));
   }
 
@@ -136,9 +136,10 @@ class ConcreteShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteSharding");
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
-                                          deserialize_sharding_options->client,
-                                          proto.devices()));
+    TF_ASSIGN_OR_RETURN(
+        auto devices,
+        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
+                              proto.devices()));
     TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     std::vector<Shape> shard_shapes;
     shard_shapes.reserve(proto.shard_shapes_size());
@@ -183,9 +184,10 @@ class ConcreteEvenShardingSerDes
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteEvenSharding");
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
-                                          deserialize_sharding_options->client,
-                                          proto.devices()));
+    TF_ASSIGN_OR_RETURN(
+        auto devices,
+        DeviceList::FromProto(deserialize_sharding_options->lookup_device,
+                              proto.devices()));
     TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     TF_ASSIGN_OR_RETURN(auto shard_shape,
                         Shape::FromProto(proto.shard_shape()));

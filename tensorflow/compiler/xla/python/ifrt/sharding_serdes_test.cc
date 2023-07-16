@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding_test_util.h"
@@ -39,11 +40,11 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
-  auto deserialized_options =
-      std::make_unique<DeserializeShardingOptions>(client());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
-      Deserialize(serialized, std::move(deserialized_options)));
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
 
   const auto* out_sharding =
       llvm::dyn_cast<SingleDeviceSharding>(deserialized.get());
@@ -56,11 +57,11 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
-  auto deserialized_options =
-      std::make_unique<DeserializeShardingOptions>(client());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
-      Deserialize(serialized, std::move(deserialized_options)));
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
 
   const auto* out_sharding = llvm::dyn_cast<OpaqueSharding>(deserialized.get());
   ASSERT_NE(out_sharding, nullptr);
@@ -75,11 +76,11 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
-  auto deserialized_options =
-      std::make_unique<DeserializeShardingOptions>(client());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
-      Deserialize(serialized, std::move(deserialized_options)));
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
 
   const auto* out_sharding =
       llvm::dyn_cast<ConcreteSharding>(deserialized.get());
@@ -97,11 +98,11 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
-  auto deserialized_options =
-      std::make_unique<DeserializeShardingOptions>(client());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
-      Deserialize(serialized, std::move(deserialized_options)));
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
 
   const auto* out_sharding =
       llvm::dyn_cast<ConcreteEvenSharding>(deserialized.get());
