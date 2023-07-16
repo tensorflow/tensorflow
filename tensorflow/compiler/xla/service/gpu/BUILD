@@ -1208,6 +1208,7 @@ xla_cc_test(
         ":gemm_rewriter_triton",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
