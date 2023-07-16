@@ -470,6 +470,7 @@ enum BuiltinOperator : int32 {
   DILATE = 203,
   STABLEHLO_RNG_BIT_GENERATOR = 204,
   REDUCE_WINDOW = 205 (deprecated),
+  COMPLEX = 206,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

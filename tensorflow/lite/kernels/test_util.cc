@@ -244,6 +244,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
+
   CHECK(InterpreterBuilder(GetModel(buffer_pointer), *resolver_)(
             &interpreter_, num_threads) == kTfLiteOk);
 
