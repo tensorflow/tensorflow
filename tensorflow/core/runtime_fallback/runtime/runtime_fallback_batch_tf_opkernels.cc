@@ -271,7 +271,8 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       src_fallback_request_state->runner(),
       src_fallback_request_state->cost_recorder(),
       src_fallback_request_state->client_graph_resource_context(),
-      src_fallback_request_state->cancellation_manager());
+      src_fallback_request_state->cancellation_manager(),
+      src_fallback_request_state->runtime_config());
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
