@@ -629,11 +629,9 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
   if (!IsSupportedDataType(hlo.shape().element_type(), gpu_version)) {
     return "Unsupported output data type.";
   }
-  if (hlo.IsConstant()) {
-    return "Not fusing a constant.";
-  }
-  if (hlo.opcode() == HloOpcode::kBroadcast) {
-    return "Not fusing a broadcast.";
+  if (hlo.opcode() == HloOpcode::kBroadcast &&
+      !hlo_query::IsScalarConstant(hlo.operand(0))) {
+    return "Skipping unsupported broadcast.";
   }
   if (as_input) {
     if (hlo.GetModule()

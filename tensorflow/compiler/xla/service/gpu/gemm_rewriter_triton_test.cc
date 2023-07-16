@@ -94,7 +94,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseConstants) {
+TEST_F(GemmRewriterTritonTest, DoNotFuseVectorConstants) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -102,8 +102,8 @@ HloModule m
 ENTRY e {
   p0 = s8[60,5] parameter(0)
   c0 = f16[60,5] convert(p0)
-  cst1 = f16[] constant(1234)
-  r1 = f16[5,120] broadcast(cst1)
+  cst1 = f16[5] constant({...})
+  r1 = f16[5,120] broadcast(cst1), dimensions={0}
   ROOT d = f16[60,120] dot(c0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));

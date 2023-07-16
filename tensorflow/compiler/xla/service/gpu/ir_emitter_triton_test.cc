@@ -648,7 +648,9 @@ ENTRY entry {
           .status());
 }
 
-TEST_F(TritonGemmTest, TritonCompilerCanFailOnConstants) {
+// Triton compiler used to have an issue with reordering constants:
+// https://github.com/openai/triton/issues/1864
+TEST_F(TritonGemmTest, TritonCompilerDoesNotFailOnConstants) {
   TF_CHECK_OK(GetOptimizedModule(R"(
 HloModule m, is_scheduled=true
 
@@ -850,7 +852,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmLevel2Test, BroadcastOfConstantIsNotFused) {
+TEST_F(TritonGemmLevel2Test, BroadcastOfScalarConstantIsFused) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -859,19 +861,16 @@ ENTRY e {
   p0c = f32[70,30] convert(p0)
   constant_3663 = f32[] constant(4321)
   bc0 = f32[30,5] broadcast(constant_3663)
-  p1 = f32[30,5] parameter(1)
-  a = f32[30,5] add(p1, bc0)
-  ROOT d = f32[70,5] dot(p0c, a),
+  ROOT d = f32[70,5] dot(p0c, bc0),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK: constant
-; CHECK: broadcast
-; CHECK: fusion
-; CHECK-SAME: kind=kCustom
-)");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
