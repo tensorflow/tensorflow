@@ -154,10 +154,8 @@ class TfTypePattern : public ConversionPattern {
     rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
     // TODO: b/290366702 - Temporarily added metrics for debugging.
-    if (llvm::any_of(op->getResultTypes(), IsIllegalType)) {
-      mlir_tf_quant_op_count->GetCell(std::string(op->getName().getStringRef()))
-          ->IncrementBy(1);
-    }
+    mlir_tf_quant_op_count->GetCell(std::string(op->getName().getStringRef()))
+        ->IncrementBy(1);
     return success();
   }
 };
