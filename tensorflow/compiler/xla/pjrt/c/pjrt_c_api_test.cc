@@ -74,10 +74,14 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
 
 class TestCApiFactory {
  public:
-  void Register(std::function<const PJRT_Api*()> factory) {
+  void Register(std::function<const PJRT_Api*()> factory,
+                absl::string_view platform_name) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
+    CHECK(platform_name_.empty()) << "Platform name already provided";
+    CHECK(!platform_name.empty()) << "Provided platform name is empty";
+    platform_name_ = platform_name;
   }
 
   std::function<const PJRT_Api*()> Get() const {
@@ -86,9 +90,17 @@ class TestCApiFactory {
     return factory_;
   }
 
+  std::string GetPlatformName() const {
+    absl::MutexLock lock(&mu_);
+    CHECK(!platform_name_.empty())
+        << "Test didn't call RegisterPjRtCApiTestFactory()";
+    return platform_name_;
+  }
+
  private:
   mutable absl::Mutex mu_;
   std::function<const PJRT_Api*()> factory_ ABSL_GUARDED_BY(mu_);
+  std::string platform_name_;
 };
 
 TestCApiFactory& GetGlobalTestCApiFactory() {
@@ -98,10 +110,15 @@ TestCApiFactory& GetGlobalTestCApiFactory() {
 
 const PJRT_Api* GetCApi() { return GetGlobalTestCApiFactory().Get()(); }
 
+std::string GetPlatformName() {
+  return GetGlobalTestCApiFactory().GetPlatformName();
+}
+
 }  // namespace
 
-void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory) {
-  GetGlobalTestCApiFactory().Register(std::move(factory));
+void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory,
+                                 absl::string_view platform_name) {
+  GetGlobalTestCApiFactory().Register(std::move(factory), platform_name);
 }
 
 namespace {
@@ -109,6 +126,7 @@ class PjrtCApiTest : public ::testing::Test {
  protected:
   const PJRT_Api* api_;
   PJRT_Client* client_;
+  std::string platform_name_;
   // We directly access the internal C++ client to test if the C API has the
   // same behavior as the C++ API.
   xla::PjRtClient* cc_client_;
@@ -117,6 +135,7 @@ class PjrtCApiTest : public ::testing::Test {
   void SetUp() override {
     api_ = GetCApi();
     client_ = make_client();
+    platform_name_ = GetPlatformName();
   }
 
   void TearDown() override { destroy_client(client_); }
@@ -383,6 +402,17 @@ TEST_F(PjrtCApiTest, ApiVersion) {
 }
 
 // ---------------------------------- Client -----------------------------------
+
+TEST_F(PjrtCApiTest, PlatformName) {
+  PJRT_Client_PlatformName_Args args;
+  args.client = client_;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
+  ASSERT_EQ(error, nullptr);
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  ASSERT_EQ(platform_name_, platform_name);
+}
 
 TEST_F(PjrtCApiTest, ClientProcessIndex) {
   PJRT_Client_ProcessIndex_Args process_index_args =

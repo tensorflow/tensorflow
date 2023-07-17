@@ -1,22 +1,19 @@
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "pybind_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-
-licenses(["notice"])
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":__subpackages__"],
 )
 
-py_library(
+licenses(["notice"])
+
+py_strict_library(
     name = "tf_jitrt",
     testonly = 1,
     srcs = ["tf_jitrt.py"],
     visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
-    deps = [
-        ":_tf_jitrt_executor",
-        "//third_party/py/numpy",
-    ],
+    deps = [":_tf_jitrt_executor"],
 )
 
 py_strict_test(
@@ -59,7 +56,7 @@ pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tfrt_fallback",
     testonly = True,
     srcs = ["tfrt_fallback.py"],

@@ -96,6 +96,7 @@ distribute_py_strict_test(
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
+    xla_enable_strict_auto_jit = False,  # TODO(b/291174864)
     xla_tags = [
         "no_cuda_asan",  # Race condition on async test
     ],

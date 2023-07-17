@@ -327,7 +327,6 @@ Status CompileModuleToLlvmIrImpl(
         },
         // Assume 75% of the total device memory is available for XLA.
         /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
-        HloRematerialization::RematerializationPass::kPostFusion,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         /*compact_shape_function=*/nullptr,
         HloRematerialization::RematerializationMode::kRecomputeAndCompress);

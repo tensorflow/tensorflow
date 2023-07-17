@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -2329,6 +2330,7 @@ tf_gen_op_wrapper_py(
     name = "gen_mlir_passthrough_op_py",
     out = "gen_mlir_passthrough_op.py",
     compatible_with = [],
+    py_lib_rule = py_strict_library,
     deps = [":mlir_passthrough_op"],
 )
 

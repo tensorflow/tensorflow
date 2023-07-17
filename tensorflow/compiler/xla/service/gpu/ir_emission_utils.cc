@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
@@ -36,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -997,6 +995,16 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
       });
+}
+
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
+    return IsReductionFromOrToContiguousDimensions(*instr);
+  });
+  if (it == roots.end()) {
+    return nullptr;
+  }
+  return *it;
 }
 
 void LogAndVerify(const llvm::Module* m) {

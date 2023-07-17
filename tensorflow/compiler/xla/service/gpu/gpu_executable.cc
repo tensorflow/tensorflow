@@ -102,8 +102,9 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
 
   if (std::holds_alternative<OwnedGpuRuntimeProgram>(executable)) {
     auto& program = std::get<OwnedGpuRuntimeProgram>(executable);
-    TF_ASSIGN_OR_RETURN(result->gpu_runtime_executable_,
-                        GpuRuntimeExecutable::Create(std::move(program)));
+    TF_ASSIGN_OR_RETURN(
+        result->gpu_runtime_executable_,
+        GpuRuntimeExecutable::Create(result->module_name_, std::move(program)));
     return result;
   }
 
@@ -126,7 +127,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
       constants_(std::move(params.constants)),
-      output_info_(std::move(params.output_info)) {
+      output_info_(std::move(params.output_info)),
+      enable_debug_info_manager_(params.enable_debug_info_manager) {
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
@@ -134,14 +136,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
-  if (has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(
-        module().unique_id(), shared_module(), debug_buffer_assignment_);
+  if (has_module() && enable_debug_info_manager_) {
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
   }
 }
 
 GpuExecutable::~GpuExecutable() {
-  if (has_module()) {
+  if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
 
@@ -925,9 +927,12 @@ GpuExecutable::GpuExecutable(
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
       constants_(std::move(constants)),
-      output_info_(std::move(output_info)) {
-  XlaDebugInfoManager::Get()->RegisterModule(
-      module().unique_id(), shared_module(), debug_buffer_assignment_);
+      output_info_(std::move(output_info)),
+      enable_debug_info_manager_(true) {
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
+  }
 }
 
 // Returns a list of functions exported from the `module` that should be loaded
@@ -1054,10 +1059,10 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
                          executable.status().message());
 
   // Move runtime::Executable ownership to the GpuRuntimeExecutable.
-  TF_ASSIGN_OR_RETURN(
-      auto gpu_runtime_executable,
-      GpuRuntimeExecutable::Create(buffer_sizes, std::move(*executable),
-                                   std::move(debug_options)));
+  TF_ASSIGN_OR_RETURN(auto gpu_runtime_executable,
+                      GpuRuntimeExecutable::Create(
+                          hlo_module->name(), buffer_sizes,
+                          std::move(*executable), std::move(debug_options)));
 
   // Construct GpuExecutable for the loaded XLA Runtime executable.
   std::string name = hlo_module->name();

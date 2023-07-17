@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -502,7 +503,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       int64_t output_size;
       int64_t pad_low_int64;
       int64_t pad_high_int64;
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
               input_spatial_dim[i]),
           conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
@@ -3739,6 +3740,33 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
                             rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
   return rewriter.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
+}
+
+Value ExpandedDynamicShape(PatternRewriter& rewriter, Value input,
+                           DenseIntElementsAttr broadcast_dimensions,
+                           Value output) {
+  assert(output.getType().cast<ShapedType>() &&
+         "output type must be of ShapedType");
+  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  llvm::SmallVector<int64_t, 4> expanded_dimensions;
+  llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  }
+  for (int64_t i = 0; i < output_rank; i++) {
+    if (!broadcast_dimensions_values.contains(i)) {
+      expanded_dimensions.push_back(i);
+    }
+  }
+  Value expanded_input = input;
+  for (int64_t i : expanded_dimensions) {
+    auto index_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({}, rewriter.getI64Type()), {i});
+    Value index = rewriter.create<TF::ConstOp>(output.getLoc(), index_attr);
+    expanded_input = rewriter.create<TF::ExpandDimsOp>(output.getLoc(),
+                                                       expanded_input, index);
+  }
+  return expanded_input;
 }
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"

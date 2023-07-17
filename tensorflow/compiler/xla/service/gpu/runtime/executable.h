@@ -93,12 +93,12 @@ class GpuRuntimeExecutable {
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
-      std::unique_ptr<GpuRuntimeProgram> program);
+      std::string module_name, std::unique_ptr<GpuRuntimeProgram> program);
 
   // Creates GpuRuntimeExecutable from the AOT compiled binary.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
-      absl::Span<const int64_t> buffer_sizes, runtime::Executable executable,
-      DebugOptions debug_options);
+      std::string module_name, absl::Span<const int64_t> buffer_sizes,
+      runtime::Executable executable, DebugOptions debug_options);
 
   // Executes entry function with the given buffer arguments.
   Status Execute(const ServiceExecutableRunOptions* run_options,
@@ -115,16 +115,22 @@ class GpuRuntimeExecutable {
   // Returns MLIR module behind this executable if it is available.
   StatusOr<std::string_view> GetMlirModule() const;
 
+  std::string_view module_name() const { return module_name_; }
+
  private:
-  GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
+  GpuRuntimeExecutable(std::string module_name,
+                       std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
                        DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
 
-  GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
+  GpuRuntimeExecutable(std::string module_name,
+                       std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
                        DebugOptions debug_options, ModulesState modules_state,
                        FfiModulesState ffi_modules_state);
+
+  std::string module_name_;
 
   // Depending on the state of `executable_` returns a reference to active
   // Xla runtime executable.

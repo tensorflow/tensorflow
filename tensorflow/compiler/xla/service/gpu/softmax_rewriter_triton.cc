@@ -69,6 +69,10 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
 bool BitcastIsTilingNoop(HloInstruction* bitcast) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
 
+  if (bitcast->shape().rank() == 0) {
+    return true;
+  }
+
   // In the Softmax rewriter for now, tiling is derived from a hero reduction
   // operation, which should be reducing its input on the last axis. Therefore,
   // a bitcast is always a no-op with regards to a tile if
@@ -213,6 +217,12 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
         reduce->dimensions(0) == producer->shape().rank() - 1 &&
         !absl::c_linear_search(broadcast->dimensions(),
                                broadcast->shape().rank() - 1))) {
+    return match_failure;
+  }
+
+  // TODO(b/291204753): remove this filter. This heuristic enables flipping the
+  // default flag while filtering out cases that could result in regressions.
+  if (reduce->operand(0)->shape().dimensions().back() < 64) {
     return match_failure;
   }
 

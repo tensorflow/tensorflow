@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -103,6 +104,7 @@ class GpuExecutable : public Executable {
     };
 
     std::unique_ptr<HloModule> debug_module = nullptr;
+    bool enable_debug_info_manager = true;
   };
 
   // Analyze the entry function to construct buffer allocation and other output
@@ -314,6 +316,7 @@ class GpuExecutable : public Executable {
   // Retains shared ownership of on-device constants that are managed by XLA and
   // potentially shared with other executables.
   std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
+  bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;

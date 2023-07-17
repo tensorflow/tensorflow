@@ -204,8 +204,7 @@ Status ConvertTfMlirToRuntimeExecutable(
       return diag_handler.Combine(absl::InternalError(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
-  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
-             options.use_bridge_for_gpu) {
+  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
     TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
@@ -300,7 +299,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pipeline_options->target_gpu =
       (options.device_target == TfrtDeviceInfraTarget::kGpu);
-  pipeline_options->use_bridge_for_gpu = options.use_bridge_for_gpu;
   pipeline_options->tpu_fuse_ops = options.tpu_fuse_ops;
   pipeline_options->use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;

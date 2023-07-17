@@ -3159,7 +3159,7 @@ py_strict_library(
 
 cuda_py_strict_test(
     name = "bitwise_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["bitwise_ops_test.py"],
     main = "bitwise_ops_test.py",
     python_version = "PY3",
@@ -3504,7 +3504,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "math_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["math_grad_test.py"],
     main = "math_grad_test.py",
     python_version = "PY3",

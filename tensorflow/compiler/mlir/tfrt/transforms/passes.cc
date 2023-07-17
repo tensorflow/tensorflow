@@ -215,8 +215,7 @@ void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
 }
 
 Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
-  if (options.target_tpurt &&
-      (options.target_gpu || options.use_bridge_for_gpu)) {
+  if (options.target_tpurt && options.target_gpu) {
     return tensorflow::errors::Internal(
         "Invalid pipeline options. Targeting both TPU and GPU is not "
         "supported.");

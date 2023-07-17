@@ -554,6 +554,10 @@ tsl::Status XlaCallModuleLoader::ValidateDialect() {
   return tsl::OkStatus();
 }
 
+absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
+  return xla::ValidateStaticShapes(*module_);
+}
+
 absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 

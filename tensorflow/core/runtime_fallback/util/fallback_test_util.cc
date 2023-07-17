@@ -72,7 +72,8 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       user_intra_op_threadpool, /*model_metadata=*/std::nullopt,
       /*runner=*/nullptr, /*cost_recorder=*/nullptr,
       /*client_graph_resource_context=*/resource_context,
-      /*cancellation_manager=*/nullptr);
+      /*cancellation_manager=*/nullptr,
+      /*runtime_config=*/nullptr);
   TF_DCHECK_OK(status);
 
   TF_DCHECK_OK(status);

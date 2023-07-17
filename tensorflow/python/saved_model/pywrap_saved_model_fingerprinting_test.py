@@ -97,9 +97,13 @@ class FingerprintingTest(test.TestCase):
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
         pywrap_fingerprinting.CreateFingerprintDef(export_dir))
     self.assertGreater(fingerprint.saved_model_checksum, 0)
-    self.assertEqual(fingerprint.graph_def_program_hash, 906548630859202535)
+    # We test for multiple fingerprints due to non-determinism when building
+    # with different compilation_mode flag options.
+    self.assertIn(fingerprint.graph_def_program_hash,
+                  [906548630859202535, 9562420523583756263])
     self.assertEqual(fingerprint.signature_def_hash, 1043582354059066488)
-    self.assertEqual(fingerprint.saved_object_graph_hash, 11894619660760763927)
+    self.assertIn(fingerprint.saved_object_graph_hash,
+                  [11894619660760763927, 2766043449526180728])
     self.assertEqual(fingerprint.checkpoint_hash, 0)
 
 

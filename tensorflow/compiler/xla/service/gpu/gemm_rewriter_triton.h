@@ -57,7 +57,7 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction&,
                                    GpuVersion gpu_version);
 
 // Filters GEMMs which are better to handle using Triton.
-bool ShouldTritonHandleGEMM(const HloInstruction&, GpuVersion gpu_version);
+bool ShouldTritonHandleGEMM(HloInstruction&, GpuVersion gpu_version);
 
 class TensorIterationSpec {
  public:

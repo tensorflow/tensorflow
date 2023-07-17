@@ -138,11 +138,14 @@ std::optional<int64_t> EstimateThreadCount(
     bool use_experimental_block_size) {
   auto fusion = DynCast<const HloFusionInstruction>(instr);
   if (fusion != nullptr && cc.has_value()) {
-    HloFusionAnalysis fusion_analysis(fusion, &gpu_device_info, cc.value());
-    auto launch_dimensions =
-        fusion_analysis.GetLaunchDimensions(use_experimental_block_size);
-    if (launch_dimensions.ok()) {
-      return launch_dimensions->launch_bound();
+    auto analysis =
+        HloFusionAnalysis::Create(fusion, &gpu_device_info, cc.value());
+    if (analysis.ok()) {
+      auto launch_dimensions =
+          analysis->GetLaunchDimensions(use_experimental_block_size);
+      if (launch_dimensions.ok()) {
+        return launch_dimensions->launch_bound();
+      }
     }
   }
   return std::nullopt;

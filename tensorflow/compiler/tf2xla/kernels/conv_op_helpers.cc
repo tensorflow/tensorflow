@@ -292,7 +292,7 @@ StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
     }
 
     int64_t unused_output_size;
-    TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
+    TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
         input_shape.dimensions(dim), filter_shape.dimensions(i),
         rhs_dilation[i], window_strides[i], attrs.padding, &unused_output_size,
         &padding[i].first, &padding[i].second));

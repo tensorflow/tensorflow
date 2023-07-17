@@ -648,7 +648,9 @@ ENTRY entry {
           .status());
 }
 
-TEST_F(TritonGemmTest, TritonCompilerCanFailOnConstants) {
+// Triton compiler used to have an issue with reordering constants:
+// https://github.com/openai/triton/issues/1864
+TEST_F(TritonGemmTest, TritonCompilerDoesNotFailOnConstants) {
   TF_CHECK_OK(GetOptimizedModule(R"(
 HloModule m, is_scheduled=true
 
@@ -850,7 +852,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonGemmLevel2Test, BroadcastOfConstantIsNotFused) {
+TEST_F(TritonGemmLevel2Test, BroadcastOfScalarConstantIsFused) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -859,19 +861,16 @@ ENTRY e {
   p0c = f32[70,30] convert(p0)
   constant_3663 = f32[] constant(4321)
   bc0 = f32[30,5] broadcast(constant_3663)
-  p1 = f32[30,5] parameter(1)
-  a = f32[30,5] add(p1, bc0)
-  ROOT d = f32[70,5] dot(p0c, a),
+  ROOT d = f32[70,5] dot(p0c, bc0),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK: constant
-; CHECK: broadcast
-; CHECK: fusion
-; CHECK-SAME: kind=kCustom
-)");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-3, /*arel=*/2e-3}));
 }
@@ -2011,43 +2010,6 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
-TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32WithShortRows) {
-  const std::string hlo_text = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f32[] parameter(0)
-  arg_1.1 = f32[] parameter(1)
-  ROOT add = f32[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f32[127,5]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f32[127,5]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f32[127,5]{1,0} subtract(param_0, broadcast)
-  exponential = f32[127,5]{1,0} exponential(subtract)
-  constant_zero = f32[] constant(0)
-  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f32[127,5]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f32[127,5]{1,0} divide(exponential, second_broadcast)
-}
-)";
-
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = f32[127,5]{1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
-}
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitFirstSoftmaxDiamondF16) {
   const std::string hlo_text = R"(

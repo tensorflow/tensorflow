@@ -252,6 +252,14 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckTernaryShape(const HloInstruction* instruction);
   Status CheckVariadicShape(const HloInstruction* instruction);
 
+  Status VerifyShardedCall(const HloInstruction* call, int64_t num_shards);
+
+  Status CheckOperandAndShardedParameter(const HloInstruction* instruction,
+                                         int64_t operand_number,
+                                         const HloComputation* computation,
+                                         int64_t parameter_number,
+                                         int64_t num_shards);
+
  private:
   bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
                                      bool minor_to_major_only = false) {
@@ -288,6 +296,17 @@ class ShapeVerifier : public DfsHloVisitor {
                                   int64_t operand_number,
                                   const HloComputation* computation,
                                   int64_t parameter_number);
+
+  // Checks that the shape of `operand` is compatible with `sharded_parameter`
+  // which resides within a "sharded" computation. An `operand` and
+  // `sharded_parameter` shape are compatible if for all of `operand`
+  // sub-shapes, the major dimension of the non-dynamic tensors in
+  // `sharded_parameter` are partitioned among `num_shards`.
+  //
+  // Precondition: `num_shards` > 1.
+  Status CheckShardedParameter(const HloInstruction* operand,
+                               const HloInstruction* sharded_parameter,
+                               int64_t num_shards);
 
   // Checks that the shape of async op operands and results match the called
   // computation parameters and root.

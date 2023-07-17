@@ -32,8 +32,9 @@ namespace xla {
 namespace pjrt {
 namespace {
 
-const bool kUnused =
-    (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); }), true);
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"gpu"),
+                      true);
 
 class PjrtCApiGpuTest : public ::testing::Test {
  protected:
@@ -73,17 +74,6 @@ class PjrtCApiGpuTest : public ::testing::Test {
     return create_args.client;
   }
 };
-
-TEST_F(PjrtCApiGpuTest, PlatformName) {
-  PJRT_Client_PlatformName_Args args;
-  args.client = client_;
-  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
-  ASSERT_EQ(error, nullptr);
-  absl::string_view platform_name(args.platform_name, args.platform_name_size);
-  ASSERT_EQ("gpu", platform_name);
-}
 
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
