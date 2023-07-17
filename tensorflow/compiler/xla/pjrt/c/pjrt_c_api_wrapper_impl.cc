@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -1281,13 +1280,37 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
 
   std::optional<std::vector<int64_t>>& unpadded_dims =
       args->buffer->unpadded_dims;
-  if (!unpadded_dims.has_value()) {
-    PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
-                          args->buffer->buffer->logical_dimensions());
-    unpadded_dims.emplace(std::move(dims));
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!unpadded_dims.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
+                            args->buffer->buffer->logical_dimensions());
+      unpadded_dims.emplace(std::move(dims));
+    }
   }
   args->unpadded_dims = unpadded_dims->data();
   args->num_dims = unpadded_dims->size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_GetMemoryLayout(
+    PJRT_Buffer_GetMemoryLayout_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_GetMemoryLayout_Args",
+      PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE, args->struct_size));
+
+  std::optional<BufferMemoryLayoutData>& layout_data =
+      args->buffer->layout_data;
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!layout_data.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(
+          BufferMemoryLayoutData data,
+          ConvertToBufferMemoryLayoutData(args->buffer->buffer->layout()));
+      layout_data.emplace(std::move(data));
+    }
+  }
+  args->layout = layout_data->c_layout;
   return nullptr;
 }
 

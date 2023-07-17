@@ -371,7 +371,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (device_layout != nullptr) {
     TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(device_layout));
+                        pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
     args.device_layout = &c_layout_data.c_layout;
   } else {
     args.device_layout = nullptr;
@@ -1322,6 +1322,27 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
   return absl::Span<const int64_t>(args.dims, args.num_dims);
 }
 
+const Layout& PjRtCApiBuffer::layout() const {
+  {
+    absl::MutexLock lock(&mu_);
+    if (!layout_.has_value()) {
+      PJRT_Buffer_GetMemoryLayout_Args args;
+      args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+      args.priv = nullptr;
+      args.buffer = buffer_.get();
+      pjrt::LogFatalIfPjrtError(
+          pjrt_c_api()->PJRT_Buffer_GetMemoryLayout(&args), pjrt_c_api());
+      CHECK_EQ(args.layout.type, PJRT_Buffer_MemoryLayout_Type_Tiled)
+          << "PjRtCApiBuffer only supports tiled device layouts";
+      absl::StatusOr<Layout> cpp_layout =
+          pjrt::ConvertToLayout(args.layout.tiled);
+      TF_CHECK_OK(cpp_layout.status());
+      layout_.emplace(*cpp_layout);
+    }
+  }
+  return *layout_;
+}
+
 StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
   PJRT_Buffer_UnpaddedDimensions_Args args;
   args.struct_size = PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE;
@@ -1484,7 +1505,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   xla::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {
     c_layout_data =
-        pjrt::ConvertToBufferMemoryLayoutData(&literal->shape().layout());
+        pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
     if (!c_layout_data.ok()) {
       return PjRtFuture<Status>(c_layout_data.status());
     }

@@ -869,6 +869,11 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
+  virtual const Layout& layout() const {
+    CHECK(on_device_shape().has_layout());
+    return on_device_shape().layout();
+  }
+
   virtual const Shape& on_device_shape() const = 0;
 
   // Same as dimensions() when the shape is static. When the shape is dynamic,
