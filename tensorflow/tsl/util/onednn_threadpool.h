@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_MKL_THREADPOOL_H_
-#define TENSORFLOW_CORE_UTIL_MKL_THREADPOOL_H_
+#ifndef TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_
+#define TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_
 #ifdef INTEL_MKL
 
 #include <list>
@@ -25,17 +25,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "dnnl_threadpool.hpp"
-#include "dnnl.hpp"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/util/onednn_env_vars.h"
-
 #define EIGEN_USE_THREADS
 
-namespace tensorflow {
+#include "dnnl.hpp"
+#include "dnnl_threadpool.hpp"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+
+namespace tsl {
 
 #ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::threadpool_interop::threadpool_iface;
@@ -75,28 +73,20 @@ inline void run_jobs(bool balance, int i, int n, int njobs,
   }
 }
 
-struct MklDnnThreadPool : public threadpool_iface {
-  MklDnnThreadPool() = default;
+class OneDnnThreadPool : public threadpool_iface {
+ public:
+  OneDnnThreadPool() = default;
 
-  MklDnnThreadPool(OpKernelContext* ctx, int num_threads = -1) {
-    eigen_interface_ = ctx->device()
-                           ->tensorflow_cpu_worker_threads()
-                           ->workers->AsEigenThreadPool();
-#if DNNL_VERSION_MAJOR >= 3 || \
-    (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
-    if (num_threads == -1) {
-      dnnl_threadpool_interop_set_max_concurrency(
-          eigen_interface_->NumThreads());
-      num_threads_ = eigen_interface_->NumThreads();
-    } else {
-      dnnl_threadpool_interop_set_max_concurrency(num_threads);
-      num_threads_ = num_threads;
-    }
-#else
-    num_threads_ =
-        num_threads == -1 ? eigen_interface_->NumThreads() : num_threads;
-#endif  // DNNL_VERSION_MAJOR >= 3 ||
-        // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+  OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface,
+                   int num_threads = -1)
+      : eigen_interface_(eigen_interface) {
+    set_num_and_max_threads(num_threads);
+  }
+  OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface,
+                   bool can_use_caller_thread, int num_threads = -1)
+      : eigen_interface_(eigen_interface),
+        can_use_caller_thread_(can_use_caller_thread) {
+    set_num_and_max_threads(num_threads);
   }
   virtual int get_num_threads() const override { return num_threads_; }
   virtual bool get_in_parallel() const override {
@@ -121,10 +111,10 @@ struct MklDnnThreadPool : public threadpool_iface {
     // If use_caller_thread, schedule njobs-1 jobs to thread pool and run last
     // job directly.
     const bool use_caller_thread =
-        ThreadPoolUseCallerThread() && nthr == port::NumSchedulableCPUs();
+        can_use_caller_thread_ && nthr == port::NumSchedulableCPUs();
     const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
 
-    BlockingCounter counter(njobs_to_schedule);
+    tsl::BlockingCounter counter(njobs_to_schedule);
     std::function<void(int, int)> handle_range = [=, &handle_range, &counter](
                                                      int first, int last) {
       while (last - first > 1) {
@@ -152,25 +142,38 @@ struct MklDnnThreadPool : public threadpool_iface {
     counter.Wait();
   }
 
-  ~MklDnnThreadPool() {}
+  ~OneDnnThreadPool() {}
 
  private:
   Eigen::ThreadPoolInterface* eigen_interface_ = nullptr;
-  int num_threads_ = 1;  // Execute in caller thread.
+  int num_threads_ = 1;                 // Execute in caller thread.
+  bool can_use_caller_thread_ = false;  // true if the user set the env variable
+                                        // to use caller thread also.
+  inline void set_num_and_max_threads(int num_threads) {
+    num_threads_ =
+        num_threads == -1 ? eigen_interface_->NumThreads() : num_threads;
+#if DNNL_VERSION_MAJOR >= 3 || \
+    (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+    dnnl_threadpool_interop_set_max_concurrency(num_threads_);
+#endif  // DNNL_VERSION_MAJOR >= 3 ||
+        // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+  }
 };
 
 #else
 
-// This struct was just added to enable successful OMP-based build.
-struct MklDnnThreadPool {
-  MklDnnThreadPool() = default;
-  MklDnnThreadPool(OpKernelContext* ctx) {}
-  MklDnnThreadPool(OpKernelContext* ctx, int num_threads) {}
+// This class was just added to enable successful OMP-based build.
+class OneDnnThreadPool {
+ public:
+  OneDnnThreadPool() = default;
+  OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface) {}
+  OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface,
+                   bool can_use_caller_thread, int num_threads = -1) {}
 };
 
 #endif  // !ENABLE_ONEDNN_OPENMP
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_UTIL_MKL_THREADPOOL_H_
+#endif  // TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_

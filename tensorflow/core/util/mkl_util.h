@@ -36,13 +36,13 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #ifdef DNNL_AARCH64_USE_ACL
 #include "tensorflow/core/platform/mutex.h"
 #endif
+#include "tensorflow/tsl/util/onednn_threadpool.h"
 
 using dnnl::engine;
 using dnnl::memory;
@@ -274,7 +274,7 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
   return true;
 }
 
-inline dnnl::stream* CreateStream(MklDnnThreadPool* eigen_tp,
+inline dnnl::stream* CreateStream(tsl::OneDnnThreadPool* eigen_tp,
                                   const engine& engine) {
 #ifndef ENABLE_ONEDNN_OPENMP
   if (eigen_tp != nullptr) {
@@ -649,6 +649,13 @@ class MklDnnShape {
   }
 };
 
+inline Eigen::ThreadPoolInterface* EigenThreadPoolFromTfContext(
+    OpKernelContext* context) {
+  return context->device()
+      ->tensorflow_cpu_worker_threads()
+      ->workers->AsEigenThreadPool();
+}
+
 // List of MklShape objects. Used in Concat/Split layers.
 typedef std::vector<MklDnnShape> MklDnnShapeList;
 
@@ -663,9 +670,14 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
   std::unique_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp;
+  // Create the oneDNN wrapper over Eigen threadpool and set max threads
+  // in oneDNN.
+  tsl::OneDnnThreadPool eigen_tp;
   if (context != nullptr) {
-    eigen_tp = MklDnnThreadPool(context);
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(context);
+    eigen_tp =
+        tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
     cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
   } else {
     cpu_stream.reset(CreateStream(nullptr, cpu_engine));
@@ -1602,9 +1614,12 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp;
+      tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
-        eigen_tp = MklDnnThreadPool(context);
+        Eigen::ThreadPoolInterface* eigen_interface =
+            EigenThreadPoolFromTfContext(context);
+        eigen_tp =
+            tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
       } else {
         cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
@@ -1669,9 +1684,12 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp;
+      tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
-        eigen_tp = MklDnnThreadPool(context);
+        Eigen::ThreadPoolInterface* eigen_interface =
+            EigenThreadPoolFromTfContext(context);
+        eigen_tp =
+            tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
       } else {
         cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
@@ -1780,9 +1798,12 @@ class MklDnnData {
     net_args.push_back(
         {{DNNL_ARG_FROM, *reorder_memory_}, {DNNL_ARG_TO, *user_memory_}});
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp;
+    tsl::OneDnnThreadPool eigen_tp;
     if (ctx != nullptr) {
-      eigen_tp = MklDnnThreadPool(ctx);
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      eigen_tp =
+          tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
       cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
     } else {
       cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));

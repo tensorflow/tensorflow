@@ -163,7 +163,6 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
-        "mkl_threadpool.h",
         "mkl_util.h",
         "onednn_env_vars.h",
         "overflow.h",
@@ -296,9 +295,9 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
-        "mkl_threadpool.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "//tensorflow/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

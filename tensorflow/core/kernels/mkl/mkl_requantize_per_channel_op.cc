@@ -115,7 +115,12 @@ class MklRequantizePerChannelOp : public OpKernel {
                  cpu_engine_, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
 
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),
