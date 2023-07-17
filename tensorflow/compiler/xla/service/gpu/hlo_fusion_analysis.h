@@ -76,8 +76,8 @@ class HloFusionAnalysis {
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
 
-  // Determines the launch dimensions for the fusion. The fusion kind must be
-  // one of `kLoop`, `kReduction` or `kTranspose`.
+  // Determines the launch dimensions for the fusion. The fusion kind must not
+  // be `kTriton`.
   StatusOr<LaunchDimensions> GetLaunchDimensions(
       bool use_experimental_block_size = false);
 

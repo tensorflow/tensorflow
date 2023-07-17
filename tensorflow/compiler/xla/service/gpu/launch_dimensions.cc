@@ -33,7 +33,7 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-static int64_t ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
+static int64_t ThreadsPerBlockLimit(const GpuDeviceInfo& gpu_device_info) {
   int64_t threads_per_block = gpu_device_info.threads_per_block_limit;
   if (threads_per_block <= 0) {
     static std::atomic<int64_t> log_count{0};
@@ -53,7 +53,7 @@ static int64_t ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 }
 
 int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
-                                     GpuDeviceInfo gpu_device_info,
+                                     const GpuDeviceInfo& gpu_device_info,
                                      LaunchDimensionsConfig dim_config) {
   if (shape.dimensions().empty()) {
     return -1;
@@ -75,7 +75,7 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
 }
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
-    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
     LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
@@ -97,7 +97,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
 }
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
-    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
     LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
@@ -200,7 +200,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
 }
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
     bool use_experimental_block_size, LaunchDimensionsConfig dim_config) {
   if (use_experimental_block_size) {
     VLOG(2) << "Experimental block size is enabled";

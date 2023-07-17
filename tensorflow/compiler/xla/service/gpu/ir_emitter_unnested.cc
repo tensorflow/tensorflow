@@ -2077,9 +2077,9 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return EmitUnnestedTranspose(fusion_op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return EmitInputFusibleNonStridedSlices(op);
+      return EmitInputFusibleNonStridedSlices(op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
-      return EmitScatter(fusion_op, fused_computation);
+      return EmitScatter(fusion_op, fused_computation, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // Special case: DUS
       bool is_single = IsSingleInstructionFusion(fusion_op);
@@ -5043,25 +5043,19 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
-    mlir::Operation* op) {
+    mlir::Operation* op, HloFusionAnalysis& fusion_analysis) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  constexpr int unroll_factor = 1;
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
                                                           /*is_fusion=*/true));
 
-  TF_ASSIGN_OR_RETURN(Shape element_shape,
-                      GetConsistentInputShapeForRootSlices(fused_computation));
   bool use_experimental_block_size =
       hlo_module_config_.debug_options()
           .xla_gpu_enable_experimental_block_size();
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          element_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size, {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
@@ -5072,6 +5066,8 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   }
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
 
+  TF_ASSIGN_OR_RETURN(Shape element_shape,
+                      GetConsistentInputShapeForRootSlices(fused_computation));
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(fused_computation,
@@ -5178,7 +5174,8 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                                      const HloComputation* fused_computation) {
+                                      const HloComputation* fused_computation,
+                                      HloFusionAnalysis& fusion_analysis) {
   auto* root = fused_computation->root_instruction();
 
   // The initialization from 'operand' is using different loop bounds, so
@@ -5190,12 +5187,9 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 
   TF_RETURN_IF_ERROR([&] {
     auto unroll_factor = ComputeMaxUnrollFactor(fusion_op);
-    const Shape& element_shape = root->shape();
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
-        CalculateLaunchDimensions(
-            element_shape, ir_emitter_context_->gpu_device_info(),
-            use_experimental_block_size, {unroll_factor, /*few_waves=*/false}));
+        fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
     TF_ASSIGN_OR_RETURN(
         std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,

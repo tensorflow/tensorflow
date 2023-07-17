@@ -324,7 +324,35 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
       return LaunchDimensions(tiling_scheme->GetNumberOfBlocksPhysical(),
                               tiling_scheme->GetNumThreadsPerBlockPhysical());
     }
-    default:
+    case EmitterFusionKind::kInputSlices: {
+      auto* root =
+          fusion_->fused_instructions_computation()->root_instruction();
+      xla::Shape shape;
+      if (root->opcode() == HloOpcode::kSlice) {
+        shape = root->operands()[0]->shape();
+      } else {
+        CHECK_EQ(root->opcode(), HloOpcode::kTuple);
+        // We already verified that the shapes are compatible in
+        // `GetEmitterFusionKind`.
+        shape = root->operands()[0]->operands()[0]->shape();
+      }
+      constexpr int kUnrollFactor = 1;
+      return CalculateLaunchDimensions(
+          shape, *device_info_, use_experimental_block_size, {kUnrollFactor});
+    }
+    case EmitterFusionKind::kScatter: {
+      const auto& root_shape = fusion_->fused_instructions_computation()
+                                   ->root_instruction()
+                                   ->shape();
+      int64_t num_elements = ShapeUtil::ElementsIn(root_shape);
+      int unroll_factor = num_elements % 4 == 0   ? 4
+                          : num_elements % 2 == 0 ? 2
+                                                  : 1;
+      return CalculateLaunchDimensions(root_shape, *device_info_,
+                                       use_experimental_block_size,
+                                       {unroll_factor, /*few_waves=*/false});
+    }
+    case EmitterFusionKind::kTriton:
       return Unimplemented("GetLaunchDimensions");
   }
 }
