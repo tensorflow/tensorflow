@@ -31,8 +31,12 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -193,6 +197,7 @@ DECL_CONVERT_OP(While);
 DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
 DECL_CONVERT_OP(RFFT2d);
+DECL_CONVERT_OP(Range);
 
 #undef DECL_CONVERT_OP
 
@@ -4474,6 +4479,89 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<mlir::UnrealizedConversionCastOp>(
       rewriter, op, output_type, concat.getResult());
+
+  return success();
+}
+
+LogicalResult ConvertTFLRangeOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  
+  auto tfl_range_op = cast<TFL::RangeOp>(op);
+  auto loc = op->getLoc();
+  auto tensor_type = tfl_range_op.getType();
+  auto scalar_type = tensor_type.getElementType();
+
+  // Convert arguments to scalars
+  auto start_scalar =
+      rewriter.create<tensor::ExtractOp>(loc, tfl_range_op.getStart());
+  auto limit_scalar =
+      rewriter.create<tensor::ExtractOp>(loc, tfl_range_op.getLimit());
+  auto delta_scalar =
+      rewriter.create<tensor::ExtractOp>(loc, tfl_range_op.getDelta());
+
+  // Remaining code depends on whether we are operating with integers or floats
+  if (isa<IntegerType>(scalar_type)) {
+    // Calculate range size
+    auto bounds_diff =
+        rewriter.create<arith::SubIOp>(loc, limit_scalar, start_scalar);
+    auto bounds_diff_abs = rewriter.create<math::AbsIOp>(loc, bounds_diff);
+    auto delta_abs = rewriter.create<math::AbsIOp>(loc, delta_scalar);
+    auto bounds_diff_plus_delta =
+        rewriter.create<arith::AddIOp>(loc, bounds_diff_abs, delta_abs);
+    auto one = rewriter.create<arith::ConstantIntOp>(loc, 1, scalar_type);
+    auto bounds_diff_plus_delta_dec =
+        rewriter.create<arith::SubIOp>(loc, bounds_diff_plus_delta, one);
+    auto range_size = rewriter.create<arith::DivUIOp>(
+        loc, bounds_diff_plus_delta_dec, delta_abs);
+    auto range_size_index = rewriter.create<index::CastUOp>(
+        loc, rewriter.getIndexType(), range_size);
+
+    // Generate range
+    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
+        op, tensor_type, range_size_index.getResult(),
+        [&](OpBuilder& rewriter, Location loc, ValueRange indices) {
+          assert(indices.size() == 1);
+          auto index = indices.front();
+          auto index_int =
+              rewriter.create<index::CastUOp>(loc, scalar_type, index);
+          auto offset =
+              rewriter.create<arith::MulIOp>(loc, index_int, delta_scalar);
+          auto value =
+              rewriter.create<arith::AddIOp>(loc, start_scalar, offset);
+          rewriter.create<tensor::YieldOp>(loc, value);
+        });
+  } else {
+    assert(isa<FloatType>(scalar_type));
+
+    // Calculate range size
+    auto bounds_diff =
+        rewriter.create<arith::SubFOp>(loc, limit_scalar, start_scalar);
+    auto range_size_signed =
+        rewriter.create<arith::DivFOp>(loc, bounds_diff, delta_scalar);
+    auto range_size_abs = rewriter.create<math::AbsFOp>(loc, range_size_signed);
+    auto range_size = rewriter.create<math::CeilOp>(loc, range_size_abs);
+    auto range_size_int = rewriter.create<arith::FPToUIOp>(
+        loc, rewriter.getI32Type(), range_size);
+    auto range_size_index = rewriter.create<index::CastUOp>(
+        loc, rewriter.getIndexType(), range_size_int);
+
+    // Generate range
+    rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
+        op, tensor_type, range_size_index.getResult(),
+        [&](OpBuilder& rewriter, Location loc, ValueRange indices) {
+          assert(indices.size() == 1);
+          auto index = indices.front();
+          auto index_int = rewriter.create<index::CastUOp>(
+              loc, rewriter.getI32Type(), index);
+          auto index_fp =
+              rewriter.create<arith::UIToFPOp>(loc, scalar_type, index_int);
+          auto offset =
+              rewriter.create<arith::MulFOp>(loc, index_fp, delta_scalar);
+          auto value =
+              rewriter.create<arith::AddFOp>(loc, start_scalar, offset);
+          rewriter.create<tensor::YieldOp>(loc, value);
+        });
+  }
 
   return success();
 }

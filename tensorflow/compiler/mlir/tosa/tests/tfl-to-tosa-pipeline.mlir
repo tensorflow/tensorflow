@@ -2782,6 +2782,81 @@ func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>
 
 // -----
 
+// CHECK-LABEL: test_range_constant
+// CHECK: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0, 2, 4, 6, 8]> : tensor<5xi32>}> : () -> tensor<5xi32>
+// CHECK: return %[[VAR0]] : tensor<5xi32>
+func.func @test_range_constant() -> tensor<5xi32> {
+  %0 = arith.constant dense<0> : tensor<i32>
+  %1 = arith.constant dense<10> : tensor<i32>
+  %2 = arith.constant dense<2> : tensor<i32>
+  %3 = "tfl.range"(%0, %1, %2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<5xi32>
+  return %3 : tensor<5xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_range_variable_int
+// CHECK-SAME: %[[START:.*]]: tensor<i32>, %[[LIMIT:.*]]: tensor<i32>, %[[DELTA:.*]]: tensor<i32>
+
+// CHECK-DAG: %[[START_SCALAR:.*]] = tensor.extract %[[START]][] : tensor<i32>
+// CHECK-DAG: %[[LIMIT_SCALAR:.*]] = tensor.extract %[[LIMIT]][] : tensor<i32>
+// CHECK-DAG: %[[DELTA_SCALAR:.*]] = tensor.extract %[[DELTA]][] : tensor<i32>
+
+// CHECK-DAG: %[[BOUNDS_DIFF:.*]] = arith.subi %[[LIMIT_SCALAR]], %[[START_SCALAR]] : i32
+// CHECK-DAG: %[[BOUNDS_DIFF_ABS:.*]] = math.absi %[[BOUNDS_DIFF]] : i32
+// CHECK-DAG: %[[DELTA_ABS:.*]] = math.absi %[[DELTA_SCALAR]] : i32
+// CHECK-DAG: %[[BOUNDS_DIFF_PLUS_DELTA:.*]] = arith.addi %[[BOUNDS_DIFF_ABS]], %[[DELTA_ABS]] : i32
+// CHECK-DAG: %[[ONE:.*]] = arith.constant 1 : i32
+// CHECK-DAG: %[[BOUNDS_DIFF_PLUS_DELTA_DEC:.*]] = arith.subi %[[BOUNDS_DIFF_PLUS_DELTA]], %[[ONE]] : i32
+// CHECK-DAG: %[[RANGE_SIZE:.*]] = arith.divui %[[BOUNDS_DIFF_PLUS_DELTA_DEC]], %[[DELTA_ABS]] : i32
+// CHECK-DAG: %[[RANGE_SIZE_INDEX:.*]] = index.castu %[[RANGE_SIZE]] : i32 to index
+
+// CHECK: %[[RANGE:.*]] = tensor.generate %[[RANGE_SIZE_INDEX]] {
+// CHECK: ^bb0(%[[INDEX:.*]]: index):
+// CHECK-DAG: %[[INDEX_INT:.*]] = index.castu %[[INDEX]] : index to i32
+// CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[INDEX_INT]], %[[DELTA_SCALAR]] : i32
+// CHECK-DAG: %[[VALUE:.*]] = arith.addi %[[START_SCALAR]], %[[OFFSET]] : i32
+// CHECK: tensor.yield %[[VALUE]] : i32
+
+// CHECK: return %[[RANGE]] : tensor<?xi32>
+
+func.func @test_range_variable_int(%start : tensor<i32>, %limit : tensor<i32>, %delta : tensor<i32>) -> tensor<?xi32> {
+  %range = "tfl.range"(%start, %limit, %delta) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %range : tensor<?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_range_variable_fp
+// CHECK-SAME: %[[START:.*]]: tensor<f32>, %[[LIMIT:.*]]: tensor<f32>, %[[DELTA:.*]]: tensor<f32>
+
+// CHECK-DAG: %[[START_SCALAR:.*]] = tensor.extract %[[START]][] : tensor<f32>
+// CHECK-DAG: %[[LIMIT_SCALAR:.*]] = tensor.extract %[[LIMIT]][] : tensor<f32>
+// CHECK-DAG: %[[DELTA_SCALAR:.*]] = tensor.extract %[[DELTA]][] : tensor<f32>
+  
+// CHECK-DAG: %[[BOUNDS_DIFF:.*]] = arith.subf %[[LIMIT_SCALAR]], %[[START_SCALAR]] : f32
+// CHECK-DAG: %[[RANGE_SIZE_SIGNED:.*]] = arith.divf %[[BOUNDS_DIFF]], %[[DELTA_SCALAR]] : f32
+// CHECK-DAG: %[[RANGE_SIZE_ABS:.*]] = math.absf %[[RANGE_SIZE_SIGNED]] : f32
+// CHECK-DAG: %[[RANGE_SIZE:.*]] = math.ceil %[[RANGE_SIZE_ABS]] : f32
+// CHECK-DAG: %[[RANGE_SIZE_INT:.*]] = arith.fptoui %[[RANGE_SIZE]] : f32 to i32
+// CHECK-DAG: %[[RANGE_SIZE_INDEX:.*]] = index.castu %[[RANGE_SIZE_INT]] : i32 to index
+
+// CHECK: %[[RANGE:.*]] = tensor.generate %[[RANGE_SIZE_INDEX]] {
+// CHECK: ^bb0(%[[INDEX:.*]]: index):
+// CHECK-DAG: %[[INDEX_INT:.*]] = index.castu %[[INDEX]] : index to i32
+// CHECK-DAG: %[[INDEX_FP:.*]] = arith.uitofp %[[INDEX_INT]] : i32 to f32
+// CHECK-DAG: %[[OFFSET:.*]] = arith.mulf %[[INDEX_FP]], %[[DELTA_SCALAR]] : f32
+// CHECK-DAG: %[[VALUE:.*]] = arith.addf %[[START_SCALAR]], %[[OFFSET]] : f32
+// CHECK: tensor.yield %[[VALUE]] : f32
+
+// CHECK:  return %[[RANGE]] : tensor<?xf32>
+func.func @test_range_variable_fp(%start : tensor<f32>, %limit : tensor<f32>, %delta : tensor<f32>) -> tensor<?xf32> {
+  %range = "tfl.range"(%start, %limit, %delta) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+  return %range : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_squared_difference_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg1)
