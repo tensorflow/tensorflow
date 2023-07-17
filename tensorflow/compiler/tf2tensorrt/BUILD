@@ -844,6 +844,7 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        "notap",  # Fails w/ tensorrt 8.x
     ],
     deps = [
         ":testutils",
