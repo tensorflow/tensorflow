@@ -1970,6 +1970,13 @@ class TritonSoftmaxTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
     return debug_options;
   }
+
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
 };
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32) {
@@ -2325,6 +2332,49 @@ ENTRY main {
 ; CHECK-SAME:   kind=kCustom
 ; CHECK-SAME:   __triton_softmax
 )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectlyForAmpereAndVoltaComputeCapability) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = bf16[127,125]{1,0} parameter(0)
+  param_0_f32 = f32[127,125]{1,0} convert(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0_f32, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0_f32, broadcast)
+}
+)";
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  } else {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
+; CHECK:      %[[CONVERT:.*]] = f32[127,125]{1,0} convert(%[[P0]])
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[CONVERT]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
