@@ -194,7 +194,9 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   Args:
     t: A `Tensor` or `IndexedSlices`.  This must be a floating point type.
     clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value, also
-      floating point
+      floating point.
+      Note: If clip_norm given as a negative value then it will be converted
+       into Zero internally and exception will not be raised here.
     axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
       dimensions.
@@ -212,8 +214,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
-    if clip_norm < 0:
-      raise ValueError('clip_norm should be a 0-D (scalar) Tensor > 0')
+    clip_norm = math_ops.maximum(clip_norm, 0)
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
