@@ -321,7 +321,12 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         for p in inc_dirs.split("\n")
     ]
 
-    # fix include path by also including paths where resolved symlink is replaced by original path
+    # The compiler might be on a symlink, e.g. /symlink -> /opt/gcc
+    # The above keeps only the resolved paths to the default includes (e.g. /opt/gcc/include/c++/11)
+    # but Bazel might encounter either (usually reported by the compiler)
+    # especially when a compiler wrapper (e.g. ccache) is used.
+    # So we need to also include paths where symlinks are not resolved.
+
     # Try to find real path to CC installation to "see through" compiler wrappers
     # GCC has the path to g++
     index1 = result.stderr.find("COLLECT_GCC=")
@@ -339,10 +344,19 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
       else:
         # Fallback to the CC path
         cc_topdir = repository_ctx.path(cc).dirname.dirname
+    # We now have the GCC installation prefix, e.g. /symlink/gcc
     cc_topdir_resolved = str(cc_topdir.realpath).strip()
     cc_topdir = str(cc_topdir).strip()
+    # If there is (any!) symlink involved we add paths where the unresolved installation prefix is kept.
+    # e.g.   [/symlink/include/c++/11, /symlink/lib/gcc/x86_64-linux-gnu/11/include, /other/path]
+    # yields [/symlink/include/c++/11, /symlink/lib/gcc/x86_64-linux-gnu/11/include, /other/path] +
+    #        [/opt/gcc/include/c++/11, /opt/gcc/lib/gcc/x86_64-linux-gnu/11/include]
     if cc_topdir_resolved != cc_topdir:
-        original_compiler_includes = [p.replace(cc_topdir_resolved, cc_topdir) for p in compiler_includes]
+        original_compiler_includes = [
+            inc.replace(cc_topdir_resolved, cc_topdir)
+            for inc in compiler_includes
+            cc_topdir_resolved in inc
+        ]
         compiler_includes = compiler_includes + original_compiler_includes
     return compiler_includes
 
