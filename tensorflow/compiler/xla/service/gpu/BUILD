@@ -1250,13 +1250,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:statusor",
     ]) + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/tsl/platform:statusor",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:hipblas_lt_header",
-    ]) + ["//tensorflow/tsl/platform:logging"],
+    ]),
 )
 
 cc_library(
@@ -1381,7 +1381,7 @@ cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    # compatible_with = get_compatible_with_cloud(),
     defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":backend_configs_cc",

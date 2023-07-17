@@ -1141,7 +1141,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   }
 
   TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
                       cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),

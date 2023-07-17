@@ -42,7 +42,7 @@ namespace gpu {
 class CublasLtMatmulThunk : public Thunk {
  public:
   CublasLtMatmulThunk(ThunkInfo thunk_info, GemmConfig gemm_config,
-                      se::cuda::BlasLt::Epilogue epilogue,
+                      se::gpu::BlasLt::Epilogue epilogue,
                       int64_t algorithm_idx, BufferAllocation::Slice a_buffer,
                       BufferAllocation::Slice b_buffer,
                       BufferAllocation::Slice c_buffer,
@@ -67,7 +67,7 @@ class CublasLtMatmulThunk : public Thunk {
       matmul_plans_cache_ ABSL_GUARDED_BY(matmul_plans_cache_mutex_);
 
   GemmConfig gemm_config_;
-  se::cuda::BlasLt::Epilogue epilogue_;
+  se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
   BufferAllocation::Slice a_buffer_;
   BufferAllocation::Slice b_buffer_;

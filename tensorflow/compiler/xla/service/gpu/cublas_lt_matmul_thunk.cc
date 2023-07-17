@@ -35,7 +35,7 @@ namespace gpu {
 
 CublasLtMatmulThunk::CublasLtMatmulThunk(
     ThunkInfo thunk_info, GemmConfig gemm_config,
-    se::cuda::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+    se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
     BufferAllocation::Slice a_buffer, BufferAllocation::Slice b_buffer,
     BufferAllocation::Slice c_buffer, BufferAllocation::Slice d_buffer,
     BufferAllocation::Slice bias_buffer, BufferAllocation::Slice aux_buffer,
@@ -63,7 +63,7 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
                       GetMatmulPlan(params.stream));
   if (!algorithm_) {
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
         plan->GetAlgorithms(params.stream));
     TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
     algorithm_ = algorithms[algorithm_idx_];

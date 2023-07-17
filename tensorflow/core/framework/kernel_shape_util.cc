@@ -21,10 +21,10 @@ limitations under the License.
 
 namespace tensorflow {
 Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
-                                    int64_t dilation_rate, int64_t stride,
-                                    Padding padding_type, int64_t* output_size,
-                                    int64_t* padding_before,
-                                    int64_t* padding_after) {
+                                      int64_t dilation_rate, int64_t stride,
+                                      Padding padding_type, int64_t* output_size,
+                                      int64_t* padding_before,
+                                      int64_t* padding_after) {
   if (stride <= 0) {
     return errors::InvalidArgument("Stride must be > 0, but got ", stride);
   }
