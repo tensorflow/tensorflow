@@ -140,7 +140,8 @@ void RegisterSharding(py::module& m) {
   py::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
                                                    py::dynamic_attr())
       .def(py::init<py::object, py::object, py::object>(), py::arg("mesh"),
-           py::arg("spec"), py::arg("_parsed_pspec") = py::none())
+           py::arg("spec"), py::kw_only(),
+           py::arg("_parsed_pspec") = py::none())
       .def_property_readonly("mesh", &NamedSharding::mesh)
       .def_property_readonly("spec", &NamedSharding::spec)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
