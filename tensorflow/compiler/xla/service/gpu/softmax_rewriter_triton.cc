@@ -78,7 +78,7 @@ bool BitcastIsTilingNoop(HloInstruction* bitcast,
                          const GpuVersion& gpu_version) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
 
-  if (bitcast->shape().rank() == 0) {
+  if (ShapeUtil::IsEffectiveScalar(bitcast->shape())) {
     return true;
   }
 
