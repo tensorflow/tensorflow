@@ -16,12 +16,17 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
 namespace xla {
 namespace pjrt {
 namespace {
+
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"cpu"),
+                      true);
 
 class PjrtCApiCpuTest : public ::testing::Test {
  protected:
@@ -61,37 +66,6 @@ class PjrtCApiCpuTest : public ::testing::Test {
     return create_args.client;
   }
 };
-
-TEST_F(PjrtCApiCpuTest, ClientProcessIndex) {
-  PJRT_Client_ProcessIndex_Args process_index_args =
-      PJRT_Client_ProcessIndex_Args{
-          .struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE,
-          .priv = nullptr,
-          .client = client_,
-          .process_index = -1,
-      };
-  PJRT_Error* error = api_->PJRT_Client_ProcessIndex(&process_index_args);
-  CHECK_EQ(error, nullptr);
-
-  // Single-process test should return 0
-  CHECK_EQ(process_index_args.process_index, 0);
-}
-
-TEST_F(PjrtCApiCpuTest, PlatformName) {
-  PJRT_Client_PlatformName_Args args;
-  args.client = client_;
-  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
-  ASSERT_EQ(error, nullptr);
-  absl::string_view platform_name(args.platform_name, args.platform_name_size);
-  ASSERT_EQ("cpu", platform_name);
-}
-
-TEST_F(PjrtCApiCpuTest, ApiVersion) {
-  CHECK_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
-  CHECK_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
-}
 
 }  // namespace
 }  // namespace pjrt

@@ -197,20 +197,21 @@ StatusOr<mlir::Operation*> UnpackSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(
       int axis, CanonicalizeAxis(unpack.getAxis(), /*packed_rank=*/input_rank));
 
-  if (input_layout->num_shards_for_dim(input_layout->dim(axis)) != 1) {
+  if (input_layout->num_shards_for_dim(axis) != 1) {
     // If the axis being unpacked is sharded, relayout to replicated along that
     // axis since each device needs to split across it.
-    std::vector<ShardingSpec> new_layout_specs(input_rank);
+    std::vector<std::string> new_layout_specs(input_rank);
     for (int input_index = 0; input_index < input_rank; ++input_index) {
       if (input_index == axis) {
-        new_layout_specs[input_index].set_sharding_spec(Layout::kUnshardedDim);
+        new_layout_specs[input_index] = Layout::kUnshardedDim;
       } else {
-        new_layout_specs[input_index] = input_layout->dim(input_index);
+        new_layout_specs[input_index] =
+            input_layout->sharding_spec(input_index);
       }
     }
     TF_ASSIGN_OR_RETURN(
         Layout new_input_layout,
-        Layout::GetLayout(std::move(new_layout_specs), input_layout->mesh()));
+        Layout::GetLayout(new_layout_specs, input_layout->mesh()));
     TF_ASSIGN_OR_RETURN(
         mlir::Value new_input,
         EmitRelayout(unpack.getOperand(), *input_layout, new_input_layout));
@@ -250,15 +251,12 @@ Status VerifyPaddedDimensionNotSharded(const Layout& layout,
 
   const auto input_shape = input_type.getShape();
   const auto output_shape = input_type.getShape();
-  for (const auto& dim_shard_and_index :
-       llvm::enumerate(layout.sharding_specs())) {
-    const int index = dim_shard_and_index.index();
-    const auto& tensor_dimension = dim_shard_and_index.value();
+  for (int index = 0; index < layout.rank(); ++index) {
     const int input_shape_for_dim = input_shape[index];
     const int output_shape_for_dim = output_shape[index];
     if ((input_shape_for_dim == -1 || output_shape_for_dim == -1 ||
          output_shape_for_dim != input_shape_for_dim) &&
-        layout.num_shards_for_dim(tensor_dimension) > 1) {
+        layout.num_shards_for_dim(index) > 1) {
       return errors::InvalidArgument(
           "Padding over sharded dimension is not allowed.");
     }
@@ -346,11 +344,10 @@ namespace {
 Status VerifyTileOperandLayout(const Layout& operand_layout,
                                llvm::ArrayRef<int64_t> static_multiples) {
   for (const auto& tensor_dim_and_multiple :
-       llvm::zip(operand_layout.sharding_specs(), static_multiples)) {
-    const auto& tensor_dimension = std::get<0>(tensor_dim_and_multiple);
-    const int64_t multiple_factor = std::get<1>(tensor_dim_and_multiple);
-    if (multiple_factor > 1 &&
-        operand_layout.num_shards_for_dim(tensor_dimension) > 1)
+       llvm::enumerate(static_multiples)) {
+    const auto& index = tensor_dim_and_multiple.index();
+    const int64_t multiple_factor = tensor_dim_and_multiple.value();
+    if (multiple_factor > 1 && operand_layout.num_shards_for_dim(index) > 1)
       return errors::InvalidArgument(
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
@@ -486,12 +483,11 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutForward(
   const Layout input_layout = input_layouts.lookup(0);
   std::vector<std::string> output_layout_specs;
   for (const auto& multiple_and_dim_sharding :
-       llvm::zip(static_multiple, input_layout.sharding_specs())) {
+       llvm::zip(static_multiple, input_layout.sharding_spec_strs())) {
     const int multiple = std::get<0>(multiple_and_dim_sharding);
     const auto& tensor_dimension = std::get<1>(multiple_and_dim_sharding);
-    output_layout_specs.push_back(multiple == 1
-                                      ? tensor_dimension.sharding_spec()
-                                      : Layout::kUnshardedDim);
+    output_layout_specs.push_back(multiple == 1 ? tensor_dimension
+                                                : Layout::kUnshardedDim);
   }
 
   TF_ASSIGN_OR_RETURN(const Layout output_layout,
@@ -542,12 +538,11 @@ StatusOr<llvm::DenseMap<int, Layout>> TileSPMDExpander::ComputeLayoutBackward(
     const Layout output_layout = output_layouts.lookup(0);
     std::vector<std::string> input_layout_specs;
     for (const auto& multiple_and_dim_sharding :
-         llvm::zip(static_multiple, output_layout.sharding_specs())) {
+         llvm::zip(static_multiple, output_layout.sharding_spec_strs())) {
       const int multiple = std::get<0>(multiple_and_dim_sharding);
       const auto& tensor_dimension = std::get<1>(multiple_and_dim_sharding);
-      input_layout_specs.push_back(multiple == 1
-                                       ? tensor_dimension.sharding_spec()
-                                       : Layout::kUnshardedDim);
+      input_layout_specs.push_back(multiple == 1 ? tensor_dimension
+                                                 : Layout::kUnshardedDim);
     }
     TF_ASSIGN_OR_RETURN(const Layout input_layout,
                         Layout::GetLayout(input_layout_specs, mesh));
@@ -648,8 +643,8 @@ StatusOr<Layout> MakeLayoutForReshape(
   // first entry of the input segment divides the output shape on the first
   // entry of the output segment, we request a sharded layout on that axis.
   for (int i = 0; i < input_segment_start.size(); ++i) {
-    const int num_shards = input_layout.num_shards_for_dim(
-        input_layout.dim(input_segment_start[i]));
+    const int num_shards =
+        input_layout.num_shards_for_dim(input_segment_start[i]);
     if (output_shape[output_segment_start[i]] % num_shards == 0)
       layout_specs[output_segment_start[i]] =
           input_layout.sharding_spec(input_segment_start[i]);
@@ -711,8 +706,8 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
   //   inserted. For example, reshape a [2, 4, 3] shape tensor with layout
   //   ['not_sharded', 'x', 'not_sharded'] to [2, 12] shape tensor fully
   //   replicated can be supported.
-  std::vector<ShardingSpec> tgt_input_layout(input_layout->rank());
-  std::vector<ShardingSpec> tgt_output_layout(output_layout->rank());
+  std::vector<std::string> tgt_input_layout(input_layout->rank());
+  std::vector<std::string> tgt_output_layout(output_layout->rank());
 
   for (int i = 0; i < input_segment_start.size(); ++i) {
     const int input_start = input_segment_start[i];
@@ -724,14 +719,13 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
     // Between this segment and the last segment, if there is a gap, insert
     // dimensions of size 1 and kUnshardedDim as output layout dim.
     for (int j = prev_input_segment_end; j < input_start; ++j)
-      tgt_input_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+      tgt_input_layout[j] = Layout::kUnshardedDim;
     for (int j = prev_output_segment_end; j < output_start; ++j) {
       local_reshape_const.emplace_back(1);
-      tgt_output_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+      tgt_output_layout[j] = Layout::kUnshardedDim;
     }
 
-    const int num_input_shards =
-        input_layout->num_shards_for_dim(input_layout->dim(input_start));
+    const int num_input_shards = input_layout->num_shards_for_dim(input_start);
 
     // Decide on the sharding of the input for this segment.
     // If the input is already sharded, we try to keep this sharding (unless
@@ -740,31 +734,32 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
     // we could 'preshard' the input on this dimension before the reshape.
     // This is unlikely to have any major gains in performance.
     if (global_output_shape[output_start] % num_input_shards != 0) {
-      tgt_input_layout[input_start].set_sharding_spec(Layout::kUnshardedDim);
-      tgt_output_layout[output_start].set_sharding_spec(Layout::kUnshardedDim);
+      tgt_input_layout[input_start] = Layout::kUnshardedDim;
+      tgt_output_layout[output_start] = Layout::kUnshardedDim;
       local_reshape_const.emplace_back(global_output_shape[output_start]);
     } else {
-      tgt_input_layout[input_start] = input_layout->dim(input_start);
-      tgt_output_layout[output_start] = input_layout->dim(input_start);
+      tgt_input_layout[input_start] = input_layout->sharding_spec(input_start);
+      tgt_output_layout[output_start] =
+          input_layout->sharding_spec(input_start);
       local_reshape_const.emplace_back(global_output_shape[output_start] /
                                        num_input_shards);
     }
 
     for (int j = input_start + 1; j < input_segment_end[i]; ++j)
-      tgt_input_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+      tgt_input_layout[j] = Layout::kUnshardedDim;
     for (int j = output_start + 1; j < output_segment_end[i]; ++j) {
       local_reshape_const.emplace_back(global_output_shape[j]);
-      tgt_output_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+      tgt_output_layout[j] = Layout::kUnshardedDim;
     }
   }
 
   // Fill any remaining dimensions of size 1 and sharding dim on the end of the
   // layout.
   for (int j = input_segment_end.back(); j < tgt_input_layout.size(); ++j)
-    tgt_input_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+    tgt_input_layout[j] = Layout::kUnshardedDim;
   for (int j = output_segment_end.back(); j < tgt_output_layout.size(); ++j) {
     local_reshape_const.emplace_back(1);
-    tgt_output_layout[j].set_sharding_spec(Layout::kUnshardedDim);
+    tgt_output_layout[j] = Layout::kUnshardedDim;
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -889,8 +884,8 @@ StatusOr<mlir::Operation*> TransposeSPMDExpander::ExpandOp(
     TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
     for (const auto& p : llvm::enumerate(perm)) {
-      if (operand_layout->dim(p.value()).sharding_spec() !=
-          output_layout->dim(p.index()).sharding_spec()) {
+      if (operand_layout->sharding_spec(p.value()) !=
+          output_layout->sharding_spec(p.index())) {
         return errors::InvalidArgument(
             "TransposeOp SPMD needs communication is not supported yet. \n "
             "operand layout: ",
@@ -969,12 +964,12 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
         " SPMD expansion. Consider adding Relayout() op to specify the "
         "layout.");
 
-  std::vector<ShardingSpec> sharding_specs(input_layout->rank());
+  std::vector<std::string> sharding_specs(input_layout->rank());
   for (int i = 0; i < input_layout->rank(); ++i) {
     if (i < axis)
-      sharding_specs[i] = output_layout->dim(i);
+      sharding_specs[i] = output_layout->sharding_spec(i);
     else
-      sharding_specs[i] = output_layout->dim(i + 1);
+      sharding_specs[i] = output_layout->sharding_spec(i + 1);
   }
   TF_ASSIGN_OR_RETURN(const Layout new_input_layout,
                       Layout::GetLayout(sharding_specs, input_layout->mesh()));

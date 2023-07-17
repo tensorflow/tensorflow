@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
+import os
 from typing import Tuple
 import unittest
 
@@ -363,10 +364,17 @@ module @jit_f.0 {
         'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
+    platform_check_disabled_by_flags = (
+        '--tf_xla_call_module_disabled_checks=platform'
+        in os.getenv('TF_XLA_FLAGS', ''))
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
-    with self.assertRaisesRegex(
-        errors.NotFoundError,
-        'The current platform .* is not among the platforms'):
+    if not platform_check_disabled_by_flags:
+      with self.assertRaisesRegex(
+          errors.NotFoundError,
+          'The current platform .* is not among the platforms'):
+        self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    else:
+      # No error
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # Disable the check but have two platforms
@@ -390,12 +398,14 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     platforms = ['CPU', 'CUDA', 'ROCM']
-    if self.testing_platform() not in platforms:
+    if (self.testing_platform() not in platforms
+        and not platform_check_disabled_by_flags):
       with self.assertRaisesRegex(
           errors.NotFoundError,
           'The current platform .* is not among the platforms'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
     else:
+      # No error
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # The module cannot have i64 %arg_platform_idx
@@ -421,6 +431,203 @@ module @jit_f.0 {
         'The module should have 1 platform index arguments and 0 dimension '
         'arguments, but it has only 1 total arguments'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+  def test_shape_assertion_success(self):
+    x = np.ones((3, 5), dtype=np.int32)
+    res = np.int32(x.shape[0])
+
+    def f(x):  # x: f32[b, 5] and b = 3
+      # return x.shape[0]
+      module, version = serialize("""
+module @jit_fun.1 {
+  func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
+    %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
+    %3 = stablehlo.constant dense<3> : tensor<i32>
+    %ok = stablehlo.compare  EQ, %b, %3,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.custom_call @shape_assertion(%ok) {
+      error_message = "The error message",
+      has_side_effect = true
+    } : (tensor<i1>) -> ()
+    return %b : tensor<i32>
+  }
+
+}
+""")
+      return xla.call_module([x,], version=version,
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[res.shape],
+                             platforms=[self.testing_platform()],)
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_shape_assertion_failure(self):
+    x = np.ones((3, 5), dtype=np.int32)
+    res = np.int32(x.shape[0])
+
+    def f(x):  # x: f32[b, 5] and b = 3, with a constraint b == 4.
+      # return x.shape[0]
+      module, version = serialize("""
+module @jit_fun.1 {
+  func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
+    %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
+    %4 = stablehlo.constant dense<4> : tensor<i32>
+    %ok = stablehlo.compare  EQ, %b, %4,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.custom_call @shape_assertion(%ok, %b, %4) {
+      error_message = "Expecting {0} == {1}",
+      has_side_effect = true
+    } : (tensor<i1>, tensor<i32>, tensor<i32>) -> ()
+    return %b : tensor<i32>
+  }
+}
+""")
+      return xla.call_module([x,], version=version,
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[res.shape],
+                             platforms=[self.testing_platform()],)
+
+    # This test runs as part of two targets, with and without
+    # disabling shape_assertions.
+    disabled_shape_assertions_check = (
+        '--tf_xla_call_module_disabled_checks=shape_assertions'
+        in os.getenv('TF_XLA_FLAGS', ''))
+    if disabled_shape_assertions_check:
+      # No error even though the constraint is false.
+      self._assertOpOutputMatchesExpected(f, (x,), (res,))
+    else:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'Expecting 3 == 4'):
+        self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_invalid_shape_assertion(self):
+    arg_i1 = np.bool_(True)
+    arg_i32 = np.int32(2)
+    res = arg_i32
+
+    # This test runs as part of two targets, with and without
+    # disabling shape_assertions.
+    disabled_shape_assertions_check = (
+        '--tf_xla_call_module_disabled_checks=shape_assertions'
+        in os.getenv('TF_XLA_FLAGS', ''))
+    if disabled_shape_assertions_check:
+      self.skipTest('Test is N/A when shape_assertions are disabled')
+
+    subtest_count = 1
+    def one_subtest(error_msg: str, module_str: str):
+      def f(*args):
+        module, version = serialize(module_str)
+        return xla.call_module(
+            list(args),
+            version=version,
+            module=module,
+            Tout=[res.dtype],
+            Sout=[res.shape],
+            platforms=[self.testing_platform()],
+        )
+
+      nonlocal subtest_count
+      subtest_count += 1
+      with self.subTest(count=subtest_count, error_msg=error_msg):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, error_msg):
+          self._assertOpOutputMatchesExpected(f, (arg_i1, arg_i32), (res,))
+
+    one_subtest(
+        'expects assert_what .* to be a constant of type tensor<i1>',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    %ok = stablehlo.constant dense<0> : tensor<i32>
+    stablehlo.custom_call @shape_assertion(%ok) {
+      error_message = "Some error",
+      has_side_effect = true
+    } : (tensor<i32>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
+
+    one_subtest(
+        'expects static assert_what',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    stablehlo.custom_call @shape_assertion(%arg_i1) {
+      error_message = "Some error",
+      has_side_effect = true
+    } : (tensor<i1>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
+
+    one_subtest(
+        'expects has_side_effect=true',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    %ok = stablehlo.constant dense<false> : tensor<i1>
+    stablehlo.custom_call @shape_assertion(%ok) {
+      error_message = "Some error",
+      has_side_effect = false
+    } : (tensor<i1>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
+
+    one_subtest(
+        'expects error_message .* Found specifier {0}',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    %ok = stablehlo.constant dense<false> : tensor<i1>
+    stablehlo.custom_call @shape_assertion(%ok) {
+      error_message = "Some error {0}",
+      has_side_effect = true
+    } : (tensor<i1>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
+
+    one_subtest(
+        'expects static error_message_input',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    %ok = stablehlo.constant dense<false> : tensor<i1>
+    stablehlo.custom_call @shape_assertion(%ok, %arg_i32) {
+      error_message = "Some error {0}",
+      has_side_effect = true
+    } : (tensor<i1>, tensor<i32>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
+
+    one_subtest(
+        'expects error_message_input .* to be a constant of type tensor<i32>',
+        """
+module @jit_fun.1 {
+  func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
+    %ok = stablehlo.constant dense<false> : tensor<i1>
+    %c = stablehlo.constant dense<2.0> : tensor<f32>
+    stablehlo.custom_call @shape_assertion(%ok, %c) {
+      error_message = "Some error {0}",
+      has_side_effect = true
+    } : (tensor<i1>, tensor<f32>) -> ()
+    return %arg_i32 : tensor<i32>
+  }
+}
+""",
+    )
 
   def test_dynamic_iota(self):
     x = np.ones((3, 5), dtype=np.int32)

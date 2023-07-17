@@ -145,6 +145,56 @@ class SignatureRunner {
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus Cancel() { return subgraph_->Cancel(); }
 
+  /// \brief Assigns (or reassigns) a custom memory allocation for the given
+  /// tensor name. `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// The runtime does NOT take ownership of the underlying memory.
+  ///
+  /// NOTE: User needs to call AllocateTensors() after this.
+  /// Invalid/insufficient buffers will cause an error during AllocateTensors or
+  /// Invoke (in case of dynamic shapes in the graph).
+  ///
+  /// Parameters should satisfy the following conditions:
+  /// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  ///    In general, this is true for I/O tensors & variable tensors.
+  /// 2. allocation->data has the appropriate permissions for runtime access
+  ///    (Read-only for inputs, Read-Write for others), and outlives
+  ///    Interpreter.
+  /// 3. allocation->bytes >= tensor->bytes.
+  ///    This condition is checked again if any tensors are resized.
+  /// 4. allocation->data should be aligned to kDefaultTensorAlignment
+  ///    defined in lite/util.h. (Currently 64 bytes)
+  ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  ///    set through `flags`.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus SetCustomAllocationForInputTensor(
+      const char* input_name, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
+
+  /// \brief Assigns (or reassigns) a custom memory allocation for the given
+  /// tensor name. `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// The runtime does NOT take ownership of the underlying memory.
+  ///
+  /// NOTE: User needs to call AllocateTensors() after this.
+  /// Invalid/insufficient buffers will cause an error during AllocateTensors or
+  /// Invoke (in case of dynamic shapes in the graph).
+  ///
+  /// Parameters should satisfy the following conditions:
+  /// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  ///    In general, this is true for I/O tensors & variable tensors.
+  /// 2. allocation->data has the appropriate permissions for runtime access
+  ///    (Read-only for inputs, Read-Write for others), and outlives
+  ///    Interpreter.
+  /// 3. allocation->bytes >= tensor->bytes.
+  ///    This condition is checked again if any tensors are resized.
+  /// 4. allocation->data should be aligned to kDefaultTensorAlignment
+  ///    defined in lite/util.h. (Currently 64 bytes)
+  ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  ///    set through `flags`.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus SetCustomAllocationForOutputTensor(
+      const char* output_name, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
+
  private:
   // The life cycle of SignatureRunner depends on the life cycle of Subgraph,
   // which is owned by an Interpreter. Therefore, the Interpreter will takes the

@@ -4622,6 +4622,7 @@ tf_kernel_library(
     prefix = "parse_tensor_op",
     deps = [
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
 
@@ -4706,6 +4707,14 @@ cc_library(
     deps = [
         ":random_op",
         ":stateless_random_ops_v2_header",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "stochastic_cast_op_header",
+    hdrs = ["stochastic_cast_op.h"],
+    deps = [
         "//tensorflow/core:framework",
     ],
 )

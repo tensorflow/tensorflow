@@ -639,13 +639,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_atan2_kernels",
-    op = "atan2",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "atan2",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -748,25 +749,27 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_ceil_kernels",
-    op = "ceil",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "ceil",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_floor_kernels",
-    op = "floor",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "floor",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -792,26 +795,28 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_rint_kernels",
-    jit_types = ["f16"],
-    op = "rint",
-    tile_size = "1024",
-    types = [
+    jit_types = [
+        "f16",
         "f32",
         "f64",
     ],
+    op = "rint",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_round_kernels",
-    op = "round",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "i32",
         "i64",
     ],
+    op = "round",
+    tile_size = "1024",
+    types = [],
 )
 
 # Predicate kernels
@@ -1029,12 +1034,13 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_conj_kernels",
-    op = "conj",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "c64",
         "c128",
     ],
+    op = "conj",
+    tile_size = "256",
+    types = [],
     unroll_factors = "2",
 )
 
@@ -1171,10 +1177,6 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "maximum",
-    tile_size = "1024",
-    types = [
         "f16",
         "f32",
         "f64",
@@ -1182,6 +1184,9 @@ gpu_kernel_library(
         "i64",
         "ui8",
     ],
+    op = "maximum",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1192,10 +1197,6 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "minimum",
-    tile_size = "1024",
-    types = [
         "f16",
         "f32",
         "f64",
@@ -1203,6 +1204,9 @@ gpu_kernel_library(
         "i64",
         "ui8",
     ],
+    op = "minimum",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1254,9 +1258,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_neg_kernels",
-    op = "neg",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
@@ -1267,6 +1269,9 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    op = "neg",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1275,22 +1280,19 @@ gpu_kernel_library(
     jit_types = [
         "i8",
         "i16",
-    ],
-    op = "pow",
-    tile_size = "1024",
-    types = [
         "f16",
         "f32",
         "f64",
         "i64",
     ],
+    op = "pow",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_reciprocal_kernels",
-    op = "reciprocal",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "c64",
         "c128",
         "f16",
@@ -1298,6 +1300,9 @@ gpu_kernel_library(
         "f64",
         "i64",
     ],
+    op = "reciprocal",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1306,10 +1311,6 @@ gpu_kernel_library(
     jit_types = [
         "i8",
         "i16",
-    ],
-    op = "sign",
-    tile_size = "256",
-    types = [
         "f16",
         "f32",
         "f64",
@@ -1318,6 +1319,9 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    op = "sign",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1361,80 +1365,86 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_xdivy_kernels",
-    op = "xdivy",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "c64",
         "c128",
     ],
+    op = "xdivy",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 # Logarithmic and exponential kernels
 gpu_kernel_library(
     name = "gpu_exp_kernels",
-    op = "exp",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "c64",
         "c128",
     ],
+    op = "exp",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_expm1_kernels",
-    op = "expm1",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "expm1",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_log_kernels",
-    op = "log",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "log",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_log1p_kernels",
-    op = "log1p",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "log1p",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_xlogy_kernels",
-    op = "xlogy",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "c64",
         "c128",
     ],
+    op = "xlogy",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
     # For complex XlogyOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
@@ -1446,15 +1456,16 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_xlog1py_kernels",
-    op = "xlog1py",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "c64",
         "c128",
     ],
+    op = "xlog1py",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
     # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
@@ -1468,25 +1479,27 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sqrt_kernels",
-    op = "sqrt",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "sqrt",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_rsqrt_kernels",
-    op = "rsqrt",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "rsqrt",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1499,28 +1512,28 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "square",
-    tile_size = "1024",
-    types = [
         "f16",
         "f32",
         "f64",
         "i64",
     ],
+    op = "square",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_squared_difference_kernels",
-    op = "squared_difference",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
         "i64",
     ],
+    op = "squared_difference",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1528,74 +1541,77 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_bitwise_and_kernels",
-    op = "bitwise_and",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
         "i64",
     ],
+    op = "bitwise_and",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_bitwise_or_kernels",
-    op = "bitwise_or",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
         "i64",
     ],
+    op = "bitwise_or",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_bitwise_xor_kernels",
-    op = "bitwise_xor",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
         "i64",
     ],
+    op = "bitwise_xor",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_invert_kernels",
-    op = "invert",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
         "i64",
     ],
+    op = "invert",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_left_shift_kernels",
-    op = "left_shift",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
         "i64",
     ],
+    op = "left_shift",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_right_shift_kernels",
-    op = "right_shift",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i8",
         "i16",
         "i32",
@@ -1605,6 +1621,9 @@ gpu_kernel_library(
         "ui32",
         "ui64",
     ],
+    op = "right_shift",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1612,52 +1631,57 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_logical_not_kernels",
+    jit_types = ["i1"],
     op = "logical_not",
     tile_size = "256",
-    types = ["i1"],
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_logical_and_kernels",
-    op = "logical_and",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i1",
     ],
+    op = "logical_and",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_logical_or_kernels",
-    op = "logical_or",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "i1",
     ],
+    op = "logical_or",
+    tile_size = "1024",
+    types = [],
 )
 
 # Erf kernels
 
 gpu_kernel_library(
     name = "gpu_erf_kernels",
-    op = "erf",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "erf",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
 gpu_kernel_library(
     name = "gpu_erfc_kernels",
-    op = "erfc",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "erfc",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1665,45 +1689,49 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_polygamma_kernels",
-    op = "polygamma",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f32",
         "f64",
     ],
+    op = "polygamma",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_digamma_kernels",
-    op = "digamma",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "digamma",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_lgamma_kernels",
-    op = "lgamma",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "lgamma",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
     # The zeta kernels needs many registers so tile at 256.
     name = "gpu_zeta_kernels",
-    op = "zeta",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f32",
         "f64",
     ],
+    op = "zeta",
+    tile_size = "256",
+    types = [],
     # TODO(b/178388085): Enable unrolling after vectorization is fixed.
     # unroll_factors = "4",
 )
@@ -1730,61 +1758,64 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "relu",
-    tile_size = "256",
-    types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "relu",
+    tile_size = "256",
+    types = [],
     unroll_factors = "16B",
 )
 
 gpu_kernel_library(
     name = "gpu_elu_kernels",
-    op = "elu",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "elu",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_selu_kernels",
-    op = "selu",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "selu",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_sigmoid_kernels",
-    op = "sigmoid",
-    tile_size = "256",
-    types = [
+    jit_types = [
         "f16",
         "f32",
         "f64",
     ],
+    op = "sigmoid",
+    tile_size = "256",
+    types = [],
 )
 
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "256",
-        types = [
+        jit_types = [
             "f16",
             "f32",
             "f64",
         ],
+        op = op,
+        tile_size = "256",
+        types = [],
         unroll_factors = "4",
     )
     for op in [
@@ -1836,11 +1867,6 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    max_supported_rank = 8,
-    op = "select_v2",
-    tile_size = "256",
-    types = [
         "i1",
         "i32",
         "i64",
@@ -1850,6 +1876,10 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    max_supported_rank = 8,
+    op = "select_v2",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -1861,10 +1891,6 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "zeros_like",
-    tile_size = "1024",
-    types = [
         "i1",
         "i64",
         "f16",
@@ -1873,6 +1899,9 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    op = "zeros_like",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -1884,10 +1913,6 @@ gpu_kernel_library(
         "ui16",
         "ui32",
         "ui64",
-    ],
-    op = "ones_like",
-    tile_size = "1024",
-    types = [
         "i1",
         "i64",
         "f16",
@@ -1896,14 +1921,18 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    op = "ones_like",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
     name = "gpu_next_after_kernels",
-    op = "next_after",
-    tile_size = "1024",
-    types = [
+    jit_types = [
         "f32",
         "f64",
     ],
+    op = "next_after",
+    tile_size = "1024",
+    types = [],
 )

@@ -758,6 +758,10 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
                         IsMatMul(*contraction_node_def) ||
                         IsDepthwiseConv2dNative(*contraction_node_def);
 
+#ifdef DNNL_AARCH64_USE_ACL
+  if (IsDepthwiseConv2dNative(*contraction_node_def)) is_contraction = false;
+#endif
+
   if (!is_contraction || !HaveSameDataType(node_def, contraction_node_def) ||
       HasControlFaninOrFanout(*contraction_node_view) ||
       !HasAtMostOneFanoutAtPort0(*contraction_node_view) ||
@@ -4440,6 +4444,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+#ifndef DNNL_AARCH64_USE_ACL
       // Remap {Conv2D,Conv3D}+BiasAdd+Add into the _FusedConv2D/3D.
       if (FindContractionWithBiasAddAndAdd(ctx, i,
                                            &contract_with_bias_and_add)) {
@@ -4448,6 +4453,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     &invalidated_nodes, &nodes_to_delete));
         continue;
       }
+#endif
 
       PadWithConv3D pad_with_conv3d;
       // Remap Pad+{Conv3D,_FusedConv3D} into the _FusedConv3D.
@@ -4484,6 +4490,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+#ifndef DNNL_AARCH64_USE_ACL
       // Fuse Conv2d + BiasAdd/FusedBatchNorm + Swish.
       std::map<string, int> fusedconv2dSwish_matched_nodes_map;
       std::set<int> fusedconv2dSwish_remove_node_indices;
@@ -4495,6 +4502,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                             &invalidated_nodes, &nodes_to_delete));
         continue;
       }
+#endif
+
       // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
       std::map<string, int> mulmax_matched_nodes_map;
       std::set<int> mulmax_remove_node_indices;

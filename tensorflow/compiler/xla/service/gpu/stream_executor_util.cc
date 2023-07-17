@@ -48,7 +48,6 @@ using se::dnn::DataLayout;
 using se::dnn::DataLayoutString;
 using se::dnn::FilterLayout;
 using se::dnn::FilterLayoutString;
-using tensorflow::AutotuneResult;
 
 // Returns the smallest integer >= 0 that's not in the given set of numbers.
 //

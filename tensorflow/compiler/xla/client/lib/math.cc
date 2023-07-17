@@ -161,6 +161,8 @@ XlaOp IsNegZero(XlaOp operand) {
       case F8E5M2:
       case F8E4M3FN:
       case F8E4M3B11FNUZ:
+      case F8E5M2FNUZ:
+      case F8E4M3FNUZ:
       case F16:
       case BF16:
         // Not all XLA backends handle U16 well, so we convert to F32/U32.
@@ -302,7 +304,8 @@ XlaOp Erfc(XlaOp x) {
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
     return DoWithUpcastToF32(
-        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, [](XlaOp x) {
+        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
+        [](XlaOp x) {
           return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
                         ScalarLike(x, 1) - ErfImpl32Cephes(x));
         });
@@ -347,8 +350,9 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ},
-                             [](XlaOp x) { return ErfImpl32(x); });
+    return DoWithUpcastToF32(
+        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
+        [](XlaOp x) { return ErfImpl32(x); });
   });
 }
 
@@ -496,8 +500,9 @@ XlaOp ErfInv(XlaOp x) {
     if (shape.element_type() == F64) {
       return ErfInv64(x);
     }
-    return DoWithUpcastToF32(x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ},
-                             [](XlaOp x) { return ErfInv32(x); });
+    return DoWithUpcastToF32(
+        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
+        [](XlaOp x) { return ErfInv32(x); });
   });
 }
 
@@ -626,7 +631,9 @@ XlaOp Lgamma(XlaOp input) {
     // here (although it's better than you might expect!), so do the
     // computations in F32.
     return DoWithUpcastToF32(
-        input, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, do_it);
+        input,
+        {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
+        do_it);
   });
 }
 
@@ -722,7 +729,9 @@ XlaOp Digamma(XlaOp input) {
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
     return DoWithUpcastToF32(
-        input, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, do_it);
+        input,
+        {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
+        do_it);
   });
 }
 
@@ -977,7 +986,8 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
     PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast = false;
-    for (PrimitiveType type : {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}) {
+    for (PrimitiveType type :
+         {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;
@@ -1029,7 +1039,8 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IgammaGradA", a));
     bool needs_upcast = false;
-    for (PrimitiveType type : {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}) {
+    for (PrimitiveType type :
+         {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;

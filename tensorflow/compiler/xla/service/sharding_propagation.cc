@@ -1982,9 +1982,13 @@ bool ShardingPropagation::InferShardingFromOperands(
               }
             }
           } else {
-            if (is_more_specific(operand->sharding(),
+            std::optional<HloSharding> op_sharding =
+                hlo_sharding_util::GetOutputSharding(operand);
+            CHECK(op_sharding.has_value())
+                << "Expected sharding for " << operand->ToString();
+            if (is_more_specific(op_sharding.value(),
                                  sub_shardings[sub_sharding_index])) {
-              sub_shardings[sub_sharding_index] = operand->sharding();
+              sub_shardings[sub_sharding_index] = op_sharding.value();
             }
           }
         }

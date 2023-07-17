@@ -571,6 +571,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This condition takes precedence over :linux_x86_64
+# TODO(b/290533709): Remove this with PJRT build rule cleanup.
+config_setting(
+    name = "linux_x86_64_with_weightwatcher",
+    define_values = {"tensorflow_weightwatcher": "true"},
+    values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
@@ -1468,7 +1477,6 @@ check_deps(
             "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
             "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
             "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
             "//tensorflow/compiler/xla/stream_executor:cuda_platform",
         ],
     ),
@@ -1715,6 +1723,8 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
+        "@pypi_keras_nightly//:pkg",
+        "@pypi_tb_nightly//:pkg",
     ],
 )
 # copybara:comment_end

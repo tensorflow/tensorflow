@@ -76,6 +76,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -995,8 +996,8 @@ def cast(x, dtype, name=None):
 
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
-  if isinstance(x,
-                (ops.Tensor, _resource_variable_type)) and base_type == x.dtype:
+  if isinstance(
+      x, (tensor_lib.Tensor, _resource_variable_type)) and base_type == x.dtype:
     return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -1386,8 +1387,8 @@ def to_complex128(x, name="ToComplex128"):
   return cast(x, dtypes.complex128, name=name)
 
 
-ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
-ops.Tensor._override_operator("__abs__", abs)
+tensor_lib.Tensor._override_operator("__neg__", gen_math_ops.neg)
+tensor_lib.Tensor._override_operator("__abs__", abs)
 
 
 def _maybe_get_dtype(x):
@@ -1396,7 +1397,7 @@ def _maybe_get_dtype(x):
   # value (not just dtype) of np.ndarray to decide the result type.
   if isinstance(x, numbers.Real):
     return x
-  if isinstance(x, ops.Tensor):
+  if isinstance(x, tensor_lib.Tensor):
     return x.dtype.as_numpy_dtype
   if isinstance(x, dtypes.DType):
     return x.as_numpy_dtype
@@ -1429,7 +1430,7 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   """
   if not tensors:
     return tensors
-  if not ops._numpy_style_type_promotion:
+  if not ops.is_numpy_style_type_promotion():
     if not force_same_dtype:
       return tensors
     promoted_tensors = []
@@ -1442,7 +1443,7 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   result_type = np_dtypes._result_type(
       *[_maybe_get_dtype(x) for x in nest.flatten(tensors)])
   def _promote_or_cast(x):
-    if isinstance(x, ops.Tensor):
+    if isinstance(x, tensor_lib.Tensor):
       x = cast(x, result_type)
     else:
       x = ops.convert_to_tensor(x, result_type)
@@ -1450,7 +1451,8 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   return [_promote_or_cast(x) for x in tensors]
 
 
-def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
+def _OverrideBinaryOperatorHelper(
+    func, op_name, clazz_object=tensor_lib.Tensor):
   """Register operators with different tensor and scalar versions.
 
   If `clazz_object` is `SparseTensor`, assumes `func` takes `(sp_indices,
@@ -1516,7 +1518,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   r_binary_op_wrapper.__doc__ = doc
   binary_op_wrapper_sparse.__doc__ = doc
 
-  if clazz_object is ops.Tensor:
+  if clazz_object is tensor_lib.Tensor:
     clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
     del binary_op_wrapper
     clazz_object._override_operator("__r%s__" % op_name, r_binary_op_wrapper)
@@ -1835,7 +1837,7 @@ def _add_dispatch(x, y, name=None):
   Returns:
     The result of the elementwise `+` operation.
   """
-  if not isinstance(y, ops.Tensor) and not isinstance(
+  if not isinstance(y, tensor_lib.Tensor) and not isinstance(
       y, sparse_tensor.SparseTensor):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
   if x.dtype == dtypes.string:
@@ -1953,7 +1955,7 @@ def invert_(x, name=None):
 _OverrideBinaryOperatorHelper(and_, "and")
 _OverrideBinaryOperatorHelper(or_, "or")
 _OverrideBinaryOperatorHelper(xor_, "xor")
-ops.Tensor._override_operator("__invert__", invert_)
+tensor_lib.Tensor._override_operator("__invert__", invert_)
 
 
 def _promote_dtypes_decorator(fn):
@@ -1963,13 +1965,13 @@ def _promote_dtypes_decorator(fn):
   return tf_decorator.make_decorator(fn, wrapper)
 
 
-ops.Tensor._override_operator("__lt__", _promote_dtypes_decorator(
+tensor_lib.Tensor._override_operator("__lt__", _promote_dtypes_decorator(
     gen_math_ops.less))
-ops.Tensor._override_operator("__le__", _promote_dtypes_decorator(
+tensor_lib.Tensor._override_operator("__le__", _promote_dtypes_decorator(
     gen_math_ops.less_equal))
-ops.Tensor._override_operator("__gt__", _promote_dtypes_decorator(
+tensor_lib.Tensor._override_operator("__gt__", _promote_dtypes_decorator(
     gen_math_ops.greater))
-ops.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
+tensor_lib.Tensor._override_operator("__ge__", _promote_dtypes_decorator(
     gen_math_ops.greater_equal))
 
 
@@ -2077,8 +2079,11 @@ def tensor_equals(self, other):
   if other is None:
     return False
   g = getattr(self, "graph", None)
-  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g.building_function)):
+  if (
+      tensor_lib.Tensor._USE_EQUALITY
+      and ops.executing_eagerly_outside_functions()
+      and (g is None or g.building_function)
+  ):
     self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
@@ -2115,7 +2120,10 @@ def tensor_not_equals(self, other):
   """
   if other is None:
     return True
-  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+  if (
+      tensor_lib.Tensor._USE_EQUALITY
+      and ops.executing_eagerly_outside_functions()
+  ):
     self, other = maybe_promote_tensors(self, other)
     return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
   else:
@@ -2123,8 +2131,8 @@ def tensor_not_equals(self, other):
     return self is not other
 
 
-ops.Tensor._override_operator("__eq__", tensor_equals)
-ops.Tensor._override_operator("__ne__", tensor_not_equals)
+tensor_lib.Tensor._override_operator("__eq__", tensor_equals)
+tensor_lib.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
@@ -2184,11 +2192,11 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    if not isinstance(start, ops.Tensor):
+    if not isinstance(start, tensor_lib.Tensor):
       start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    if not isinstance(limit, ops.Tensor):
+    if not isinstance(limit, tensor_lib.Tensor):
       limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
-    if not isinstance(delta, ops.Tensor):
+    if not isinstance(delta, tensor_lib.Tensor):
       delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
@@ -3913,7 +3921,7 @@ def matvec(a,
 # TODO(b/178650720): Also support numpy-style type promotion in freestanding TF
 #   functions (e.g. tf.add).
 def matmul_wrapper(a, b, name=None):  # pylint: disable=missing-function-docstring
-  if ops._numpy_style_type_promotion:
+  if ops.is_numpy_style_type_promotion():
     return a._matmul(b)
   return matmul(a, b, name=name)
 matmul_wrapper.__doc__ = matmul.__doc__
@@ -3941,7 +3949,7 @@ def _as_indexed_slices(x, optimize=True):
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
   # TODO(touts): op_scope
-  if not isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices)):
+  if not isinstance(x, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
     raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
   if isinstance(x, indexed_slices.IndexedSlices):
     return x
@@ -4109,7 +4117,7 @@ def add_n(inputs, name=None):
                      "Tensor/IndexedSlices with the same dtype and shape.")
   inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(
-      isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
+      isinstance(x, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
       for x in inputs):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
@@ -4185,7 +4193,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
   inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
-  if not all(isinstance(x, ops.Tensor) for x in inputs):
+  if not all(isinstance(x, tensor_lib.Tensor) for x in inputs):
     raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):
     raise _input_error()
@@ -4194,7 +4202,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   else:
     shape = tensor_shape.unknown_shape()
   for input_tensor in inputs:
-    if isinstance(input_tensor, ops.Tensor):
+    if isinstance(input_tensor, tensor_lib.Tensor):
       shape = shape.merge_with(input_tensor.get_shape())
 
   # tensor_dtype is for safety only; operator's output type computed in C++
@@ -4542,7 +4550,7 @@ def conj(x, name=None):
   Equivalent to numpy.conj.
   @end_compatibility
   """
-  if isinstance(x, ops.Tensor):
+  if isinstance(x, tensor_lib.Tensor):
     dt = x.dtype
     if dt.is_floating or dt.is_integer:
       return x

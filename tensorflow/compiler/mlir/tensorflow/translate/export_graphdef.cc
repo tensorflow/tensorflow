@@ -69,8 +69,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-using llvm::dyn_cast;
-using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;

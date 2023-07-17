@@ -361,18 +361,18 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
     static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
-::xla::cpu_function_runtime::BufferInfo(97ULL, ~0U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(34ULL, 0U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(386ULL, 1U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(386ULL, 2U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(5ULL, ~0U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(386ULL, 3U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(481ULL, ~0U, 0U),
-::xla::cpu_function_runtime::BufferInfo(386ULL, 4U, ~0U),
-::xla::cpu_function_runtime::BufferInfo(17ULL, ~0U, 1U),
-::xla::cpu_function_runtime::BufferInfo(81ULL, ~0U, 2U)
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{97ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{34ULL, 0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 1U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 2U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{5ULL, ~0U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 3U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{481ULL, ~0U, 0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{386ULL, 4U, ~0U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{17ULL, ~0U, 1U}),
+::xla::cpu_function_runtime::BufferInfo(::xla::cpu_function_runtime::EncodedBufferInfo{81ULL, ~0U, 2U})
       };
     return kBufferInfos;
   }

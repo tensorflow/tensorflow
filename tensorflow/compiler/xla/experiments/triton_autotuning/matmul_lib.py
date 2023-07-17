@@ -41,7 +41,8 @@ logging.basicConfig(
 class QuantizedInputType(enum.Enum):
   """Type to use for quantized matmul inputs."""
 
-  FULL = 'full'
+  BFLOAT16 = 'bfloat16'
+  FLOAT16 = 'float16'
   INT8 = 'int8'
   FLOAT8 = 'float8'
 
@@ -388,14 +389,37 @@ def benchmark_cublas(dims: MatmulSize) -> MatmulTiming:
 def _init_matmul_argument(
     rows: int, cols: int, quantization: QuantizedInputType
 ) -> torch.Tensor | triton.TensorWrapper:
+  """Initialize an input for matrix multiplication."""
   if quantization == QuantizedInputType.INT8:
     return torch.randint(0, 128, (rows, cols), device='cuda', dtype=torch.int8)
   elif quantization == QuantizedInputType.FLOAT8:
     return to_triton_f8(
         torch.randn(rows, cols, device='cuda', dtype=torch.bfloat16)
     )
+  elif quantization == QuantizedInputType.FLOAT16:
+    return torch.randn(rows, cols, device='cuda', dtype=torch.float16)
   else:
     return torch.randn(rows, cols, device='cuda', dtype=torch.bfloat16)
+
+
+def _get_common_type(t1, t2):
+  """Figure out what a common precision for two arguments is."""
+  if t1 == t2:
+    return t1
+  size = {
+      tl.float8e5: 1,
+      torch.int8: 1,
+      torch.float16: 2,
+      torch.bfloat16: 2,
+  }
+  if size[t1] < size[t2]:
+    return t2
+  if size[t1] > size[t2]:
+    return t1
+  if size[t1] == 1:
+    return torch.bfloat16
+  if size[t1] == 2:
+    return torch.float32
 
 
 def benchmark_matmul(
@@ -434,9 +458,10 @@ def benchmark_matmul(
     assert data_a.shape[1] == data_b.shape[0], 'incompatible dimensions'
     assert data_a.is_contiguous(), 'matrix A must be contiguous'
     assert data_b.is_contiguous(), 'matrix B must be contiguous'
-    c = torch.empty((dims.M, dims.N), device=a.device, dtype=torch.bfloat16)
+    ctype = _get_common_type(a.dtype, b.dtype)
+    c = torch.empty((dims.M, dims.N), device=a.device, dtype=ctype)
     scratchpad = torch.empty(
-        (largest_splitk, dims.M, dims.N), device=a.device, dtype=torch.bfloat16
+        (largest_splitk, dims.M, dims.N), device=a.device, dtype=ctype
     )
 
   LOG.info('Autotuning for %s', dims)

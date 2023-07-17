@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -52,23 +52,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-using tensorflow::AutotuneResult;
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-static se::RedzoneAllocator CreateRedzoneAllocator(
-    se::Stream* stream, se::DeviceMemoryAllocator* allocator,
-    const DebugOptions& debug_options, const AutotuneConfig& config) {
-  int64_t redzone_size = config.should_check_correctness()
-                             ? se::RedzoneAllocator::kDefaultRedzoneSize
-                             : 0;
-
-  return se::RedzoneAllocator(
-      stream, allocator, PtxOptsFromDebugOptions(debug_options),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/redzone_size);
-}
-#endif
 
 // Returns the index (into `algorithms`) of the fastest algorithm.
 template <typename AlgoT>
@@ -149,7 +132,8 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
       // Perform the comparison.
       TF_ASSIGN_OR_RETURN(
           bool outputs_match,
-          comparator.CompareEqual(stream, output_buffer, reference_buffer));
+          comparator.CompareEqual(stream, /*current=*/output_buffer,
+                                  /*expected=*/reference_buffer));
       if (!outputs_match) {
         LOG(ERROR) << "Results mismatch between different GEMM algorithms. "
                    << "This is likely a bug/unexpected loss of precision.";
@@ -163,7 +147,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   }
 
   if (!autotune_config.should_crash_on_check_failure()) {
-    tensorflow::AutotuningLog log;
+    AutotuningLog log;
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
     }
@@ -244,13 +228,8 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   }
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
-  se::StreamExecutor* executor = autotune_config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = autotune_config.GetAllocator();
-  if (allocator == nullptr) {
-    allocator = executor->GetAllocator();
-  }
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream,
-                      allocator->GetStream(executor->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
   GemmBackendConfig gemm_config =
       gemm->backend_config<GemmBackendConfig>().value();
   const DebugOptions& debug_options =
@@ -261,8 +240,9 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  se::RedzoneAllocator buffer_allocator =
-      CreateRedzoneAllocator(stream, allocator, debug_options, autotune_config);
+  TF_ASSIGN_OR_RETURN(
+      se::RedzoneAllocator buffer_allocator,
+      AutotunerUtil::CreateRedzoneAllocator(autotune_config, debug_options));
 
   int64_t rng_state = 0;
   TF_ASSIGN_OR_RETURN(

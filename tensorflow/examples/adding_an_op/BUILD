@@ -71,7 +71,6 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "notap",
     ],
     deps = [
@@ -87,7 +86,6 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "notap",
     ],
     deps = [
@@ -104,7 +102,6 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "no_pip",
         "notap",
     ],
     deps = [
@@ -135,7 +132,6 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = tf_cuda_tests_tags() + [
-        "no_pip",
         "notap",
     ],
     deps = [

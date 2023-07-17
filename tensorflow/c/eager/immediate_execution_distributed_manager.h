@@ -44,6 +44,12 @@ class ImmediateExecutionDistributedManager {
                                       bool reset_context,
                                       int keep_alive_secs) = 0;
 
+  // Initializes context for the local worker and no contexts will be created
+  // for remote workers. Currently this only works for resetting context.
+  // TODO(b/289445025): Consider removing this when we find a proper fix.
+  virtual Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                            int keep_alive_secs) = 0;
+
   // Set up a multi-client distributed execution environment. Must be called
   // on all tasks in the cluster. This call internally coordinates with other
   // tasks to initialize the eager context and TF server for multi-client

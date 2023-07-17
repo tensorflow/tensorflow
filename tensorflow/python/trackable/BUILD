@@ -185,6 +185,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],

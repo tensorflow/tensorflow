@@ -22,7 +22,7 @@
 // CHECK:         %[[VAL_16:.*]] = zext i32 %[[VAL_15]] to i64
 // CHECK:         %[[VAL_17:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_18:.*]] = zext i32 %[[VAL_17]] to i64
-// CHECK:         %[[VAL_19:.*]] = mul nuw nsw i64 %[[VAL_16]], 1024
+// CHECK:         %[[VAL_19:.*]] = mul nuw nsw i64 %[[VAL_16]], 128
 // CHECK:         %[[VAL_20:.*]] = add nuw nsw i64 %[[VAL_19]], %[[VAL_18]]
 // CHECK:         %[[VAL_21:.*]] = icmp ult i64 %[[VAL_20]], 98304
 // CHECK:         call void @llvm.assume(i1 %[[VAL_21]])
@@ -61,6 +61,58 @@ ENTRY entry {
   p.0 = f16[50,96,1024]{2,1,0} parameter(0)
   p.1 = f16[1,96,1024]{2,1,0} parameter(1)
   ROOT f1 = f16[50,96,1024] fusion(p.0, p.1), kind=kLoop, calls=fusion.1
+}
+
+// -----
+
+// CHECK-LABEL: @fusion
+// CHECK-SAME: %[[ARG0:[A-Za-z0-9]*]],
+// CHECK-SAME: %[[ARG1:[A-Za-z0-9]*]],
+// CHECK-SAME: %[[ARG2:[A-Za-z0-9]*]]
+// CHECK:         call void @llvm.assume
+// CHECK:         %[[COND:.*]] = icmp ult i32 %[[LINEAR_INDEX:.*]], 6
+// CHECK:         br i1 %[[COND]], label %[[FUSION:.*]].in_bounds-true, label %[[FUSION]].in_bounds-after
+// CHECK:       [[FUSION]].in_bounds-after:
+// CHECK:         ret void
+// CHECK:       [[FUSION]].in_bounds-true:
+// CHECK:         br i1 %{{.*}}, label %[[SLICE:.*]]-true, label %[[SLICE]]-false
+// CHECK:       [[SLICE]]-after:
+// CHECK:         %[[VAL_82:.*]] = load i32, ptr %[[RET_VALUE_ADDR:.*]], align 4
+// CHECK:         %[[VAL_83:.*]] = getelementptr inbounds i32, ptr %[[ARG2]], i32 %[[LINEAR_INDEX]]
+// CHECK:         store i32 %[[VAL_82]], ptr %[[VAL_83]], align 4
+// CHECK:         br label %[[FUSION]].in_bounds-after
+// CHECK:       [[SLICE]]-true:
+// CHECK:         %[[VAL_104:.*]] = getelementptr inbounds [6 x i32], ptr %[[ARG0]], i32 0, i32 %[[VAL_102:.*]]
+// CHECK:         %[[VAL_106:.*]] = load i32, ptr %[[VAL_104]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_107:.*]] = load i32, ptr @1, align 4
+// CHECK:         %[[VAL_108:.*]] = add i32 %[[VAL_106]], %[[VAL_107]]
+// CHECK:         store i32 %[[VAL_108]], ptr %[[RET_VALUE_ADDR]], align 4
+// CHECK:         br label %[[SLICE]]-after
+// CHECK:       [[SLICE]]-false:
+// CHECK:         %[[VAL_114:.*]] = getelementptr inbounds i32, ptr %[[ARG0]], i32 %[[LINEAR_INDEX]]
+// CHECK:         %[[VAL_115:.*]] = load i32, ptr %[[VAL_114]], align 4, !invariant.load !4
+// CHECK:         store i32 %[[VAL_115]], ptr %[[RET_VALUE_ADDR]], align 4
+// CHECK:         br label %[[SLICE]]-after
+
+HloModule fusion
+
+fused_computation {
+  param_0.1 = s32[6]{0} parameter(0)
+  bitcast = s32[2,3]{1,0} bitcast(param_0.1)
+  zero = s32[] constant(0)
+  param_1.1 = s32[] parameter(1)
+  dynamic-slice = s32[1,1]{1,0} dynamic-slice(bitcast, param_1.1, zero), dynamic_slice_sizes={1,1}
+  one = s32[] constant(1)
+  bitcasted_one = s32[1,1]{1,0} bitcast(one)
+  add = s32[1,1] add(dynamic-slice, bitcasted_one)
+  dynamic-update-slice = s32[2,3]{1,0} dynamic-update-slice(bitcast, add, param_1.1, zero)
+  ROOT bitcast.1 = s32[6]{0} bitcast(dynamic-update-slice)
+}
+
+ENTRY main {
+  param_0 = s32[6]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[6]{0} fusion(param_0, param_1), kind=kInput, calls=fused_computation
 }
 
 // -----

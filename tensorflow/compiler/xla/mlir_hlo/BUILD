@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
@@ -25,7 +25,7 @@ filegroup(
 td_library(
     name = "hlo_ops_td_files",
     srcs = glob(["mhlo/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
@@ -46,7 +46,7 @@ td_library(
 
 gentbl_cc_library(
     name = "mhlo_pass_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -64,7 +64,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lmhlo_pass_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -82,7 +82,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "hlo_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -101,7 +101,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "hlo_ops_attrs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -120,7 +120,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "hlo_ops_enums_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -139,7 +139,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "hlo_ops_typedefs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -164,7 +164,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "hlo_ops_pattern_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/IR/",
     tbl_outs = [
         (
@@ -183,7 +183,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lhlo_ops_structs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -202,7 +202,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lhlo_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -221,7 +221,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lhlo_gpu_ops_enums_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -240,7 +240,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lhlo_gpu_ops_dialect_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -259,7 +259,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lhlo_gpu_ops_attrdefs_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -278,7 +278,7 @@ gentbl_cc_library(
 
 gentbl_filegroup(
     name = "hlo_ops_doc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -295,7 +295,7 @@ gentbl_filegroup(
 
 gentbl_filegroup(
     name = "lhlo_ops_doc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -324,7 +324,7 @@ cc_library(
 td_library(
     name = "lhlo_gpu_ops_td_files",
     srcs = glob(["lhlo_gpu/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         ":hlo_ops_td_files",
@@ -335,7 +335,7 @@ td_library(
 
 gentbl_cc_library(
     name = "lhlo_gpu_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -355,7 +355,7 @@ gentbl_cc_library(
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
 gentbl_cc_library(
     name = "canonicalize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -371,7 +371,7 @@ gentbl_cc_library(
 td_library(
     name = "deallocation_ops_td_files",
     srcs = glob(["deallocation/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -381,7 +381,7 @@ td_library(
 
 gentbl_cc_library(
     name = "deallocation_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -455,7 +455,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "deallocation_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -505,7 +505,7 @@ cc_library(
 td_library(
     name = "lhlo_ops_td_files",
     srcs = glob(["lhlo/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         ":hlo_ops_td_files",
@@ -523,7 +523,7 @@ td_library(
 
 gentbl_cc_library(
     name = "lhlo_structured_interface_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -734,6 +734,7 @@ cc_library(
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
+        "mhlo/transforms/legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc",
         "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
         "mhlo/transforms/lower_complex/generated_lower_complex.inc",
         "mhlo/transforms/lower_complex/lower_complex.cc",
@@ -1059,7 +1060,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "legalize_to_standard_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/transforms/",
     tbl_outs = [
         (
@@ -1079,7 +1080,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lower_complex_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/transforms/",
     tbl_outs = [
         (
@@ -1136,7 +1137,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "chlo_legalize_to_hlo_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/transforms",
     tbl_outs = [
         (
@@ -1307,6 +1308,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:PDLDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
@@ -1391,7 +1393,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "gml_st_test_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1432,7 +1434,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "transforms_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1450,7 +1452,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "gpu_transforms_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1716,7 +1718,7 @@ filegroup(
 td_library(
     name = "gml_st_ops_td_files",
     srcs = glob(["gml_st/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -1729,7 +1731,7 @@ td_library(
 
 gentbl_cc_library(
     name = "gml_st_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1796,7 +1798,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "gml_st_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1837,7 +1839,7 @@ cc_library(
 td_library(
     name = "thlo_ops_td_files",
     srcs = glob(["thlo/IR/*.td"]),
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -1849,7 +1851,7 @@ td_library(
 
 gentbl_cc_library(
     name = "thlo_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (
@@ -1920,7 +1922,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "thlo_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
     tbl_outs = [
         (

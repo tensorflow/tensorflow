@@ -3070,14 +3070,18 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3086,14 +3090,18 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
   model_ = std::make_unique<Model>();
   model_->AddExperiment("stage_based_autotune_v2");
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3101,16 +3109,14 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 50; ++i) {
+    model_->RecordIteratorGapTime(10);
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3128,6 +3134,164 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   }
 
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeProcessingTimeEmptyModel) {
+  model::Model model;
+  EXPECT_EQ(model.ComputeProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage1) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1100.0);
+}
+
+TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage2) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1250.0);
+}
+
+TEST_F(ModelTimingTest, ComputeProcessingTimeMultipleStages) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 4
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1250.0);
 }
 
 TEST_F(ModelTimingTest, SelfTime) {

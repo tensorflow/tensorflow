@@ -19,7 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
-#include <vector>
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -54,7 +54,7 @@ class GpuPriorityFusion : public InstructionFusion {
   StatusOr<bool> Run(HloModule* module,
                      const absl::flat_hash_set<absl::string_view>&
                          execution_threads) override {
-    fusion_node_evaluations_.clear();
+    cost_analysis_.emplace(cost_analysis_options_);
     return InstructionFusion::Run(module, execution_threads);
   }
 
@@ -76,15 +76,11 @@ class GpuPriorityFusion : public InstructionFusion {
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 
-  // Keep track of the number of times each instruction inside a fusion node is
-  // indexed with different index vectors.
-  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
-      fusion_node_evaluations_;
-
   const GpuDeviceInfo device_info_;
 
-  // Options for priority queue cost analysis.
+  // Cost model that defines priorities in the queue.
   GpuHloCostAnalysis::Options cost_analysis_options_;
+  std::optional<GpuHloCostAnalysis> cost_analysis_;
 };
 
 }  // namespace gpu

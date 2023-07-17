@@ -304,10 +304,6 @@ alias(
 
 tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
-    srcs = [
-        "c_api_experimental.cc",
-        "c_api_opaque.cc",
-    ],
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
@@ -318,6 +314,7 @@ tflite_cc_library_with_c_headers_test(
     ] + c_api_experimental_visibility_allowlist(),
     deps = [
         ":c_api",
+        ":c_api_experimental_without_op_resolver",
         ":c_api_types",
         ":common",
         "//tensorflow/lite:builtin_ops",
@@ -349,6 +346,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":c_api_without_op_resolver",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
@@ -359,6 +357,18 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# This is a private target, its visibility is set to public only to be
+# used by "custom_c_library_with_tflite".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
+    name = "private_c_api_experimental_without_op_resolver",
+    actual = ":c_api_experimental_without_op_resolver",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
+    ],
 )
 
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
@@ -389,12 +399,27 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
+# This is a private target, its visibility is set to public only to be
+# used by "tflite_custom_c_library".
+# Do not use this target directly and don't consider it as a part of the public API.
+alias(
+    name = "private_c_api_experimental_without_op_resolver_without_alwayslink",
+    actual = ":c_api_experimental_without_op_resolver_without_alwayslink",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
 cc_test(
     name = "c_api_experimental_test",
     size = "small",
     srcs = ["c_api_experimental_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",

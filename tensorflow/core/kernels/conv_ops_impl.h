@@ -18,6 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_IMPL_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_IMPL_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/op_requires.h"
+
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
@@ -46,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -244,6 +251,299 @@ struct LaunchGrouped {
     output->shaped<T, 5>(pre_shuffle(*output)).device(device) =
         output_shuffled.tensor<T, 5>().shuffle(rev_shuffle);
   }
+};
+
+template <typename Device, typename T>
+struct LaunchConvOp;
+
+template <typename T>
+struct LaunchConvOp<CPUDevice, T> {
+  void operator()(OpKernelContext* context, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter,
+                  const std::vector<int64>& dilations,
+                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& explicit_paddings,
+                  TensorFormat data_format, Tensor* output) {
+    // For now just calling existing launchers based on spatial dimensions.
+    int spatial_dims = input.dims() - 2;
+
+    if (spatial_dims == 2) {
+      LaunchConv2DOp<CPUDevice, T>()(context, true, cudnn_use_autotune, input,
+                                     filter, dilations[1], dilations[2],
+                                     strides[1], strides[2], padding,
+                                     explicit_paddings, output, data_format);
+    } else {
+      LaunchConv3DOp<CPUDevice, T>().launch(
+          context, cudnn_use_autotune, input, filter,
+          {dilations[1], dilations[2], dilations[3]},
+          {strides[1], strides[2], strides[3]}, padding, data_format, output);
+    }
+  }
+};
+
+template <typename Device, typename T>
+class ConvOp : public BinaryOp<T> {
+ public:
+  explicit ConvOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
+    // TODO(b/290223810) Add support for grouped and depthwise convolutions.
+    OP_REQUIRES_OK(context, context->GetAttr("groups", &groups_));
+    OP_REQUIRES(context, groups_ == 1,
+                absl::UnimplementedError(
+                    "Grouped/Depthwise Convolutions are not supported yet."));
+    string data_format_str;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(context,
+                data_format_str == "CHANNELS_LAST" ||
+                    data_format_str == " CHANNELS_FIRST",
+                absl::InvalidArgumentError(
+                    absl::StrCat("Unknown data format: ", data_format_str)));
+    data_format_ =
+        data_format_str == "CHANNELS_LAST" ? FORMAT_NHWC : FORMAT_NCHW;
+
+    // Always assume filter_format is HWIO / DHWIO.
+    filter_format_ = FilterTensorFormat::FORMAT_HWIO;
+
+    // These parameters are checked against spatial dimensions on compute.
+    OP_REQUIRES_OK(context, context->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    if (context->HasAttr("explicit_paddings")) {
+      OP_REQUIRES_OK(
+          context, context->GetAttr("explicit_paddings", &explicit_paddings_));
+    }
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    cudnn_use_autotune_ = CudnnUseAutotune();
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Input tensor is of the following dimensions:
+    // [ batch, [spatial_dims], in_depth ].
+    const Tensor& input = context->input(0);
+    size_t original_input_dims = context->input(0).dims();
+    const TensorShape original_input_shape = context->input(0).shape();
+    int spatial_dims = original_input_dims - 1 - batch_dims_;
+
+    // Input filter is of the following dimensions:
+    // [ batch, [spatial dims], in_depth ].
+    const Tensor& filter = context->input(1);
+
+    OP_REQUIRES(context, (spatial_dims == 2 || spatial_dims == 3),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The input must have 2 or 3 spatial dimensions but got ",
+                    spatial_dims)));
+
+    // Flatten tensor for computation.
+    Tensor input_flat;
+    if (batch_dims_ == 1) {
+      input_flat = input;
+    } else {
+      std::vector<int64_t> in_flat_shape_vec(1, 1);
+      for (int i = 0; i < batch_dims_; ++i) {
+        in_flat_shape_vec[0] *= original_input_shape.dim_size(i);
+      }
+      for (int i = batch_dims_; i < original_input_shape.dims(); ++i) {
+        in_flat_shape_vec.push_back(original_input_shape.dim_size(i));
+      }
+      TensorShape in_flat_shape(in_flat_shape_vec);
+      if (!input_flat.CopyFrom(input, in_flat_shape)) {
+        // This should never happen, since the output sizes should always be the
+        // same after expanding batches.
+        context->SetStatus(absl::InternalError(absl::StrCat(
+            "Could not flatten input shape ",
+            original_input_shape.DebugString(), " and flat input shape ",
+            in_flat_shape.DebugString())));
+      }
+    }
+
+    OP_REQUIRES(context, filter.dims() == 4 || filter.dims() == 5,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The filter must be rank 4 or 5 but got ", filter.dims())));
+    for (int i = 0; i < spatial_dims; i++) {
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          absl::InvalidArgumentError("filter too large"));
+    }
+
+    // Validate operation parameters based on inferred spatial dims.
+    OP_REQUIRES(context, strides_.size() == spatial_dims + 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Sliding window strides field must specify ",
+                                 spatial_dims + 2, " dimensions")));
+
+    OP_REQUIRES(context,
+                (GetTensorDim(strides_, data_format_, 'C') == 1 &&
+                 GetTensorDim(strides_, data_format_, 'N') == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not support "
+                    "strides in the batch and depth dimensions."));
+    bool stride_valid = true;
+    for (int i = 0; i < spatial_dims; ++i) {
+      stride_valid =
+          stride_valid && (GetTensorDim(strides_, data_format_,
+                                        static_cast<char>(i + '0')) > 0);
+    }
+    OP_REQUIRES(
+        context, stride_valid,
+        absl::InvalidArgumentError("Spatial strides should be larger than 0."));
+    if (dilations_.empty()) {
+      dilations_ = std::vector<int64_t>(spatial_dims + 2, 1);
+    } else {
+      OP_REQUIRES(context, dilations_.size() == spatial_dims + 2,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Dilation rates field must specify",
+                                   spatial_dims + 2, "dimensions")));
+      OP_REQUIRES(context,
+                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+                  absl::InvalidArgumentError(
+                      "Current implementation does not support "
+                      "dilation rates in the batch and depth dimensions."));
+      bool dilation_valid = true;
+      for (int i = 0; i < spatial_dims; ++i) {
+        dilation_valid =
+            dilation_valid && (GetTensorDim(dilations_, data_format_,
+                                            static_cast<char>(i + '0')) > 0);
+      }
+      OP_REQUIRES(
+          context, dilation_valid,
+          absl::InvalidArgumentError("Dilated rates should be larger than 0."));
+    }
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              spatial_dims + 2, data_format_));
+
+    const int64_t in_depth_raw = GetTensorDim(input_flat, data_format_, 'C');
+    const int64_t patch_depth_raw = GetFilterDim(filter, filter_format_, 'I');
+    OP_REQUIRES(context,
+                FastBoundsCheck(in_depth_raw, std::numeric_limits<int>::max()),
+                absl::InvalidArgumentError("Input depth too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(patch_depth_raw, std::numeric_limits<int>::max()),
+        absl::InvalidArgumentError("Patch depth too large"));
+    const int in_depth = static_cast<int>(in_depth_raw);
+    const int patch_depth = static_cast<int>(patch_depth_raw);
+    OP_REQUIRES(
+        context, patch_depth > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "filter depth must be stricly positive, got ", patch_depth)));
+    OP_REQUIRES(context, in_depth == patch_depth,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input depth must be equal to filter depth: ", in_depth,
+                    " vs ", patch_depth)));
+
+    const int out_depth =
+        static_cast<int>(GetFilterDim(filter, filter_format_, 'O'));
+
+    std::vector<int64_t> input_dims_raw(spatial_dims);
+    std::vector<int> input_dims(spatial_dims);
+    std::vector<int> filter_dims(spatial_dims);
+    for (int i = 0; i < spatial_dims; ++i) {
+      input_dims_raw[i] =
+          GetTensorDim(input_flat, data_format_, static_cast<char>(i + '0'));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(input_dims_raw[i], std::numeric_limits<int>::max()),
+          absl::InvalidArgumentError(
+              absl::StrCat("Input spatial dimension ", i, " too large")));
+      input_dims[i] = static_cast<int>(input_dims_raw[i]);
+      filter_dims[i] = static_cast<int>(
+          GetFilterDim(filter, filter_format_, static_cast<char>(i + '0')));
+    }
+    // The first dimension for input is batch.
+    const int64_t batch_raw = GetTensorDim(input_flat, data_format_, 'N');
+    OP_REQUIRES(context,
+                FastBoundsCheck(batch_raw, std::numeric_limits<int>::max()),
+                absl::InvalidArgumentError("Batch is too large"));
+    const int batch = static_cast<int>(batch_raw);
+
+    // Take the stride and dilation from the spatial dimensions only (we
+    // do not support striding or dilation on the batch or depth dimension).
+    std::vector<int64_t> stride_dims(spatial_dims);
+    std::vector<int64_t> dilation_dims(spatial_dims);
+    for (int i = 0; i < spatial_dims; ++i) {
+      stride_dims[i] =
+          GetTensorDim(strides_, data_format_, static_cast<char>(i + '0'));
+      dilation_dims[i] =
+          GetTensorDim(dilations_, data_format_, static_cast<char>(i + '0'));
+    }
+    std::vector<int64_t> pad_before(spatial_dims, -1);
+    std::vector<int64_t> pad_after(spatial_dims, -1);
+    if (padding_ == Padding::EXPLICIT) {
+      GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H',
+                               &pad_before[0], &pad_after[0]);
+      GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W',
+                               &pad_before[1], &pad_after[1]);
+    }
+
+    // Compute windowed output sizes for spatial dimensions.
+    std::vector<int64_t> out_dims(spatial_dims);
+    for (int i = 0; i < spatial_dims; ++i) {
+      OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                  input_dims[i], filter_dims[i],
+                                  dilation_dims[i], stride_dims[i], padding_,
+                                  &out_dims[i], &pad_before[i], &pad_after[i]));
+    }
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(data_format_, batch, out_dims,
+                                             out_depth, &out_shape));
+
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+
+    // If there is nothing to compute, return.
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If the input is empty, result can only be due to padding.
+    if (input_flat.NumElements() == 0) {
+      // Zero-out output and return.
+      functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                           output->template flat<T>());
+
+      return;
+    }
+
+    launcher_(context, cudnn_use_autotune_, input_flat, filter, dilations_,
+              strides_, padding_, explicit_paddings_, data_format_, output);
+
+    // Reshape the output to preserve original batch dimensions.
+    if (batch_dims_ != 1) {
+      std::vector<int64_t> reshape_vect(batch_dims_);
+      for (int i = 0; i < batch_dims_; ++i) {
+        reshape_vect[i] = original_input_shape.dim_size(i);
+      }
+      for (int i = 1; i < out_shape.dims(); ++i) {
+        reshape_vect.push_back(out_shape.dim_size(i));
+      }
+      TensorShape expanded_out_shape(reshape_vect);
+      if (!output->CopyFrom(*output, expanded_out_shape)) {
+        // This should never happen, since the output sizes should always be the
+        // same after expanding batches.
+        context->SetStatus(absl::InternalError(
+            absl::StrCat("Could not expand dimension with flat output shape ",
+                         out_shape.DebugString(), " and expanded output shape ",
+                         expanded_out_shape.DebugString())));
+      }
+    }
+  }
+
+ private:
+  std::vector<int64_t> strides_;
+  Padding padding_;
+  std::vector<int64_t> explicit_paddings_;
+  TensorFormat data_format_;
+  FilterTensorFormat filter_format_;
+  std::vector<int64_t> dilations_;
+  int batch_dims_;
+  int groups_;
+  bool cudnn_use_autotune_;
+
+  LaunchConvOp<Device, T> launcher_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ConvOp);
 };
 
 template <typename T>
@@ -543,16 +843,16 @@ void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
                              &padding_right);
   }
   int64_t out_rows_check, out_cols_check;
-  Status status = GetWindowedOutputSizeVerboseV2(
+  Status status = GetWindowedOutputSizeVerbose(
       in_rows, patch_rows, row_dilation, row_stride, padding, &out_rows_check,
       &padding_top, &padding_bottom);
   // The status is guaranteed to be OK because we checked the output and padding
   // was valid earlier.
   TF_CHECK_OK(status);
   DCHECK_EQ(out_rows, out_rows_check);
-  status = GetWindowedOutputSizeVerboseV2(in_cols, patch_cols, col_dilation,
-                                          col_stride, padding, &out_cols_check,
-                                          &padding_left, &padding_right);
+  status = GetWindowedOutputSizeVerbose(in_cols, patch_cols, col_dilation,
+                                        col_stride, padding, &out_cols_check,
+                                        &padding_left, &padding_right);
   TF_CHECK_OK(status);
   DCHECK_EQ(out_cols, out_cols_check);
 

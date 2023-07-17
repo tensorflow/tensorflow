@@ -117,6 +117,7 @@ exports_files(
         "api_def.proto",
         "attr_value.proto",
         "cost_graph.proto",
+        "cpp_shape_inference.proto",
         "dataset_metadata.proto",
         "dataset_options.proto",
         "device_attributes.proto",
@@ -897,8 +898,10 @@ cc_library(
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1694,6 +1697,18 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "cpp_shape_inference_proto",
+    srcs = ["cpp_shape_inference.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":full_type_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
+)
+
+tf_proto_library(
     name = "variable_proto",
     srcs = ["variable.proto"],
     cc_api_version = 2,
@@ -1831,6 +1846,7 @@ tf_proto_library(
     protodeps = [
         ":allocation_description_proto",
         ":api_def_proto",
+        ":cpp_shape_inference_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
         ":dataset_proto",

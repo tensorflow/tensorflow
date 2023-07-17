@@ -111,7 +111,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

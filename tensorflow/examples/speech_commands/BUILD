@@ -76,9 +76,6 @@ tf_py_strict_test(
     name = "models_test",
     size = "medium",
     srcs = ["models_test.py"],
-    tags = [
-        "no_pip",  # b/131330719
-    ],
     deps = [
         ":models",
         "//tensorflow:tensorflow_py_no_contrib",
@@ -108,7 +105,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["input_data_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [
@@ -148,7 +144,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["train_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [
@@ -202,7 +197,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["freeze_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [
@@ -253,7 +247,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["wav_to_features_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [
@@ -303,7 +296,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["generate_streaming_test_wav_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [
@@ -357,7 +349,6 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["label_wav_test.py"],
     tags = [
-        "no_pip",  # b/131330719
         "v1only",  # uses contrib
     ],
     deps = [

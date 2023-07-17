@@ -134,6 +134,10 @@ template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
   static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
                 "RoundTripNanPayload does not support E4M3");
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fnuz>::value,
+                "RoundTripNanPayload does not support E4M3FNUZ");
+  static_assert(!std::is_same<FloatT, tsl::float8_e5m2fnuz>::value,
+                "RoundTripNanPayload does not support E5M2FNUZ");
   const int kPayloadBits = NanPayloadBits<FloatT>();
   if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
@@ -157,6 +161,16 @@ static std::string GenericRoundTripFpToString(FloatT value) {
 std::string RoundTripFpToString(tsl::float8_e5m2 value) {
   std::string result = GenericRoundTripFpToString(value);
   RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
   return result;
 }
 

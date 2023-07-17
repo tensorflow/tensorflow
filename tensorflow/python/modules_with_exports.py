@@ -31,18 +31,46 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Compiler
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
+from tensorflow.python.compiler.mlir import mlir
+
 # Data
 from tensorflow.python import data
 
+# TensorFlow Debugger (tfdbg).
+from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import dumping_callback
+from tensorflow.python.ops import gen_debug_ops
+
 # Distribute
 from tensorflow.python import distribute
+
+# DLPack
+from tensorflow.python.dlpack.dlpack import from_dlpack
+from tensorflow.python.dlpack.dlpack import to_dlpack
+
+# Eager
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import monitoring as _monitoring
+from tensorflow.python.eager import remote
+
+# Check whether TF2_BEHAVIOR is turned on.
+from tensorflow.python import tf2 as _tf2
+_tf2_gauge = _monitoring.BoolGauge(
+    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import ops
 
 # Session
 from tensorflow.python.client.client_lib import *

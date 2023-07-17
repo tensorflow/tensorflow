@@ -15,16 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
 #include <queue>
-#include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,25 +28,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {

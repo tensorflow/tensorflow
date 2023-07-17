@@ -1,5 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_cloud", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
@@ -15,7 +15,7 @@ cc_library(
     name = "cost_analyzer_lib",
     srcs = ["cost_analyzer.cc"],
     hdrs = ["cost_analyzer.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -322,7 +322,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:training_lib",
     ],
 )
 
@@ -457,7 +457,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
     ],
 )
 
@@ -522,7 +522,8 @@ cuda_py_strict_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:sysconfig",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/util:_pywrap_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

@@ -35,13 +35,13 @@ _K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
 _N = flags.DEFINE_integer('n', 64, 'Size of second matrix')
 _QUANTIZED_LHS = flags.DEFINE_enum_class(
     'quantized_lhs',
-    QuantizedInputType.FULL,
+    QuantizedInputType.BFLOAT16,
     QuantizedInputType,
     'Type to use for LHS quantization',
 )
 _QUANTIZED_RHS = flags.DEFINE_enum_class(
     'quantized_rhs',
-    QuantizedInputType.FULL,
+    QuantizedInputType.BFLOAT16,
     QuantizedInputType,
     'Type to use for RHS quantization',
 )

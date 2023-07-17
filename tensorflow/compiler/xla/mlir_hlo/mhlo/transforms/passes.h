@@ -160,6 +160,8 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeTorchIndexSelectToGatherPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 
 // Creates a pass for expanding mhlo.tuple ops.

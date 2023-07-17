@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,7 +49,7 @@ inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
+int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
@@ -63,6 +61,9 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 // this string.
 inline constexpr absl::string_view kTritonSoftmaxFusionKind =
     "__triton_softmax";
+
+inline constexpr absl::string_view kUncompilableFusion =
+    "__uncompilable_fusion";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -172,7 +173,8 @@ Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions);
+bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
+                         const ReductionDimensions& reduction_dimensions);
 
 // Description of how to emit a given transposition.
 //
@@ -224,6 +226,12 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
 // Returns whether the computation has at least one root triggering unnested
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation);
+
+// Returns the hero reduction of the computation.
+// We always use the first reduce root that triggers unnested reduction emitter
+// as the hero reduction, since all the reductions are required to have the same
+// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots);
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 

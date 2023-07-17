@@ -19,6 +19,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils_impl as utils
@@ -104,7 +105,7 @@ def regression_signature_def(examples, predictions):
   """
   if examples is None:
     raise ValueError('Regression `examples` cannot be None.')
-  if not isinstance(examples, ops.Tensor):
+  if not isinstance(examples, tensor_lib.Tensor):
     raise ValueError('Expected regression `examples` to be of type Tensor. '
                      f'Found `examples` of type {type(examples)}.')
   if predictions is None:
@@ -157,7 +158,7 @@ def classification_signature_def(examples, classes, scores):
   """
   if examples is None:
     raise ValueError('Classification `examples` cannot be None.')
-  if not isinstance(examples, ops.Tensor):
+  if not isinstance(examples, tensor_lib.Tensor):
     raise ValueError('Classification `examples` must be a string Tensor. '
                      f'Found `examples` of type {type(examples)}.')
   if classes is None and scores is None:

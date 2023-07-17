@@ -57,7 +57,7 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
 }
 
 void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
-    Timespan host_infeed_enqueue) {
+    tsl::profiler::Timespan host_infeed_enqueue) {
   if (!last_host_infeed_enqueue_.Empty()) {
     // Expect non-overlapping InfeedEnqueue timespans sorted by time.
     DCHECK_GE(host_infeed_enqueue.end_ps(),

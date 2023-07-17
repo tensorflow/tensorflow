@@ -27,9 +27,9 @@ namespace xla {
 class XlaDebugInfoManagerTestPeer {
  public:
   void RegisterModule(
-      ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+      std::shared_ptr<const HloModule> hlo_module,
       std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-    return xla_debug_info_manager_.RegisterModule(module_id, hlo_module,
+    return xla_debug_info_manager_.RegisterModule(hlo_module,
                                                   buffer_assignment);
   }
 
@@ -85,7 +85,7 @@ class XlaDebugInfoManagerTest : public HloTestBase {
     debug_info.buffer_assignment = nullptr;
     ModuleIdentifier unique_id = debug_info.module->unique_id();
     debug_info.unique_id = unique_id;
-    xla_debug_info_manager_.RegisterModule(unique_id, debug_info.module,
+    xla_debug_info_manager_.RegisterModule(debug_info.module,
                                            debug_info.buffer_assignment);
     external_references_.push_back(std::move(debug_info));
     return unique_id;

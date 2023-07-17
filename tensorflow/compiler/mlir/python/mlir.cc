@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
@@ -147,7 +148,9 @@ static std::string ImportGraphDefImpl(const std::string& proto,
     tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::MLIRContext context(registry);
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
@@ -187,7 +190,9 @@ std::string ImportFunction(const std::string& functiondef_proto,
     return "// error";
   }
 
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::MLIRContext context(registry);
   auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
   if (!module.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
@@ -245,7 +250,9 @@ std::string ExperimentalConvertSavedModelToMlir(
 
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::MLIRContext context(registry);
   auto module_or = ConvertSavedModelToMlir(
       &bundle, &context, absl::Span<std::string>(exported_names));
   if (!module_or.status().ok()) {
@@ -265,7 +272,9 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::MLIRContext context(registry);
 
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
@@ -301,7 +310,9 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  mlir::MLIRContext context(registry);
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   import_options.lift_variables = lift_variables;

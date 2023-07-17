@@ -50,7 +50,6 @@ namespace stream_executor {
 namespace host {
 class HostBlas;
 class HostFft;
-class HostRng;
 }  // namespace host
 
 namespace ocl {
@@ -470,7 +469,7 @@ class Stream {
       std::optional<double> dropout_rate, std::optional<int64_t> seed) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return tsl::errors::Unimplemented("DNN library is not found.");
+      return absl::UnimplementedError("DNN library is not found.");
     }
     return dnn_support->FusedMHASoftmaxRunnerFromDesc(
         this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
@@ -490,7 +489,7 @@ class Stream {
       std::optional<double> dropout_rate, std::optional<int64_t> seed) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return tsl::errors::Unimplemented("DNN library is not found.");
+      return absl::UnimplementedError("DNN library is not found.");
     }
     return dnn_support->FusedMHAScaleMaskSoftmaxRunnerFromDesc(
         this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
@@ -511,7 +510,7 @@ class Stream {
       std::optional<double> dropout_rate, std::optional<int64_t> seed) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return tsl::errors::Unimplemented("DNN library is not found.");
+      return absl::UnimplementedError("DNN library is not found.");
     }
     return dnn_support->FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
         this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
@@ -532,12 +531,66 @@ class Stream {
       std::optional<double> dropout_rate, std::optional<int64_t> seed) {
     dnn::DnnSupport *dnn_support = parent_->AsDnn();
     if (!dnn_support) {
-      return tsl::errors::Unimplemented("DNN library is not found.");
+      return absl::UnimplementedError("DNN library is not found.");
     }
     return dnn_support->FusedMHAScaleBiasSoftmaxRunnerFromDesc(
         this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
         bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
         output_descriptor, bias_descriptor, scale, dropout_rate, seed);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+  FusedMHASoftmaxBackwardRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &d_output_descriptor,
+      const dnn::TensorDescriptor &d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor &d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor &d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor &d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return absl::UnimplementedError("DNN library is not found.");
+    }
+    return dnn_support->FusedMHASoftmaxBackwardRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_grad_gemm1_rhs_descriptor,
+        bmm1_grad_gemm2_rhs_descriptor, bmm2_grad_gemm1_lhs_descriptor,
+        bmm2_grad_gemm2_rhs_descriptor, d_output_descriptor,
+        d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor, d_bmm2_rhs_descriptor,
+        d_s_descriptor, d_bias_descriptor, scale, dropout_rate, seed);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor &d_output_descriptor,
+      const dnn::TensorDescriptor &d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor &d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor &d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor &d_s_descriptor,
+      const dnn::TensorDescriptor &mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return absl::UnimplementedError("DNN library is not found.");
+    }
+    return dnn_support->FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+        this, algorithm_desc, kind, bmm1_grad_gemm1_rhs_descriptor,
+        bmm1_grad_gemm2_rhs_descriptor, bmm2_grad_gemm1_lhs_descriptor,
+        bmm2_grad_gemm2_rhs_descriptor, d_output_descriptor,
+        d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor, d_bmm2_rhs_descriptor,
+        d_s_descriptor, mask_descriptor, d_bias_descriptor, scale, dropout_rate,
+        seed);
   }
 
   Stream &ThenSeparableConvolve(
@@ -1226,39 +1279,6 @@ class Stream {
                   const DeviceMemory<std::complex<double>> &input,
                   DeviceMemory<double> *output);
 
-  // Makes the RNG use the provided value as the basis for further generation.
-  // /dev/urandom (good) and /dev/random (better, but sometimes slow) are good
-  // sources of seed data if the default (high quality) sources are not
-  // desired.
-  // For most use cases, this function will not be necessary; each provided
-  // back-end implementation will be appropriately seeded by default.
-  // At a minimum 16 bytes of data are required in the seed buffer.
-  //
-  // To seed with good (non-reproducible) data:
-  //   File* f = File::Open("/dev/random", "r");
-  //   int64_t bytes_read = f->Read(seed_data, bytes_to_read);
-  //   < error checking >
-  //   stream.ThenSetRngSeed(seed_data, bytes_read);
-  //
-  // To seed with reproducible data:
-  //   uint64_t seed_data[2] = { <data> };
-  //   stream.ThenSetRngSeed(seed_data, 16);
-  Stream &ThenSetRngSeed(const uint8 *seed, uint64_t seed_bytes);
-
-  // Populates the memory indicated by values with uniform-random-distribution
-  // values. TODO(leary) seeding API/description
-  //
-  // Uses the type and size of the DeviceMemory to infer what data should be
-  // populated.
-  Stream &ThenPopulateRandUniform(DeviceMemory<float> *values);
-  Stream &ThenPopulateRandUniform(DeviceMemory<double> *values);
-  Stream &ThenPopulateRandUniform(DeviceMemory<std::complex<float>> *values);
-  Stream &ThenPopulateRandUniform(DeviceMemory<std::complex<double>> *values);
-  Stream &ThenPopulateRandGaussian(float mean, float stddev,
-                                   DeviceMemory<float> *values);
-  Stream &ThenPopulateRandGaussian(double mean, double stddev,
-                                   DeviceMemory<double> *values);
-
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
@@ -1580,7 +1600,6 @@ class Stream {
  private:
   friend class host::HostBlas;  // for parent_.
   friend class host::HostFft;   // for parent_.
-  friend class host::HostRng;   // for parent_.
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.

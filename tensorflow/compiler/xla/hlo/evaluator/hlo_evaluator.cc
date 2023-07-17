@@ -897,6 +897,12 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[F8E4M3B11FNUZ] =
       std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>>(
           this);
+  typed_visitors_[F8E5M2FNUZ] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>>(
+          this);
+  typed_visitors_[F8E4M3FNUZ] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>>(
+          this);
 
   typed_visitors_[TUPLE] =
       std::make_unique<ConstFunctionVisitor>([](const HloInstruction*) {

@@ -55,7 +55,9 @@ class PrimitiveType(enum.IntEnum):
   U64: PrimitiveType
   F8_E4M3FN: PrimitiveType
   F8_E4M3B11FNUZ: PrimitiveType
+  F8_E4M3FNUZ: PrimitiveType
   F8_E5M2: PrimitiveType
+  F8_E5M2FNUZ: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -266,6 +268,7 @@ class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
   result_layout: Optional[Shape]
+  fdo_profile: Optional[bytes]
   num_replicas: int
   num_partitions: int
   debug_options: DebugOptions

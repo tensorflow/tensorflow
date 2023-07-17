@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_MATMUL_H_
 
 #include <complex>
+#include <cstdint>
 
 #include "third_party/eigen3/Eigen/Core"
 

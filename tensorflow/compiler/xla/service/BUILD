@@ -1,6 +1,7 @@
 # Description:
 #   XLA service implementation.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load(
@@ -533,7 +534,6 @@ xla_cc_test(
     srcs = ["data_parallel_collective_optimizer_test.cc"],
     deps = [
         ":data_parallel_collective_optimizer",
-        ":hlo_dce",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -1803,7 +1803,6 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo_alias_analysis",
-        ":hlo_ordering",
         ":hlo_pass",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -2309,6 +2308,7 @@ cc_library(
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
     deps = [
+        ":hlo_cost_analysis",
         ":hlo_creation_utils",
         ":hlo_pass",
         ":pattern_matcher",
@@ -4462,14 +4462,32 @@ xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
+        ":heap_simulator",
+        ":hlo_cost_analysis",
+        ":hlo_value",
         ":instruction_hoister",
         ":memory_space_assignment",
+        ":memory_space_assignment_proto_cc",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4586,22 +4604,19 @@ cc_library(
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],
     deps = [
-        ":buffer_value",
         ":call_graph",
-        ":flatten_call_graph",
+        ":hlo_dataflow_analysis",
         ":hlo_dce",
-        ":hlo_memory_scheduler",
         ":hlo_ordering",
+        ":hlo_pass",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4617,16 +4632,11 @@ cc_library(
     testonly = 1,
     hdrs = ["hlo_rematerialization_test_utils.h"],
     deps = [
-        ":hlo_ordering",
-        ":hlo_rematerialization",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -4634,16 +4644,10 @@ xla_cc_test(
     name = "hlo_rematerialization_test_utils_test",
     srcs = ["hlo_rematerialization_test_utils_test.cc"],
     deps = [
-        ":hlo_ordering",
         ":hlo_rematerialization_test_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -4651,6 +4655,7 @@ xla_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
     deps = [
+        ":hlo_memory_scheduler",
         ":hlo_ordering",
         ":hlo_rematerialization",
         ":hlo_rematerialization_test_utils",
@@ -5014,10 +5019,30 @@ cc_library(
 )
 
 cc_library(
+    name = "float8_fnuz_ir_emitter",
+    srcs = [
+        "float8_fnuz_ir_emitter.cc",
+    ],
+    hdrs = [
+        "float8_fnuz_ir_emitter.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
+cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        ":float8_fnuz_ir_emitter",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -5077,6 +5102,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -5773,7 +5799,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -6388,17 +6413,16 @@ xla_py_proto_library(
     deps = [":hlo_proto"],
 )
 
-py_library(
+py_strict_library(
     name = "generate_test_hlo_checks",
     srcs = ["generate_test_hlo_checks.py"],
     srcs_version = "PY3",
 )
 
-py_test(
+py_strict_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
     python_version = "PY3",
-    # TODO(b/200806426): Test fails in OSS.
     tags = [
         "no_oss",
         "nopip",

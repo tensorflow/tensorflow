@@ -505,6 +505,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":op_macros",
         "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
@@ -543,6 +544,7 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",

@@ -43,6 +43,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

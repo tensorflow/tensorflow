@@ -53,7 +53,9 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     case DType::kU64:
     case DType::kF8E4M3FN:
     case DType::kF8E4M3B11FNUZ:
+    case DType::kF8E4M3FNUZ:
     case DType::kF8E5M2:
+    case DType::kF8E5M2FNUZ:
     case DType::kF16:
     case DType::kF32:
     case DType::kBF16:
@@ -85,7 +87,9 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::U64:
     case xla::PrimitiveType::F8E4M3FN:
     case xla::PrimitiveType::F8E4M3B11FNUZ:
+    case xla::PrimitiveType::F8E4M3FNUZ:
     case xla::PrimitiveType::F8E5M2:
+    case xla::PrimitiveType::F8E5M2FNUZ:
     case xla::PrimitiveType::F16:
     case xla::PrimitiveType::F32:
     case xla::PrimitiveType::BF16:
@@ -160,13 +164,12 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
   }
-  return PjRtArray::Create(
-      client, dtype, std::move(shape),
-      ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(devices)),
-          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-              std::move(shapes))),
-      std::move(pjrt_buffers));
+  auto sharding =
+      ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),
+                                     /*shape=*/shape,
+                                     /*shard_shapes=*/shapes);
+  return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
+                           std::move(pjrt_buffers));
 }
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,

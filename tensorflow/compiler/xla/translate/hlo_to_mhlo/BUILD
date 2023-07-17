@@ -16,7 +16,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "@llvm-project//mlir:IR",

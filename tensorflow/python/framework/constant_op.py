@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -314,7 +315,7 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
 
 
 def is_constant(tensor_or_op):
-  if isinstance(tensor_or_op, ops.Tensor):
+  if isinstance(tensor_or_op, tensor_lib.Tensor):
     op = tensor_or_op.op
   else:
     op = tensor_or_op
@@ -400,7 +401,7 @@ class _ConstantTensorCodec:
   """Codec for Tensor."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, ops.Tensor)
+    return isinstance(pyobj, tensor_lib.Tensor)
 
   def do_encode(self, tensor_value, encode_fn):
     """Returns an encoded `TensorProto` for the given `tf.Tensor`."""

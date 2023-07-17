@@ -14,6 +14,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["auto_shard_test.py"],
     shard_count = 32,
+    tags = [
+        "no_oss",  # TODO(b/289230931): Investigate flaky test.
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",
@@ -140,6 +143,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
+        "@pypi_portpicker//:pkg",
     ],
 )
 
@@ -241,6 +245,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["distributed_save_ft_test.py"],
     shard_count = 17,
+    tags = [
+        "no_mac",  # TODO(b/290355883): Fix the flakyness in macos
+    ],
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:distributed_save_op",

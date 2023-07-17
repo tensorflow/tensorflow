@@ -3,6 +3,7 @@
 
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
     "if_cuda_is_configured",
 )
 load(
@@ -22,6 +23,9 @@ package(
 cc_library(
     name = "cublas_stub",
     srcs = if_cuda_is_configured(["cublas_stub.cc"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags(
+        "nvidia/cublas/lib",
+    )),
     textual_hdrs = glob(["cublas_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -80,6 +84,10 @@ cc_library(
         "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
+    linkopts = select({
+        "//tensorflow/tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
+        "//conditions:default": [],
+    }),
     textual_hdrs = glob(["cuda_runtime_*.inc"]),
     visibility = ["//visibility:public"],
     deps = select({
@@ -102,6 +110,7 @@ filegroup(
 cc_library(
     name = "cudnn_stub",
     srcs = if_cuda_is_configured(["cudnn_stub.cc"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cudnn/lib")),
     textual_hdrs = glob(["cudnn_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -110,6 +119,18 @@ cc_library(
         "//tensorflow/tsl/platform:dso_loader",
         "//tensorflow/tsl/platform:env",
     ]),
+)
+
+cc_library(
+    name = "nccl_rpath_stub",
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tensorrt_rpath_stub",
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -144,6 +165,7 @@ tsl_cc_test(
 cc_library(
     name = "cufft_stub",
     srcs = if_cuda_is_configured(["cufft_stub.cc"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cufft/lib")),
     textual_hdrs = glob(["cufft_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -166,6 +188,7 @@ cc_library(
     name = "cupti_stub",
     srcs = if_cuda_is_configured(["cupti_stub.cc"]),
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_cupti/lib")),
     textual_hdrs = ["cupti_10_0.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -177,29 +200,9 @@ cc_library(
 )
 
 cc_library(
-    name = "curand_stub",
-    srcs = if_cuda_is_configured(["curand_stub.cc"]),
-    textual_hdrs = ["curand_10_0.inc"],
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/tsl/platform:dso_loader",
-        "//tensorflow/tsl/platform:env",
-    ]),
-)
-
-alias(
-    name = "curand_lib",
-    actual = select({
-        "//tensorflow/tsl:oss": ":curand_stub",
-        "//conditions:default": "@local_config_cuda//cuda:curand",
-    }),
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "cusolver_stub",
     srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusolver/lib")),
     textual_hdrs = glob(["cusolver_dense_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
@@ -221,6 +224,7 @@ alias(
 cc_library(
     name = "cusparse_stub",
     srcs = if_cuda_is_configured(["cusparse_stub.cc"]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusparse/lib")),
     textual_hdrs = glob(["cusparse_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([

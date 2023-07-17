@@ -32,7 +32,16 @@ using ExtractSelector = std::function<bool(const HloInstruction*)>;
 // Define ReplaceTypeSelector, which is a lambda that, given an HLO
 // instruction, returns ReplaceType, which indicated which type of op should be
 // used to replace.
-enum class ReplaceType { kReplaceParam, kReplaceConst };
+//
+// kReplaceParam: hlo instruction will be replaced with parameter.
+//
+// kReplaceConst: hlo instruction will be replaced with randomly-generated
+// constant of the same shape. Note that it could be very slow if hlo
+// instruction has a large shape.
+//
+// kReplaceZeroBroadcast: hlo instruction will be replaced with a broadcasted
+// zero constant of the same shape.
+enum class ReplaceType { kReplaceParam, kReplaceConst, kReplaceZeroBroadcast };
 using ReplaceTypeSelector = std::function<ReplaceType(const HloInstruction*)>;
 
 // Creates a new HLO module rooted with an entry computation rooted at the given

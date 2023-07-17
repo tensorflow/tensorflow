@@ -4,6 +4,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_binary",
 )
 load(
@@ -86,6 +87,12 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@stablehlo//:chlo_ops",
     ],
+)
+
+check_deps(
+    name = "tf_to_kernel_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/xla:literal"],
+    deps = [":tf_to_kernel"],
 )
 
 tf_cc_binary(

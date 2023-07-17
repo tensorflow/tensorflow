@@ -17,24 +17,25 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
 
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/autotuning.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
-
-using tensorflow::AutotuneResult;
 
 struct DeviceConfig {
   se::StreamExecutor* stream_exec;  // never null
@@ -42,7 +43,7 @@ struct DeviceConfig {
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  se::DeviceMemoryAllocator* allocator;  // may be null
+  se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
 };
 
 struct DevicelessConfig {
@@ -122,7 +123,13 @@ class AutotuneConfig {
 
   se::DeviceMemoryAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return std::get<DeviceConfig>(config_).allocator;
+    auto& cf = std::get<DeviceConfig>(config_);
+    return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
+  }
+
+  StatusOr<se::Stream*> GetStream() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
 
   se::CudaComputeCapability GetCudaComputeCapability() const {
@@ -157,6 +164,12 @@ struct AutotunerUtil {
   static StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
+
+  // Creates a RedzoneAllocator from a given config. If `force_stream` is
+  // provided, than it is used for checking redzones.
+  static StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
+      const AutotuneConfig& config, const DebugOptions& opts,
+      se::Stream* force_stream = nullptr);
 
   // Functions to save/load XLA's autotuning results.
   //
@@ -220,6 +233,16 @@ struct AutotunerUtil {
   static Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
+
+  // Extracts an HLO instruction into a new HLO module replacing its operands
+  // with parameter instructions.
+  static std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+      const HloInstruction& hlo);
+
+  // Extracts an HLO computation into a new HLO module, using its clone as the
+  // root computation.
+  static std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
+      const HloComputation& computation);
 };
 
 }  // namespace gpu

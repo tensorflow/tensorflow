@@ -122,7 +122,6 @@ cc_library(
     deps = [
         ":global_state",
         ":pjrt_state",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework_types_hdr",
     ],

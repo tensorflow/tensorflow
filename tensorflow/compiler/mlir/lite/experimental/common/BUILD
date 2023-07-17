@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -6,7 +6,7 @@ cc_library(
     name = "outline_operations",
     srcs = ["outline_operations.cc"],
     hdrs = ["outline_operations.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",

@@ -55,7 +55,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/190842754): Enable test in OSS.
-        "no_pip",  # TODO(b/187847053): Enable test in pip.
     ],
     deps = [
         ":interpreter",
@@ -152,7 +151,6 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
         "no_windows",
     ],
     deps = [
@@ -268,6 +266,7 @@ py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
+        "@pypi_jax//:pkg",
     ],
 )
 

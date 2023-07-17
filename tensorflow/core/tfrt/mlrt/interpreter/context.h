@@ -288,6 +288,7 @@ class ExecutionContext {
     state_ = State::kReturn;
   }
 
+  size_t function_stack_size() const { return function_stack_.size(); }
   FunctionContext& function_context() { return function_stack_.back(); }
 
   // Enqueues the current execution to the wait list of the `future`. Once the
@@ -447,9 +448,6 @@ class ExecutionContext {
     return user_contexts;
   }
 
- private:
-  absl::InlinedVector<FunctionContext, 2> function_stack_;
-
   enum class State {
     // The function is pushed to the stack, and ready for execution.
     kReady = 0,
@@ -468,6 +466,11 @@ class ExecutionContext {
     // will be aborted by cleaning the states.
     kError
   };
+  State state() const { return state_; }
+
+ private:
+  absl::InlinedVector<FunctionContext, 2> function_stack_;
+
   State state_ = State::kReady;
 
   absl::Status status_;

@@ -85,27 +85,6 @@ def JitRtLegalizeI1Types
   ];
 }
 
-def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
-  let summary = "Creates `tf_device.cluster` operations according to the TF "
-                "JitRt clustering policy";
-
-  let constructor = "tensorflow::CreateTfJitRtClusteringPass()";
-
-  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
-
-  let options = [
-   Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
-          "Do not form clusters smaller of the given size.">,
-   // TODO(ezhulenev): This is a temporary workaround to control TF->JitRt
-   // clustering policy at runtime.
-   ListOption<"oplist", "oplist", "std::string",
-               "Explicitly allow operations for clustering. Only operations in "
-               "this list will be passed to the TF->JitRt clustering policy. "
-               "Alternatively use 'tier1', ..., 'all' to allow clustering for "
-               "all operations included in the given clustering tier.">
-  ];
-}
-
 def MathApproximation : Pass<"tf-jitrt-math-approximation", "mlir::func::FuncOp"> {
   let summary = "Approximate math operations with an implementation meant to "
                 "match Eigen's results. This is a useful property to have when "

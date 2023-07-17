@@ -132,7 +132,6 @@ ENTRY %constant_pred_array () -> pred[2,3] {
 
 )"
 },
-
 // s32 constant
 {
 "ConstantS32",
@@ -140,6 +139,17 @@ R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
 
 ENTRY %constant_s32 () -> s32[] {
   ROOT %constant = s32[] constant(-42)
+}
+
+)"
+},
+// s32 constant with statistics
+{
+"ConstantS32WithStatistics",
+R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
+
+ENTRY %constant_s32 () -> s32[] {
+  ROOT %constant = s32[] constant(-42), statistics={visualizing_index=1,stat-1=33,stat-2=44}
 }
 
 )"
@@ -1373,6 +1383,18 @@ R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
 ENTRY %test (p: f32[100]) -> u32[100] {
   %p = f32[100]{0} parameter(0)
   ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d"}
+}
+
+)"
+},
+
+{
+"MetadataPreserveLayout",
+R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
+
+ENTRY %test (p: f32[100]) -> u32[100] {
+  %p = f32[100]{0} parameter(0)
+  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" preserve_layout=true}
 }
 
 )"
@@ -3485,7 +3507,7 @@ TEST_F(HloParserTest, ParseTrivialIotaShardingPartialReplication) {
   const std::string original = "{devices=[2,2]<=[4] last_tile_dim_replicate}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
-  TileAssignment tiling_last_dim_replicated({2, 2});
+  TileAssignment tiling_last_dim_replicated((absl::Span<const int64_t>){2, 2});
   EXPECT_EQ(HloSharding::PartialTile(tiling_last_dim_replicated).ToString(),
             original);
 }
@@ -4146,6 +4168,20 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
   ASSERT_FALSE(result.status().ok());
   EXPECT_THAT(result.status().message(),
               HasSubstr("parameter number must be >= 0"));
+}
+
+TEST_F(HloParserTest, DuplicateParameterNumberIsDetected) {
+  const std::string kHloString = R"(
+  ENTRY e {
+    a = s8[] parameter(0)
+    b = s8[] parameter(0)
+    ROOT a = s8[] add(a, b)
+  }
+  )";
+  auto result = ParseAndReturnUnverifiedModule(kHloString);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Duplicate parameter number 0"));
 }
 
 TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {

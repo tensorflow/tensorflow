@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
-#include "tensorflow/compiler/xla/python/ifrt/ir/compile_options.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
@@ -50,14 +50,12 @@ class IfrtIrExecutableImplTest
 
 TEST_F(IfrtIrExecutableImplTest, CallXla) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        : (!array) -> !array
+    return %0 : !array
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -73,7 +71,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
-          *mlir_module,
+          std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data0 = {0, 1};
@@ -115,7 +113,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
-          *mlir_module,
+          std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data = {1, 2};
@@ -139,12 +137,11 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroInput) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main() -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1]
-        : () -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  func.func @main() -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1] : () -> !array
+    return %0 : !array
   }
 
   func.func private @one() -> tensor<2x2xi32> {
@@ -159,7 +156,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
-          *mlir_module,
+          std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
@@ -175,11 +172,10 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroOutput) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      attributes {ifrt.function} {
-    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>) -> ()
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1] : (!array) -> ()
     return
   }
 
@@ -196,7 +192,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
-          *mlir_module,
+          std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data0 = {0, 1};
@@ -218,16 +214,13 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, BufferDonation) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-          {ifrt.donated})
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        {io_aliases=[array<i32: 0, 0>]}
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -243,7 +236,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
-          *mlir_module,
+          std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data0 = {0, 1};
@@ -299,25 +292,22 @@ module {
     }
     exec_build_options.set_device_assignment(device_assignment);
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<LoadedExecutable> child_exec,
-                          client_->GetDefaultCompiler()->Compile(
-                              *mhlo_module, std::make_unique<XlaCompileOptions>(
-                                                std::move(xla_options))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<LoadedExecutable> child_exec,
+      client_->GetDefaultCompiler()->Compile(
+          std::make_unique<xla::ifrt::XlaProgram>(*mhlo_module),
+          std::make_unique<XlaCompileOptions>(std::move(xla_options))));
 
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.CallLoadedExecutable @add_one(%arg0)
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        : (!array) -> !array
+    return %0 : !array
   }
 
-  ifrt.LoadedExecutable @add_one on devices [0,1]
-      : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  ifrt.LoadedExecutable @add_one on devices [0,1] : (!array) -> !array
 }
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
@@ -326,7 +316,8 @@ module {
   options->loaded_exec_binding["add_one"] = child_exec.get();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
-      client_->GetDefaultCompiler()->Compile(*mlir_module, std::move(options)));
+      client_->GetDefaultCompiler()->Compile(
+          std::make_unique<IfrtIRProgram>(*mlir_module), std::move(options)));
 
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};

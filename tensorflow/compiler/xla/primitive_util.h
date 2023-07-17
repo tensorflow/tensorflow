@@ -54,6 +54,13 @@ int UnderflowExponent(PrimitiveType type);
 // results in a LOG(FATAL).
 int OverflowExponent(PrimitiveType type);
 
+// Returns the exponent bias of the given floating point type.
+// For non-float datatypes, results in a LOG(FATAL).
+int ExponentBias(PrimitiveType type);
+
+// Returns whether the type has a value for infinity.
+bool HasInfinity(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
@@ -163,6 +170,16 @@ inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3b11>() {
   return F8E4M3B11FNUZ;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
+  return F8E5M2FNUZ;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
+  return F8E4M3FNUZ;
+}
+
 // Complex
 template <>
 inline PrimitiveType NativeToPrimitiveType<complex64>() {
@@ -174,9 +191,14 @@ inline PrimitiveType NativeToPrimitiveType<complex128>() {
   return C128;
 }
 
+constexpr bool IsF8Type(PrimitiveType type) {
+  return type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ ||
+         type == F8E5M2FNUZ || type == F8E4M3FNUZ;
+}
+
 constexpr bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16 ||
-         type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ;
+         IsF8Type(type);
 }
 
 constexpr bool IsComplexType(PrimitiveType type) {
@@ -193,10 +215,6 @@ constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
 
 constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
-}
-
-inline bool IsF8Type(PrimitiveType type) {
-  return type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ;
 }
 
 // Returns true if values of the given primitive type are held in array shapes.
@@ -220,6 +238,8 @@ constexpr ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
     case F8E5M2:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return 8;
 
     case S16:
@@ -268,6 +288,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
     case F8E5M2:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return 1;
 
     case S16:
@@ -413,15 +435,20 @@ inline bool CastPreservesValues(PrimitiveType from_type,
   if (primitive_util::IsComplexType(from_type)) {
     return false;
   }
-  // F -> F is safe if the exponent and significand are preserved.
+  // F -> F is safe if the exponent/significand are preserved and `to_type`
+  // preserves infinities in `from_type.
   if (primitive_util::IsFloatingPointType(from_type) &&
       primitive_util::IsFloatingPointType(to_type)) {
-    return primitive_util::SignificandWidth(from_type) <=
+    return (!primitive_util::HasInfinity(from_type) ||
+            primitive_util::HasInfinity(to_type)) &&
+           primitive_util::SignificandWidth(from_type) <=
                primitive_util::SignificandWidth(to_type) &&
            primitive_util::ExponentWidth(from_type) <=
                primitive_util::ExponentWidth(to_type) &&
-           primitive_util::UnderflowExponent(from_type) >=
-               primitive_util::UnderflowExponent(to_type) &&
+           (primitive_util::UnderflowExponent(from_type) -
+            primitive_util::SignificandWidth(from_type)) >=
+               (primitive_util::UnderflowExponent(to_type) -
+                primitive_util::SignificandWidth(to_type)) &&
            primitive_util::OverflowExponent(from_type) <=
                primitive_util::OverflowExponent(to_type);
   }
@@ -557,6 +584,16 @@ struct PrimitiveTypeToNative<F8E4M3B11FNUZ> {
   using type = tsl::float8_e4m3b11;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E5M2FNUZ> {
+  using type = tsl::float8_e5m2fnuz;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FNUZ> {
+  using type = tsl::float8_e4m3fnuz;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -594,6 +631,8 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case F8E5M2:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;
@@ -666,8 +705,12 @@ R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
     case F8E4M3B11FNUZ:
       return std::invoke(f,
                          PrimitiveTypeConstant<PrimitiveType::F8E4M3B11FNUZ>());
+    case F8E4M3FNUZ:
+      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E4M3FNUZ>());
     case F8E5M2:
       return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E5M2>());
+    case F8E5M2FNUZ:
+      return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F8E5M2FNUZ>());
     case F16:
       return std::invoke(f, PrimitiveTypeConstant<PrimitiveType::F16>());
     case BF16:
@@ -695,6 +738,19 @@ R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
 template <PrimitiveType kType>
 using NativeTypeOf =
     typename primitive_util::PrimitiveTypeToNative<kType>::type;
+
+inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type) -> bool {
+        if constexpr (primitive_util::IsIntegralType(primitive_type)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+          return std::numeric_limits<NativeT>::min() <= x &&
+                 std::numeric_limits<NativeT>::max() >= x;
+        }
+        LOG(FATAL) << "Invalid primitive type " << PrimitiveType_Name(ty);
+      },
+      ty);
+}
 
 }  // namespace primitive_util
 }  // namespace xla

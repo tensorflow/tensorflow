@@ -25,11 +25,15 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::tsl::testing::StatusIs;
 
 struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
   int number;
@@ -41,20 +45,35 @@ struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
 
 char TestNumber::ID = 0;  // NOLINT
 
+struct TestNumberDeserializeOptions
+    : llvm::RTTIExtends<TestNumberDeserializeOptions, DeserializeOptions> {
+  absl::Status injected_failure;
+
+  static char ID;  // NOLINT
+};
+
+char TestNumberDeserializeOptions::ID = 0;  // NOLINT
+
 class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::TestNumber";
   }
 
-  absl::StatusOr<std::string> Serialize(
-      const Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
     const TestNumber& obj = llvm::cast<TestNumber>(serializable);
     return absl::StrCat(obj.number);
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      absl::string_view serialized) override {
+      const std::string& serialized,
+      std::unique_ptr<DeserializeOptions> options) override {
+    if (options != nullptr) {
+      auto* deserialize_options =
+          llvm::cast<TestNumberDeserializeOptions>(options.get());
+      TF_RETURN_IF_ERROR(deserialize_options->injected_failure);
+    }
+
     int number;
     if (!absl::SimpleAtoi(serialized, &number)) {
       return absl::DataLossError("Unable to parse serialized TestNumber");
@@ -77,8 +96,19 @@ class TestNumberTest : public testing::Test {
 TEST_F(TestNumberTest, RoundTrip) {
   auto obj = std::make_unique<TestNumber>(1234);
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized, Deserialize(serialized));
+  TF_ASSERT_OK_AND_ASSIGN(auto deserialized,
+                          Deserialize(serialized, /*options=*/nullptr));
   EXPECT_EQ(obj->number, llvm::cast<TestNumber>(*deserialized).number);
+}
+
+TEST_F(TestNumberTest, WithOptions) {
+  auto obj = std::make_unique<TestNumber>(1234);
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
+
+  auto options = std::make_unique<TestNumberDeserializeOptions>();
+  options->injected_failure = absl::InternalError("injected failure");
+  EXPECT_THAT(Deserialize(serialized, std::move(options)),
+              StatusIs(absl::StatusCode::kInternal, "injected failure"));
 }
 
 }  // namespace

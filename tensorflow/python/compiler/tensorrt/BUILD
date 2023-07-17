@@ -49,6 +49,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops_gen",
@@ -68,6 +69,7 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@pypi_packaging//:pkg",
         "@six_archive//:six",
     ],
 )
@@ -170,6 +172,7 @@ cuda_py_strict_test(
         "no_rocm",
         "no_windows",
         "nomac",
+        "notap",  #TODO(b/290051231)
         "requires-net:external",
     ],
     xla_enable_strict_auto_jit = False,

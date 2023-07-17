@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -403,22 +404,22 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
+      assert(elem_type.isF16());
       int elem_count = bytes_len / 2;
-      std::vector<llvm::APFloat> values;
+      std::vector<Eigen::half> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
-      auto& semantics = elem_type.getFloatSemantics();
 
       for (int i = 0; i < elem_count; i++) {
         uint16_t bit_repr = llvm::support::endian::readNext<
             uint16_t, llvm::support::endian::system_endianness(),
             llvm::support::unaligned>(data);
-        llvm::APInt int_repr(16, bit_repr);
-        values.emplace_back(semantics, int_repr);
+        values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
       }
 
-      return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<Eigen::half>(values)));
     }
     case 32: {
       assert(bytes_len % 4 == 0);

@@ -67,7 +67,7 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//tensorflow/tsl/profiler/utils:time_utils_impl",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/compiler/xla:autotuning_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "//tensorflow/tsl/framework:allocator",
@@ -79,11 +79,9 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
 def xla_cc_test(
         name,
         deps = [],
-        extra_copts = [],
         **kwargs):
     native.cc_test(
         name = name,
-        copts = extra_copts,
         deps = deps + if_tsl_link_protobuf(
                    [],
                    [
@@ -102,7 +100,8 @@ def xla_cc_test(
                        clean_dep("//tensorflow/tsl/profiler/utils:time_utils_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl"),
-                       clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:dnn_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
                        clean_dep("//tensorflow/tsl/platform:env_impl"),

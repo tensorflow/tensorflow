@@ -81,7 +81,6 @@ py_strict_test(
     srcs = ["flags_test.py"],
     main = "flags_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],
     deps = [
         ":flags_py",
         "//tensorflow/python/platform:client_testlib",

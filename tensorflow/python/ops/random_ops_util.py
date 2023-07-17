@@ -18,7 +18,7 @@ import enum
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
@@ -69,7 +69,7 @@ def convert_alg_to_int(alg):
     return alg
   if isinstance(alg, Algorithm):
     return alg.value
-  if isinstance(alg, ops.Tensor):
+  if isinstance(alg, tensor.Tensor):
     return alg
   if isinstance(alg, str):
     # canonicalized alg

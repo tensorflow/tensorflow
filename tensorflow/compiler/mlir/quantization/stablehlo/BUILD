@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
@@ -36,7 +36,7 @@ cc_library(
     hdrs = [
         "passes/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":fill_quantization_options",
         ":quantization_options_proto_cc",
@@ -63,7 +63,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "bridge_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -84,22 +84,37 @@ cc_library(
     name = "bridge_passes",
     srcs = [
         "passes/bridge/convert_mhlo_quant_to_int.cc",
+        "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
     ],
     deps = [
         ":bridge_passes_inc_gen",
         ":math_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_utils",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -107,6 +122,34 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
+    ],
+    # Force link to ensure ConvertTFQuantOpsToMHLOPass is registered.
+    alwayslink = True,
+)
+
+tf_cc_test(
+    name = "convert_tf_quant_to_mhlo_int_test",
+    srcs = [
+        "passes/bridge/convert_tf_quant_to_mhlo_int_test.cc",
+    ],
+    deps = [
+        ":bridge_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -119,7 +162,7 @@ cc_library(
     hdrs = [
         "quantize_passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [":internal_visibility_allowlist_package"],
     deps = [
         ":fill_quantization_options",
@@ -137,7 +180,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "stablehlo_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -157,7 +200,7 @@ cc_library(
     name = "fill_quantization_options",
     srcs = ["utils/fill_quantization_options.cc"],
     hdrs = ["utils/fill_quantization_options.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
@@ -170,7 +213,7 @@ cc_library(
     name = "math_utils",
     srcs = ["utils/math_utils.cc"],
     hdrs = ["utils/math_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = ["@llvm-project//mlir:Support"],
 )
 

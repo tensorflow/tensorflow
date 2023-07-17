@@ -13,7 +13,9 @@ td_library(
     ],
     includes = ["."],
     visibility = [
+        # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         "//learning/infra/mira/distributed:__subpackages__",
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
     deps = [
@@ -50,9 +52,9 @@ cc_library(
         "mlrt_ops.h",
     ],
     visibility = [
+        # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         "//learning/infra/mira/distributed:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
     deps = [
         ":mlrt_ops_inc_gen",

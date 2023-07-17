@@ -746,9 +746,8 @@ cc_library(
     srcs = ["refine_polymorphic_shapes.cc"],
     hdrs = ["refine_polymorphic_shapes.h"],
     deps = [
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/mlir/utils:error_util",
-        "@com_google_absl//absl/log",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -782,6 +781,7 @@ cc_library(
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
         "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
+        "//tensorflow/tsl/profiler/convert:xplane_to_profile_instructions",
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",

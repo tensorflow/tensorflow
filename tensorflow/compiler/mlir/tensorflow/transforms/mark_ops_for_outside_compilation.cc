@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
@@ -245,8 +246,14 @@ bool IsSupportedOp(Operation& op,
   // Assert has a legalization that later removes it so we don't want to outside
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
-  return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) || mhlo::HasTf2XlaFallback(&op));
+
+  if (HasStringOperand(op)) return false;
+  if (HasStringResult(op)) return false;
+  if (MatchesPattern(op, supported_ops)) return true;
+
+  auto abstractOp = op.getRegisteredInfo();
+  if (!abstractOp) return false;
+  return mhlo::HasTf2XlaFallback(abstractOp->getTypeID());
 }
 
 // Checks all regions of `op` for captured string operands.

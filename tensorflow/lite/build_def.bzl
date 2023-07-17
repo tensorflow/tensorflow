@@ -198,7 +198,8 @@ def tflite_jni_binary(
         deps = [],
         tags = [],
         srcs = [],
-        visibility = None):  # 'None' means use the default visibility.
+        visibility = None,  # 'None' means use the default visibility.
+        local_defines = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -225,6 +226,7 @@ def tflite_jni_binary(
         linkopts = linkopts,
         testonly = testonly,
         visibility = visibility,
+        local_defines = local_defines,
     )
 
 def tflite_cc_shared_object(
@@ -684,7 +686,7 @@ def tflite_custom_c_library(
         ]
         experimental_deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
-            "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_experimental_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [

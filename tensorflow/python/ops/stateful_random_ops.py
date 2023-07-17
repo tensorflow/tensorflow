@@ -21,6 +21,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -161,7 +162,7 @@ def _get_state_size(alg):
 
 
 def _check_state_shape(shape, alg):
-  if isinstance(alg, ops.Tensor) and not context.executing_eagerly():
+  if isinstance(alg, tensor.Tensor) and not context.executing_eagerly():
     return
   shape.assert_is_compatible_with([_get_state_size(int(alg))])
 

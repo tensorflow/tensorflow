@@ -49,6 +49,11 @@ class DataServiceContext {
                                               std::function<void()> fn) = 0;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
+  // Returns the time in nanoseconds a tf.data input pipeline can take to
+  // produce an element such that the downstream processor wait time is 0.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate, or the tf.data Model instance is null.
+  virtual double GetTargetProcessingTimeNsec() const = 0;
 };
 
 using DataServiceContextFactory =

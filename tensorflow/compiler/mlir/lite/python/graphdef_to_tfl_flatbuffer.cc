@@ -102,6 +102,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
   pass_config.lower_tensor_list_ops = toco_flags.lower_tensor_list_ops();
+  pass_config.legalize_custom_tensor_list_ops =
+      toco_flags.legalize_custom_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
@@ -115,8 +117,6 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
-  pass_config.enable_hlo_to_tf_conversion =
-      toco_flags.enable_hlo_to_tf_conversion();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

@@ -27,9 +27,10 @@ limitations under the License.
 
 namespace xla {
 
-// Define HloSelector, which is a lambda that, given an HLO
-// instruction, returns true if selected, otherwise return false.
-using HloSelector = std::function<bool(const HloInstruction*)>;
+// Define FrontierSelector, which is a lambda that, given an HLO
+// instruction, returns true if we should continue propagation from this
+// instruction, otherwise return false.
+using FrontierSelector = std::function<bool(const HloInstruction*)>;
 
 // The data structure capturing the outputs of forward/backward slicing.
 class SliceOutput {
@@ -66,7 +67,7 @@ class SliceOutput {
   }
 
  private:
-  // A map that maps from relevant HLO computation to relevant HLO
+  // A map that maps from sliced HLO computation to sliced HLO
   // instructions (excluding the parts of the HLO computations/instructions that
   // are irrelevant).
   absl::flat_hash_map<const HloComputation*,
@@ -93,21 +94,21 @@ class SliceOutput {
 
 // Conduct inter-computation program slicing.
 //
-// `relevant_instructions`: the starting HLO instructions of slicing
+// `slice_starting_instructions`: the starting HLO instructions of slicing.
 // `ignore_control_dependency`: if set as true, control dependency will be
 // ignored during slicing.
-// `hlo_selector`: a lambda function that dictates the ending points (i.e.,
+// `frontier_selector`: a lambda function that dictates the ending points (i.e.,
 // frontier) of the slicing.
 //
-// TODO(b/288160117): Currently it only support forward slicing, backward
-// slicing is yet to be implemented.
 // 'forward_slice': conduct forward slicing (i.e., in the direction that from
-// the `relevant_instructions` to the ROOT) if set as true, conduct backward
-// slicing (i.e., from the `relevant_instructions` to the leaf nodes) otherwise.
+// the `slice_starting_instructions` to the ROOT) if set as true, conduct
+// backward slicing (i.e., from the `slice_starting_instructions` to the leaf
+// nodes) otherwise.
 SliceOutput SliceModule(
     const HloModule* hlo_module,
-    std::vector<const HloInstruction*>& relevant_instructions,
-    HloSelector hlo_selector, bool ignore_control_dependency = false);
+    absl::Span<const HloInstruction*> slice_starting_instructions,
+    FrontierSelector frontier_selector, bool ignore_control_dependency = false,
+    bool forward_slice = true);
 
 }  // namespace xla
 

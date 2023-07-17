@@ -165,22 +165,22 @@ bool CanUseAllToAll(const dtensor::Layout& src_layout,
   // all-to-all in addition to these which can be supported later.
   int num_split_dims = 0;
   int num_concat_dims = 0;
-  ShardingSpec split_spec;
-  ShardingSpec concat_spec;
+  std::string split_spec;
+  std::string concat_spec;
   for (int i = 0; i < src_layout.rank(); ++i) {
     if (src_layout.sharding_spec(i) == tgt_layout.sharding_spec(i)) continue;
     if (Layout::IsUnshardedDimension(src_layout.sharding_spec(i)) &&
         Layout::IsShardedDimension(tgt_layout.sharding_spec(i))) {
       num_split_dims++;
-      split_spec = tgt_layout.dim(i);
+      split_spec = tgt_layout.sharding_spec(i);
     } else if (Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
                Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i))) {
       num_concat_dims++;
-      concat_spec = src_layout.dim(i);
+      concat_spec = src_layout.sharding_spec(i);
     }
   }
   return num_split_dims == 1 && num_concat_dims == 1 &&
-         split_spec.sharding_spec() == concat_spec.sharding_spec();
+         split_spec == concat_spec;
 }
 
 StatusOr<mlir::Value> EmitAllToAll(
@@ -339,14 +339,14 @@ StatusOr<mlir::Value> EmitRelayout(
   for (int i = 0; i < src_layout.rank(); ++i)
     src_sharding_dims.emplace(src_layout.sharding_spec(i));
 
-  std::vector<ShardingSpec> intermediate_specs_1(src_layout.rank());
+  std::vector<std::string> intermediate_specs_1(src_layout.rank());
   for (int i = 0; i < src_layout.rank(); ++i) {
-    if (Layout::IsShardedSpec(tgt_layout.dim(i)) &&
-        !Layout::IsShardedSpec(src_layout.dim(i)) &&
+    if (Layout::IsShardedDimension(tgt_layout.sharding_spec(i)) &&
+        !Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
         !src_sharding_dims.contains(tgt_layout.sharding_spec(i)))
-      intermediate_specs_1[i] = tgt_layout.dim(i);
+      intermediate_specs_1[i] = tgt_layout.sharding_spec(i);
     else
-      intermediate_specs_1[i] = src_layout.dim(i);
+      intermediate_specs_1[i] = src_layout.sharding_spec(i);
   }
   TF_ASSIGN_OR_RETURN(
       Layout intermediate_layout_1,
@@ -357,11 +357,11 @@ StatusOr<mlir::Value> EmitRelayout(
                       EmitAllScatter(builder, input, src_layout,
                                      intermediate_layout_1, newly_created_ops));
 
-  std::vector<ShardingSpec> intermediate_specs_2(src_layout.rank());
+  std::vector<std::string> intermediate_specs_2(src_layout.rank());
   for (int i = 0; i < src_layout.rank(); ++i) {
-    if (Layout::IsShardedSpec(intermediate_specs_1[i]) &&
-        intermediate_specs_1[i].sharding_spec() != tgt_layout.sharding_spec(i))
-      intermediate_specs_2[i].set_sharding_spec(Layout::kUnshardedDim);
+    if (Layout::IsShardedDimension(intermediate_specs_1[i]) &&
+        intermediate_specs_1[i] != tgt_layout.sharding_spec(i))
+      intermediate_specs_2[i] = Layout::kUnshardedDim;
     else
       intermediate_specs_2[i] = intermediate_specs_1[i];
   }

@@ -131,7 +131,6 @@ TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
   tfrt_stub::GraphExecutionOptions options(runtime.get());
 
   options.compile_options.device_target = TfrtDeviceInfraTarget::kGpu;
-  options.compile_options.use_bridge_for_gpu = true;
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
@@ -170,7 +169,6 @@ TEST(SavedModelTest, ConvertTfMlirToBefExportingXlaReduceWindow) {
       tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
   tfrt_stub::GraphExecutionOptions options(runtime.get());
   options.compile_options.device_target = TfrtDeviceInfraTarget::kGpu;
-  options.compile_options.use_bridge_for_gpu = true;
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<tfrt_stub::FallbackState> fallback_state,

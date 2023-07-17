@@ -26,6 +26,7 @@ from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -166,56 +167,77 @@ def _DefaultGradYs(grad_ys,
         if y.dtype.is_complex:
           raise TypeError(
               f"Gradients of complex tensors ({y}) must set grad_ys (y.dtype = "
-              f"{dtypes.as_dtype(y.dtype).name})")
+              f"{dtypes.as_dtype(y.dtype).name})"
+          )
         new_grad_ys.append(
             array_ops.ones(
-                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i))
+                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i
+            )
+        )
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for real or integer-valued tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be real or integer")
+              f"{dtypes.as_dtype(y.dtype).name} must be real or integer"
+          )
       elif y.dtype.is_complex:
         if not grad_y.dtype.is_complex:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for complex-valued tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be real")
+              f"{dtypes.as_dtype(y.dtype).name} must be real"
+          )
       elif y.dtype == dtypes.variant:
         if grad_y.dtype != dtypes.variant:
           raise TypeError(
               f"Gradient type {dtypes.as_dtype(grad_y.dtype).name} generated "
               f"for variant tensor {y} with type "
-              f"{dtypes.as_dtype(y.dtype).name} must be variant")
+              f"{dtypes.as_dtype(y.dtype).name} must be variant"
+          )
       elif y.dtype == dtypes.resource:
         # We assume y is the handle of a ResourceVariable. The gradient of a
         # ResourceVariable should be a numeric value, not another resource.
         if grad_y.dtype == dtypes.resource:
-          raise TypeError(f"Input gradient {grad_y} for resource tensor {y} "
-                          "should not be a resource")
+          raise TypeError(
+              f"Input gradient {grad_y} for resource tensor {y} "
+              "should not be a resource"
+          )
       else:
         raise TypeError(
             f"Tensor {y} with type {dtypes.as_dtype(y.dtype).name} must be "
-            "numeric to obtain a default gradient")
+            "numeric to obtain a default gradient"
+        )
       # Create a grad_y tensor in the name scope of the gradient.
       # Required for TensorArrays to identify which gradient call a
       # grad_y value is coming from.
       if isinstance(grad_y, indexed_slices.IndexedSlices):
         new_grad_ys.append(
             indexed_slices.IndexedSlices(
-                indices=(array_ops.identity(
-                    grad_y.indices, name="grad_ys_%d_indices" % i)
-                         if isinstance(grad_y.indices, ops.Tensor) else
-                         grad_y.indices),
-                values=(array_ops.identity(
-                    grad_y.values, name="grad_ys_%d_values" % i) if isinstance(
-                        grad_y.values, ops.Tensor) else grad_y.values),
-                dense_shape=(array_ops.identity(
-                    grad_y.dense_shape, name="grad_ys_%d_shape" % i)
-                             if isinstance(grad_y.dense_shape, ops.Tensor) else
-                             grad_y.dense_shape)))
+                indices=(
+                    array_ops.identity(
+                        grad_y.indices, name="grad_ys_%d_indices" % i
+                    )
+                    if isinstance(grad_y.indices, tensor_lib.Tensor)
+                    else grad_y.indices
+                ),
+                values=(
+                    array_ops.identity(
+                        grad_y.values, name="grad_ys_%d_values" % i
+                    )
+                    if isinstance(grad_y.values, tensor_lib.Tensor)
+                    else grad_y.values
+                ),
+                dense_shape=(
+                    array_ops.identity(
+                        grad_y.dense_shape, name="grad_ys_%d_shape" % i
+                    )
+                    if isinstance(grad_y.dense_shape, tensor_lib.Tensor)
+                    else grad_y.dense_shape
+                ),
+            )
+        )
       else:
         new_grad_ys.append(array_ops.identity(grad_y, name="grad_ys_%d" % i))
 
@@ -594,10 +616,11 @@ def _GradientsHelper(ys,
         func_call = None
         is_partitioned_call = _IsPartitionedCall(op)
         # pylint: disable=protected-access
-        is_func_call = (
-            src_graph._is_function(op.type) or is_partitioned_call)
+        is_func_call = src_graph._is_function(op.type) or is_partitioned_call
         # pylint: enable=protected-access
-        has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
+        has_out_grads = any(
+            isinstance(g, tensor_lib.Tensor) or g for g in out_grads
+        )
         if has_out_grads and (op not in stop_ops):
           try:
             grad_fn = ops.get_gradient_function(op)
@@ -662,9 +685,12 @@ def _GradientsHelper(ys,
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
-            if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
+            if (
+                not isinstance(out_grad, tensor_lib.Tensor) and not out_grad
+            ) and (
                 (not grad_fn and is_func_call)
-                or backprop_util.IsTrainable(op.outputs[i])):
+                or backprop_util.IsTrainable(op.outputs[i])
+            ):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -710,7 +736,7 @@ def _GradientsHelper(ys,
         # line up with in_grads.
         for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs_set), in_grads)):
           if in_grad is not None:
-            if (isinstance(in_grad, ops.Tensor) and
+            if (isinstance(in_grad, tensor_lib.Tensor) and
                 t_in.dtype != dtypes.resource):
               try:
                 in_grad.set_shape(t_in.get_shape())
@@ -738,7 +764,7 @@ def _HasAnyNotNoneGrads(grads, op):
   """Return true iff op has real gradient."""
   out_grads = _GetGrads(grads, op)
   for out_grad in out_grads:
-    if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
+    if isinstance(out_grad, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
       return True
     if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
@@ -842,7 +868,7 @@ def _GetGrads(grads, op):
 def _AccumulatorShape(inputs):
   shape = tensor_shape.unknown_shape()
   for i in inputs:
-    if isinstance(i, ops.Tensor):
+    if isinstance(i, tensor_lib.Tensor):
       shape = shape.merge_with(i.get_shape())
   return shape
 
@@ -981,12 +1007,13 @@ def _AggregatedGrads(grads,
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if loop_state:
-      if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
+      if isinstance(
+          out_grad, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections_abc.Sequence) and not all(
-        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        isinstance(g, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
         for g in out_grad
         if g is not None)):
       raise TypeError(f"Invalid gradient {out_grad} [index = {i}]. Gradients "
@@ -996,7 +1023,8 @@ def _AggregatedGrads(grads,
       if len(out_grad) < 2:
         used = "nop"
         out_grads[i] = out_grad[0]
-      elif all(isinstance(g, ops.Tensor) for g in out_grad if g is not None):
+      elif all(
+          isinstance(g, tensor_lib.Tensor) for g in out_grad if g is not None):
         tensor_shape = _AccumulatorShape(out_grad)
         if aggregation_method in [
             AggregationMethod.EXPERIMENTAL_TREE,

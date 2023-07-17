@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -149,7 +150,29 @@ Status ConvertTfMlirToRuntimeExecutable(
     tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-  if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
+  {
+    mlir::PassManager pm(module.getContext());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::tf_executor::CreateTFExecutorGraphPruningPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::CreateExecutorDialectToFunctionalConversionPass());
+    if (!options.saved_model_dir.empty()) {
+      pm.addPass(mlir::tf_saved_model::CreateAssetSinkingPass(
+          options.saved_model_dir));
+    }
+    if (mlir::failed(pm.run(module))) {
+      return diag_handler.Combine(absl::InternalError(
+          "Failed to sinking assets into initialization graphs."));
+    }
+  }
+
+  if (options.backend_compiler != nullptr) {
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
+    }
+    TF_RETURN_IF_ERROR(
+        options.backend_compiler->CompileTensorflow(model_context, module));
+  } else if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
     VLOG(1) << "Running MLIR TPU bridge for tpurt";
     if (VLOG_IS_ON(1)) {
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
@@ -181,8 +204,7 @@ Status ConvertTfMlirToRuntimeExecutable(
       return diag_handler.Combine(absl::InternalError(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
-  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
-             options.use_bridge_for_gpu) {
+  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
     TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
 
     // GPU XLA clusters are wrapped in functions, which could be transformed by
@@ -195,12 +217,6 @@ Status ConvertTfMlirToRuntimeExecutable(
         TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
       }
     }
-  } else if (options.backend_compiler != nullptr) {
-    if (VLOG_IS_ON(1)) {
-      tensorflow::DumpMlirOpToFile("tf_dialect_before_backend_compile", module);
-    }
-    TF_RETURN_IF_ERROR(
-        options.backend_compiler->CompileTensorflow(model_context, module));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -283,7 +299,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
   pipeline_options->target_gpu =
       (options.device_target == TfrtDeviceInfraTarget::kGpu);
-  pipeline_options->use_bridge_for_gpu = options.use_bridge_for_gpu;
   pipeline_options->tpu_fuse_ops = options.tpu_fuse_ops;
   pipeline_options->use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
@@ -295,9 +310,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->func_use_fallback_tensor = true;
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
-  pipeline_options->auto_fusion_oplist = options.auto_fusion_oplist;
-  pipeline_options->auto_fusion_min_cluster_size =
-      options.auto_fusion_min_cluster_size;
   pipeline_options->cost_threshold = options.cost_threshold;
   pipeline_options->upper_cost_threshold = options.upper_cost_threshold;
   pipeline_options->merge_inter_dependent_streams =

@@ -34,6 +34,12 @@ class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
+// Base class for deserialization options to be passed to `Deserialize`.
+struct DeserializeOptions
+    : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
+  static char ID;  // NOLINT
+};
+
 // Serializer and deserializer implementations for one `Serializable` type.
 // This, combined with the registration mechanism below, allows extending IFRT
 // object serialization without having to extend the base IFRT itself.
@@ -43,11 +49,11 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   // qualified type name of the class that implements `Serializable`.
   virtual absl::string_view type_name() const = 0;
 
-  virtual absl::StatusOr<std::string> Serialize(
-      const Serializable& serializable) = 0;
+  virtual absl::StatusOr<std::string> Serialize(Serializable& serializable) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-      absl::string_view serialized) = 0;
+      const std::string& serialized,
+      std::unique_ptr<DeserializeOptions> options) = 0;
 
   static char ID;  // NOLINT
 };
@@ -74,16 +80,19 @@ void RegisterSerDes(std::unique_ptr<SerDes> serdes) {
 //
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(const Serializable& serializable);
+absl::StatusOr<Serialized> Serialize(Serializable& serializable);
 
 // Deserializes the given proto message produced by `Serialize()` back to a
 // `Serializable` object of the original type.
+//
+// `options` is passed as-is to `SerDes::Deserialize()`, so it can be nullptr as
+// long as the `SerDes` implementation can handle nullptr options.
 //
 // Returns an error if the `Serializable` type from which `serialized` was
 // produced does not have a corresponding `SerDes` registered or the `SerDes`
 // returns an error.
 absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-    const Serialized& serialized);
+    const Serialized& serialized, std::unique_ptr<DeserializeOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

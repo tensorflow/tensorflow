@@ -19,14 +19,18 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import flexible_dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.platform import test as tf_test
 
 
-PromoSafety = flexible_dtypes.PromoSafety
+PromoMode = ops.PromoMode
+DtypeConversionTestEnv = weak_tensor_test_util.DtypeConversionTestEnv
 
 _ALL_INPUT_TYPES = [
     constant_op.constant(True, dtype=dtypes.bool),
@@ -206,21 +210,21 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, dtypes.complex128, (dtypes.complex128, False)),
   )
   def testResultTypeTFAndTF(self, a_dtype, b_dtype, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    input_a = (
-        constant_op.constant(1, dtype=a_dtype)
-        if a_dtype != dtypes.bool
-        else constant_op.constant(True)
-    )
-    input_b = (
-        constant_op.constant(2, dtype=b_dtype)
-        if b_dtype != dtypes.bool
-        else constant_op.constant(False)
-    )
-    self.assertEqual(
-        flexible_dtypes.result_type(input_a, input_b),
-        res_dtype,
-    )
+    with DtypeConversionTestEnv('all'):
+      input_a = (
+          constant_op.constant(1, dtype=a_dtype)
+          if a_dtype != dtypes.bool
+          else constant_op.constant(True)
+      )
+      input_b = (
+          constant_op.constant(2, dtype=b_dtype)
+          if b_dtype != dtypes.bool
+          else constant_op.constant(False)
+      )
+      self.assertEqual(
+          flexible_dtypes.result_type(input_a, input_b),
+          res_dtype,
+      )
 
   # Test NP types dtype inference.
   @parameterized.parameters(
@@ -241,12 +245,13 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (np.complex64, np.complex128, dtypes.complex128),
   )
   def testResultTypeNPAndNP(self, a_dtype, b_dtype, res_dtype):
-    self.assertEqual(
-        flexible_dtypes.result_type(
-            np.array(1, dtype=a_dtype), np.array(2, dtype=b_dtype)
-        ),
-        (res_dtype, False),
-    )
+    with DtypeConversionTestEnv('all'):
+      self.assertEqual(
+          flexible_dtypes.result_type(
+              np.array(1, dtype=a_dtype), np.array(2, dtype=b_dtype)
+          ),
+          (res_dtype, False),
+      )
 
   # Test np.array with default types.
   # np.array(int) => i64
@@ -297,13 +302,13 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (1.0j, np.complex128, (dtypes.complex128, False)),
   )
   def testResultTypeNPDefaultArray(self, array_in, dtype, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    self.assertEqual(
-        flexible_dtypes.result_type(
-            np.array(array_in), np.array(1, dtype=dtype)
-        ),
-        res_dtype,
-    )
+    with DtypeConversionTestEnv('all'):
+      self.assertEqual(
+          flexible_dtypes.result_type(
+              np.array(array_in), np.array(1, dtype=dtype)
+          ),
+          res_dtype,
+      )
 
   # Test Python int inputs. Note that Python int literals are converted into
   # weak int32 type.
@@ -325,15 +330,13 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, (dtypes.complex128, False)),
   )
   def testResultTypePythonInt(self, input_dtype, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    t_input = (
-        constant_op.constant(2, dtype=input_dtype)
-        if input_dtype != dtypes.bool
-        else constant_op.constant(True)
-    )
-    self.assertEqual(
-        flexible_dtypes.result_type(1, t_input), res_dtype
-    )
+    with DtypeConversionTestEnv('all'):
+      t_input = (
+          constant_op.constant(2, dtype=input_dtype)
+          if input_dtype != dtypes.bool
+          else constant_op.constant(True)
+      )
+      self.assertEqual(flexible_dtypes.result_type(1, t_input), res_dtype)
 
   # Test Python float inputs. Note that Python float literals are converted into
   # weak float32 type.
@@ -355,15 +358,13 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, (dtypes.complex128, False)),
   )
   def testResultTypePythonFloat(self, input_dtype, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    t_input = (
-        constant_op.constant(2, dtype=input_dtype)
-        if input_dtype != dtypes.bool
-        else constant_op.constant(True)
-    )
-    self.assertEqual(
-        flexible_dtypes.result_type(1.0, t_input), res_dtype
-    )
+    with DtypeConversionTestEnv('all'):
+      t_input = (
+          constant_op.constant(2, dtype=input_dtype)
+          if input_dtype != dtypes.bool
+          else constant_op.constant(True)
+      )
+      self.assertEqual(flexible_dtypes.result_type(1.0, t_input), res_dtype)
 
   # Test Python complex inputs. Note that Python complex literals are converted
   # into weak complex128 type.
@@ -385,15 +386,13 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, (dtypes.complex128, False)),
   )
   def testResultTypePythonComplex(self, input_dtype, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    t_input = (
-        constant_op.constant(2, dtype=input_dtype)
-        if input_dtype != dtypes.bool
-        else constant_op.constant(True)
-    )
-    self.assertEqual(
-        flexible_dtypes.result_type(1.0j, t_input), res_dtype
-    )
+    with DtypeConversionTestEnv('all'):
+      t_input = (
+          constant_op.constant(2, dtype=input_dtype)
+          if input_dtype != dtypes.bool
+          else constant_op.constant(True)
+      )
+      self.assertEqual(flexible_dtypes.result_type(1.0j, t_input), res_dtype)
 
   # Test every possible weak type + TF dtype.
   @parameterized.parameters(
@@ -474,21 +473,21 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, dtypes.complex128, (dtypes.complex128, False)),
   )
   def testResultTypeWeakTypesWithTF(self, weak_dtype_a, dtype_b, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    input_a = (
-        constant_op.constant(1, dtype=weak_dtype_a)
-        if weak_dtype_a != dtypes.bool
-        else constant_op.constant(True)
-    )
-    input_b = (
-        constant_op.constant(2, dtype=dtype_b)
-        if dtype_b != dtypes.bool
-        else constant_op.constant(True)
-    )
-    weak_input_a = weak_tensor.WeakTensor(input_a)
-    self.assertEqual(
-        flexible_dtypes.result_type(weak_input_a, input_b), res_dtype
-    )
+    with DtypeConversionTestEnv('all'):
+      input_a = (
+          constant_op.constant(1, dtype=weak_dtype_a)
+          if weak_dtype_a != dtypes.bool
+          else constant_op.constant(True)
+      )
+      input_b = (
+          constant_op.constant(2, dtype=dtype_b)
+          if dtype_b != dtypes.bool
+          else constant_op.constant(True)
+      )
+      weak_input_a = weak_tensor.WeakTensor(input_a)
+      self.assertEqual(
+          flexible_dtypes.result_type(weak_input_a, input_b), res_dtype
+      )
 
   # Test all the possible weak types + weak types.
   @parameterized.parameters(
@@ -519,23 +518,23 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       (dtypes.complex128, dtypes.complex128, dtypes.complex128),
   )
   def testResultTypeWeakTypesWithWeakTypes(self, dtype_a, dtype_b, res_dtype):
-    flexible_dtypes.enable_all_mode()
-    input_a = (
-        constant_op.constant(1, dtype=dtype_a)
-        if dtype_a != dtypes.bool
-        else constant_op.constant(True)
-    )
-    input_b = (
-        constant_op.constant(2, dtype=dtype_b)
-        if dtype_b != dtypes.bool
-        else constant_op.constant(True)
-    )
-    weak_input_a = weak_tensor.WeakTensor(input_a)
-    weak_input_b = weak_tensor.WeakTensor(input_b)
-    self.assertEqual(
-        flexible_dtypes.result_type(weak_input_a, weak_input_b),
-        (res_dtype, True),
-    )
+    with DtypeConversionTestEnv('all'):
+      input_a = (
+          constant_op.constant(1, dtype=dtype_a)
+          if dtype_a != dtypes.bool
+          else constant_op.constant(True)
+      )
+      input_b = (
+          constant_op.constant(2, dtype=dtype_b)
+          if dtype_b != dtypes.bool
+          else constant_op.constant(True)
+      )
+      weak_input_a = weak_tensor.WeakTensor(input_a)
+      weak_input_b = weak_tensor.WeakTensor(input_b)
+      self.assertEqual(
+          flexible_dtypes.result_type(weak_input_a, weak_input_b),
+          (res_dtype, True),
+      )
 
   # Test unallowed promotions in SAFE mode. Make sure exceptions are thrown.
   @parameterized.parameters(
@@ -588,26 +587,26 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       ((dtypes.bfloat16, False), (dtypes.complex128, True)),
   )
   def testResultTypeSafeModeUnallowedPromo(self, a_dtype, b_dtype):
-    flexible_dtypes.enable_safe_mode()
-    # Create Tensor of input dtypes.
-    input_a = (
-        constant_op.constant(1, dtype=a_dtype[0])
-        if a_dtype[0] != dtypes.bool
-        else constant_op.constant(True)
-    )
-    input_b = (
-        constant_op.constant(2, dtype=b_dtype[0])
-        if b_dtype[0] != dtypes.bool
-        else constant_op.constant(False)
-    )
-    # Create WeakTensors if weak = True.
-    if a_dtype[1]:
-      input_a = weak_tensor.WeakTensor(input_a)
-    if b_dtype[1]:
-      input_b = weak_tensor.WeakTensor(input_b)
+    with DtypeConversionTestEnv('safe'):
+      # Create Tensor of input dtypes.
+      input_a = (
+          constant_op.constant(1, dtype=a_dtype[0])
+          if a_dtype[0] != dtypes.bool
+          else constant_op.constant(True)
+      )
+      input_b = (
+          constant_op.constant(2, dtype=b_dtype[0])
+          if b_dtype[0] != dtypes.bool
+          else constant_op.constant(False)
+      )
+      # Create WeakTensors if weak = True.
+      if a_dtype[1]:
+        input_a = weak_tensor.WeakTensor(input_a)
+      if b_dtype[1]:
+        input_b = weak_tensor.WeakTensor(input_b)
 
-    with self.assertRaises(TypeError):
-      flexible_dtypes.result_type(input_a, input_b)
+      with self.assertRaises(TypeError):
+        flexible_dtypes.result_type(input_a, input_b)
 
   # Test allowed promotions in SAFE mode. Make sure no exception is thrown.
   @parameterized.parameters(
@@ -772,113 +771,136 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       ((dtypes.complex128, True), (dtypes.complex128, True)),
   )
   def testResultTypeSafeModeAllowedPromo(self, a_dtype, b_dtype):
-    flexible_dtypes.enable_safe_mode()
-    # Create Tensor of input dtypes.
-    input_a = (
-        constant_op.constant(1, dtype=a_dtype[0])
-        if a_dtype[0] != dtypes.bool
-        else constant_op.constant(True)
-    )
-    input_b = (
-        constant_op.constant(2, dtype=b_dtype[0])
-        if b_dtype[0] != dtypes.bool
-        else constant_op.constant(False)
-    )
-    # Create WeakTensors if weak = True.
-    if a_dtype[1]:
-      input_a = weak_tensor.WeakTensor(input_a)
-    if b_dtype[1]:
-      input_b = weak_tensor.WeakTensor(input_b)
-    flexible_dtypes.result_type(input_a, input_b)
+    with DtypeConversionTestEnv('safe'):
+      # Create Tensor of input dtypes.
+      input_a = (
+          constant_op.constant(1, dtype=a_dtype[0])
+          if a_dtype[0] != dtypes.bool
+          else constant_op.constant(True)
+      )
+      input_b = (
+          constant_op.constant(2, dtype=b_dtype[0])
+          if b_dtype[0] != dtypes.bool
+          else constant_op.constant(False)
+      )
+      # Create WeakTensors if weak = True.
+      if a_dtype[1]:
+        input_a = weak_tensor.WeakTensor(input_a)
+      if b_dtype[1]:
+        input_b = weak_tensor.WeakTensor(input_b)
+      flexible_dtypes.result_type(input_a, input_b)
 
   # Test Python nested structure type inference.
   def testResultTypePythonNestedStructure(self):
-    # i32* + f32* => f32*
-    self.assertEqual(
-        flexible_dtypes.result_type([1], [1.0]),
-        (dtypes.float32, True),
-    )
-    # f32* + c128* => c128*
-    self.assertEqual(
-        flexible_dtypes.result_type([1, 2.0], [1.0j]),
-        (dtypes.complex128, True),
-    )
-    self.assertEqual(
-        flexible_dtypes.result_type([[1, 1.0], [1.0, 1.0]], [1.0j]),
-        (dtypes.complex128, True),
-    )
+    with DtypeConversionTestEnv('all'):
+      # i32* + f32* => f32*
+      self.assertEqual(
+          flexible_dtypes.result_type([1], [1.0]),
+          (dtypes.float32, True),
+      )
+      # f32* + c128* => c128*
+      self.assertEqual(
+          flexible_dtypes.result_type([1, 2.0], [1.0j]),
+          (dtypes.complex128, True),
+      )
+      self.assertEqual(
+          flexible_dtypes.result_type([[1, 1.0], [1.0, 1.0]], [1.0j]),
+          (dtypes.complex128, True),
+      )
 
   # Test tf.variable type inference.
   def testResultTypeVariable(self):
-    v = variables.Variable(1.0, dtype=dtypes.float32)
-    t = constant_op.constant(1, dtype=dtypes.float64)
-    self.assertEqual(
-        flexible_dtypes.result_type(v, t),
-        (dtypes.float64, False),
-    )
+    with DtypeConversionTestEnv('all'):
+      v = variables.Variable(1.0, dtype=dtypes.float32)
+      t = constant_op.constant(1, dtype=dtypes.float64)
+      self.assertEqual(
+          flexible_dtypes.result_type(v, t),
+          (dtypes.float64, False),
+      )
 
   # Test Dtypes type inference.
   def testResultTypeDtype(self):
-    d1 = dtypes.float32
-    d2 = dtypes.float16
-    self.assertEqual(
-        flexible_dtypes.result_type(d1, d2),
-        (dtypes.float32, False),
-    )
+    with DtypeConversionTestEnv('all'):
+      d1 = dtypes.float32
+      d2 = dtypes.float16
+      self.assertEqual(
+          flexible_dtypes.result_type(d1, d2),
+          (dtypes.float32, False),
+      )
 
   # Test Tensor shape type inference.
   def testResultTypeTensorShape(self):
-    t = constant_op.constant(1, dtype=dtypes.float64)
-    self.assertEqual(
-        flexible_dtypes.result_type(t, t.shape),
-        (dtypes.float64, False),
-    )
+    with DtypeConversionTestEnv('all'):
+      t = constant_op.constant(1, dtype=dtypes.float64)
+      self.assertEqual(
+          flexible_dtypes.result_type(t, t.shape),
+          (dtypes.float64, False),
+      )
 
   # Test string types.
   def testResultTypeStr(self):
-    res = flexible_dtypes.result_type('foo', 'bar')
-    self.assertEqual(res[0], dtypes.string)
-    with self.assertRaisesRegex(KeyError, 'Please convert the input manually'):
-      flexible_dtypes.result_type('foo', 1)
+    with DtypeConversionTestEnv('all'):
+      res = flexible_dtypes.result_type('foo', 'bar')
+      self.assertEqual(res[0], dtypes.string)
+      with self.assertRaisesRegex(
+          KeyError, 'Please convert the input manually'
+      ):
+        flexible_dtypes.result_type('foo', 1)
 
   # Test byte types.
   def testResultTypeBytes(self):
-    res = flexible_dtypes.result_type(b'foo', b'bar')
-    self.assertEqual(res[0], dtypes.string)
-    with self.assertRaisesRegex(KeyError, 'Please convert the input manually'):
-      flexible_dtypes.result_type(b'foo', 1)
+    with DtypeConversionTestEnv('all'):
+      res = flexible_dtypes.result_type(b'foo', b'bar')
+      self.assertEqual(res[0], dtypes.string)
+      with self.assertRaisesRegex(
+          KeyError, 'Please convert the input manually'
+      ):
+        flexible_dtypes.result_type(b'foo', 1)
 
   # Test empty input.
   def testResultTypeEmptyInput(self):
-    dtype, is_weak = flexible_dtypes.result_type()
-    self.assertEqual(dtype, dtypes.float32)
-    self.assertTrue(is_weak)
+    with DtypeConversionTestEnv('all'):
+      dtype, is_weak = flexible_dtypes.result_type()
+      self.assertEqual(dtype, dtypes.float32)
+      self.assertTrue(is_weak)
+
+  def testResultTypeUnsupportedInputType(self):
+    class MyTensor(extension_type.ExtensionType):
+      value: tensor.Tensor
+
+    with DtypeConversionTestEnv('all'):
+      a = MyTensor(constant_op.constant(1))
+      with self.assertRaisesRegex(
+          NotImplementedError,
+          f'Auto dtype conversion semantics does not support {type(a)} type.',
+      ):
+        _ = flexible_dtypes.result_type(a)
 
   # Test v1 + v2 = v2 + v1.
   def testCommunicativity(self):
-    flexible_dtypes.enable_all_mode()
-    for v1 in _ALL_INPUT_TYPES:
-      for v2 in _ALL_INPUT_TYPES:
-        self.assertEqual(
-            flexible_dtypes.result_type(v1, v2),
-            flexible_dtypes.result_type(v2, v1),
-        )
+    with DtypeConversionTestEnv('all'):
+      for v1 in _ALL_INPUT_TYPES:
+        for v2 in _ALL_INPUT_TYPES:
+          self.assertEqual(
+              flexible_dtypes.result_type(v1, v2),
+              flexible_dtypes.result_type(v2, v1),
+          )
 
   # Test (v1 + v2) + v3 = v1 + (v2 + v3).
   def testAssociativity(self):
-    flexible_dtypes.enable_all_mode()
-    for v1 in _ALL_INPUT_TYPES:
-      for v2 in _ALL_INPUT_TYPES:
-        for v3 in _ALL_INPUT_TYPES:
-          all_res = [
-              flexible_dtypes.result_type(v1, v2, v3),
-              flexible_dtypes.result_type(v1, v3, v2),
-              flexible_dtypes.result_type(v2, v1, v3),
-              flexible_dtypes.result_type(v2, v3, v1),
-              flexible_dtypes.result_type(v3, v1, v2),
-              flexible_dtypes.result_type(v3, v2, v1),
-          ]
-          self.assertAllEqual(all_res[:-1], all_res[1:])
+    with DtypeConversionTestEnv('all'):
+      for v1 in _ALL_INPUT_TYPES:
+        for v2 in _ALL_INPUT_TYPES:
+          for v3 in _ALL_INPUT_TYPES:
+            all_res = [
+                flexible_dtypes.result_type(v1, v2, v3),
+                flexible_dtypes.result_type(v1, v3, v2),
+                flexible_dtypes.result_type(v2, v1, v3),
+                flexible_dtypes.result_type(v2, v3, v1),
+                flexible_dtypes.result_type(v3, v1, v2),
+                flexible_dtypes.result_type(v3, v2, v1),
+            ]
+            self.assertAllEqual(all_res[:-1], all_res[1:])
 
 
 if __name__ == '__main__':

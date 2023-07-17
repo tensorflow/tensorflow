@@ -85,7 +85,6 @@ cc_library(
         ":host_stream",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:kernel",
-        "//tensorflow/compiler/xla/stream_executor:rng",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/tsl/platform:errors",

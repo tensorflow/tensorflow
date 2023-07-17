@@ -9,6 +9,10 @@ load(
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -110,6 +114,7 @@ cc_library(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:test",
@@ -2274,9 +2279,9 @@ xla_test(
 
 xla_cc_test(
     name = "llvm_compiler_test",
-    srcs = ["llvm_compiler_test.cc"],
+    srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
     tags = tf_cuda_tests_tags(),
-    deps = [
+    deps = if_gpu_is_configured([
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -2291,7 +2296,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-    ],
+    ]),
 )
 
 xla_test(

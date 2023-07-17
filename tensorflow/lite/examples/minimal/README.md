@@ -35,3 +35,11 @@ In the minimal_build directory,
 ```sh
 cmake --build . -j
 ```
+
+#### Step 5. Run the executable
+
+In the minimal_build directory,
+
+```sh
+./minimal <path/to/tflite/model>
+```

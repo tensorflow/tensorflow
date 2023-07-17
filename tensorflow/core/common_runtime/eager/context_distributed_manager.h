@@ -44,6 +44,9 @@ class EagerContextDistributedManager
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
                               int keep_alive_secs) override;
 
+  Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                    int keep_alive_secs) override;
+
   Status EnableCollectiveOps(const ServerDef& server_def) override;
 
   Status CheckRemoteAlive(const std::string& remote_task_name,

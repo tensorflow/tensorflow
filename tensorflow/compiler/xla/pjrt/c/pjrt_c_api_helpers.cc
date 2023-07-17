@@ -16,14 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -249,6 +252,10 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
     case xla::PrimitiveType::F8E4M3B11FNUZ:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ;
+    case xla::PrimitiveType::F8E5M2FNUZ:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2FNUZ;
+    case xla::PrimitiveType::F8E4M3FNUZ:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -302,6 +309,10 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E4M3FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ:
       return xla::PrimitiveType::F8E4M3B11FNUZ;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2FNUZ:
+      return xla::PrimitiveType::F8E5M2FNUZ;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ:
+      return xla::PrimitiveType::F8E4M3FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -674,6 +685,60 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
   kv_callback_data->c_kv_put =
       ToCKVPutCallback(&kv_callback_data->kv_put_c_func);
   return kv_callback_data;
+}
+
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    const xla::Layout* cpp_layout) {
+  BufferMemoryLayoutData layout_data;
+  layout_data.c_layout.type =
+      PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled;
+
+  PJRT_Buffer_MemoryLayout_Tiled c_tiled;
+  layout_data.minor_to_major.assign(cpp_layout->minor_to_major().begin(),
+                                    cpp_layout->minor_to_major().end());
+  c_tiled.minor_to_major = layout_data.minor_to_major.data();
+  c_tiled.minor_to_major_size = layout_data.minor_to_major.size();
+  c_tiled.num_tiles = cpp_layout->tiles().size();
+  if (c_tiled.num_tiles >= 0) {
+    layout_data.tile_dim_sizes.reserve(c_tiled.num_tiles);
+    for (int i = 0; i < c_tiled.num_tiles; ++i) {
+      absl::Span<const int64_t> tile_dim = cpp_layout->tiles()[i].dimensions();
+      layout_data.tile_dims.insert(layout_data.tile_dims.end(),
+                                   tile_dim.begin(), tile_dim.end());
+      layout_data.tile_dim_sizes.push_back(tile_dim.size());
+    }
+    c_tiled.tile_dims = layout_data.tile_dims.data();
+    c_tiled.tile_dim_sizes = layout_data.tile_dim_sizes.data();
+  }
+  layout_data.c_layout.tiled = c_tiled;
+  return layout_data;
+}
+
+xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+    absl::Span<int64_t const> byte_strides) {
+  BufferMemoryLayoutData layout_data;
+  layout_data.c_layout.type =
+      PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Strides;
+  layout_data.c_layout.strides.byte_strides = byte_strides.data();
+  layout_data.c_layout.strides.num_byte_strides = byte_strides.size();
+  return layout_data;
+}
+
+xla::StatusOr<xla::Layout> ConvertToLayout(
+    const PJRT_Buffer_MemoryLayout_Tiled& c_tiled) {
+  absl::Span<const int64_t> minor_to_major(c_tiled.minor_to_major,
+                                           c_tiled.minor_to_major_size);
+  absl::InlinedVector<xla::Tile, 1> tiles;
+  tiles.reserve(c_tiled.num_tiles);
+  const int64_t* current_tile = c_tiled.tile_dims;
+  for (int i = 0; i < c_tiled.num_tiles; ++i) {
+    tiles.push_back(xla::Tile(
+        absl::Span<const int64_t>(current_tile, c_tiled.tile_dim_sizes[i])));
+    current_tile += c_tiled.tile_dim_sizes[i];
+  }
+  xla::Layout layout = xla::Layout(minor_to_major);
+  layout.mutable_tiles()->assign(tiles.begin(), tiles.end());
+  return layout;
 }
 
 }  // namespace pjrt

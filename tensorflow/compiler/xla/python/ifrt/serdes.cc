@@ -56,6 +56,7 @@ Registry* registry() {
 }  // namespace
 
 char Serializable::ID = 0;
+char DeserializeOptions::ID = 0;
 char SerDes::ID = 0;
 
 void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
@@ -78,7 +79,7 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   serdes.release();
 }
 
-absl::StatusOr<Serialized> Serialize(const Serializable& serializable) {
+absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
   SerDes* serdes;
   {
     Registry* const r = registry();
@@ -99,7 +100,7 @@ absl::StatusOr<Serialized> Serialize(const Serializable& serializable) {
 }
 
 absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-    const Serialized& serialized) {
+    const Serialized& serialized, std::unique_ptr<DeserializeOptions> options) {
   SerDes* serdes;
   {
     Registry* const r = registry();
@@ -111,7 +112,7 @@ absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
     }
     serdes = it->second;
   }
-  return serdes->Deserialize(serialized.data());
+  return serdes->Deserialize(serialized.data(), std::move(options));
 }
 
 }  // namespace ifrt

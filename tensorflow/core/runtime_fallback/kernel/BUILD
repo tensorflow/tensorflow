@@ -208,10 +208,6 @@ cc_library(
     includes = [
         "third_party/tf_runtime/include",
     ],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt:__subpackages__",
-    ],
     deps = [
         ":kernel_fallback_tensor",
         ":tensor_util",
@@ -496,10 +492,8 @@ cc_library(
     ],
     deps = [
         ":kernel_fallback_compat_request_state",
-        ":kernel_fallback_tensor",
         ":kernel_fallback_utils",
         ":tensor_util",
-        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:gpu_variables_table",
         "//tensorflow/core/tfrt/utils:tensor_util",

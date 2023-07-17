@@ -98,6 +98,8 @@ struct PJRT_LoadedExecutable {
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
   PJRT_Client* client;
+  // Set the first time PJRT_Buffer_UnpaddedDimensions is called.
+  std::optional<std::vector<int64_t>> unpadded_dims;
 };
 
 struct PJRT_Event {
@@ -138,6 +140,8 @@ namespace pjrt {
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
@@ -212,6 +216,10 @@ PJRT_Error* PJRT_SerializedExecutable_Data(
     PJRT_SerializedExecutable_Data_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
+PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
+PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
+PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
@@ -314,6 +322,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Error_Message=*/pjrt::PJRT_Error_Message,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
 
+      /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
+
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,
       /*PJRT_Event_IsReady=*/pjrt::PJRT_Event_IsReady,
       /*PJRT_Event_Error=*/pjrt::PJRT_Event_Error,
@@ -384,6 +394,10 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_SerializedExecutable_Data,
 
       /*PJRT_Buffer_Destroy=*/pjrt::PJRT_Buffer_Destroy,
+      /*PJRT_Buffer_ElementType=*/pjrt::PJRT_Buffer_ElementType,
+      /*PJRT_Buffer_Dimensions=*/pjrt::PJRT_Buffer_Dimensions,
+      /*PJRT_Buffer_UnpaddedDimensions=*/
+      pjrt::PJRT_Buffer_UnpaddedDimensions,
       /*PJRT_Buffer_OnDeviceTrimmedShape=*/
       pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/

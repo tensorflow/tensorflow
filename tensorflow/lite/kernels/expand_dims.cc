@@ -127,8 +127,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace expand_dims
 TfLiteRegistration* Register_EXPAND_DIMS() {
-  static TfLiteRegistration r = {nullptr, nullptr, expand_dims::Prepare,
-                                 expand_dims::Eval};
+  static TfLiteRegistration r = {
+      nullptr,
+      nullptr,
+      expand_dims::Prepare,
+      expand_dims::Eval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 }  // namespace builtin

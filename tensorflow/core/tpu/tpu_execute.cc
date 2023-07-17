@@ -125,18 +125,6 @@ void ExitCountdown(Env* env) {
   std::quick_exit(42);
 }
 
-xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
-  XLA_Shape c_host_shape;
-  XLA_Shape c_device_shape;
-  ApiConverter::ToC(host_shape, &c_host_shape);
-  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
-      &c_host_shape, &c_device_shape);
-  xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Destroy(&c_host_shape);
-  ApiConverter::Destroy(&c_device_shape);
-  return device_shape;
-}
-
 int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
@@ -219,6 +207,9 @@ xla::Status UpdateDynamicInputs(
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
   TF_RET_CHECK(runtime_inputs->size() == compile_time_shapes.size());
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
   for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     // TODO(yunxing): Iterating over thousands of elements can be slow. One way
     // to optimize for fast path without dynamic shapes is add a field in
@@ -228,7 +219,7 @@ xla::Status UpdateDynamicInputs(
     }
     auto& runtime_input = (*runtime_inputs)[i];
     xla::Shape compile_time_shapes_on_device =
-        HostShapeToDeviceShape(compile_time_shapes[i]);
+        transfer_manager->HostShapeToDeviceShape(compile_time_shapes[i]);
     bool element_modified = false;
     TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
         compile_time_shapes_on_device,
@@ -306,9 +297,6 @@ xla::Status UpdateDynamicInputs(
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
       // point to the correct address.
-      TF_ASSIGN_OR_RETURN(
-          auto transfer_manager,
-          xla::TransferManager::GetForPlatform(stream->parent()->platform()));
       TF_RETURN_IF_ERROR(FixTupleTableAsync(stream,
                                             compile_time_shapes_on_device,
                                             &runtime_input, transfer_manager));

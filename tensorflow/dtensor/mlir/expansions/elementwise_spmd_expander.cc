@@ -164,7 +164,7 @@ ElementwiseSPMDExpander::ComputeLayoutBackward(
 
     TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(operand));
     Layout output_layout_truncated = output_layout.Truncate(
-        output_layout.sharding_specs().size() - operand_shape.size(),
+        output_layout.sharding_spec_strs().size() - operand_shape.size(),
         /*end=*/true);
     auto inferred_operand_layout_strs =
         output_layout_truncated.sharding_spec_strs();

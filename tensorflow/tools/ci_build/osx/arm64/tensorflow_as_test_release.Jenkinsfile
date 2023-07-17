@@ -22,42 +22,6 @@ pipeline {
     stages {
         stage("Build Tensorflow") {
             parallel {
-                stage("Python 3.8") {
-                    agent {
-                        label "silicon-ci"
-                    }
-                    environment {
-                        PYENV_ROOT="$HOME/.pyenv"
-                        PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-
-                    }
-                    steps {
-
-                        sh '''
-                            echo 3.8.13 > /Users/admin/.python-version
-                            pyenv init -
-                            pyenv global 3.8.13
-                        '''
-
-                        sh 'python --version'
-
-                        git branch: "${RELEASE_BRANCH}",
-                            url: "https://github.com/tensorflow/tensorflow.git"
-                            
-                        sh '''
-                            pip install --upgrade pip
-                            pip install -r ./tensorflow/tools/ci_build/release/requirements_mac.txt
-                        '''
-
-                        sh '''
-                        
-                            bazel --bazelrc="${WORKSPACE}/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" test \
-                            --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.8.13/lib/python3.8/site-packages" \
-                            --action_env PYTHON_BIN_PATH="/Users/admin/.pyenv/versions/3.8.13/bin/python3.8" \
-                            --config=nonpip
-                            '''
-                    }
-                }
                 stage("Python 3.9") {
                     agent {
                         label "silicon-ci"

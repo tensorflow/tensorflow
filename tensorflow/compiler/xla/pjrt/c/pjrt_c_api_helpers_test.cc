@@ -21,6 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -132,6 +134,93 @@ TEST(PjRtCApiHelperTest, Callback) {
   auto v = converted_back_kv_get("key", absl::Seconds(1));
   TF_EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
+}
+
+TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
+  std::vector<int64_t> strides = {4, 8};
+  xla::StatusOr<BufferMemoryLayoutData> layout_data =
+      ConvertToBufferMemoryLayoutData(strides);
+
+  EXPECT_TRUE(layout_data.ok());
+  EXPECT_EQ(
+      layout_data->c_layout.type,
+      PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Strides);
+  EXPECT_EQ(layout_data->c_layout.strides.num_byte_strides, 2);
+  EXPECT_EQ(layout_data->c_layout.strides.byte_strides[0], strides[0]);
+  EXPECT_EQ(layout_data->c_layout.strides.byte_strides[1], strides[1]);
+}
+
+TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutNoTiles) {
+  std::vector<int64_t> minor_to_major = {1, 0};
+  xla::Layout layout(minor_to_major);
+
+  TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
+                          ConvertToBufferMemoryLayoutData(&layout));
+
+  EXPECT_EQ(layout_data.c_layout.type,
+            PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);
+  EXPECT_EQ(layout_data.c_layout.tiled.num_tiles, 0);
+  PJRT_Buffer_MemoryLayout_Tiled tiled = layout_data.c_layout.tiled;
+  EXPECT_EQ(tiled.minor_to_major_size, 2);
+  EXPECT_EQ(tiled.minor_to_major[0], minor_to_major[0]);
+  EXPECT_EQ(tiled.minor_to_major[1], minor_to_major[1]);
+}
+
+TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutWithTiles) {
+  std::vector<int64_t> minor_to_major = {1, 0};
+  xla::Layout layout(minor_to_major);
+  std::vector<int64_t> tile_dims_1 = {2, 4};
+  std::vector<int64_t> tile_dims_2 = {1};
+  layout.mutable_tiles()->push_back(xla::Tile(tile_dims_1));
+  layout.mutable_tiles()->push_back(xla::Tile(tile_dims_2));
+
+  TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
+                          ConvertToBufferMemoryLayoutData(&layout));
+
+  EXPECT_EQ(layout_data.c_layout.type,
+            PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);
+  PJRT_Buffer_MemoryLayout_Tiled tiled = layout_data.c_layout.tiled;
+  EXPECT_EQ(tiled.minor_to_major_size, 2);
+  EXPECT_EQ(tiled.minor_to_major[0], minor_to_major[0]);
+  EXPECT_EQ(tiled.minor_to_major[1], minor_to_major[1]);
+  EXPECT_EQ(tiled.num_tiles, 2);
+  EXPECT_EQ(tiled.tile_dim_sizes[0], tile_dims_1.size());
+  EXPECT_EQ(tiled.tile_dim_sizes[1], tile_dims_2.size());
+  EXPECT_EQ(tiled.tile_dims[0], tile_dims_1[0]);
+  EXPECT_EQ(tiled.tile_dims[1], tile_dims_1[1]);
+  EXPECT_EQ(tiled.tile_dims[2], tile_dims_2[0]);
+}
+
+TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayout) {
+  PJRT_Buffer_MemoryLayout c_layout;
+  c_layout.type =
+      PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled;
+  std::vector<int64_t> minor_to_major = {1, 0};
+  c_layout.tiled.minor_to_major_size = 2;
+  c_layout.tiled.minor_to_major = minor_to_major.data();
+  c_layout.tiled.num_tiles = 2;
+  std::vector<size_t> tile_dim_sizes = {2, 1};
+  c_layout.tiled.tile_dim_sizes = tile_dim_sizes.data();
+  std::vector<int64_t> tile_dims = {2, 4, 1};
+  c_layout.tiled.tile_dims = tile_dims.data();
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
+
+  EXPECT_EQ(layout.ToString(), "{1,0:T(2,4)(1)}");
+}
+
+TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
+  PJRT_Buffer_MemoryLayout c_layout;
+  c_layout.type =
+      PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled;
+  c_layout.tiled.num_tiles = 0;
+  std::vector<int64_t> minor_to_major = {1, 0};
+  c_layout.tiled.minor_to_major_size = 2;
+  c_layout.tiled.minor_to_major = minor_to_major.data();
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
+
+  EXPECT_EQ(layout.ToString(), "{1,0}");
 }
 
 }  // namespace

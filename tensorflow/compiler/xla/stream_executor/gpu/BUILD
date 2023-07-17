@@ -39,6 +39,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//waymo/ml/compiler/triton:__subpackages__",
     ]),
     licenses = ["notice"],
 )
@@ -195,19 +196,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ],
-)
-
-cc_library(
-    name = "gpu_rng_header",
-    hdrs = if_gpu_is_configured(["gpu_rng.h"]),
-    deps = [
-        ":gpu_types_header",
-        "//tensorflow/compiler/xla/stream_executor:plugin_registry",
-        "//tensorflow/compiler/xla/stream_executor:rng",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 

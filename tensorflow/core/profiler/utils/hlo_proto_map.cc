@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -52,42 +52,25 @@ ParseHloProtosFromXSpace(const XSpace& space) {
   std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>> hlo_protos;
   const XPlane* raw_plane = FindPlaneWithName(space, kMetadataPlaneName);
   if (raw_plane != nullptr) {
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(raw_plane);
-    if (raw_plane->stats_size() > 0) {
-      // Fallback for legacy aggregated XPlane.
-      // TODO(b/235990417): Remove after 06/14/2023.
-      plane.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.ValueCase() != XStat::kBytesValue) return;
-        auto hlo_proto = std::make_unique<xla::HloProto>();
-        absl::string_view byte_value = stat.BytesValue();
-        if (hlo_proto->ParseFromArray(byte_value.data(), byte_value.size())) {
-          hlo_protos.emplace_back(stat.Id(), std::move(hlo_proto));
-        }
-      });
-    } else {
-      const XStatMetadata* hlo_proto_stat_metadata =
-          plane.GetStatMetadataByType(StatType::kHloProto);
-      if (hlo_proto_stat_metadata == nullptr) {
-        // Fallback for legacy XPlane.
-        // TODO(b/235990417): Remove after 06/14/2023.
-        hlo_proto_stat_metadata = plane.GetStatMetadata(StatType::kHloProto);
-      }
-      if (hlo_proto_stat_metadata != nullptr) {
-        plane.ForEachEventMetadata(
-            [&](const XEventMetadataVisitor& event_metadata) {
-              auto hlo_proto_stat = event_metadata.GetStat(
-                  StatType::kHloProto, *hlo_proto_stat_metadata);
-              if (!hlo_proto_stat) return;
-              if (hlo_proto_stat->ValueCase() != XStat::kBytesValue) return;
-              auto hlo_proto = std::make_unique<xla::HloProto>();
-              absl::string_view byte_value = hlo_proto_stat->BytesValue();
-              if (hlo_proto->ParseFromArray(byte_value.data(),
-                                            byte_value.size())) {
-                hlo_protos.emplace_back(event_metadata.Id(),
-                                        std::move(hlo_proto));
-              }
-            });
-      }
+    XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(raw_plane);
+
+    const XStatMetadata* hlo_proto_stat_metadata =
+        plane.GetStatMetadataByType(StatType::kHloProto);
+    if (hlo_proto_stat_metadata != nullptr) {
+      plane.ForEachEventMetadata(
+          [&](const XEventMetadataVisitor& event_metadata) {
+            auto hlo_proto_stat = event_metadata.GetStat(
+                StatType::kHloProto, *hlo_proto_stat_metadata);
+            if (!hlo_proto_stat) return;
+            if (hlo_proto_stat->ValueCase() != XStat::kBytesValue) return;
+            auto hlo_proto = std::make_unique<xla::HloProto>();
+            absl::string_view byte_value = hlo_proto_stat->BytesValue();
+            if (hlo_proto->ParseFromArray(byte_value.data(),
+                                          byte_value.size())) {
+              hlo_protos.emplace_back(event_metadata.Id(),
+                                      std::move(hlo_proto));
+            }
+          });
     }
   }
   return hlo_protos;

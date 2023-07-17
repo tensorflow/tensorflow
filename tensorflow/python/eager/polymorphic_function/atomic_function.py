@@ -234,6 +234,9 @@ class AtomicFunction:
     if len(args) != expected_len:
       raise ValueError(
           f"Signature specifies {expected_len} arguments, got: {len(args)}."
+          f" Expected inputs: {self.cached_definition.signature.input_arg}."
+          f" Received inputs: {args}."
+          f" Function Type: {self.function_type!r}"
       )
 
     with InterpolateRuntimeError(self):
@@ -297,6 +300,19 @@ class AtomicFunction:
       except AttributeError:
         pass  # 'NoneType' object has no attribute 'eager_mode' when context has
         # been unloaded. Will catch other module unloads as well.
+
+  def __str__(self):
+    return f"<AtomicFunction> {compat.as_str(self.name)}{self.function_type}"
+
+  def __repr__(self):
+    return (
+        f"AtomicFunction(name={self.name},\n"
+        f"bound_context={self._bound_context},\n"
+        f"function_type={self.function_type!r},\n"
+        f"children={self._children!s},\n"
+        f"call_options={self._call_options},\n"
+        f"cached_graph={self._cached_graph})"
+    )
 
 
 def _set_read_only_resource_inputs_attr(

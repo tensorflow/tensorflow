@@ -20,6 +20,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
@@ -401,7 +402,7 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
                       f"Received {pred_fn_pair}.")
     pred, fn = pred_fn_pair
 
-    if isinstance(pred, ops.Tensor):
+    if isinstance(pred, tensor.Tensor):
       if pred.dtype != dtypes.bool:
         raise TypeError("pred must be Tensor of type bool: %s" % pred.name)
     elif not allow_python_preds:

@@ -113,7 +113,7 @@ bool CheckIndexIsMonotonic(
   // are only sub/add then checking that we can compute the range here is enough
   // to guarantee that the index is monotonic if the base index is monotonic. If
   // we want to make the function more powerful we need to have a more
-  // sophisticated check for monothonicity.
+  // sophisticated check for monotonicity.
   Range range = RecursivelyIdentifyRange(index, induction_map);
   VLOG(5) << "Range for: " << index->ToString() << " " << range.ToString();
   return !range.IsEmpty() && range.IsLinear();
@@ -1167,7 +1167,8 @@ static Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
 }
 
 // Function that does the work of pushing backward instructions that have been
-// determined that can be pipelined. Rough transformation: while (i < LAYERS) {
+// determined that can be pipelined. Rough transformation:
+// while (i < LAYERS) {
 //   p0 = param(0)
 //   p1 = param(1)
 //   p0_ag = all-gather(p0)
@@ -1426,8 +1427,12 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   // Substitute old loop with the result of the last peeled iteration.
   HloInstruction* final_loop_output = while_loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_tuple_instructions));
+  HloComputation* loop_computation = while_loop->parent();
   TF_RETURN_IF_ERROR(
       while_loop->ReplaceAllUsesWithDifferentShape(final_loop_output));
+  TF_RETURN_IF_ERROR(
+      loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
+  TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return OkStatus();
 }
 
@@ -1444,10 +1449,11 @@ StatusOr<bool> DataParallelCollectiveOptimizer::Run(
       }
     }
   }
-  next_channel_id_ = hlo_query::NextChannelId(*module);
+  int64_t next_channel_id = hlo_query::NextChannelId(*module);
   for (HloInstruction* instruction : while_loop_instructions) {
-    WhileLoopAnalysis loop_analysis(instruction, max_pipelining_per_loop_,
-                                    process_different_sized_ops_);
+    WhileLoopAnalysis loop_analysis(instruction,
+                                    config_.max_pipelining_per_loop,
+                                    config_.process_different_sized_ops);
     loop_analysis.ComputeLoopStatistics();
     if (!loop_analysis.GetLoopIterationCount() ||
         loop_analysis.GetLoopIterationCount()->GetUnsignedValue() == 0) {
@@ -1456,8 +1462,9 @@ StatusOr<bool> DataParallelCollectiveOptimizer::Run(
     VLOG(1) << "While: " << instruction->ToString();
     VLOG(1) << "While iterations: "
             << loop_analysis.GetLoopIterationCount()->ToString();
-    loop_analysis.CollectCollectivesToMove(
-        level_to_operate_on_, pipelining_direction_, should_process_);
+    loop_analysis.CollectCollectivesToMove(config_.level_to_operate_on,
+                                           config_.pipelining_direction,
+                                           config_.should_process);
     if (loop_analysis.GetMoveInfos().empty()) {
       continue;
     }
@@ -1471,21 +1478,23 @@ StatusOr<bool> DataParallelCollectiveOptimizer::Run(
         VLOG(1) << "\t" << to_move.output_idx;
       }
     }
-    if (pipelining_direction_ == PipeliningDirection::kForward) {
+    if (config_.pipelining_direction == PipeliningDirection::kForward) {
       TF_RETURN_IF_ERROR(TransformLoopForward(
-          loop_analysis, !last_run_, level_to_operate_on_,
-          process_different_sized_ops_, should_process_, next_channel_id_));
+          loop_analysis, !config_.last_run, config_.level_to_operate_on,
+          config_.process_different_sized_ops, config_.should_process,
+          next_channel_id));
     } else {
-      CHECK_EQ(pipelining_direction_, PipeliningDirection::kBackward);
+      CHECK_EQ(config_.pipelining_direction, PipeliningDirection::kBackward);
       TF_RETURN_IF_ERROR(TransformLoopBackward(
-          loop_analysis, !last_run_, level_to_operate_on_,
-          process_different_sized_ops_, should_process_, next_channel_id_));
+          loop_analysis, !config_.last_run, config_.level_to_operate_on,
+          config_.process_different_sized_ops, config_.should_process,
+          next_channel_id));
     }
     changed = true;
   }
   // If this is the last expected run then remove all the custom-calls that we
   // inserted as they shouldn't reach the backend.
-  if (last_run_) {
+  if (config_.last_run) {
     std::vector<HloInstruction*> to_remove;
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
       for (HloInstruction* instruction : computation->instructions()) {

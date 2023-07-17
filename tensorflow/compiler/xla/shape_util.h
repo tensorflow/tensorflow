@@ -19,19 +19,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
-#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
@@ -40,9 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -320,6 +314,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Prepends a major dimension sized `bound` to the shape.
+  static Shape PrependMajorDimension(int64_t bound, Shape shape);
 
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
@@ -890,6 +887,11 @@ class ShapeUtil {
   // Returns the size of array data in bytes, ignoring the trailing padding
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
+
+  // Returns the unsharded shape for an input `sharded_shape` that is
+  // partitioned among `num_shards`.
+  static Shape GetUnshardedShape(const Shape& sharded_shape,
+                                 int64_t num_shards);
 
  private:
   // Fills *shape. Returns true on success.

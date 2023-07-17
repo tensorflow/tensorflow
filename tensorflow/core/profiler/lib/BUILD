@@ -140,7 +140,7 @@ cc_library(
         "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
-        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/tsl/profiler/utils:time_utils",
     ]),
 )
 

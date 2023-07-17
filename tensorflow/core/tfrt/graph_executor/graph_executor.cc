@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -70,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -234,9 +234,9 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
   fallback_request_state.set_runtime_config(&options.runtime_config);
+  fallback_request_state.set_cancellation_manager(
+      &request_info->cancellation_manager);
 
-  TF_RETURN_IF_ERROR(
-      tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   // Set priority in the builder.
   tfrt::RequestOptions request_options;
   request_options.priority = run_options.priority;
@@ -265,7 +265,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
-    CostRecorder* cost_recorder) {
+    CostRecorder* cost_recorder,
+    std::optional<StreamCallbackId> stream_callback_id) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(options, run_options, run_options.work_queue,
@@ -273,10 +274,10 @@ tensorflow::Status GraphExecutionRunOnFunction(
                         runner_table, resource_array, fallback_state,
                         cost_recorder));
 
+  int64_t request_id = request_info->tfrt_request_context->id();
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
-      [request_id = request_info->tfrt_request_context->id(), signature_name,
-       &options, symbol_uids] {
+      [request_id, signature_name, &options, symbol_uids] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
@@ -287,8 +288,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
              {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
              {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor,
-      request_info->tfrt_request_context->id());
+      tensorflow::profiler::ContextType::kTfrtExecutor, request_id);
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -302,6 +302,23 @@ tensorflow::Status GraphExecutionRunOnFunction(
     }
     req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
+  }
+
+  ScopedStreamCallback scoped_stream_callback;
+
+  if (stream_callback_id.has_value()) {
+    if (!run_options.streamed_output_callback) {
+      return absl::InvalidArgumentError(
+          "streamed_output_callback is not provided for a streaming model.");
+    }
+
+    auto streamed_output_callback = run_options.streamed_output_callback;
+
+    TF_ASSIGN_OR_RETURN(
+        scoped_stream_callback,
+        GetGlobalStreamCallbackRegistry().Register(
+            options.model_metadata.name(), *stream_callback_id,
+            StepId(request_id), std::move(streamed_output_callback)));
   }
 
   if (loaded_executable) {
@@ -431,9 +448,6 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
-  graph_execution_state_options.enable_tfrt_gpu = options.enable_tfrt_gpu;
-  graph_execution_state_options.use_bridge_for_gpu =
-      options.compile_options.use_bridge_for_gpu;
 
   options.compile_options.fuse_get_resource_ops_in_hoisting =
       !options.enable_mlrt;
@@ -556,7 +570,8 @@ tensorflow::Status GraphExecutor::Run(
       &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
-      &req_deadline_tracker_, cost_recorder.get()));
+      &req_deadline_tracker_, cost_recorder.get(),
+      loaded_client_graph.stream_callback_id()));
 
   if (cost_recorder != nullptr) {
     TF_RETURN_IF_ERROR(
@@ -586,9 +601,20 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto import_start_time = absl::Now();
   mlir::DialectRegistry registry;
   RegisterMlirDialect(registry);
-  auto context = std::make_unique<mlir::MLIRContext>(registry);
+  // Disable multi-threading in lazy loading as the thread pool it uses is out
+  // of our control and this affects serving performance.
+  //
+  // TODO(chky): Consider using a custom thread pool with limited threads for
+  // compilation.
+  auto context = std::make_unique<mlir::MLIRContext>(
+      registry, mlir::MLIRContext::Threading::DISABLED);
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto stream_callback_id,
+      CreateStreamCallbackId(options().model_metadata.name(), module.get()));
+
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
@@ -652,7 +678,8 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context), options_.enable_online_cost_analysis);
+      std::move(executable_context), options_.enable_online_cost_analysis,
+      std::move(stream_callback_id));
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>

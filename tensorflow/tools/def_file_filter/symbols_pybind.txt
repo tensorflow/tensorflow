@@ -52,22 +52,16 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
-tsl::RegisterNumpyBfloat16
-tsl::Bfloat16Dtype
-tsl::Bfloat16NumpyType
-tsl::Float8_E4M3B11Dtype
-
-[//tensorflow/tsl/python/lib/core:float8_lib] # float8_e4m3fn, float8_e5m2
-tsl::RegisterNumpyFloat8e4m3fn
-tsl::Float8e4m3fnDtype
-tsl::Float8e4m3fnNumpyType
-tsl::RegisterNumpyFloat8e5m2
-tsl::Float8e5m2Dtype
-tsl::Float8e5m2NumpyType
-
-[//tensorflow/tsl/python/lib/core:custom_casts_lib]
-tsl::RegisterCustomCasts
+[//tensorflow/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+tsl::ml_dtypes::RegisterTypes
+tsl::ml_dtypes::GetBfloat16Dtype
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
+tsl::ml_dtypes::GetFloat8E4m3fnDtype
+tsl::ml_dtypes::GetFloat8E5m2Dtype
+tsl::ml_dtypes::GetBfloat16TypeNum
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
+tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
+tsl::ml_dtypes::GetFloat8E5m2TypeNum
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -579,7 +573,7 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
-tensorflow::dtensor::GetFunctionCacheStats
+tensorflow::dtensor::GetStats
 tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor

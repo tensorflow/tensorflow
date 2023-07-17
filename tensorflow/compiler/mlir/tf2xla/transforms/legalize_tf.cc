@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
-
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1222,7 +1226,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
         if (input_size == ShapedType::kDynamic) return failure();
-        tsl::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+        tsl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();
@@ -1928,10 +1932,13 @@ class ConvertMatrixDiagPartV3Op
     // two dimensions (M, N in the matrix-diag-part docs) are where we go
     // through entry by entry.
     ArrayRef<int64_t> input_shape = input_type.getShape();
+    int input_shape_size = input_shape.size();
     Shape slice_sizes(input_shape.begin(), input_shape.end());
     int slice_dimensions = slice_sizes.size();
-    slice_sizes[slice_dimensions - 2] = 1;
-    slice_sizes[slice_dimensions - 1] = 1;
+    slice_sizes[slice_dimensions - 2] =
+        std::min((int64_t)1, input_shape[input_shape_size - 2]);
+    slice_sizes[slice_dimensions - 1] =
+        std::min((int64_t)1, input_shape[input_shape_size - 1]);
 
     // Dimensions of the input we won't see in the output (M and N).
     SmallVector<int64_t, 2> collapsed_dims(
@@ -4883,7 +4890,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         padding_after = explicit_paddings[2 * spatial_dim + 1];
       }
       int64_t expected_output_size = 0;
-      auto status = GetWindowedOutputSizeVerboseV2(
+      auto status = GetWindowedOutputSizeVerbose(
           input_size, filter_size, dilation, stride, padding,
           &expected_output_size, &padding_before, &padding_after);
       if (!status.ok()) return failure();

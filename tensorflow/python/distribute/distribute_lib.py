@@ -214,6 +214,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -3926,7 +3927,7 @@ class ReplicaContextV1(ReplicaContextBase):
 
 def _batch_reduce_destination(x):
   """Returns the destinations for batch all-reduce."""
-  if isinstance(x, ops.Tensor):
+  if isinstance(x, tensor_lib.Tensor):
     # If this is a one device strategy.
     return x.device
   else:

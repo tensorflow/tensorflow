@@ -50,7 +50,7 @@ constexpr char kDefaultDenylist[] = R"pb(
 )pb";
 
 absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
-    tensorflow::ComputeCapability cc, tensorflow::CudnnVersion cudnn_version,
+    ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo) {
   // Key is the tuple of canonicalized hlo, compute capability major/minor,
   // cudnn version major/minor/patch, blas version.

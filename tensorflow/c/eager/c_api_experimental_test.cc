@@ -18,13 +18,17 @@ limitations under the License.
 #include <string.h>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 using tensorflow::string;
 
@@ -520,6 +524,64 @@ TEST(CAPI, TensorHandleDefaults) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
+}
+
+TEST(CAPI, CreateLocalContextAsReset) {
+  tensorflow::ServerDef server_def = GetServerDef("worker", 2);
+  server_def.mutable_default_session_config()->set_isolate_session_state(false);
+
+  ServerFactory* factory;
+  ASSERT_TRUE(ServerFactory::GetFactory(server_def, &factory).ok());
+  server_def.set_job_name("worker");
+  server_def.set_task_index(0);
+  std::unique_ptr<tensorflow::ServerInterface> w0;
+  ASSERT_TRUE(
+      factory->NewServer(server_def, ServerFactory::Options(), &w0).ok());
+  ASSERT_TRUE(w0->Start().ok());
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::ServerInterface> w1;
+  ASSERT_TRUE(
+      factory->NewServer(server_def, ServerFactory::Options(), &w1).ok());
+  ASSERT_TRUE(w1->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  opts->session_options.options.config.set_isolate_session_state(false);
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  server_def.set_task_index(0);
+  auto cluster = server_def.mutable_cluster();
+  auto client_job = cluster->add_job();
+  client_job->set_name("localhost");
+  int client_port = tensorflow::testing::PickUnusedPortOrDie();
+  client_job->mutable_tasks()->insert(
+      {0, strings::StrCat("localhost:", client_port)});
+  server_def.set_job_name("localhost");
+  auto serialized = server_def.SerializeAsString();
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  server_def.set_job_name("worker");
+  server_def.set_task_index(0);
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
+  int worker_port = tensorflow::testing::PickUnusedPortOrDie();
+  job_def->mutable_tasks()->at(0) =
+      tensorflow::strings::StrCat("localhost:", worker_port);
+  serialized = server_def.SerializeAsString();
+  TFE_InitializeLocalOnlyContext(ctx, 0, serialized.data(), serialized.size(),
+                                 status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+
+  TFE_DeleteContextOptions(opts);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  w0.release();
+  w1.release();
 }
 
 }  // namespace

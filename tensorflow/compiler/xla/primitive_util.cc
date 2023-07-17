@@ -29,24 +29,14 @@ namespace xla {
 namespace primitive_util {
 
 int SignificandWidth(PrimitiveType type) {
-  switch (type) {
-    case F32:
-      return std::numeric_limits<float>::digits;
-    case F64:
-      return std::numeric_limits<double>::digits;
-    case BF16:
-      return std::numeric_limits<bfloat16>::digits;
-    case F16:
-      return std::numeric_limits<half>::digits;
-    case F8E5M2:
-      return std::numeric_limits<tsl::float8_e5m2>::digits;
-    case F8E4M3FN:
-      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
-    case F8E4M3B11FNUZ:
-      return std::numeric_limits<tsl::float8_e4m3b11>::digits;
-    default:
-      LOG(FATAL) << "Not a floating data type " << type;
-  }
+  return PrimitiveTypeSwitch<int>(
+      [&](auto constant_type) -> int {
+        if constexpr (IsFloatingPointType(constant_type)) {
+          return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
+        }
+        LOG(FATAL) << "Not a floating data type " << type;
+      },
+      type);
 }
 
 int ExponentWidth(PrimitiveType type) {
@@ -68,24 +58,14 @@ int UnderflowExponent(PrimitiveType type) {
   // normalized floating-point number." as such it does not actually yield the
   // minimum exponent but one above the minimum exponent that a normalized
   // number can have.
-  switch (type) {
-    case F32:
-      return std::numeric_limits<float>::min_exponent;
-    case F64:
-      return std::numeric_limits<double>::min_exponent;
-    case BF16:
-      return std::numeric_limits<bfloat16>::min_exponent;
-    case F16:
-      return std::numeric_limits<half>::min_exponent;
-    case F8E5M2:
-      return std::numeric_limits<tsl::float8_e5m2>::min_exponent;
-    case F8E4M3FN:
-      return std::numeric_limits<tsl::float8_e4m3fn>::min_exponent;
-    case F8E4M3B11FNUZ:
-      return std::numeric_limits<tsl::float8_e4m3b11>::min_exponent;
-    default:
-      LOG(FATAL) << "Not a floating data type " << type;
-  }
+  return PrimitiveTypeSwitch<int>(
+      [&](auto constant_type) -> int {
+        if constexpr (IsFloatingPointType(constant_type)) {
+          return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
+        }
+        LOG(FATAL) << "Not a floating data type " << type;
+      },
+      type);
 }
 
 int OverflowExponent(PrimitiveType type) {
@@ -94,24 +74,29 @@ int OverflowExponent(PrimitiveType type) {
   // representable finite floating-point number." as such it does not actually
   // yield the maximum exponent but the exponent of the first integer which
   // overflows.
-  switch (type) {
-    case F32:
-      return std::numeric_limits<float>::max_exponent;
-    case F64:
-      return std::numeric_limits<double>::max_exponent;
-    case BF16:
-      return std::numeric_limits<bfloat16>::max_exponent;
-    case F16:
-      return std::numeric_limits<half>::max_exponent;
-    case F8E5M2:
-      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
-    case F8E4M3FN:
-      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
-    case F8E4M3B11FNUZ:
-      return std::numeric_limits<tsl::float8_e4m3b11>::max_exponent;
-    default:
-      LOG(FATAL) << "Not a floating data type " << type;
-  }
+  return PrimitiveTypeSwitch<int>(
+      [&](auto constant_type) -> int {
+        if constexpr (IsFloatingPointType(constant_type)) {
+          return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
+        }
+        LOG(FATAL) << "Not a floating data type " << type;
+      },
+      type);
+}
+
+int ExponentBias(PrimitiveType type) {
+  return (1 - UnderflowExponent(type)) + 1;
+}
+
+bool HasInfinity(PrimitiveType type) {
+  return PrimitiveTypeSwitch<bool>(
+      [&](auto constant_type) -> bool {
+        if constexpr (IsFloatingPointType(constant_type)) {
+          return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
+        }
+        return false;
+      },
+      type);
 }
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {

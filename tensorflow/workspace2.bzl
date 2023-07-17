@@ -169,9 +169,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-3dc310302210c1891ffcfb12ae67b11a3ad3a150",
-        sha256 = "ba668f9f8ea5b4890309b7db1ed2e152aaaf98af6f9a8a63dbe1b75c04e52cb9",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/3dc310302210c1891ffcfb12ae67b11a3ad3a150.zip"),
+        strip_prefix = "cpuinfo-87d8234510367db49a65535021af5e1838a65ac2",
+        sha256 = "609fc42c47482c1fc125dccac65e843f640e792540162581c4b7eb6ff81c826a",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/87d8234510367db49a65535021af5e1838a65ac2.zip"),
     )
 
     tf_http_archive(
@@ -804,12 +804,6 @@ def _tf_repositories():
             "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
             "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
         ],
-    )
-
-    tf_http_archive(
-        name = "rules_python",
-        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz"),
     )
 
     tf_http_archive(

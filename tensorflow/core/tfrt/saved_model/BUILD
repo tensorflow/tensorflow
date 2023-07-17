@@ -16,15 +16,13 @@ package_group(
         # copybara:uncomment "//learning/serving/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests/...",
-        "//tensorflow/core/tfrt/saved_model/tests/...",
-        "//tensorflow/core/tfrt/graph_executor/...",
-        "//tensorflow/core/tfrt/tfrt_session/...",
-        "//tensorflow/core/tfrt/utils/debug/...",
+        "//tensorflow/core/tfrt/...",
         "//tensorflow_serving/...",
         "//tensorflow/core/tfrt/saved_model/python/...",
         # copybara:uncomment "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
+        "//tensorflow/core/tfrt/saved_model/utils/...",
     ],
 )
 
@@ -149,8 +147,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tfrt_jitrt_passes",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",

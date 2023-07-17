@@ -546,6 +546,10 @@ createSubgroupsByGroupAssignment(
 // Experimental extended grouping logics to avoid aggressive grouping.
 // This function performs the same grouping method as tf.distribute, which group
 // all reduce ops by user defined group size (number of ops) in the input order.
+// Note that group_size will be in range of [0, INT_MAX]. It is advised to pick
+// a value based on knowledge of the total number of AllReduces. When group_size
+// is too big, the function will act as aggressive grouping. When group_size is
+// too small, the function will act as having no extended grouping.
 std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
 createSubgroupsByExtendedNumOps(
     std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups,
@@ -580,6 +584,103 @@ createSubgroupsByExtendedNumOps(
   return all_reduce_new_groups;
 }
 
+// Experimental grouping logics to optimize from aggressive grouping.
+// This function first sort by topological level, then create AllReduce sub-
+// groups by accessing each topological distance from its previous AllReduce.
+// Note that topo_dist will be in range of [0, INT_MAX]. It is advised to select
+// a value based on knowledge of the compute graph, such as the minimum distance
+// between two model layers. When topo_dist is too big, the function will act
+// as aggressive grouping. When topo_dist is too small, the function will act as
+// having no extended grouping.
+StatusOr<std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>>
+createSubgroupsByTopoDist(
+    std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups,
+    llvm::DenseMap<mlir::TF::DTensorAllReduceOp, int> all_reduce_topo,
+    int topo_dist) {
+  // Disable extended grouping if topological distance is set to zero or less
+  if (topo_dist <= 0) return all_reduce_groups;
+  VLOG(4) << "current number of groups: " << all_reduce_groups.size();
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_new_groups;
+
+  // Further break down the current all_reduced_groups by topological distance
+  // between two ops
+  for (auto& all_reduce_group : all_reduce_groups) {
+    std::vector<mlir::TF::DTensorAllReduceOp> new_group;
+    Status status = absl::OkStatus();
+
+    // Sort AllReduces by topological level as the input order may not reflect
+    // their dependencies on the operands in the compute graph.
+    std::sort(all_reduce_group.begin(), all_reduce_group.end(),
+              [&all_reduce_topo, &status](mlir::TF::DTensorAllReduceOp& lhs,
+                                          mlir::TF::DTensorAllReduceOp& rhs) {
+                if ((all_reduce_topo.find(lhs) == all_reduce_topo.end()) ||
+                    (all_reduce_topo.find(rhs) == all_reduce_topo.end())) {
+                  status = absl::InternalError(
+                      "Error: encounter AllReduce op with no topological level"
+                      " assignment.");
+                  return false;
+                }
+                return all_reduce_topo[lhs] < all_reduce_topo[rhs];
+              });
+    // Unable to sort AllReduces based on topological level due to error. Return
+    // directly as we are not able to group based on incorrect/partial topology.
+    if (!status.ok()) return status;
+
+    // Form AllReduce groups based on the topological distance between ops
+    DCHECK(!all_reduce_group.empty());
+    int prev_topo_level = all_reduce_topo[all_reduce_group[0]];
+    for (const auto& all_reduce : all_reduce_group) {
+      DCHECK(all_reduce_topo.find(all_reduce) != all_reduce_topo.end());
+      int cur_topo_level = all_reduce_topo[all_reduce];
+      if (abs(cur_topo_level - prev_topo_level) <= topo_dist) {
+        new_group.push_back(all_reduce);
+      } else {
+        // Start a new group
+        all_reduce_new_groups.push_back(
+            std::vector<mlir::TF::DTensorAllReduceOp>(new_group.begin(),
+                                                      new_group.end()));
+        new_group.clear();
+        new_group.push_back(all_reduce);
+      }
+      prev_topo_level = cur_topo_level;
+    }
+    all_reduce_new_groups.push_back(new_group);
+  }
+  VLOG(4) << "new number of groups: " << all_reduce_new_groups.size();
+  return all_reduce_new_groups;
+}
+
+// Compute the topological level for each AllReduce op in a cluster. The level
+// is defined as 1 + max operands' depth in the compute graph. If an op do not
+// depend on any input/operand, then it is level 0.
+llvm::DenseMap<mlir::TF::DTensorAllReduceOp, int> computeAllReduceTopoLevel(
+    mlir::tf_device::ClusterOp cluster) {
+  llvm::DenseMap<mlir::Operation*, int> op_topo_level;
+  llvm::DenseMap<mlir::TF::DTensorAllReduceOp, int> all_reduce_topo;
+
+  // Compute topological level for each op.
+  cluster.getBody().walk([&](mlir::Operation* op) {
+    int max_depth = 0;
+    for (mlir::Value operand : op->getOperands()) {
+      if (mlir::Operation* operand_op = operand.getDefiningOp()) {
+        if (op_topo_level.find(operand_op) != op_topo_level.end()) {
+          max_depth = fmax(max_depth, op_topo_level[operand_op]);
+        }
+      }
+    }
+    op_topo_level[op] = max_depth + 1;
+
+    // Save the AllReduce topological level
+    mlir::TF::DTensorAllReduceOp all_reduce =
+        llvm::dyn_cast<mlir::TF::DTensorAllReduceOp>(op);
+    if (all_reduce && !all_reduce.getDeviceType().contains("TPU")) {
+      all_reduce_topo[all_reduce] = op_topo_level[op];
+    }
+  });
+
+  return all_reduce_topo;
+}
+
 struct DTensorAllReduceCombineOptimization
     : public impl::DTensorAllReduceCombineOptimizationBase<
           DTensorAllReduceCombineOptimization> {
@@ -590,11 +691,10 @@ struct DTensorAllReduceCombineOptimization
       std::vector<mlir::TF::DTensorAllReduceOp> ordered_all_reduces;
       std::vector<mlir::Block*> ordered_blocks;
       llvm::DenseSet<mlir::Block*> blocks;
-
       cluster.GetBody().walk([&](mlir::TF::DTensorAllReduceOp all_reduce) {
         if (!all_reduce.getDeviceType().contains("TPU")) {
           // Only combine all reduces for GPU and CPU
-          auto all_reduce_ranked_type =
+          mlir::RankedTensorType all_reduce_ranked_type =
               all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
 
           if (all_reduce_ranked_type &&
@@ -621,15 +721,37 @@ struct DTensorAllReduceCombineOptimization
         all_reduce_groups = createSubgroupsByReductionAttr(all_reduce_groups);
         all_reduce_groups = createSubgroupsByGroupAssignment(all_reduce_groups);
 
-        // Experimental extended grouping
-        int group_size = 0;
-        if (module->hasAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)) {
-          group_size =
-              module->getAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)
-                  .getInt();
+        // Experimental extended grouping: topological distance
+        if (module->hasAttrOfType<mlir::IntegerAttr>(
+                kAllReduceTopologicalDistance)) {
+          llvm::DenseMap<mlir::TF::DTensorAllReduceOp, int> all_reduce_topo =
+              computeAllReduceTopoLevel(cluster);
+
+          StatusOr<std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>>
+              group = createSubgroupsByTopoDist(
+                  all_reduce_groups, all_reduce_topo,
+                  module
+                      ->getAttrOfType<mlir::IntegerAttr>(
+                          kAllReduceTopologicalDistance)
+                      .getInt());
+          if (!group.ok()) {
+            // This is a non-fatal error since topological level distance is one
+            // of the optimizations in this combiner pass. Output an error and
+            // continue with the rest of the grouping optimization.
+            LOG(WARNING) << "Failed to create subgroups using topological "
+                         << "level distance: " << group.status();
+          } else {
+            all_reduce_groups = group.value();
+          }
         }
-        all_reduce_groups =
-            createSubgroupsByExtendedNumOps(all_reduce_groups, group_size);
+
+        // Experimental extended grouping: fixed number of AllReduce ops
+        if (module->hasAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)) {
+          all_reduce_groups = createSubgroupsByExtendedNumOps(
+              all_reduce_groups,
+              module->getAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)
+                  .getInt());
+        }
 
         // Maintain relative order of ALLReduces within the block.
         std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),

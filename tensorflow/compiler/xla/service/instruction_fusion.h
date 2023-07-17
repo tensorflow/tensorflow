@@ -36,8 +36,6 @@ limitations under the License.
 
 namespace xla {
 
-struct NoFusionPossible;
-
 // Propagating explanation of fusion decisions: if something could not be fused,
 // explain the reason.
 class FusionDecision {
@@ -73,13 +71,6 @@ class FusionDecision {
   // Can be fused.
   FusionDecision() = default;
 
-  // A trick to declare and test fusion decision in a single statement (as TF
-  // is still on C++14 and can't use if statement with explicit initializer).
-  //
-  // Cf. NoFusionPossible definition for sample usage.
-  // TODO(b/157309856): Use conditional initializer instead.
-  NoFusionPossible operator!();
-
   // Returns whether it can be fused.
   explicit operator bool() const { return CanFuse(); }
 
@@ -110,6 +101,24 @@ class FusionDecision {
     return *this;
   }
 
+  // Executes the given fusibility checks in order, until one fails. Returns the
+  // result of the first failure (or a `FusionDecision` with `CanFuse() == true`
+  // if none did).
+  // Usage:
+  //   FusionDecision result = FusionDecision::All(std::tuple{FnOne, FnTwo},
+  //                                               arg1, arg2)
+  template <typename... Checks, typename... Args>
+  static FusionDecision All(const std::tuple<Checks...>& checks,
+                            const Args&... args) {
+    FusionDecision result = {};
+    std::apply(
+        [&](auto&&... fns) {
+          ((result = result ? fns(args...) : result), ...);
+        },
+        checks);
+    return result;
+  }
+
   // Appends to explanation, or turns the decision negative.
   FusionDecision operator<<(absl::string_view explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
@@ -127,35 +136,6 @@ class FusionDecision {
   // Empty IFF fusion is possible (explanation provided for negative cases).
   std::optional<std::string> explanation_;
 };
-
-// Helper class: contextually convertible to "no fusion possible" unlike
-// FusionDecision. This is a trick to declare and test fusion decision in a
-// single statement (as we are still on C++14).
-//
-// Sample usage:
-//
-// if (NoFusionPossible fusible = !FusabilityRestriction(producer, consume)) {
-//   return !fusible; // Note that negation converts it back to FusionDecision.
-// }
-struct NoFusionPossible {
-  // Inverts the test value (true <=> not fusible) on wrapped FusionDecision.
-  explicit operator bool() const { return !static_cast<bool>(fusion_decision); }
-
-  // Returns wrapped fusion decision.
-  FusionDecision operator!() const { return fusion_decision; }
-
-  friend NoFusionPossible operator||(const NoFusionPossible& a,
-                                     const NoFusionPossible& b) {
-    // If 'a'  says "fusion is possible" (branch after ":"), then we always want
-    // to return 'b', be it either to propagate b's explanation, or to say that
-    // fusion is indeed possible.
-    return a ? a : b;
-  }
-
-  FusionDecision fusion_decision;
-};
-
-inline NoFusionPossible FusionDecision::operator!() { return {*this}; }
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers

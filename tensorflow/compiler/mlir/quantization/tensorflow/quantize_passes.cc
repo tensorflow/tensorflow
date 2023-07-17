@@ -45,13 +45,21 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
+namespace {
+
+void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
+  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
+}
+}  // namespace
 
 void AddQuantizeQatPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -94,12 +102,11 @@ void AddQuantizeQatPasses(
 void AddQuantizePtqDynamicRangePasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
@@ -136,14 +143,13 @@ void AddQuantizePtqDynamicRangePasses(
 
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
-    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+    AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));

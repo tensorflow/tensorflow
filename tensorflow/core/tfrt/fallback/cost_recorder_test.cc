@@ -19,9 +19,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

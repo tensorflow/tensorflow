@@ -104,7 +104,7 @@ class PjRtCApiClient : public PjRtClient {
  public:
   PjRtCApiClient(
       const PJRT_Api* c_api, PJRT_Client* c_client,
-      std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
+      std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data);
 
   int process_index() const override;
 
@@ -173,6 +173,13 @@ class PjRtCApiClient : public PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer,
       PjRtDevice* device) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {
@@ -244,7 +251,7 @@ class PjRtCApiClient : public PjRtClient {
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
-  std::unique_ptr<pjrt::PJRT_KeyValueCallbackData> kv_callback_data_;
+  std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data_;
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
@@ -257,7 +264,13 @@ class PjRtCApiBuffer : public PjRtBuffer {
  public:
   PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
 
+  PrimitiveType element_type() const override;
+
+  absl::Span<const int64_t> dimensions() const override;
+
   const Shape& on_device_shape() const override;
+
+  StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
   StatusOr<Shape> logical_on_device_shape() override;
 
@@ -361,7 +374,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
  private:
   const PJRT_Api* c_api_;
-  std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;
+  std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
 };
 
 class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
@@ -474,7 +487,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::optional<PjRtFuture<Status>>& returned_future, bool fill_future);
 
   PjRtCApiClient* client_;
-  std::unique_ptr<PJRT_LoadedExecutable, pjrt::PJRT_LoadedExecutableDeleter>
+  std::unique_ptr<PJRT_LoadedExecutable, ::pjrt::PJRT_LoadedExecutableDeleter>
       loaded_executable_;
   std::unique_ptr<PjRtCApiExecutable> executable_;
   std::vector<PjRtDevice*> addressable_devices_;
