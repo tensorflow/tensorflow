@@ -3715,6 +3715,18 @@ std::vector<AlternateMemoryBestFitHeap::HloPositionOrUse>
 AlternateMemoryBestFitHeap::GetInefficientAllocationSites(
     absl::Span<const AlternateMemoryBestFitHeap::AllocationValue>
         allocation_values) const {
+  // The logic below is used mostly for testing, allowing a test case to inject
+  // some custom logic for this method.
+  if (options_.get_inefficient_allocation_sites_fn) {
+    std::vector<HloPosition> defining_positions;
+    defining_positions.reserve(allocation_values.size());
+    for (const AllocationValue& value : allocation_values) {
+      defining_positions.push_back(value.defining_position());
+    }
+    return options_.get_inefficient_allocation_sites_fn(
+        absl::MakeSpan(defining_positions));
+  }
+
   if (!options_.cost_analysis ||
       options_.inefficient_use_to_copy_ratio == 0.0) {
     return {};
@@ -5313,9 +5325,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
       auto prev_allocation_it = std::find_if(
           allocation_sequence->rbegin(), allocation_sequence->rend(),
           [&](const auto& allocation) {
-            return allocation->memory_space() ==
-                       required_memory_space_at_start &&
-                   allocation->defining_position() == defining_position;
+            return allocation->memory_space() == required_memory_space_at_start;
           });
       if (prev_allocation_it != allocation_sequence->rend()) {
         (*prev_allocation_it)->Extend(request.start_time);

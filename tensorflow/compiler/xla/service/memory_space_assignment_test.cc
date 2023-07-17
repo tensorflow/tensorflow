@@ -27,6 +27,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -5388,6 +5389,114 @@ TEST_P(MemorySpaceAssignmentTest,
                       op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
                                     op::GetTupleElement(op::While()))));
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       WhileRedundantEvictionWithInefficientAllocationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    add = f32[3]{0} add(negate1, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    add = f32[3]{0} add(negate14, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0_entry = f32[3]{0} negate(gte1)
+    gte2 = pred[] get-tuple-element(while1), index=2
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, gte1, gte2)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond1, body=while_body1
+    negate1 = f32[3]{0} negate(negate0_entry)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte = f32[3]{0} get-tuple-element(while2), index=1
+    ROOT add = f32[3]{0} add(gte, negate14)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  // Inject GetInefficientAllocationSites to mark negate0_entry use as
+  // inefficient. This triggers a corner case bug where allocating for while2{1}
+  // in the retry allocation fails to find the previous required allocation in
+  // default memory, and creates a new one which is wrong.
+  bool marked_inefficient = false;
+  options.get_inefficient_allocation_sites_fn =
+      [&](absl::Span<HloPosition> defining_positions)
+      -> std::vector<std::variant<HloPosition, HloUse>> {
+    if (absl::c_find(defining_positions,
+                     HloPosition{FindInstruction(module.get(), "while1"),
+                                 {1}}) != defining_positions.end() &&
+        !marked_inefficient) {
+      LOG(INFO) << "Marking the use inefficient.";
+      marked_inefficient = true;
+      return {HloUse{FindInstruction(module.get(), "negate0_entry"), 0}};
+    }
+    return {};
+  };
+  AssignMemorySpace(module.get(), options);
 }
 
 TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
