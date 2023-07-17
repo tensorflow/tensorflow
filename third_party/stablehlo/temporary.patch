@@ -811,6 +811,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/reference/Element.cpp b/stablehlo/stablehlo/reference/Element.cpp
+--- stablehlo/stablehlo/reference/Element.cpp
++++ stablehlo/stablehlo/reference/Element.cpp
+@@ -18,6 +18,7 @@
+ #include <complex>
+ 
+ #include "llvm/ADT/APFloat.h"
++#include "llvm/ADT/APSInt.h"
+ #include "llvm/Support/Error.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/IR/BuiltinAttributes.h"
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
