@@ -139,15 +139,20 @@ bool BroadcastDimsProductEqual(Value input, Value output,
   return (agg_value == output_shape[agg_start_idx]);
 }
 
-// Return true if the product of dimension values of a subsection of the tensor
-// is equal to the non-contracting dimension after a reshape
-bool AreLastTwoDimsTransposed(Value input, Value output) {
-  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
-  ArrayRef<int64_t> output_shape =
-      output.getType().cast<ShapedType>().getShape();
+// Return true if the permutation value only swaps the last two dimensions
+bool AreLastTwoDimsTransposed(Value permutation) {
+  if (!permutation) return false;
+  DenseElementsAttr perm_values_attr;
 
-  return (input_shape.back() == output_shape[output_shape.size() - 2]) &&
-         (input_shape[input_shape.size() - 2] == output_shape.back());
+  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
+  auto perm_values = perm_values_attr.getValues<APInt>();
+  size_t idx = 0;
+  for (; idx < perm_values_attr.size() - 2; ++idx) {
+    if (perm_values[idx].getSExtValue() != idx) return false;
+  }
+
+  return (perm_values[idx].getSExtValue() == perm_values_attr.size() - 1) &&
+         (perm_values[idx + 1].getSExtValue() == idx);
 }
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -375,14 +380,14 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 // Precondition: output_val's is ranked tensor.
 // Returns a truncated shape when `truncate` is set to true.
 DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
-  auto output_type = output_val.getType().cast<RankedTensorType>();
+  auto output_shape = output_val.getType().dyn_cast<ShapedType>().getShape();
 
   SmallVector<int32_t> shape;
-  shape.reserve(output_type.getRank());
+  shape.reserve(output_shape.size());
 
   bool needs_truncation = true;
-  for (size_t dim_idx = 0; dim_idx < output_type.getRank(); ++dim_idx) {
-    int64_t dim = output_type.getShape()[dim_idx];
+  for (size_t dim_idx = 0; dim_idx < output_shape.size(); ++dim_idx) {
+    int64_t dim = output_shape[dim_idx];
     if (truncate && needs_truncation && dim == 1) {
       continue;
     } else if (needs_truncation && dim != 1) {
