@@ -27,7 +27,13 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
   let constructor = "createLegalizeTFLPass()";
 
-  let dependentDialects = ["TosaDialect"];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "index::IndexDialect",
+    "math::MathDialect",
+    "shape::ShapeDialect",
+    "tosa::TosaDialect"
+  ];
   let options = [
     ListOption<"disabled_patterns_", "disable-patterns", "std::string",
                "Labels of patterns that should be filtered out during application">,
@@ -39,7 +45,13 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
 def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
   let constructor = "createLegalizeTFTFLPass()";
-  let dependentDialects = ["TosaDialect"];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "index::IndexDialect",
+    "math::MathDialect",
+    "shape::ShapeDialect",
+    "tosa::TosaDialect"
+  ];
 }
 
 def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::func::FuncOp"> {

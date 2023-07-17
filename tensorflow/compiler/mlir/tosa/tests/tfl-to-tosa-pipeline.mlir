@@ -2782,6 +2782,29 @@ func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>
 
 // -----
 
+// CHECK-LABEL: shape_static
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x2x3xf32>) -> tensor<3xi32>
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[1, 2, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+// CHECK-DAG: return %[[VAR0]] : tensor<3xi32>
+func.func @shape_static(%arg0 : tensor<1x2x3xf32>) -> tensor<3xi32> {
+  %0 = "tfl.shape"(%arg0) : (tensor<1x2x3xf32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: shape_dynamic
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xf32>) -> tensor<3xi32>
+// CHECK-DAG: %[[VAR0:.*]] = shape.shape_of %[[ARG0]] : tensor<?x?x3xf32> -> tensor<3xindex>
+// CHECK-DAG: %[[VAR1:.*]] = arith.index_cast %[[VAR0]] : tensor<3xindex> to tensor<3xi32>
+// CHECK-DAG: return %[[VAR1]] : tensor<3xi32>
+func.func @shape_dynamic(%arg0 : tensor<?x?x3xf32>) -> tensor<3xi32> {
+  %0 = "tfl.shape"(%arg0) : (tensor<?x?x3xf32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
 // CHECK-LABEL: test_range_constant
 // CHECK: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0, 2, 4, 6, 8]> : tensor<5xi32>}> : () -> tensor<5xi32>
 // CHECK: return %[[VAR0]] : tensor<5xi32>

@@ -27,12 +27,28 @@ limitations under the License.
 
 namespace mlir {
 
+namespace arith {
+class ArithDialect;
+}
+
+namespace math {
+class MathDialect;
+}
+
+namespace index {
+class IndexDialect;
+}
+
 namespace quant {
 class QuantizationDialect;
 }
 
 namespace quantfork {
 class QuantizationForkDialect;
+}
+
+namespace shape {
+class ShapeDialect;
 }
 
 namespace TFL {

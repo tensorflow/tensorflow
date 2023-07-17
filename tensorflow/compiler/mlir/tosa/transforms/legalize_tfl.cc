@@ -32,8 +32,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -2221,32 +2223,18 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_shape_op = cast<TFL::ShapeOp>(op);
 
-  RankedTensorType output_type =
-      dyn_cast<RankedTensorType>(tfl_shape_op.getResult().getType());
-  // Not a ranked tensor output
-  if (!output_type) return failure();
+  Value input = tfl_shape_op.getInput();
 
-  RankedTensorType input_type =
-      dyn_cast<RankedTensorType>(tfl_shape_op.getInput().getType());
-  if (!input_type || !input_type.hasStaticShape())
-    return rewriter.notifyMatchFailure(op, "input shape not static");
-
-  auto input_shape = input_type.getShape();
-
-  SmallVector<int32_t> shape_arr;
-  for (int i = 0; i < input_shape.size(); i++) {
-    shape_arr.emplace_back(input_shape[i]);
+  auto result_ty = tfl_shape_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!result_ty) {
+    return failure();
   }
 
-  RankedTensorType shape_type = RankedTensorType::get(
-      {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr =
-      DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(shape_arr));
-  auto shape_const = CreateOpAndInfer<tosa::ConstOp>(
-      rewriter, op->getLoc(), shape_type, shape_attr.cast<ElementsAttr>());
-
-  rewriter.replaceOp(op, {shape_const.getResult()});
-
+  auto index_tensor = tensorflow::GetTypeFromTFTensorShape(
+      result_ty.getShape(), rewriter.getIndexType());
+  auto shape_op =
+      rewriter.create<shape::ShapeOfOp>(tfl_shape_op.getLoc(), index_tensor, input);
+  rewriter.replaceOpWithNewOp<arith::IndexCastOp>(op, result_ty, shape_op);
   return success();
 }
 
@@ -4703,6 +4691,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLReal);
   DEF_PATTERN_INSERT(TFLImag);
   DEF_PATTERN_INSERT(TFLRFFT2d);
+  DEF_PATTERN_INSERT(TFLRange);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
