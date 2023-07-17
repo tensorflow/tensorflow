@@ -17,20 +17,65 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tfrt {
-class CoreRuntime;
-class ConcurrentWorkQueue;
 }  // namespace tfrt
 
 namespace tensorflow {
 namespace tfrt_stub {
+
+// ModelRuntimeContext provides model contexts for injected backends to
+// initialize their per-model states.
+class ModelRuntimeContext {
+ public:
+  ModelRuntimeContext(const GraphExecutionOptions* graph_execution_options,
+                      std::string export_dir,
+                      tfrt::ResourceContext* resource_context)
+      : graph_execution_options_(graph_execution_options),
+        export_dir_(std::move(export_dir)),
+        resource_context_(resource_context) {
+    DCHECK(graph_execution_options_);
+    DCHECK(resource_context_);
+  }
+
+  absl::string_view name() const {
+    return graph_execution_options_->model_metadata.name();
+  }
+  int64_t version() const {
+    return graph_execution_options_->model_metadata.version();
+  }
+
+  absl::string_view export_dir() const { return export_dir_; }
+
+  const MetaGraphDef* meta_graph_def() const { return meta_graph_def_; }
+  void set_meta_graph_def(const MetaGraphDef* meta_graph_def) {
+    meta_graph_def_ = meta_graph_def;
+  }
+
+  tfrt::ResourceContext& resource_context() { return *resource_context_; }
+
+  const GraphExecutionOptions& graph_execution_options() const {
+    return *graph_execution_options_;
+  }
+
+ private:
+  const GraphExecutionOptions* graph_execution_options_ = nullptr;
+
+  std::string export_dir_;
+  const MetaGraphDef* meta_graph_def_ = nullptr;
+
+  tfrt::ResourceContext* resource_context_ = nullptr;
+};
 
 // This defines the runtime abstraction in tensorflow for TFRT. It is supposed
 // to provide tensorflow specific functionalities that are implemented using
@@ -54,7 +99,6 @@ class Runtime {
       std::unique_ptr<WorkQueueInterface> work_queue);
 
   ~Runtime();
-
   Runtime(Runtime&&) = default;
   Runtime& operator=(Runtime&&) = default;
 
@@ -80,14 +124,14 @@ class Runtime {
   void AddCreateRuntimeResourceFn(
       std::function<void(tfrt::ResourceContext*)> fn) {
     runtime_resource_fns_.emplace_back(
-        [fn = std::move(fn)](const GraphExecutionOptions&,
-                             tfrt::ResourceContext* resource_ctx) {
-          fn(resource_ctx);
+        [fn = std::move(fn)](ModelRuntimeContext& model_context) {
+          fn(&model_context.resource_context());
+          return absl::OkStatus();
         });
   }
+
   void AddCreateRuntimeResourceFn(
-      std::function<void(const GraphExecutionOptions&, tfrt::ResourceContext*)>
-          fn) {
+      std::function<absl::Status(ModelRuntimeContext& model_context)> fn) {
     runtime_resource_fns_.emplace_back(std::move(fn));
   }
 
@@ -95,10 +139,25 @@ class Runtime {
   // resources.
   //
   // This function is thread-safe.
+  absl::Status CreateRuntimeResources(
+      ModelRuntimeContext& model_context) const {
+    for (auto& fn : runtime_resource_fns_) {
+      TF_RETURN_IF_ERROR(fn(model_context));
+    }
+    return absl::OkStatus();
+  }
+
+  ABSL_DEPRECATED("Use the overload that take ModelRuntimeContext instead.")
   void CreateRuntimeResources(const GraphExecutionOptions& options,
                               tfrt::ResourceContext* resource_ctx) const {
+    ModelRuntimeContext model_context(
+        &options, options.compile_options.saved_model_dir, resource_ctx);
     for (auto& fn : runtime_resource_fns_) {
-      fn(options, resource_ctx);
+      auto status = fn(model_context);
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to create runtime resource: " << status;
+        return;
+      }
     }
   }
 
@@ -126,14 +185,19 @@ class Runtime {
   std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
       create_request_queue_fn_;
   WorkQueueInterface* work_queue_ = nullptr;
-  std::vector<std::function<void(const GraphExecutionOptions& options,
-                                 tfrt::ResourceContext*)>>
+  std::vector<std::function<absl::Status(ModelRuntimeContext&)>>
       runtime_resource_fns_;
 };
 
+// Get a singleton instance of tfrt_stub::Runtime. Returns nullptr until
+// SetGlobalRuntime has been called.
+// Not thread safe.
 Runtime* GetGlobalRuntime();
 
-void SetGlobalRuntime(Runtime* runtime);
+// Instantiates the singleton instance of tfrt_stub::Runtime by transferring
+// an instance of tfrt_stub::Runtime.
+// Not thread safe.
+void SetGlobalRuntime(std::unique_ptr<Runtime> runtime);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

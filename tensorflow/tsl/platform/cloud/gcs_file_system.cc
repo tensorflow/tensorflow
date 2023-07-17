@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdio.h>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -1459,6 +1460,9 @@ Status GcsFileSystem::FileExists(const string& fname, TransactionToken* token) {
     TF_RETURN_IF_ERROR(BucketExists(bucket, &result));
     if (result) {
       return OkStatus();
+    } else {
+      return absl::NotFoundError(
+          absl::StrCat("The specified bucket ", fname, " was not found."));
     }
   }
 

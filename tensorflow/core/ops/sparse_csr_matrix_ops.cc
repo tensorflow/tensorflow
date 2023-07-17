@@ -426,13 +426,15 @@ REGISTER_OP("SparseMatrixSparseMatMul")
       auto output_rows = c->Dim(a_shape, transpose_a ? -1 : -2);
       auto output_cols = c->Dim(b_shape, transpose_b ? -2 : -1);
 
-      // Batch dims match between inputs.
+      // Batch dims must be broadcast-compatible between inputs.
       ShapeHandle a_batch_dims;
       ShapeHandle b_batch_dims;
       ShapeHandle batch_dims;
       TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
       TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
-      TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, a_batch_dims, b_batch_dims, /*incompatible_shape_error=*/true,
+          &batch_dims));
 
       // Assert inner dims match.
       shape_inference::DimensionHandle unused;

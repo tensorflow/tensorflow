@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/mem.h"
@@ -257,16 +256,6 @@ Event::Status HostExecutor::PollForEventStatus(Event* event) {
                                         : Event::Status::kPending;
 }
 
-bool HostExecutor::StartTimer(Stream* stream, Timer* timer) {
-  dynamic_cast<HostTimer*>(timer->implementation())->Start(stream);
-  return true;
-}
-
-bool HostExecutor::StopTimer(Stream* stream, Timer* timer) {
-  dynamic_cast<HostTimer*>(timer->implementation())->Stop(stream);
-  return true;
-}
-
 tsl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }
@@ -326,27 +315,6 @@ fft::FftSupport* HostExecutor::CreateFft() {
                                                        plugin_config_.fft());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  return status.value()(this);
-}
-
-bool HostExecutor::SupportsRng() const {
-  return PluginRegistry::Instance()
-      ->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
-                                               plugin_config_.rng())
-      .ok();
-}
-
-rng::RngSupport* HostExecutor::CreateRng() {
-  PluginRegistry* registry = PluginRegistry::Instance();
-  tsl::StatusOr<PluginRegistry::RngFactory> status =
-      registry->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
-                                                       plugin_config_.rng());
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve RNG factory: "
                << status.status().message();
     return nullptr;
   }

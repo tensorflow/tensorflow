@@ -208,21 +208,21 @@ xla::StatusOr<ShardArgResult> ShardArg(
       }
     }
 
-    TF_ASSIGN_OR_RETURN(
-        result.ifrt_array,
-        per_device_arrays.front()
-            ->client()
-            ->AssembleArrayFromSingleDeviceArrays(
-                // TODO(hyeontaek): The logical shape here is inaccurate. We
-                // may want to avoid creating a new Array or specialize Array
-                // to disallow access to the logical shape.
-                per_device_arrays.front()->shape(),
-                xla::ifrt::OpaqueSharding::Create(
-                    xla::ifrt::DeviceList(std::move(devices)),
-                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-                        std::move(shapes))),
-                absl::MakeSpan(per_device_arrays),
-                xla::ifrt::ArrayCopySemantics::kReuseInput));
+    // TODO(hyeontaek): The logical shape here is inaccurate. We
+    // may want to avoid creating a new Array or specialize Array
+    // to disallow access to the logical shape.
+    xla::ifrt::Shape shape = per_device_arrays.front()->shape();
+    auto ifrt_sharding = xla::ifrt::ConcreteSharding::Create(
+        xla::ifrt::DeviceList(std::move(devices)),
+        /*shape=*/shape,
+        /*shard_shapes=*/std::move(shapes));
+    TF_ASSIGN_OR_RETURN(result.ifrt_array,
+                        per_device_arrays.front()
+                            ->client()
+                            ->AssembleArrayFromSingleDeviceArrays(
+                                std::move(shape), std::move(ifrt_sharding),
+                                absl::MakeSpan(per_device_arrays),
+                                xla::ifrt::ArrayCopySemantics::kReuseInput));
     return result;
   }
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
@@ -533,7 +533,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {
     return py::reinterpret_steal<py::tuple>(
-        JAX_PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
+        PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
   };
 
   // Call the cache_miss() function, extracting the output data and ignoring
@@ -1004,7 +1004,7 @@ void BuildPmapSubmodule(py::module& m) {
     type->tp_name = "PmapFunction";
     type->tp_basicsize = sizeof(JaxPmapFunctionObject);
     type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE |
-                     Py_TPFLAGS_HAVE_GC | JAX_TPFLAGS_HAVE_VECTORCALL;
+                     Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_HAVE_VECTORCALL;
     type->tp_new = JaxPmapFunction_tp_new;
     type->tp_dealloc = JaxPmapFunction_tp_dealloc;
     type->tp_dictoffset = offsetof(JaxPmapFunctionObject, dict);

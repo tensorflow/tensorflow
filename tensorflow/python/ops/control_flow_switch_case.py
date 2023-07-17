@@ -16,6 +16,7 @@
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_util as util
@@ -45,7 +46,7 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
   Returns:
     branch_fns: validated list of callables for each branch (default last).
   """
-  if not isinstance(branch_index, ops.Tensor):
+  if not isinstance(branch_index, tensor.Tensor):
     raise TypeError("'branch_index' must be a Tensor, got {}".format(
         type(branch_index)))
   if not branch_index.dtype.is_integer:

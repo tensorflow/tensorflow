@@ -16,13 +16,13 @@
 # pylint: disable=g-bad-name
 import collections
 import copy
+import enum
 import re
 import sys
 import threading
 import types
 from typing import Optional
 from absl import app
-
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -234,8 +234,6 @@ def value_text(tensor, is_repr=False):
   return text
 
 
-enable_tensor_equality = tensor_lib.enable_tensor_equality
-disable_tensor_equality = tensor_lib.disable_tensor_equality
 Tensor = tensor_lib.Tensor
 
 
@@ -1600,8 +1598,8 @@ class Operation(pywrap_tf_session.PyOperation):
         raise ValueError("error setting the type of ", self.name,
                          ": expected TFT_UNSET or TFT_PRODUCT, got ",
                          type_proto.type_id)
-      pywrap_tf_session.SetFullType(c_graph, self._c_op,
-                                    type_proto.SerializeToString())  # pylint:disable=protected-access
+      with c_api_util.tf_buffer(type_proto.SerializeToString()) as serialized:
+        pywrap_tf_session.SetFullType(c_graph, self._c_op, serialized)  # pylint:disable=protected-access
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -5946,16 +5944,82 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
   return grouped_inputs
 
 
-_numpy_style_type_promotion = False
+# OFF mode is the current TF dtype promotion semantics - no dtype conversion
+# allowed. LEGACY mode maintains the old Tf-NumPy promotion semantics, similar
+# to NumPy's dtype promotion semantics. ALL mode allows all conversions while
+# SAFE mode disallows “risky” promotions that can result in dtype widening or
+# potential precision loss.
+class PromoMode(enum.Enum):
+  OFF = 0
+  LEGACY = 1
+  SAFE = 2
+  ALL = 3
 
 
-def enable_numpy_style_type_promotion():
-  """If called, follows NumPy's rules for type promotion.
+_dtype_conversion_mode = PromoMode.OFF
 
-  Used for enabling NumPy behavior on methods for TF NumPy.
+
+def get_dtype_conversion_mode():
+  return _dtype_conversion_mode
+
+
+# TODO(b/289395872): Make sure all WeakTensor construction is guarded with this
+# check.
+def is_auto_dtype_conversion_enabled():
+  return (
+      _dtype_conversion_mode == PromoMode.ALL
+      or _dtype_conversion_mode == PromoMode.SAFE
+  )
+
+
+def is_numpy_style_type_promotion():
+  return _dtype_conversion_mode == PromoMode.LEGACY
+
+
+def set_dtype_conversion_mode(dtype_conversion_mode):
+  """Enables the specified dtype conversion mode.
+
+  Args:
+    dtype_conversion_mode: a string that specifies dtype conversion mode. This
+      string corresponds to a PromoMode Enum and can be 'off', 'legacy', 'safe'
+      or 'all'.
   """
-  global _numpy_style_type_promotion
-  _numpy_style_type_promotion = True
+  global _dtype_conversion_mode
+  _dtype_conversion_mode = _get_promo_mode_enum(dtype_conversion_mode)
+
+
+def _get_promo_mode_enum(dtype_conversion_mode):
+  """Returns the corresponding PromoMode enum value from string."""
+  if dtype_conversion_mode == "off":
+    return PromoMode.OFF
+  if dtype_conversion_mode == "legacy":
+    return PromoMode.LEGACY
+  elif dtype_conversion_mode == "safe":
+    return PromoMode.SAFE
+  elif dtype_conversion_mode == "all":
+    return PromoMode.ALL
+  else:
+    raise ValueError(
+        f"The provided promotion mode {dtype_conversion_mode} does not exist."
+        " Make sure the provided dtype conversion mode is one of the"
+        " followings: 'off', 'legacy', 'safe' or 'all'."
+    )
+
+
+def promo_mode_enum_to_string(promo_safety_mode_enum):
+  """Returns the corresponding PromoMode string value from PromoMode enum."""
+  if promo_safety_mode_enum == PromoMode.OFF:
+    return "off"
+  if promo_safety_mode_enum == PromoMode.LEGACY:
+    return "legacy"
+  elif promo_safety_mode_enum == PromoMode.SAFE:
+    return "safe"
+  elif promo_safety_mode_enum == PromoMode.ALL:
+    return "all"
+  else:
+    raise ValueError(
+        f"The provided promotion mode {promo_safety_mode_enum} does not exist."
+    )
 
 
 _numpy_style_slicing = False

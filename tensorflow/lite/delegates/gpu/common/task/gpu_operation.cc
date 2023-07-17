@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -606,7 +607,7 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
   op.elementwise_code_ = std::move(descriptor.code);
   op.elementwise_ = true;
   if (definition.src_tensors.size() > 1 &&
-      op.elementwise_code_.find("in2_value")) {
+      absl::StrContains(op.elementwise_code_, "in2_value")) {
     const auto second_tensor_def = definition.src_tensors[1];
     if (NeedsBroadcast(second_tensor_def, second_shape)) {
       const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
@@ -679,6 +680,9 @@ absl::Status FuseElemWithElemInternal(
           {absl::string_view(replacements[i].first), replacements[i].second});
     }
   }
+  elem1.elementwise_code_ =
+      absl::StrReplaceAll(elem1.elementwise_code_,
+                          {{"interm_value", "interm_value" + unique_postfix}});
   elem1.elementwise_code_ =
       absl::StrReplaceAll(elem1.elementwise_code_, replacements_new);
 

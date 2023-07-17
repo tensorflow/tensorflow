@@ -6821,8 +6821,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   TfLiteIntArray* execution_plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
   // Copy the execution plan and wrap it with unique_ptr.
-  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> plan(
-      TfLiteIntArrayCopy(execution_plan), TfLiteIntArrayFree);
+  IntArrayUniquePtr plan(TfLiteIntArrayCopy(execution_plan));
 
   // Check for every node if it is supported
   const bool is_accelerator_specified = ShouldUseTargetDevices(

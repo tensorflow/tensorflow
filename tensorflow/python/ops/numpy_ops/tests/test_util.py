@@ -32,7 +32,6 @@ import numpy as onp
 import numpy.random as npr
 
 from tensorflow.python.util import nest
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gradient_checker_v2
@@ -83,7 +82,7 @@ python_scalar_dtypes = {
 
 
 def _dtype(x):
-  if isinstance(x, ops.Tensor):
+  if isinstance(x, tensor.Tensor):
     return x.dtype.as_numpy_dtype
   return (getattr(x, 'dtype', None) or
           onp.dtype(python_scalar_dtypes.get(type(x), None)) or

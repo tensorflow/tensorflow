@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
     if (iteration_count != 1) {
       std::cerr << "\n=== Iteration " << i << "\n";
     }
-    xla::Status matched = xla::RunAndCompare(
+    xla::Status result = xla::RunAndCompare(
         hlo_filename, &test_runner, reference_runner.get(), engine.get(), opts,
         /*iteration_literals_proto=*/nullptr,
         /*reference_module_modifier_hook=*/{},
@@ -182,18 +182,14 @@ int main(int argc, char** argv) {
           config->set_seed(different_random_seeds ? i : 42);
         });
 
-    // The AssertionResult is only meaningful when the reference is
-    // used. Without a reference, the test just verifies that nothing blew up
-    // when running the module.
-    if (!reference_platform_name.empty()) {
-      if (matched.ok()) {
-        // Success.
+    if (result.ok()) {
+      if (!reference_platform_name.empty()) {
         std::cerr << "\n** Results on " << test_platform_name << " and "
                   << reference_platform_name << " are close enough. **\n";
-      } else {
-        failure_count++;
-        std::cerr << matched << "\n";
       }
+    } else {
+      failure_count++;
+      std::cerr << result << "\n";
     }
   }
 

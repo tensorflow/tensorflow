@@ -271,6 +271,47 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
             literal->Relayout(src_literal.shape().layout()).data<float>());
 }
 
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {src_literal.shape()}, client->addressable_devices()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+
+  absl::Mutex mu;
+  auto literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
+  bool got_literal = false;
+
+  buffer->ToLiteral(literal.get(), [&](Status s) {
+    absl::MutexLock l(&mu);
+    TF_ASSERT_OK(s);
+    got_literal = true;
+  });
+
+  absl::SleepFor(absl::Milliseconds(10));
+  ASSERT_FALSE(got_literal);
+  TF_ASSERT_OK(
+      transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
+
+  buffer.reset();
+
+  {
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&got_literal));
+  }
+
+  ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
+  ASSERT_EQ(src_literal.data<float>(),
+            literal->Relayout(src_literal.shape().layout()).data<float>());
+}
+
 TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
@@ -395,6 +436,39 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   free(dst);
 }
 
+TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+
+  // d0 is the device we will perform local/remote sends from.
+  auto* d0 = client->addressable_devices()[0];
+  // d1 is the device we will perform local/remote recvs, where the recv
+  // sync flag may be contended.
+  auto* d1 = client->addressable_devices()[1];
+
+  auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice({src_literal.shape()}, d0));
+  auto src_buffer = transfer_manager->RetrieveBuffer(0);
+  // CopyToDevice won't be enqueued until src_buffer is available.
+  auto local_recv_buffer = *src_buffer->CopyToDevice(d1);
+
+  TF_ASSERT_OK(
+      transfer_manager->TransferLiteralToBuffer(0, src_literal, []() {}));
+
+  auto literal = std::make_shared<Literal>(src_literal.shape());
+
+  auto local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
+  TF_EXPECT_OK(local_recv_literal.Await());
+
+  ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
+  ASSERT_EQ(src_literal.data<float>(),
+            literal->Relayout(src_literal.shape().layout()).data<float>());
+}
+
 TEST(GpuTopology, FromProto) {
   GpuTopologyProto msg;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
@@ -462,8 +536,8 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
               /*platform_name=*/std::nullopt,
               /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put));
       EXPECT_EQ(client->platform_name(), "gpu");
-      EXPECT_EQ(client->addressable_device_count(), 1);
-      EXPECT_EQ(client->device_count(), 2);
+      EXPECT_EQ(client->addressable_device_count(), 2);
+      EXPECT_EQ(client->device_count(), 4);
     });
   }
 }

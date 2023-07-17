@@ -58,6 +58,8 @@ static constexpr char kNewResourceLayoutIndices[] =
 // Attribute carries layout for newly inferred layout of resource handle.
 static constexpr char kNewResourceArgLayouts[] = "_inferred_resource_layouts";
 
+static constexpr char kNumLocalOutputsAttr[] = "_num_local_outputs";
+
 // Attribute carries input layout information for shape op.
 static constexpr char kShapeOpInputLayout[] = "_shape_input_layout";
 
@@ -124,25 +126,6 @@ static constexpr char kFromArgIndex[] = "dtensor.from_arg_index";
 // attribute exists in a tensor, then this tensor is a sparse tensor.
 static constexpr char kSparseValue[] = "tf._sparse";
 
-// TPUEmbedding configuration attribute with `tf.` dialect to be used for
-// annotating func op that contains tpu embedding configuration ops.
-static constexpr char kTPUEmbeddingConfiguration[] =
-    "tf._tpu_embedding_configuration";
-
-// Attribute mapping table_id to func op arguments using as TPUEmbedding tables
-// `tf` prefix attached in MLIR importer for dialect requirements.
-static constexpr char kTPUEmbeddingTableID[] = "tf._tpu_embedding_table_id";
-
-// Attribute mapping slot_id to func op arguments using as TPUEmbedding slot
-// variables.`tf` prefix attached in MLIR importer for dialect requirements.
-static constexpr char kTPUEmbeddingSlotID[] = "tf._tpu_embedding_slot_id";
-
-// Name of dtensor load embedding function.
-static constexpr char kLoadEmbeddingFn[] = "load_embedding_fn";
-
-// Name of dtensor retrieve embedding function.
-static constexpr char kRetrieveEmbeddingFn[] = "retrieve_embedding_fn";
-
 // Attribute which stores the layouts to be applied to the elements returned by
 // calling IteratorGetNextOp on a tf.data iterator.
 static constexpr char kIteratorElementLayouts[] = "tf._element_layouts";
@@ -155,6 +138,8 @@ static constexpr int kSparseTensorNum = 3;
 
 // Attribute which stores the environment variable value for all_reduce
 // optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+// This represents the maximum number of AllReduce ops to merge into one op. It
+// is a determining factor used during dtensor_allreduce_combine_optimization.
 static constexpr char kAllReduceNumOpsInGroup[] =
     "dtensor.all_reduce_combiner.num_ops_in_group";
 
@@ -162,6 +147,14 @@ static constexpr char kAllReduceNumOpsInGroup[] =
 // multi-device expansion is enabled: DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION.
 static constexpr char kEnableMultiDeviceMode[] =
     "dtensor.enable_multi_device_mode";
+
+// Attribute which stores the environment variable value for all_reduce
+// optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+// This represents the maximum distance between two AllReduce on the compute
+// graph in terms of topological level. It is a determining factor used during
+// dtensor_allreduce_combine_optimization.
+static constexpr char kAllReduceTopologicalDistance[] =
+    "dtensor.all_reduce_combiner.topological_distance";
 
 }  // namespace dtensor
 }  // namespace tensorflow

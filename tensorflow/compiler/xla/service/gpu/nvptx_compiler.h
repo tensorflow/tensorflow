@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 
-#include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -46,6 +45,25 @@ class NVPTXCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results) override;
+
+  bool EnableCollectiveScheduleLinearizerForSpmd(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
+
+  bool RequiresCollectiveScheduleLinearizer(const HloModule* module) override;
+
+  Status AddAutotuningPasses(HloPassPipeline* pipeline, HloModule* hlo_module,
+                             se::StreamExecutor* stream_exec,
+                             const DebugOptions& debug_options,
+                             const CompileOptions& options,
+                             const GpuTargetConfig& gpu_target_config,
+                             const AutotuneResults* autotune_results,
+                             tsl::thread::ThreadPool* thread_pool) override;
+
+  Status LoadAutotuneResultsFromFile(
+      const DebugOptions& debug_options) override;
+
+  Status SerializeAutotuneResultsToFile(
+      const DebugOptions& debug_options) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
 

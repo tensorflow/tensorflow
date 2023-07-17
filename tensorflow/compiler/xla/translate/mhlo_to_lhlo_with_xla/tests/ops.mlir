@@ -772,6 +772,25 @@ func.func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tens
 // -----
 
 // CHECK-LABEL: func @main
+// CHECK:   mhlo.reduce_window
+// CHECK:   (%[[VAL1:.*]]: tensor<f32>, %[[VAL2:.*]]: tensor<i32>, %[[VAL3:.*]]: tensor<f32>, %[[VAL4:.*]]: tensor<i32>)
+// CHECK:     %[[VAL5:.*]] = mhlo.add %[[VAL1]], %[[VAL3]] : tensor<f32>
+// CHECK:     %[[VAL6:.*]] = mhlo.subtract %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
+// CHECK:     mhlo.return %[[VAL5]], %[[VAL6:.*]] : tensor<f32>, tensor<i32>
+// CHECK:   })
+func.func @main(%arg0 : tensor<3x8xf32>, %arg1 : tensor<3x8xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<2x7xf32>, tensor<2x7xi32>) {
+  %result0, %result1 = "mhlo.reduce_window"(%arg0, %arg1, %arg2, %arg3) ({
+    ^bb0(%fa: tensor<f32>, %ia: tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):
+      %7 = mhlo.add %fa, %fb : tensor<f32>
+      %8 = mhlo.subtract %ia, %ib : tensor<i32>
+      mhlo.return %7, %8 : tensor<f32>, tensor<i32>
+    }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<0> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<2> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<3x8xf32>, tensor<3x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x7xf32>, tensor<2x7xi32>)
+  func.return %result0, %result1 : tensor<2x7xf32>, tensor<2x7xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @main
 // CHECK: "mhlo.concatenate"(%[[ARG0:.*]], %[[ARG1:.*]], %[[ARG2:.*]]) {dimension = 1 : i64} : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
 func.func @main(%arg0 : tensor<5x2xf32>,
            %arg1 : tensor<5x5xf32>,

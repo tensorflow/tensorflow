@@ -248,7 +248,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kExhausted), static_cast<int64_t>(!input_impl_)));
+          prefix(), kExhausted, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
@@ -260,7 +260,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t input_exhausted;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kExhausted), &input_exhausted));
+          reader->ReadScalar(prefix(), kExhausted, &input_exhausted));
       if (static_cast<bool>(input_exhausted)) {
         input_impl_.reset();
       } else {

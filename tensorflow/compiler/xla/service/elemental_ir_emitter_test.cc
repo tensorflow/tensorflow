@@ -367,5 +367,307 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDotBF16) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToF8E4FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E4FNUZ
+    ENTRY ConvertToF8E4FNUZ
+        (f16_ f16[], f32_ f32[], f64_ f64[], bf16_ bf16[]) -> (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
+      f16_ = f16[] parameter(0)
+      f32_ = f32[] parameter(1)
+      f64_ = f64[] parameter(2)
+      bf16_ = bf16[] parameter(3)
+      converted_f16 = f8e4m3fnuz[] convert(f16[] f16_)
+      converted_f32 = f8e4m3fnuz[] convert(f32[] f32_)
+      converted_f64 = f8e4m3fnuz[] convert(f64[] f64_)
+      converted_bf16 = f8e4m3fnuz[] convert(bf16[] bf16_)
+      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
+          converted_f16, converted_f32, converted_f64, converted_bf16)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToF8E4FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E4FNUZ
+    ENTRY ConvertToF8E4FNUZ (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
+        (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
+      s8_ = s8[] parameter(0)
+      s16_ = s16[] parameter(1)
+      s32_ = s32[] parameter(2)
+      s64_ = s64[] parameter(3)
+      converted_s8 = f8e4m3fnuz[] convert(s8[] s8_)
+      converted_s16 = f8e4m3fnuz[] convert(s16[] s16_)
+      converted_s32 = f8e4m3fnuz[] convert(s32[] s32_)
+      converted_s64 = f8e4m3fnuz[] convert(s64[] s64_)
+      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
+          converted_s8, converted_s16, converted_s32, converted_s64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToF8E4FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E4FNUZ
+    ENTRY ConvertToF8E4FNUZ (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
+        (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) {
+      u8_ = u8[] parameter(0)
+      u16_ = u16[] parameter(1)
+      u32_ = u32[] parameter(2)
+      u64_ = u64[] parameter(3)
+      converted_u8 = f8e4m3fnuz[] convert(u8[] u8_)
+      converted_u16 = f8e4m3fnuz[] convert(u16[] u16_)
+      converted_u32 = f8e4m3fnuz[] convert(u32[] u32_)
+      converted_u64 = f8e4m3fnuz[] convert(u64[] u64_)
+      ROOT tuple = (f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[], f8e4m3fnuz[]) tuple(
+          converted_u8, converted_u16, converted_u32, converted_u64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToFloat) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E4FNUZ
+    ENTRY ConvertFromF8E4FNUZ
+        (to_f16 f8e4m3fnuz[], to_f32 f8e4m3fnuz[], to_f64 f8e4m3fnuz[], to_bf16 f8e4m3fnuz[]) -> (f16[], f32[], f64[], bf16[]) {
+      to_f16 = f8e4m3fnuz[] parameter(0)
+      to_f32 = f8e4m3fnuz[] parameter(1)
+      to_f64 = f8e4m3fnuz[] parameter(2)
+      to_bf16 = f8e4m3fnuz[] parameter(3)
+      f16_ = f16[] convert(f8e4m3fnuz[] to_f16)
+      f32_ = f32[] convert(f8e4m3fnuz[] to_f32)
+      f64_ = f64[] convert(f8e4m3fnuz[] to_f64)
+      bf16_ = bf16[] convert(f8e4m3fnuz[] to_f64)
+      ROOT tuple = (f16[], f32[], f64[], bf16[]) tuple(f16_, f32_, f64_, bf16_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToSigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E4FNUZ
+    ENTRY ConvertFromF8E4FNUZ(to_s8 f8e4m3fnuz[], to_s16 f8e4m3fnuz[], to_s32 f8e4m3fnuz[],
+                          to_s64 f8e4m3fnuz[]) -> (s8[], s16[], s32[], s64[]) {
+      to_s8 = f8e4m3fnuz[] parameter(0)
+      to_s16 = f8e4m3fnuz[] parameter(1)
+      to_s32 = f8e4m3fnuz[] parameter(2)
+      to_s64 = f8e4m3fnuz[] parameter(3)
+      s8_ = s8[] convert(f8e4m3fnuz[] to_s8)
+      s16_ = s16[] convert(f8e4m3fnuz[] to_s16)
+      s32_ = s32[] convert(f8e4m3fnuz[] to_s32)
+      s64_ = s64[] convert(f8e4m3fnuz[] to_s64)
+      ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToUnsigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E4FNUZ
+    ENTRY ConvertFromF8E4FNUZ(to_u8 f8e4m3fnuz[], to_u16 f8e4m3fnuz[], to_u32 f8e4m3fnuz[],
+                          to_u64 f8e4m3fnuz[]) -> (u8[], u16[], u32[], u64[]) {
+      to_u8 = f8e4m3fnuz[] parameter(0)
+      to_u16 = f8e4m3fnuz[] parameter(1)
+      to_u32 = f8e4m3fnuz[] parameter(2)
+      to_u64 = f8e4m3fnuz[] parameter(3)
+      u8_ = u8[] convert(f8e4m3fnuz[] to_u8)
+      u16_ = u16[] convert(f8e4m3fnuz[] to_u16)
+      u32_ = u32[] convert(f8e4m3fnuz[] to_u32)
+      u64_ = u64[] convert(f8e4m3fnuz[] to_u64)
+      ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E4FNUZToComplex) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E4FNUZ
+    ENTRY ConvertFromF8E4FNUZ
+        (to_c64 f8e4m3fnuz[], to_c128 f8e4m3fnuz[]) -> (c64[], c128[]) {
+      to_c64 = f8e4m3fnuz[] parameter(0)
+      to_c128 = f8e4m3fnuz[] parameter(1)
+      c64_ = c64[] convert(f8e4m3fnuz[] to_c64)
+      c128_ = c128[] convert(f8e4m3fnuz[] to_c128)
+      ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareF8E4FNUZ) {
+  constexpr char hlo_text[] = R"(
+  HloModule compareF8E4FNUZ
+  ENTRY main {
+    p0 = f8e4m3fnuz[4] parameter(0)
+    p1 = f8e4m3fnuz[4] parameter(1)
+    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+})";
+
+  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
+  lhs = LiteralUtil::ConvertF32ToF8E4M3FNUZ(lhs);
+  rhs = LiteralUtil::ConvertF32ToF8E4M3FNUZ(rhs);
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E4FNUZ) {
+  constexpr char hlo_text[] = R"(
+  HloModule IotaF8E4FNUZ
+  ENTRY main {
+    ROOT iota_ = f8e4m3fnuz[4] iota(), iota_dimension=0
+  }
+  )";
+
+  RunTest(hlo_text, {});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertFloatsToF8E5FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E5FNUZ
+    ENTRY ConvertToF8E5FNUZ
+        (f16_ f16[], f32_ f32[], f64_ f64[], bf16_ bf16[]) -> (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
+      f16_ = f16[] parameter(0)
+      f32_ = f32[] parameter(1)
+      f64_ = f64[] parameter(2)
+      bf16_ = bf16[] parameter(3)
+      converted_f16 = f8e5m2fnuz[] convert(f16[] f16_)
+      converted_f32 = f8e5m2fnuz[] convert(f32[] f32_)
+      converted_f64 = f8e5m2fnuz[] convert(f64[] f64_)
+      converted_bf16 = f8e5m2fnuz[] convert(bf16[] bf16_)
+      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
+          converted_f16, converted_f32, converted_f64, converted_bf16)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertSignedToF8E5FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E5FNUZ
+    ENTRY ConvertToF8E5FNUZ (s8_ s8[], s16_ s16[], s32_ s32[], s64_ s64[]) ->
+        (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
+      s8_ = s8[] parameter(0)
+      s16_ = s16[] parameter(1)
+      s32_ = s32[] parameter(2)
+      s64_ = s64[] parameter(3)
+      converted_s8 = f8e5m2fnuz[] convert(s8[] s8_)
+      converted_s16 = f8e5m2fnuz[] convert(s16[] s16_)
+      converted_s32 = f8e5m2fnuz[] convert(s32[] s32_)
+      converted_s64 = f8e5m2fnuz[] convert(s64[] s64_)
+      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
+          converted_s8, converted_s16, converted_s32, converted_s64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertUnsignedToF8E5FNUZ) {
+  RunTypeConversionTest(R"(
+    HloModule convertToF8E5FNUZ
+    ENTRY ConvertToF8E5FNUZ (u8_ u8[], u16_ u16[], u32_ u32[], u64_ u64[]) ->
+        (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) {
+      u8_ = u8[] parameter(0)
+      u16_ = u16[] parameter(1)
+      u32_ = u32[] parameter(2)
+      u64_ = u64[] parameter(3)
+      converted_u8 = f8e5m2fnuz[] convert(u8[] u8_)
+      converted_u16 = f8e5m2fnuz[] convert(u16[] u16_)
+      converted_u32 = f8e5m2fnuz[] convert(u32[] u32_)
+      converted_u64 = f8e5m2fnuz[] convert(u64[] u64_)
+      ROOT tuple = (f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[], f8e5m2fnuz[]) tuple(
+          converted_u8, converted_u16, converted_u32, converted_u64)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToFloat) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E5FNUZ
+    ENTRY ConvertFromF8E5FNUZ
+        (to_f16 f8e5m2fnuz[], to_f32 f8e5m2fnuz[], to_f64 f8e5m2fnuz[]) -> (f16[], f32[], f64[]) {
+      to_f16 = f8e5m2fnuz[] parameter(0)
+      to_f32 = f8e5m2fnuz[] parameter(1)
+      to_f64 = f8e5m2fnuz[] parameter(2)
+      f16_ = f16[] convert(f8e5m2fnuz[] to_f16)
+      f32_ = f32[] convert(f8e5m2fnuz[] to_f32)
+      f64_ = f64[] convert(f8e5m2fnuz[] to_f64)
+      ROOT tuple = (f16[], f32[], f64[]) tuple(f16_, f32_, f64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToSigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E5FNUZ
+    ENTRY ConvertFromF8E5FNUZ(to_s8 f8e5m2fnuz[], to_s16 f8e5m2fnuz[], to_s32 f8e5m2fnuz[],
+                          to_s64 f8e5m2fnuz[]) -> (s8[], s16[], s32[], s64[]) {
+      to_s8 = f8e5m2fnuz[] parameter(0)
+      to_s16 = f8e5m2fnuz[] parameter(1)
+      to_s32 = f8e5m2fnuz[] parameter(2)
+      to_s64 = f8e5m2fnuz[] parameter(3)
+      s8_ = s8[] convert(f8e5m2fnuz[] to_s8)
+      s16_ = s16[] convert(f8e5m2fnuz[] to_s16)
+      s32_ = s32[] convert(f8e5m2fnuz[] to_s32)
+      s64_ = s64[] convert(f8e5m2fnuz[] to_s64)
+      ROOT tuple = (s8[], s16[], s32[], s64[]) tuple(s8_, s16_, s32_, s64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToUnsigned) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E5FNUZ
+    ENTRY ConvertFromF8E5FNUZ(to_u8 f8e5m2fnuz[], to_u16 f8e5m2fnuz[], to_u32 f8e5m2fnuz[],
+                          to_u64 f8e5m2fnuz[]) -> (u8[], u16[], u32[], u64[]) {
+      to_u8 = f8e5m2fnuz[] parameter(0)
+      to_u16 = f8e5m2fnuz[] parameter(1)
+      to_u32 = f8e5m2fnuz[] parameter(2)
+      to_u64 = f8e5m2fnuz[] parameter(3)
+      u8_ = u8[] convert(f8e5m2fnuz[] to_u8)
+      u16_ = u16[] convert(f8e5m2fnuz[] to_u16)
+      u32_ = u32[] convert(f8e5m2fnuz[] to_u32)
+      u64_ = u64[] convert(f8e5m2fnuz[] to_u64)
+      ROOT tuple = (u8[], u16[], u32[], u64[]) tuple(u8_, u16_, u32_, u64_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF8E5FNUZToComplex) {
+  RunTypeConversionTest(R"(
+    HloModule convertFromF8E5FNUZ
+    ENTRY ConvertFromF8E5FNUZ
+        (to_c64 f8e5m2fnuz[], to_c128 f8e5m2fnuz[]) -> (c64[], c128[]) {
+      to_c64 = f8e5m2fnuz[] parameter(0)
+      to_c128 = f8e5m2fnuz[] parameter(1)
+      c64_ = c64[] convert(f8e5m2fnuz[] to_c64)
+      c128_ = c128[] convert(f8e5m2fnuz[] to_c128)
+      ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
+    }
+  )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareF8E5FNUZ) {
+  constexpr char hlo_text[] = R"(
+  HloModule compareF8E5FNUZ
+  ENTRY main {
+    p0 = f8e5m2fnuz[4] parameter(0)
+    p1 = f8e5m2fnuz[4] parameter(1)
+    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+})";
+
+  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
+  lhs = LiteralUtil::ConvertF32ToF8E5M2FNUZ(lhs);
+  rhs = LiteralUtil::ConvertF32ToF8E5M2FNUZ(rhs);
+  RunTest(hlo_text, {&lhs, &rhs});
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaF8E5FNUZ) {
+  constexpr char hlo_text[] = R"(
+  HloModule IotaF8E5FNUZ
+  ENTRY main {
+    ROOT iota_ = f8e5m2fnuz[4] iota(), iota_dimension=0
+  }
+  )";
+
+  RunTest(hlo_text, {});
+}
+
 }  // namespace
 }  // namespace xla

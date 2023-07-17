@@ -28,14 +28,16 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
-#include "tensorflow/core/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::ProfilerJoinPath;
 
 constexpr char kNoModuleIdentifier[] = "NO_MODULE";
 constexpr char kHloProtoSuffix[] = ".hlo_proto.pb";

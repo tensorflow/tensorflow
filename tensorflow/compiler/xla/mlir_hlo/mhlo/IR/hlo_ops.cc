@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -99,9 +100,7 @@ using mlir::hlo::printDimSizes;
 #define GET_TYPEDEF_CLASSES
 #include "mhlo/IR/hlo_ops_typedefs.cc.inc"
 
-namespace mlir {
-namespace mhlo {
-
+namespace mlir::mhlo {
 namespace detail {
 /// A type representing a collection of other types.
 struct AsyncBundleTypeStorage final
@@ -2242,6 +2241,12 @@ OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
     return {};
   }
 
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
+    return {};
+  }
+
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
@@ -2327,6 +2332,12 @@ OpFoldResult BroadcastInDimOp::fold(FoldAdaptor adaptor) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     }
+    return {};
+  }
+
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
     return {};
   }
 
@@ -3005,7 +3016,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
         rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(inputRank, 1));
     auto result = rewriter.create<SliceOp>(loc, input, sliceStartIndices,
                                            sliceLimits, sliceStrides);
-    rewriter.replaceOp(dynamicSlice, {result});
+    rewriter.replaceOp(dynamicSlice, result);
     return success();
   }
 };
@@ -6266,8 +6277,7 @@ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo
 
 using mlir::hlo::parseComplexOpType;
 using mlir::hlo::parseCustomCallTarget;
@@ -6289,8 +6299,7 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
 
-namespace mlir {
-namespace mhlo {
+namespace mlir::mhlo {
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces
@@ -6331,7 +6340,7 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
-}  // end anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Constructor
@@ -7352,5 +7361,4 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
   return success();
 }
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo

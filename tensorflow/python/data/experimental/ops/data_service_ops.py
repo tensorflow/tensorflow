@@ -30,7 +30,7 @@ from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
@@ -200,7 +200,7 @@ def _get_compression_proto(compression):
 def _to_tensor(dataset_id):
   """Converts `dataset_id` to Tensor."""
 
-  if isinstance(dataset_id, ops.Tensor):
+  if isinstance(dataset_id, tensor.Tensor):
     return dataset_id
   if isinstance(dataset_id, str) or isinstance(dataset_id, bytes):
     return ops.convert_to_tensor(
@@ -212,7 +212,7 @@ def _to_tensor(dataset_id):
 def _to_string(dataset_id):
   """Converts `dataset_id` to string."""
 
-  if isinstance(dataset_id, ops.Tensor):
+  if isinstance(dataset_id, tensor.Tensor):
     return (dataset_id if dataset_id.dtype == dtypes.string else
             string_ops.as_string(dataset_id))
   return (dataset_id.decode()
@@ -334,7 +334,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     uncompress_func = structured_function.StructuredFunctionWrapper(
         lambda x: compression_ops.uncompress(x, output_spec=element_spec),
         transformation_name="DataServiceDataset.uncompress()",
-        input_structure=tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant))
+        input_structure=tensor.TensorSpec(shape=(), dtype=dtypes.variant))
     cross_trainer_cache_options = (
         cross_trainer_cache._to_proto().SerializeToString()
         if cross_trainer_cache else None)
@@ -1004,7 +1004,8 @@ def _from_dataset_id(processing_mode,
   else:
     protocol, address = _parse_service(service)
   if job_name is not None:
-    if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
+    if not isinstance(job_name, str) and not isinstance(
+        job_name, tensor.Tensor):
       raise ValueError(
           "`job_name` must be a string or Tensor, but `job_name` was of type "
           f"{type(job_name)}. job_name={job_name}.")

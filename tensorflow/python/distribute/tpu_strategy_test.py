@@ -50,6 +50,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
@@ -1542,6 +1543,27 @@ class DeviceAssignmentTest(test.TestCase):
       self.assertAllEqual([42., 1.],
                           self.evaluate(
                               strategy0.experimental_local_results(v_read)))
+
+
+class VariableCreationTest(test.TestCase):
+
+  def test_custom_tpu_variable_creator(self):
+    strategy = get_tpu_strategy()
+
+    def variable_creator(next_creator, **kwargs):
+      def custom_tpu_variable_creator(next_creator, **kwargs):
+        return next_creator(**kwargs)
+      kwargs["custom_tpu_variable_creator"] = custom_tpu_variable_creator
+      return next_creator(**kwargs)
+
+    with strategy.scope():
+      tpu_variable = variables.Variable(1.0)
+
+      self.assertIsInstance(tpu_variable, tpu_values.TPUDistributedVariable)
+
+      with variable_scope.variable_creator_scope(variable_creator):
+        non_tpu_variable = variables.Variable(1.0)
+        self.assertIsInstance(non_tpu_variable, variables.Variable)
 
 
 if __name__ == "__main__":

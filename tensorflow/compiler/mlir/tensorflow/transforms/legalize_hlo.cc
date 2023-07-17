@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -502,7 +503,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       int64_t output_size;
       int64_t pad_low_int64;
       int64_t pad_high_int64;
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
               input_spatial_dim[i]),
           conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
@@ -1515,20 +1516,18 @@ bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
          MatchIotaConst(dimensions, iota);
 }
 
-template <typename ReturnOpType, typename CompareOpType>
+template <typename ReturnOpType>
 bool MatchTopKComparator(Region& comparator) {
   if (!comparator.hasOneBlock()) return false;
   Block& comparator_blk = comparator.front();
   using OpListType = llvm::iplist<Operation>;
   OpListType& operations = comparator_blk.getOperations();
   if (operations.size() != 2) return false;
-  auto compare_op = dyn_cast_or_null<CompareOpType>(&operations.front());
+  auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
   auto return_op = dyn_cast_or_null<ReturnOpType>(&operations.back());
   if (!compare_op || !return_op) return false;
   // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
-  if (std::is_same_v<CompareOpType, mhlo::CompareOp> &&
-      dyn_cast_or_null<mhlo::CompareOp>(&operations.front())
-              .getComparisonDirection() != mhlo::ComparisonDirection::GT) {
+  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT) {
     return false;
   }
   if (compare_op.getOperands()[0] != comparator_blk.getArgument(0) ||
@@ -1585,8 +1584,7 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (!MatchIota(sort_dim_attr, indices))
       return rewriter.notifyMatchFailure(
           op, "the second operand is supposed to be obtained from IOTA");
-    if (!MatchTopKComparator<mhlo::ReturnOp, mhlo::CompareOp>(
-            op.getComparator()))
+    if (!MatchTopKComparator<mhlo::ReturnOp>(op.getComparator()))
       return rewriter.notifyMatchFailure(op, "only match for GT comparator");
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
@@ -3199,7 +3197,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       auto slice_op =
           rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
                                    operand, squeeze_op, slice_size);
-      rewriter.replaceOp(gather_op, {slice_op});
+      rewriter.replaceOp(gather_op, slice_op);
       return mlir::success();
     }
 
@@ -3235,7 +3233,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
     auto concat_op = rewriter.create<ConcatV2Op>(
         gather_op.getLoc(), result_type, slices, zero_scalar);
-    rewriter.replaceOp(gather_op, {concat_op});
+    rewriter.replaceOp(gather_op, concat_op);
     return mlir::success();
   }
 
@@ -3559,7 +3557,7 @@ class ConvertCustomCallWithApproxTopK
  public:
   explicit ConvertCustomCallWithApproxTopK(MLIRContext* context,
                                            mlir::ModuleOp* module_op)
-      : OpConversionPattern<mhlo::CustomCallOp>(context),
+      : OpConversionPattern<mhlo::CustomCallOp>(context, /*benefit=*/0),
         module_op_(module_op) {}
 
   mlir::LogicalResult matchAndRewrite(
@@ -3688,10 +3686,7 @@ class ConvertCustomCallWithApproxTopK
              << "called_computation type does not match the expected type. Got "
              << callee_type << " expected " << expected_callee_type;
     }
-    if (!MatchTopKComparator<mlir::func::ReturnOp, TF::GreaterOp>(
-            callee.getBody()) &&
-        !MatchTopKComparator<mlir::func::ReturnOp, mhlo::CompareOp>(
-            callee.getBody())) {
+    if (!MatchTopKComparator<mlir::func::ReturnOp>(callee.getBody())) {
       return op.emitOpError() << "only match for GT comparator";
     }
     auto is_max_k = rewriter.getBoolAttr(true);
@@ -3747,12 +3742,39 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
   return rewriter.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
 }
 
+Value ExpandedDynamicShape(PatternRewriter& rewriter, Value input,
+                           DenseIntElementsAttr broadcast_dimensions,
+                           Value output) {
+  assert(output.getType().cast<ShapedType>() &&
+         "output type must be of ShapedType");
+  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  llvm::SmallVector<int64_t, 4> expanded_dimensions;
+  llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  }
+  for (int64_t i = 0; i < output_rank; i++) {
+    if (!broadcast_dimensions_values.contains(i)) {
+      expanded_dimensions.push_back(i);
+    }
+  }
+  Value expanded_input = input;
+  for (int64_t i : expanded_dimensions) {
+    auto index_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({}, rewriter.getI64Type()), {i});
+    Value index = rewriter.create<TF::ConstOp>(output.getLoc(), index_attr);
+    expanded_input = rewriter.create<TF::ExpandDimsOp>(output.getLoc(),
+                                                       expanded_input, index);
+  }
+  return expanded_input;
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
-/// Performs the lowering to XLA dialect.
+/// Performs the lowering to TF dialect.
 void LegalizeHloToTf::runOnOperation() {
   MLIRContext& context = getContext();
-  mlir::ModuleOp module = getOperation()->getParentOfType<mlir::ModuleOp>();
+  mlir::ModuleOp module = getOperation();
 
   RewritePatternSet patterns(&getContext());
   patterns.add<ConvertCustomCallWithApproxTopK>(&context, &module);
@@ -3787,7 +3809,7 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 

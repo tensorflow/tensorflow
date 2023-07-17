@@ -23,6 +23,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -68,13 +70,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const Tensor& values = ctx->input(1);
     const Tensor& dense_shape = ctx->input(2);
     const int rank = dense_shape.NumElements();
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(dense_shape.shape()),
-        errors::InvalidArgument("dense_shape must be rank 1 but got rank",
-                                dense_shape.shape().dims()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(indices.shape()),
-                errors::InvalidArgument("indices must be rank 2 but got rank",
-                                        indices.shape().dims()));
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            indices, values, dense_shape,
+                            sparse_utils::IndexValidation::kUnordered));
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
                 errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                         "but indices has rank: ", rank));
@@ -161,10 +159,15 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const Tensor& values_t = c->input(1);
     const Tensor& dense_shape_t = c->input(2);
     const int rank = dense_shape_t.NumElements();
+    OP_REQUIRES_OK_ASYNC(c,
+                         sparse_utils::ValidateSparseTensor<int64_t>(
+                             indices_t, values_t, dense_shape_t,
+                             sparse_utils::IndexValidation::kNone),
+                         done);
     OP_REQUIRES_ASYNC(
         c, rank == 2 || rank == 3,
-        errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
-                                "but indices has ", rank, " columns"),
+        errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
+                                "but indices has rank:", rank),
         done);
     auto dense_shape = dense_shape_t.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);

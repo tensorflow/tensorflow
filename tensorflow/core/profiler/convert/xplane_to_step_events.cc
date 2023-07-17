@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -88,12 +88,12 @@ EventType ClassifyGpuCompute(absl::string_view event_name,
 
 EventType ClassifyGpuEvent(absl::string_view event_name,
                            absl::string_view tensor_shapes) {
-  TfOp tf_op = ParseTfOpFullname(event_name);
-  if (IsMemcpyHToDOp(tf_op)) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(event_name);
+  if (tsl::profiler::IsMemcpyHToDOp(tf_op)) {
     return HOST_TO_DEVICE;
-  } else if (IsMemcpyDToHOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyDToHOp(tf_op)) {
     return DEVICE_TO_HOST;
-  } else if (IsMemcpyDToDOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyDToDOp(tf_op)) {
     return DEVICE_TO_DEVICE;
   } else if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
     return DEVICE_COLLECTIVES;
@@ -104,10 +104,11 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
 
 EventType ClassifyCpuEvent(absl::string_view event_name, bool has_device,
                            bool has_correlation_id) {
-  TfOp tf_op = ParseTfOpFullname(event_name);
-  if (IsInfeedEnqueueOp(tf_op) || IsMemcpyHToDOp(tf_op)) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(event_name);
+  if (tsl::profiler::IsInfeedEnqueueOp(tf_op) ||
+      tsl::profiler::IsMemcpyHToDOp(tf_op)) {
     return HOST_TO_DEVICE;
-  } else if (IsMemcpyHToHOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyHToHOp(tf_op)) {
     return HOST_TO_HOST;
   } else if (has_device && (has_correlation_id ||
                             absl::StartsWithIgnoreCase(
@@ -176,7 +177,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
 StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const XPlane& host_trace, const StepEvents* device_step_events) {
   StepEvents host_step_events;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     StepEvents thread_step_events =
         ConvertHostThreadsXLineToStepEvents(line, device_step_events);
@@ -257,7 +258,7 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
 
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents device_step_events;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo) {

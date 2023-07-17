@@ -18,6 +18,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//waymo/ml/cn/...",
         "//waymo/ml/compiler/mlir/...",
     ],
 )

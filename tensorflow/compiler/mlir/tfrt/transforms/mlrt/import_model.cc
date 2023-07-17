@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -47,6 +48,7 @@ namespace mlrt_compiler {
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
     const TfrtCompileOptions& options,
     const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
+    tfrt_stub::ModelRuntimeContext& model_context,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) {
   mlrt::bc::Buffer bytecode_buffer;
   TF_RETURN_IF_ERROR(ConvertTfMlirToRuntimeExecutable(
@@ -96,7 +98,8 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         if (!statusor.ok()) return statusor.status();
         bytecode_buffer = std::move(*statusor);
         return OkStatus();
-      }));
+      },
+      model_context));
   return bytecode_buffer;
 }
 

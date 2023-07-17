@@ -76,6 +76,7 @@ pytype_strict_library(
         "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/core/function/trace_type:serialization",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/logging",
     ],

@@ -44,8 +44,8 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
     : Cluster(timeout_s), expected_init_time_s_(0), closing_(false) {
   VLOG(1) << "Number of CPU cores: " << num_cpu_cores
           << " Number of GPUs: " << num_gpus;
-  thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
+      Env::Default(), SanitizeThreadSuffix("single_machine"), 2);
 
   (*options_.config.mutable_device_count())["CPU"] = 1;
   if (num_gpus > 0) {
@@ -361,17 +361,17 @@ Status SingleMachine::ResetSession() {
   LOG(INFO) << "Starting new session";
 
   // Create a new threadpool
-  thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
+      Env::Default(), SanitizeThreadSuffix("single_machine"), 2);
 
   session_.reset(NewSession(options_));
   if (!session_) {
     return absl::UnknownError("Failed to create session");
   }
-  coordinator_.reset(new Coordinator());
+  coordinator_ = std::make_unique<Coordinator>();
 
   // Build the DeviceSet.
-  device_set_.reset(new DeviceSet);
+  device_set_ = std::make_unique<DeviceSet>();
   const DeviceMgr* device_mgr;
   TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
   for (auto d : device_mgr->ListDevices()) {

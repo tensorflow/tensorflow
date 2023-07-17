@@ -105,12 +105,22 @@ cc_library(
 )
 
 cc_library(
+    name = "dtensor_operation",
+    hdrs = ["dtensor_operation.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/c/eager:c_api",
+    ],
+)
+
+cc_library(
     name = "dtensor_device_util",
     srcs = ["dtensor_device_util.cc"],
     hdrs = ["dtensor_device_util.h"],
     deps = [
         ":constants",
         ":dstatus",
+        ":dtensor_operation",
         ":dtensor_utils",
         ":small_constant_optimization",
         ":tensor_layout",
@@ -264,7 +274,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -316,6 +326,7 @@ cc_library(
         ":dtensor_device_util",
         ":dtensor_graph_to_mlir_pass",
         ":dtensor_meta_ops",
+        ":dtensor_operation",
         ":dtensor_ops",
         ":dtensor_tpu_ops",
         ":dtensor_utils",

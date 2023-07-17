@@ -234,6 +234,23 @@ def PromiseFutureOp: TensorflowMlrt_Op<"promise_future", []> {
   let assemblyFormat = "operands attr-dict";
 }
 
+def PromiseReturnOp: TensorflowMlrt_Op<"promise_return", [Terminator]> {
+  let summary = "Set a tensor in a promise and return from a function with no output";
+
+  let description = [{
+    Set a tensor in a promise and return from a function with no output.
+
+    $promise: A value of type !mlrt.promise. The underlying value must be a tensorflow tensor.
+    $tensor: A tensorflow tensor.
+  }];
+
+  let arguments = (ins
+    MlrtPromiseType:$promise,
+    TFTensorType:$tensor
+  );
+
+  let assemblyFormat = "operands attr-dict";
+}
 
 def AllocateFuturesOp: TensorflowMlrt_Op<"allocate_futures", [AttrSizedResultSegments]> {
   let summary = "Allocate futures and promsies for tensorflow tensors";

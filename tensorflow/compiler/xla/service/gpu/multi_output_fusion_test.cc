@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include <optional>
-#include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -39,15 +39,19 @@ class MultiOutputFusionTest : public HloTestBase {
   }
 
  public:
-  GpuMultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                            ShapeSizeBytesFunction()};
+  GpuMultiOutputFusion mof_{
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+      ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
-        GpuMultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                             ShapeSizeBytesFunction()},
+        GpuMultiOutputFusion{
+            TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+            se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+            ShapeSizeBytesFunction()},
         expected);
   }
 };
@@ -240,6 +244,45 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
   ASSERT_TRUE(fusion->IsMultiOutputFusion());
   EXPECT_THAT(fusion->fused_expression_root(),
               op::Tuple(op::Reduce(), op::Reduce()));
+}
+
+TEST_F(MultiOutputFusionTest, MultiOutputFusionNoSiblingFusionForCommonScalar) {
+  // Two sibling fusions with bitcast roots sharing the same scalar input param.
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      param_0.87 = bf16[32,4096,16384]{2,1,0} parameter(0)
+      param_1.4620 = s32[] parameter(1)
+      constant_3949 = s32[] constant(0)
+      compare.1026 = pred[] compare(param_1.4620, constant_3949), direction=LT
+      constant_5437 = s32[] constant(32)
+      add.6859 = s32[] add(param_1.4620, constant_5437)
+      select.1599 = s32[] select(compare.1026, add.6859, param_1.4620)
+      dynamic-slice.59 = bf16[1,4096,16384]{2,1,0} dynamic-slice(param_0.87, select.1599, constant_3949, constant_3949), dynamic_slice_sizes={1,4096,16384}
+      ROOT bitcast.41089 = bf16[4096,16384]{1,0} bitcast(dynamic-slice.59)
+    }
+
+    fused_computation_2 {
+      param_0 = bf16[32,4096,16384]{2,1,0} parameter(0)
+      param_1 = s32[] parameter(1)
+      constant = s32[] constant(0)
+      compare = pred[] compare(param_1, constant), direction=LT
+      constant.32 = s32[] constant(32)
+      add = s32[] add(param_1, constant.32)
+      select = s32[] select(compare, add, param_1)
+      dynamic-slice = bf16[1,4096,16384]{2,1,0} dynamic-slice(param_0, select, constant, constant), dynamic_slice_sizes={1,4096,16384}
+      ROOT bitcast.41087 = bf16[4096,16384]{1,0} bitcast(dynamic-slice)
+    }
+
+    ENTRY entry {
+      p0 = s32[] parameter(0)
+      p1 = bf16[32,4096,16384]{2,1,0} parameter(1)
+      p2 = bf16[32,4096,16384]{2,1,0} parameter(2)
+      fusion.1 = bf16[4096,16384]{1,0} fusion(p1, p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = bf16[4096,16384]{1,0} fusion(p2, p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (bf16[4096,16384]{1,0}, bf16[4096,16384]{1,0}) tuple(fusion.1, fusion.2)
+    })"))
+                    .value();
+  ASSERT_FALSE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest,
@@ -1554,8 +1597,79 @@ ENTRY e {
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
-};
+TEST_F(MultiOutputFusionTest, NoOverlappingRead) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation_1 {
+      p0.1 = f32[100,200]{1,0} parameter(0)
+      slice.0 = f32[50,100]{1,0} slice(p0.1), slice={[0:50],[0:100]}
+      mul = f32[50,100]{1,0} multiply(slice.0, slice.0)
+      exp = f32[50,100]{1,0} exponential(slice.0)
+      ROOT tuple = (f32[50,100]{1,0}, f32[50,100]{1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[100,200]{1,0} parameter(0)
+      slice.1 = f32[50,100]{1,0} slice(p0.2), slice={[0:50],[100:200]}
+      const.2 = f32[] constant(0)
+      broadcast = f32[50,100]{1,0} broadcast(const.2), dimensions={}
+      ROOT add = f32[50,100]{1,0} add(slice.1, broadcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[100,200]{1,0} parameter(0)
+      fusion.1 = (f32[50,100]{1,0}, f32[50,100]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      gte0 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=1
+      fusion.2 = f32[50,100]{1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      ROOT root = (f32[50,100]{1,0}, f32[50,100]{1,0}, f32[50,100]{1,0})
+        tuple(gte0, gte1, fusion.2)
+    })")
+                    .value();
+
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, OverlappingRead) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation_1 {
+      p0.1 = f32[100,200]{1,0} parameter(0)
+      slice.0 = f32[50,100]{1,0} slice(p0.1), slice={[0:50],[50:150]}
+      mul = f32[50,100]{1,0} multiply(slice.0, slice.0)
+      exp = f32[50,100]{1,0} exponential(slice.0)
+      ROOT tuple = (f32[50,100]{1,0}, f32[50,100]{1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[100,200]{1,0} parameter(0)
+      slice.1 = f32[50,100]{1,0} slice(p0.2), slice={[30:80],[20:120]}
+      const.2 = f32[] constant(0)
+      broadcast = f32[50,100]{1,0} broadcast(const.2), dimensions={}
+      ROOT add = f32[50,100]{1,0} add(slice.1, broadcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[100,200]{1,0} parameter(0)
+      fusion.1 = (f32[50,100]{1,0}, f32[50,100]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      gte0 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=1
+      fusion.2 = f32[50,100]{1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      ROOT root = (f32[50,100]{1,0}, f32[50,100]{1,0}, f32[50,100]{1,0})
+        tuple(gte0, gte1, fusion.2)
+    })")
+                    .value();
+
+  EXPECT_TRUE(mof_.Run(module.get()).value());
+}
+
+class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {};
 
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopies) {
   const char* hlo = R"(

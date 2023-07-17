@@ -234,20 +234,20 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kExhausted), static_cast<int64_t>(!input_impl_)));
+          prefix(), kExhausted, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kElementIndex), element_index_));
+            writer->WriteScalar(prefix(), kElementIndex, element_index_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(kCurrentElementIteratorUninitialized),
+            prefix(), kCurrentElementIteratorUninitialized,
             static_cast<int64_t>(!current_element_iterator_)));
         if (current_element_iterator_ && !ctx->symbolic_checkpoint()) {
           TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kInputsSize), inputs_.size()));
+              writer->WriteScalar(prefix(), kInputsSize, inputs_.size()));
           for (int i = 0; i < inputs_.size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kInputs, "[", i, "]")), inputs_[i]));
+                prefix(), strings::StrCat(kInputs, "[", i, "]"), inputs_[i]));
           }
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
         }
@@ -264,7 +264,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       inputs_.clear();
       int64_t input_exhausted;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kExhausted), &input_exhausted));
+          reader->ReadScalar(prefix(), kExhausted, &input_exhausted));
       if (!static_cast<bool>(input_exhausted)) {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -272,12 +272,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         {
           int64_t temp;
           TF_RETURN_IF_ERROR(
-              reader->ReadScalar(full_name(kElementIndex), &temp));
+              reader->ReadScalar(prefix(), kElementIndex, &temp));
           element_index_ = temp;
         }
         int64_t current_element_iterator_uninitialized;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name(kCurrentElementIteratorUninitialized),
+            reader->ReadScalar(prefix(), kCurrentElementIteratorUninitialized,
                                &current_element_iterator_uninitialized));
         if (!static_cast<bool>(current_element_iterator_uninitialized)) {
           TF_RETURN_IF_ERROR(RestoreCurrentElementIterator(ctx, reader));
@@ -306,14 +306,14 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       size_t inputs_size;
       {
         int64_t temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kInputsSize), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kInputsSize, &temp));
         inputs_size = static_cast<size_t>(temp);
       }
       inputs_.reserve(inputs_size);
       for (int i = 0; i < inputs_size; i++) {
         inputs_.emplace_back();
         TF_RETURN_IF_ERROR(reader->ReadTensor(
-            ctx->flr(), full_name(strings::StrCat(kInputs, "[", i, "]")),
+            ctx->flr(), prefix(), strings::StrCat(kInputs, "[", i, "]"),
             &inputs_.back()));
       }
 

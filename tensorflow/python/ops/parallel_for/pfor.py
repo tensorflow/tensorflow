@@ -34,8 +34,8 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -229,7 +229,7 @@ class WhileOp:
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
-    assert isinstance(exit_node, ops.Tensor)
+    assert isinstance(exit_node, tensor_lib.Tensor)
     self._while_context = exit_node.op._get_control_flow_context()
     assert isinstance(self._while_context, control_flow_ops.WhileContext)
     self._context_name = self._while_context.name
@@ -260,13 +260,13 @@ class WhileOp:
     # to different Operations/Tensors of a single cycle as illustrated above.
     # List of Switch ops (ops.Operation) that feed into an Exit Node.
     self._exit_switches = []
-    # List of inputs (ops.Tensor) to NextIteration.
+    # List of inputs (tensor_lib.Tensor) to NextIteration.
     self._body_outputs = []
     # List of list of control inputs of the NextIteration nodes.
     self._next_iter_control_inputs = []
     # List of Merge ops (ops.Operation).
     self._enter_merges = []
-    # List of output (ops.Tensor) of Exit nodes.
+    # List of output (tensor_lib.Tensor) of Exit nodes.
     self._outputs = []
 
     # List of Enter Tensors.
@@ -1071,7 +1071,7 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   """Helper to create a WrappedTensor object."""
   assert isinstance(is_stacked, bool)
   assert isinstance(is_sparse_stacked, bool)
-  assert isinstance(tensor, ops.Tensor)
+  assert isinstance(tensor, tensor_lib.Tensor)
   assert not is_sparse_stacked or is_stacked, ("If the wrapped tensor is "
                                                "stacked via a sparse "
                                                "conversion, it must also be "
@@ -1116,7 +1116,7 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
     # TODO(agarwal): Add tf.debugging asserts to check that the shapes across
     # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
-      assert isinstance(out, ops.Tensor)
+      assert isinstance(out, tensor_lib.Tensor)
       outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
@@ -1143,7 +1143,7 @@ class PForConfig:
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
-    if isinstance(iters, ops.Tensor):
+    if isinstance(iters, tensor_lib.Tensor):
       iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
@@ -1170,12 +1170,12 @@ class PForConfig:
     # Creates a concrete function that will be used for reduction.
     tensor_specs = []
     for arg in args:
-      if not isinstance(arg, ops.Tensor):
+      if not isinstance(arg, tensor_lib.Tensor):
         raise ValueError(f"Got a non-Tensor argument {arg} in reduce.")
       batched_shape = tensor_shape.TensorShape([self._maybe_iters
                                                ]).concatenate(arg.shape)
       tensor_specs.append(
-          tensor_spec.TensorSpec(shape=batched_shape, dtype=arg.dtype))
+          tensor_lib.TensorSpec(shape=batched_shape, dtype=arg.dtype))
     concrete_function = def_function.function(fn).get_concrete_function(
         *tensor_specs)
 
@@ -1184,7 +1184,7 @@ class PForConfig:
     pl_outputs = []
     with ops.control_dependencies(args):
       for output in concrete_function.outputs:
-        if not isinstance(output, ops.Tensor):
+        if not isinstance(output, tensor_lib.Tensor):
           raise ValueError(f"Got a non-Tensor output {output} while running "
                            "reduce.")
         # Note that we use placeholder_with_default just to make XLA happy since
@@ -1249,7 +1249,7 @@ class PForConfig:
 
   def _lookup_reduction(self, t):
     """Lookups Tensor `t` in the reduction maps."""
-    assert isinstance(t, ops.Tensor), t
+    assert isinstance(t, tensor_lib.Tensor), t
     return self._reduce_map.get(t.op)
 
 
@@ -1298,7 +1298,7 @@ class PFor:
     """Creates an object to rewrite a parallel-for loop.
 
     Args:
-      loop_var: ops.Tensor output of a Placeholder operation. The value should
+      loop_var: Tensor output of a Placeholder operation. The value should
         be an int32 scalar representing the loop iteration number.
       loop_len: A scalar or scalar Tensor representing the number of iterations
         the loop is run for.
@@ -1316,7 +1316,7 @@ class PFor:
       pfor_config: PForConfig object used while constructing the loop body.
       warn: Whether or not to warn on while loop conversions.
     """
-    assert isinstance(loop_var, ops.Tensor)
+    assert isinstance(loop_var, tensor_lib.Tensor)
     assert loop_var.op.type == "PlaceholderWithDefault"
     self._loop_var = loop_var
     loop_len_value = tensor_util.constant_value(loop_len)
@@ -1425,7 +1425,7 @@ class PFor:
     """Returns the converted value corresponding to y.
 
     Args:
-      y: A ops.Tensor or a ops.Operation object. If latter, y should not have
+      y: A Tensor or a ops.Operation object. If latter, y should not have
         any outputs.
 
     Returns:
@@ -1436,10 +1436,10 @@ class PFor:
       return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
-    assert isinstance(y, (ops.Tensor, ops.Operation)), y
+    assert isinstance(y, (tensor_lib.Tensor, ops.Operation)), y
     output = self._convert_helper(y)
     if isinstance(output, WrappedTensor):
-      assert isinstance(y, ops.Tensor)
+      assert isinstance(y, tensor_lib.Tensor)
       return self._unwrap_or_tile(output)
     else:
       assert isinstance(y, ops.Operation)
@@ -1453,7 +1453,8 @@ class PFor:
     return converted_t.t is not t
 
   def _add_conversion(self, old_output, new_output):
-    assert isinstance(old_output, (ops.Tensor, ops.Operation)), old_output
+    assert isinstance(
+        old_output, (tensor_lib.Tensor, ops.Operation)), old_output
     assert isinstance(new_output, (WrappedTensor, ops.Operation)), new_output
     self._conversion_map[old_output] = new_output
 
@@ -1467,7 +1468,7 @@ class PFor:
     (reduction_fn, reduction_args) = reduction
     batched_args = []
     for reduction_arg in reduction_args:
-      assert isinstance(reduction_arg, ops.Tensor), reduction_arg
+      assert isinstance(reduction_arg, tensor_lib.Tensor), reduction_arg
       # Tensor being reduced should already be converted due to a control
       # dependency on the created placeholder.
       # Note that in cases where reduction_arg is in an outer context, one
@@ -1499,7 +1500,7 @@ class PFor:
             "Got %s", y)
         y_op = y
       else:
-        assert isinstance(y, ops.Tensor), y
+        assert isinstance(y, tensor_lib.Tensor), y
         y_op = y.op
 
       is_while_loop = y_op.type == "Exit"
@@ -1891,7 +1892,7 @@ def _channel_flatten_input(x, data_format):
   We then merge the S and C dimension.
 
   Args:
-    x: ops.Tensor to transform.
+    x: tensor_lib.Tensor to transform.
     data_format: "NCHW" or "NHWC".
 
   Returns:
@@ -2588,7 +2589,7 @@ def _convert_gather(pfor_input):
   if param_stacked:
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-    if isinstance(axis, ops.Tensor):
+    if isinstance(axis, tensor_lib.Tensor):
       axis = array_ops.where(axis >= 0, axis + 1, axis)
     else:
       axis = axis + 1 if axis >= 0 else axis

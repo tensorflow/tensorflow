@@ -640,6 +640,20 @@ void PromiseFuture(mlrt::KernelFrame frame) {
       });
 }
 
+struct PromiseReturnOp : mlrt::PromiseReturnOpBase<PromiseReturnOp> {
+  using PromiseReturnOpBase::PromiseReturnOpBase;
+
+  static constexpr char kName[] = "tf_mlrt.promise_return";
+
+  mlrt::Promise& promise() const { return arguments()[0].Get<mlrt::Promise>(); }
+
+  tensorflow::tfrt_stub::FallbackTensor& value() const {
+    return arguments()[1].Get<tensorflow::tfrt_stub::FallbackTensor>();
+  }
+
+  bool value_last_use() const { return last_uses()[1]; }
+};
+
 }  // namespace
 
 mlrt::KernelRegistry& GetTfMlrtOptionalKernelRegistry() {
@@ -671,6 +685,7 @@ void RegisterTfMlrtKernels(mlrt::KernelRegistry& registry) {
   registry.Register<MapFnOp>();
   registry.Register("tf_mlrt.promise", &PromiseTensor);
   registry.Register("tf_mlrt.promise_future", &PromiseFuture);
+  registry.Register<PromiseReturnOp>();
 
   registry.Merge(GetTfMlrtOptionalKernelRegistry());
 }

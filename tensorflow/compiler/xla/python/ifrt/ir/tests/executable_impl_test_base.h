@@ -58,7 +58,7 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   absl::StatusOr<DeviceList> PickDevices(int count);
 
   mlir::MLIRContext mlir_context_;
-  std::unique_ptr<Client> client_;
+  std::shared_ptr<Client> client_;
 };
 
 }  // namespace test_util

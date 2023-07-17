@@ -141,6 +141,49 @@ TEST(Hybrid4BitFullyConnectedOpTest, SimpleTestHybridInt4) {
                   /*max_abs_error=*/1.3f)));
 }
 
+TEST(Hybrid4BitFullyConnectedOpTest, TestHybridInt4AllZeroBatch) {
+  int units = 5;
+  int batches = 4;
+  int cols = 40;
+  FullyConnected4BitOpModel m(
+      units, batches,
+      /*input=*/{TensorType_FLOAT32, {batches, cols}},
+      /*weights=*/{TensorType_INT4, {units, cols}, 0.0, 7.0, 1.0},
+      /*output=*/{TensorType_FLOAT32, {units, batches}},
+      {
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          1,  2, 3, 4, 5, 6, 7, 1, 2, -3, -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          1,  2, 3, 4, 5, 6, 7, 1, 2, -3, -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          1,  2, 3, 4, 5, 6, 7, 1, 2, -3, -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+          -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,  -1, 2, 3, 4, 5, 6, 7, 1, 2, 3,
+      },
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      ActivationFunctionType_RELU);
+  m.SetBias({1, 2, 3, 1, 2});
+  m.SetInput({
+      // 4x40
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10, 1, 2, 3, 4, 5, 6, 7, 8, -9, -10,
+      0, 0, 0, 0, 0, 0, 0, 0,  0,  0,   0, 0, 0, 0, 0, 0, 0, 0, 0,  0,
+      0, 0, 0, 0, 0, 0, 0, 0,  0,  0,   0, 0, 0, 0, 0, 0, 0, 0, 0,  0,
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {393., 456., 457., 455., 394., 413., 476., 477., 475., 414.,
+                   393., 456., 457., 455., 394., 1,    2,    3,    1,    2},
+                  /*max_abs_error=*/1.3f)));
+}
+
 std::mt19937 random_engine(2023);
 std::uniform_real_distribution<float> real_dist(0.f, 1.f);
 std::uniform_int_distribution<int32_t> int_dist(-7, 7);

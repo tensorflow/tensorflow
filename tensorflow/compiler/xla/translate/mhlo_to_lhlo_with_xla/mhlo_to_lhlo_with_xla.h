@@ -258,6 +258,15 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // allocations (see below).
   llvm::DenseMap<const xla::BufferAllocation*, Value> allocations_;
 
+  // This map provides access to MLIR buffers constructed from memref arguments
+  // (allocations) using memref.view operation at the given offset (defined by
+  // slice) and result type (defined by shape). By using this cache we guarantee
+  // that we have a unique memref.view operation corresponding to each
+  // allocation slice.
+  absl::flat_hash_map<std::pair<xla::BufferAllocation::Slice, xla::Shape>,
+                      Value>
+      allocation_slices_;
+
   // This map provides access to MLIR buffers for each HLO instruction, keyed
   // instruction identity. A slice is contained in a BufferAllocation, and has
   // an offset and a size.
@@ -271,11 +280,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // An MLIR buffer is either an input parameter, or a ViewOp in the case
   // where the slice is only part of its allocation.
   //
-  // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
+  // `instr_slices_` is populated lazily in the `GetOrCreateView()` helper as we
   // process every instruction.
   absl::flat_hash_map<std::pair<const xla::HloInstruction*, xla::ShapeIndex>,
                       Value>
-      slices_;
+      instr_slices_;
 
   // The BufferAssignment computed by XLA ahead of time.
   const xla::BufferAssignment& assignment_;

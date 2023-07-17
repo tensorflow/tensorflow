@@ -2789,6 +2789,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_signature_propagates_experimental_attr(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    root = autotrackable.AutoTrackable()
+    experimental_attributes = {"disable_summaries_at_runtime": ["x", True]}
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+        experimental_attributes=experimental_attributes,
+    )
+    def f(x):
+      return x * 2.0
+    root.f = f
+    self.assertEqual(root.f(constant_op.constant(1.0)).numpy(), 2.0)
+    loaded = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+    self.assertEqual(loaded.f(constant_op.constant(1.0)).numpy(), 2.0)
+    self.assertProtoEquals(
+        r"""
+        list {
+            s: 'x',
+            b: True
+        }
+        """,
+        loaded.signatures["serving_default"].function_def.attr[
+            "disable_summaries_at_runtime"
+        ],
+    )
+
 
 @parameterized.named_parameters(*_test_params())
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

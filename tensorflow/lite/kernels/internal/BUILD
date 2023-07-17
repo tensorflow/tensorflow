@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,7 +22,6 @@ HARD_FP_FLAGS_IF_APPLICABLE = select({
 NEON_FLAGS_IF_APPLICABLE = select({
     ":arm": [
         "-O3",
-        "-mfpu=neon",
     ],
     ":armeabi-v7a": [
         "-O3",
@@ -460,7 +460,6 @@ cc_library(
     copts = tflite_copts() + select({
         "//tensorflow:android_arm64": [
             "-march=armv8.2-a+dotprod",
-            "-mfpu=neon-fp-armv8",
         ],
         "//tensorflow:android_arm": [],
         "//conditions:default": [],
@@ -853,6 +852,20 @@ cc_library(
         ":types",
         "//tensorflow/lite/core:macros",
         "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "opaque_tensor_ctypes",
+    srcs = ["opaque_tensor_ctypes.cc"],
+    hdrs = ["opaque_tensor_ctypes.h"],
+    copts = tflite_copts(),
+    tflite_deps = [
+        "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+    ],
+    deps = [
+        ":types",
+        "//tensorflow/lite/core:macros",
     ],
 )
 

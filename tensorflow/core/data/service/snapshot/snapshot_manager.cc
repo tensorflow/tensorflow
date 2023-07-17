@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -32,9 +33,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
-#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
-#include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -48,13 +48,40 @@ namespace tensorflow {
 namespace data {
 
 using ::tsl::OkStatus;
+using ::tsl::errors::Internal;
 using ::tsl::errors::InvalidArgument;
 
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
 
+StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
+    absl::string_view snapshot_path, absl::string_view worker_address,
+    int64_t stream_index) {
+  if (assignments_[worker_address].size() >=
+      worker_max_concurrent_snapshots()) {
+    return false;
+  }
+  Assignment assignment{std::string(snapshot_path), stream_index};
+  auto [unused, success] = assignments_[worker_address].insert(assignment);
+  if (!success) {
+    return Internal("Worker ", worker_address,
+                    " already had an assignment for ",
+                    assignment.DebugString());
+  }
+  return true;
+}
+
+void SnapshotAssignmentManager::RemoveAssignment(
+    absl::string_view snapshot_path, absl::string_view worker_address,
+    int64_t stream_index) {
+  assignments_[worker_address].erase(
+      {std::string(snapshot_path), stream_index});
+}
+
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
-    const SnapshotRequest& request, Env* env) {
-  SnapshotManager* snapshot_manager = new SnapshotManager(request.path(), env);
+    const SnapshotRequest& request,
+    SnapshotAssignmentManager& assignment_manager, Env* env) {
+  SnapshotManager* snapshot_manager =
+      new SnapshotManager(request.path(), assignment_manager, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Start(request));
   return absl::WrapUnique(snapshot_manager);
 }
@@ -118,8 +145,10 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 }
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
-    absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
+    absl::string_view path, SnapshotAssignmentManager& assignment_manager,
+    Env* env) {
+  SnapshotManager* snapshot_manager =
+      new SnapshotManager(path, assignment_manager, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }
@@ -254,8 +283,17 @@ Status SnapshotManager::ReadOnDiskStream(
 
   if (env_->FileExists(StreamDoneFilePath(path_, stream_index)).ok()) {
     streams_[stream_index].state = Stream::State::kDone;
+    return OkStatus();
   }
-
+  TF_ASSIGN_OR_RETURN(bool assignment_added,
+                      assignment_manager_.TryAddAssignment(
+                          path_, worker_address, stream_index));
+  if (!assignment_added) {
+    return Internal("Failed to recover tf.data snapshot dispatcher: Worker ",
+                    worker_address, " was assigned too many streams. At most ",
+                    assignment_manager_.worker_max_concurrent_snapshots(),
+                    " streams are allowed.");
+  }
   return OkStatus();
 }
 
@@ -318,6 +356,7 @@ Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  assignment_manager_.RemoveAssignment(path_, worker_address, stream_index);
   ++num_completed_streams_;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
@@ -348,9 +387,15 @@ Status SnapshotManager::HandleStreamError(absl::string_view worker_address,
   return OkStatus();
 }
 
-StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
+StatusOr<std::optional<int64_t>> SnapshotManager::MaybeCreateAndAssignNewStream(
     absl::string_view worker_address) {
   int64_t new_stream_index = streams_.size();
+  TF_ASSIGN_OR_RETURN(bool assignment_added,
+                      assignment_manager_.TryAddAssignment(
+                          path_, worker_address, new_stream_index));
+  if (!assignment_added) {
+    return std::optional<int64_t>();
+  }
   for (int64_t source_index = 0; source_index < num_sources(); ++source_index) {
     for (int64_t repetition_index = 0;
          repetition_index <= sources_[source_index].repetition_index;
@@ -401,7 +446,7 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
       return std::optional<int64_t>();
     }
     TF_ASSIGN_OR_RETURN(assigned_stream_index,
-                        CreateAndAssignNewStream(worker_address));
+                        MaybeCreateAndAssignNewStream(worker_address));
   }
   if (assigned_stream_index &&
       streams_[*assigned_stream_index].state == Stream::State::kDone) {

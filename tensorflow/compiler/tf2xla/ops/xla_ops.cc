@@ -1404,10 +1404,9 @@ has_token_input_output: If true, the embedded StableHLO module's main function
   its first result. This can be used in conjunction with the TF2XLA's side
   effect mechanism in order to model side effects.
 disabled_checks: A list of strings describing the safety checks that were
-  disabled at serialization time. This attribute was added in version 6. The
-  following directives are recognized: "platform" (allow a compilation platform
-  that is not among the `platforms`); "custom_call:xxx" (allow a custom call
-  with target function name "xxx" even if it is not known to JAX to be stable).
+  disabled at serialization time. This attribute was added in version 6.
+  For more details see
+  https://github.com/search?q=repo%3Agoogle%2Fjax+path%3Ajax_export+%22class+DisabledSafetyCheck%22&type=code.
   This list, supplemented with a comma-separate list of directives specified
   using the flag --tf_xla_call_module_disabled_checks,
   is used at module loading time to skip the corresponding checks.

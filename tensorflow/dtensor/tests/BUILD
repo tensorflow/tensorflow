@@ -5,6 +5,18 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 tf_cc_test(
+    name = "dtensor_operation_test",
+    srcs = ["dtensor_operation_test.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/dtensor/cc:dtensor_operation",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
     name = "slice_util_test",
     srcs = ["slice_util_test.cc"],
     deps = [

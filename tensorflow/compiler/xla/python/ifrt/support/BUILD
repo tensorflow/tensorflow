@@ -23,13 +23,13 @@ cc_library(
 xla_cc_test(
     name = "sharding_param_to_op_sharding_test",
     srcs = ["sharding_param_to_op_sharding_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":sharding_param_to_op_sharding",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/python/ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",

@@ -18,6 +18,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -139,7 +140,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
     self._set_hyper("rho", rho)
 
     self._momentum = False
-    if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
+    if isinstance(
+        momentum, tensor.Tensor) or callable(momentum) or momentum > 0:
       self._momentum = True
     if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
       raise ValueError("`momentum` must be between [0, 1].")

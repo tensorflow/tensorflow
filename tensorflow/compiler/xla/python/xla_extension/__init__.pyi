@@ -17,7 +17,9 @@ import enum
 import inspect
 import types
 import typing
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing import (
+    Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
+    TypeVar, Union, overload)
 
 import numpy as np
 
@@ -53,7 +55,9 @@ class PrimitiveType(enum.IntEnum):
   U64: PrimitiveType
   F8_E4M3FN: PrimitiveType
   F8_E4M3B11FNUZ: PrimitiveType
+  F8_E4M3FNUZ: PrimitiveType
   F8_E5M2: PrimitiveType
+  F8_E5M2FNUZ: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -264,6 +268,7 @@ class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
   result_layout: Optional[Shape]
+  fdo_profile: Optional[bytes]
   num_replicas: int
   num_partitions: int
   debug_options: DebugOptions
@@ -292,6 +297,8 @@ class OpSharding:
   last_tile_dims: Sequence[Type]
   tile_assignment_dimensions: Sequence[int]
   tile_assignment_devices: Sequence[int]
+  iota_reshape_dims: Sequence[int]
+  iota_transpose_perm: Sequence[int]
   tuple_shardings: Sequence[OpSharding]
   def ParseFromString(self, s: bytes) -> None: ...
   def SerializeToString(self) -> bytes: ...
@@ -441,7 +448,14 @@ def get_gpu_client(
     platform_name: Optional[str] = ...) -> Client:...
 def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 def get_c_api_client(platform_name: str, options: Dict[str, Union[str, int, List[int], float]]) -> Client: ...
-def get_default_c_api_topology(platform_name: str) -> DeviceTopology: ...
+def get_default_c_api_topology(
+    platform_name: str,
+    topology_name: str,
+    options: Dict[str, Union[str, int, List[int], float]],
+) -> DeviceTopology:
+  ...
+
+
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
 def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
 
@@ -532,6 +546,7 @@ class LoadedExecutable:
   def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def keep_alive(self) -> None: ...
   def compile_options(self) -> CompileOptions: ...
+  def cost_analysis(self) -> Dict[str, Any]: ...
   traceback: Traceback
   fingerprint: Optional[bytes]
 

@@ -97,7 +97,7 @@ void PjRtCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, Compile(ctx, pjrt_client, args, &result, &executable));
 
   // Execute
-  OP_REQUIRES_OK(ctx, RunPjRtExecutable(*pjrt_client, inputs, variables, result,
+  OP_REQUIRES_OK(ctx, RunPjRtExecutable(inputs, variables, result, pjrt_client,
                                         executable.get(), ctx));
 
   ctx->SetStatus(OkStatus());

@@ -782,8 +782,8 @@ class Dict(trace.TraceType, serialization.Serializable):
   def _flatten(self) -> PythonList[trace.TraceType]:
     flattened_types = []
 
-    for component in self.mapping.values():
-      flattened_types.extend(component._flatten())  # pylint: disable=protected-access
+    for key in sorted(self.mapping.keys()):
+      flattened_types.extend(self.mapping[key]._flatten())  # pylint: disable=protected-access
 
     return flattened_types
 

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 
@@ -62,10 +62,8 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
   const HloOpcode opcode = instr->opcode();
-  if (hlo_query::IsAsyncCollectiveStartOp(opcode) ||
-      hlo_query::IsAsyncCollectiveDoneOp(opcode) ||
-      opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
-      opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone) {
+  if (hlo_query::IsAsyncCollectiveStartOp(opcode, /*include_send_recv=*/true) ||
+      hlo_query::IsAsyncCollectiveDoneOp(opcode, /*include_send_recv=*/true)) {
     static constexpr TimeCost kLowCost = 1.0;
     return kLowCost;
   }
@@ -81,7 +79,7 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
 ProfileGuidedLatencyEstimator::ProfileGuidedLatencyEstimator(
     const SchedulerConfig& config,
     std::unique_ptr<LatencyEstimator> latency_estimator,
-    const ProfiledInstructionsProto& proto)
+    const tensorflow::profiler::ProfiledInstructionsProto& proto)
     : config_(config), latency_estimator_(std::move(latency_estimator)) {
   const int cycles_per_microsecond = latency_estimator_->CyclesPerMicrosecond();
   for (const auto& instr_cost : proto.costs()) {

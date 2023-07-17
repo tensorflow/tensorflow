@@ -21,7 +21,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -158,8 +160,12 @@ class SnapshotStreamWriter {
   // Writes the next chunk.
   Status WriteChunk();
 
-  // Commits the current chunk.
-  Status CommitChunk();
+  // Whether the current chunks should be committed. This writer performs one
+  // commit every ~20 minutes.
+  bool ShouldCommit() const;
+
+  // Commits the chunks since the last commit.
+  Status Commit();
 
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
@@ -177,9 +183,6 @@ class SnapshotStreamWriter {
   Status FinalizeStream(Status status);
   Status WriteDoneFile();
   Status WriteErrorFile(const Status& status);
-
-  // Returns true if the writer should write an iterator checkpoint.
-  bool ShouldSave() const;
 
   // Saves an iterator checkpoint.
   Status Save();
@@ -222,8 +225,12 @@ class SnapshotStreamWriter {
   int64_t chunk_size_bytes_ = 0;
   // Number of elements in current chunk.
   int64_t chunk_num_elements_ = 0;
-  // Timestamp when the last checkpoint is taken.
-  absl::Time last_checkpoint_time_ = absl::Now();
+  // Index of the last committed chunk.
+  int64_t last_committed_chunk_ = 0;
+  // Timestamp when the last chunks are committed.
+  absl::Time last_commit_time_ = absl::Now();
+  // Sizes of the chunks since the last commit.
+  absl::flat_hash_map<std::string, int64_t> chunk_file_to_num_elements_;
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

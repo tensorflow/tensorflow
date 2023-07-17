@@ -1062,6 +1062,17 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_slice_minus1_size
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 4, 13, 1>, start = array<i64: 6, 8, 0>}>
+func.func @test_slice_minus1_size(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[6, 8, 0]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[4, -1, 1]> : tensor<3xi32>
+  %0 = "tfl.slice"(%arg0, %cst, %cst_0) : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_strided_slice_simple
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 9, 21, 2>, start = array<i64: 4, 0, 1>}>
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 7, 3, 2>}>
@@ -2767,4 +2778,29 @@ func.func @test_imag(%arg0: tensor<1x8x9xcomplex<f32>>) -> (tensor<1x8x9xf32>) {
 func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>) {
   %0 = "tfl.imag"(%arg0) {} : (tensor<1x8x9xf32>) -> tensor<1x8x9xf32>
   return %0 : tensor<1x8x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_qi8
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg1)
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.sub"(%[[VAR0]], %[[VAR1]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR2]]) <{shift = 0 : i32}> :
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.rescale"(%[[VAR3]])
+// CHECK: return %[[VAR4]]
+func.func @test_squared_difference_qi8(%arg0: tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, %arg1: tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>
+  func.return %0 : tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_f32
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.sub"(%arg0, %arg1)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.mul"(%[[VAR0]], %[[VAR0]]) <{shift = 0 : i32}> :
+// CHECK: return %[[VAR1]]
+func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tensor<1x197x1xf32>) -> tensor<1x197x768xf32> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768xf32>, tensor<1x197x1xf32>) -> tensor<1x197x768xf32>
+  func.return %0 : tensor<1x197x768xf32>
 }

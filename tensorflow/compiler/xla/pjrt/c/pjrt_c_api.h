@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 1
+#define PJRT_API_MINOR 9
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -125,9 +125,62 @@ struct PJRT_Error_GetCode_Args {
   const PJRT_Error* error;
   PJRT_Error_Code code;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, error);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
+// Function for PJRT implementation to pass to callback functions provided by
+// caller so the callback can create a PJRT_Error* on error (to return to the
+// implementation). `message` is only required to live for the
+// PJRT_CallbackError call, i.e. the PJRT_CallbackError implementation must copy
+// `message` into the PJRT_Error.
+typedef PJRT_Error* (*PJRT_CallbackError)(PJRT_Error_Code code,
+                                          const char* message,
+                                          size_t message_size);
+
+// ---------------------------- Named Values -----------------------------------
+
+typedef enum {
+  PJRT_NamedValue_kString = 0,
+  PJRT_NamedValue_kInt64,
+  PJRT_NamedValue_kInt64List,
+  PJRT_NamedValue_kFloat,
+} PJRT_NamedValue_Type;
+
+// Named value for key-value pairs.
+struct PJRT_NamedValue {
+  size_t struct_size;
+  void* priv;
+  const char* name;
+  size_t name_size;
+  PJRT_NamedValue_Type type;
+  union {
+    const char* string_value;
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    float float_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
+
+// ---------------------------------- Plugin -----------------------------------
+
+struct PJRT_Plugin_Attributes_Args {
+  size_t struct_size;
+  void* priv;
+  // Returned attributes have the lifetime of the process.
+  PJRT_NamedValue* attributes;  // out
+  size_t num_attributes;        // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, attributes);
+
+// Returns an array of plugin attributes which are key-value pairs. One example
+// attribute is the minimum supported StableHLO version.
+// TODO(b/280349977): standardize the list of attributes.
+typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
 // ---------------------------------- Events -----------------------------------
 
@@ -212,34 +265,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_OnReady_Args, user_arg);
 // error status and a pointer to an object of the caller's choice as arguments.
 typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
-// ------------------------ Other Common Data Types ----------------------------
-
-typedef enum {
-  PJRT_NamedValue_kString = 0,
-  PJRT_NamedValue_kInt64,
-  PJRT_NamedValue_kInt64List,
-  PJRT_NamedValue_kFloat,
-} PJRT_NamedValue_Type;
-
-// Named value for key-value pairs.
-struct PJRT_NamedValue {
-  size_t struct_size;
-  void* priv;
-  const char* name;
-  size_t name_size;
-  PJRT_NamedValue_Type type;
-  union {
-    const char* string_value;
-    int64_t int64_value;
-    const int64_t* int64_array_value;
-    float float_value;
-  };
-  // `value_size` is the number of elements for array/string and 1 for scalar
-  // values.
-  size_t value_size;
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
-
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
@@ -249,12 +274,77 @@ typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
 
+// The caller of PJRT_Client_Create can optionally provide a key-value store
+// accessible across nodes and/or processes. KV store access may be necessary to
+// create some multi-node/multi-process clients. The caller can provide the two
+// callbacks below to access the key-value store.
+
+// A callback to delete the value returned by PJRT_KeyValueGetCallback.
+typedef void (*PJRT_KeyValueGetCallback_ValueDeleter)(char* value);
+
+struct PJRT_KeyValueGetCallback_Args {
+  size_t struct_size;
+  void* priv;
+  const char* key;
+  size_t key_size;
+  int timeout_in_ms;
+  PJRT_CallbackError* callback_error;
+  void* user_arg;
+  char* value;        // out
+  size_t value_size;  // out
+  // The caller needs to set a PJRT_KeyValueGetCallback_ValueDeleter to delete
+  // the value returned by PJRT_KeyValueGetCallback. The implementation is
+  // responsible for copying `value` and then calling value_deleter_callback.
+  PJRT_KeyValueGetCallback_ValueDeleter value_deleter_callback;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_KeyValueGetCallback_Args,
+                          value_deleter_callback);
+
+// Requirements for PJRT_KeyValueGetCallback implementation: (1) Thread-safe.
+// (2) The caller that provides the two callbacks is responsible for avoiding
+// key collisions between different users of key-value store (i.e. between
+// different plugins, but not between different nodes in one plugin). (3)
+// Blocking.
+typedef PJRT_Error* (*PJRT_KeyValueGetCallback)(
+    PJRT_KeyValueGetCallback_Args* args);
+
+struct PJRT_KeyValuePutCallback_Args {
+  size_t struct_size;
+  void* priv;
+  const char* key;
+  size_t key_size;
+  // Only needs to stay alive for the duration of the PJRT_KeyValuePutCallback
+  // call.
+  const char* value;
+  size_t value_size;
+  PJRT_CallbackError* callback_error;
+  void* user_arg;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_KeyValuePutCallback_Args, user_arg);
+
+// Requirements for PJRT_KeyValuePutCallback implementation: (1) Thread-safe.
+// (2) The caller that provides the two callbacks is responsible for avoiding
+// key collisions between different users of key-value store (i.e. between
+// different plugins, but not between different nodes in one plugin).
+typedef PJRT_Error* (*PJRT_KeyValuePutCallback)(
+    PJRT_KeyValuePutCallback_Args* args);
+
 struct PJRT_Client_Create_Args {
   size_t struct_size;
   void* priv;
   // Extra platform-specific options to create a client.
   PJRT_NamedValue* create_options;
   size_t num_options;
+  // Key-value get/put callback provided by the caller of PJRT_Client_Create.
+  // PJRT client can use these callbacks to share information between
+  // processes/nodes.
+  PJRT_KeyValueGetCallback kv_get_callback;
+  // Will be passed to `kv_get_callback` as `user_arg` argument.
+  void* kv_get_user_arg;
+  PJRT_KeyValuePutCallback kv_put_callback;
+  // Will be passed to `kv_put_callback` as `user_arg` argument.
+  void* kv_put_user_arg;
+
   PJRT_Client* client;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, client);
@@ -473,6 +563,8 @@ typedef enum {
   PJRT_Buffer_Type_F8E5M2,
   PJRT_Buffer_Type_F8E4M3FN,
   PJRT_Buffer_Type_F8E4M3B11FNUZ,
+  PJRT_Buffer_Type_F8E5M2FNUZ,
+  PJRT_Buffer_Type_F8E4M3FNUZ,
 
   // 4-bit integer types
   PJRT_Buffer_Type_S4,
@@ -501,6 +593,55 @@ typedef enum {
   PJRT_HostBufferSemantics_kZeroCopy,
 } PJRT_HostBufferSemantics;
 
+typedef enum {
+  PJRT_Buffer_MemoryLayout_Type_Tiled = 0,
+  PJRT_Buffer_MemoryLayout_Type_Strides,
+} PJRT_Buffer_MemoryLayout_Type;
+
+struct PJRT_Buffer_MemoryLayout_Tiled {
+  size_t struct_size;
+  void* priv;
+  // A map from physical dimension numbers to logical dimension numbers.
+  // The first element is the most minor physical dimension (fastest varying
+  // index) and the last the most major (slowest varying index). The contents of
+  // the vector are the indices of the *logical* dimensions in the shape. Must
+  // be the same size as the number of dimensions of the buffer.
+  const int64_t* minor_to_major;
+  size_t minor_to_major_size;
+  // A concatenated list of tile dimensions.
+  const int64_t* tile_dims;
+  // The list of tile dimension sizes. The size of this list is `num_tiles`.
+  const size_t* tile_dim_sizes;
+  size_t num_tiles;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout_Tiled, num_tiles);
+
+struct PJRT_Buffer_MemoryLayout_Strides {
+  size_t struct_size;
+  void* priv;
+  // Number of bytes to traverse per dimension. Must be the same size as
+  // the number of dimensions of the data. Caution: `byte_strides` are allowed
+  // to be negative, in which case data may need to point to the interior of
+  // the buffer, not necessarily its start.
+  const int64_t* byte_strides;
+  size_t num_byte_strides;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout_Strides, num_byte_strides);
+
+// Describe the memory layout. It can be (1) a list of minor-to-major order and
+// optional tilings (each tile is a list of dimensions), or (2) a list of
+// strides.
+struct PJRT_Buffer_MemoryLayout {
+  size_t struct_size;
+  void* priv;
+  union {
+    PJRT_Buffer_MemoryLayout_Tiled tiled;
+    PJRT_Buffer_MemoryLayout_Strides strides;
+  };
+  PJRT_Buffer_MemoryLayout_Type type;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout, type);
+
 struct PJRT_Client_BufferFromHostBuffer_Args {
   size_t struct_size;
   void* priv;
@@ -512,9 +653,10 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
   // The array dimensions of `data`.
   const int64_t* dims;
   size_t num_dims;
-  // Number of bytes to traverse per dimension. Must be the same size as `dims`,
-  // or empty. If empty, the array is assumed to have a dense layout with
-  // dimensions in major-to-minor order
+
+  // Number of bytes to traverse per dimension of the input data. Must be the
+  // same size as `dims`, or empty. If empty, the array is assumed to have a
+  // dense layout with dimensions in major-to-minor order
   // Caution: `byte_strides` are allowed to be negative, in which case `data`
   // may need to point to the interior of the buffer, not necessarily its start.
   const int64_t* byte_strides;
@@ -524,6 +666,11 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
 
   // Device to copy host data to.
   PJRT_Device* device;
+
+  // The caller is responsible to keep the data (tiled or strides) in the
+  // device_layout alive during the call. If nullptr, the device layout is
+  // assumed to be a dense layout with dimensions in major-to-minor order.
+  PJRT_Buffer_MemoryLayout* device_layout;
 
   // Event indicating when it's safe to free `data`. The caller is responsible
   // for calling PJRT_Event_Destroy.
@@ -891,12 +1038,6 @@ typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
 
 struct PJRT_TransferMetadata;
 
-// Returns PJRT_Error* with an error status. The status carries a callback's
-// error status code and message.
-typedef PJRT_Error* (*PJRT_CallbackError)(PJRT_Error_Code code,
-                                          const char* message,
-                                          size_t message_size);
-
 // Returns PJRT_Error* created by PJRT_CallbackError in case of error.
 // Otherwise, returns nullptr. The callback must call
 // `chunk->deleter(chunk->data, chunk->deleter_arg)` when it's finished with
@@ -1011,24 +1152,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_SizeOfGeneratedCodeInBytes_Args,
 typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 
-struct PJRT_LoadedExecutable_GetCostAnalysis_Args {
+struct PJRT_Executable_GetCostAnalysis_Args {
   size_t struct_size;
   void* priv;
-  PJRT_LoadedExecutable* executable;
+  PJRT_Executable* executable;
   size_t num_properties;  // out
   // `properties` and any embedded data are owned by and have the same lifetime
   // as `executable`.
   PJRT_NamedValue* properties;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_GetCostAnalysis_Args,
-                          properties);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCostAnalysis_Args, properties);
 
 // Get the cost properties for the executable. Different platforms may return
 // different properties; for example, some platforms may return the number of
 // operations, or memory size of the input/output of the executable, based on
 // program analysis.
-typedef PJRT_Error* PJRT_LoadedExecutable_GetCostAnalysis(
-    PJRT_LoadedExecutable_GetCostAnalysis_Args* args);
+typedef PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args);
 
 typedef struct PJRT_SerializedExecutable PJRT_SerializedExecutable;
 
@@ -1104,6 +1244,50 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Destroy_Args, buffer);
 // Deletes the underlying runtime objects as if 'PJRT_Buffer_Delete' were
 // called and frees `buffer`. `buffer` can be nullptr.
 typedef PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
+
+struct PJRT_Buffer_ElementType_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Buffer_Type type;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_ElementType_Args, type);
+
+// Returns the type of the array elements of a buffer.
+typedef PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
+
+struct PJRT_Buffer_Dimensions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dims`.
+  const int64_t* dims;  // out
+  size_t num_dims;      // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Dimensions_Args, num_dims);
+
+// Returns the array shape of `buffer`, i.e. the size of each dimension.
+typedef PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
+
+struct PJRT_Buffer_UnpaddedDimensions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dims`.
+  const int64_t* unpadded_dims;  // out
+  size_t num_dims;               // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
+
+// Returns the unpadded array shape of `buffer`. This usually is equivalent to
+// PJRT_Buffer_Dimensions, but for implementations that support
+// dynamically-sized dimensions via padding to a fixed size, any dynamic
+// dimensions may have a smaller unpadded size than the padded size reported by
+// PJRT_Buffer_Dimensions. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
+    PJRT_Buffer_UnpaddedDimensions_Args* args);
 
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
@@ -1184,6 +1368,10 @@ struct PJRT_Buffer_ToHostBuffer_Args {
   void* priv;
   PJRT_Buffer* src;
 
+  // The caller can specify an optional host layout. If nullptr, the layout of
+  // the src buffer will be used. The caller is responsible to keep the data
+  // (tiled or strides) in the host_layout alive during the call.
+  PJRT_Buffer_MemoryLayout* host_layout;
   // `dst` can be nullptr to query required size which will be set into
   // `dst_size`.
   void* dst;  // in/out
@@ -1319,7 +1507,8 @@ struct PJRT_CopyToDeviceStream_AddChunk_Args {
   PJRT_Chunk* chunk;
   PJRT_Event* transfer_complete;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args, chunk);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args,
+                          transfer_complete);
 
 // Emplaces a new chunk of data to copy to the device. The transfer is started
 // immediately, and the returned event is triggered when the transfer completes
@@ -1378,6 +1567,11 @@ typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 struct PJRT_TopologyDescription_Create_Args {
   size_t struct_size;
   void* priv;
+  const char* topology_name;
+  size_t topology_name_size;
+  // Extra platform-specific options to create a client.
+  PJRT_NamedValue* create_options;
+  size_t num_options;
   PJRT_TopologyDescription* topology;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Create_Args, topology);
@@ -1486,6 +1680,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
+
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Error);
@@ -1523,13 +1719,13 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCostAnalysis);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Serialize);
 
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetExecutable);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDevices);
-  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetCostAnalysis);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_Execute);
@@ -1539,6 +1735,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_SerializedExecutable_Data);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);

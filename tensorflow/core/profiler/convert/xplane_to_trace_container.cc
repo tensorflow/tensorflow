@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
@@ -34,8 +34,12 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+using tsl::profiler::HostEventType;
+using tsl::profiler::StatType;
 using tsl::profiler::XEventVisitor;
+using tsl::profiler::XFlow;
 using tsl::profiler::XLineVisitor;
+using tsl::profiler::XPlaneVisitor;
 using tsl::profiler::XStatVisitor;
 
 struct SpecialArguments {
@@ -81,7 +85,7 @@ SpecialArguments ConvertXStatsToTraceEventArguments(
   TraceEventArgumentsBuilder args(raw_args);
   SpecialArguments special_args;
   auto for_each_stat = [&special_args, &args](const XStatVisitor& stat) {
-    if (IsInternalStat(stat.Type())) return;
+    if (tsl::profiler::IsInternalStat(stat.Type())) return;
     switch (stat.ValueCase()) {
       case XStat::kInt64Value:
         ConvertXStatToTraceEventArgument(stat, stat.IntValue(), special_args,
@@ -133,7 +137,7 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
                      container](const XEventVisitor& event) {
     int64_t event_type =
         event.Type().value_or(HostEventType::kUnknownHostEventType);
-    if (IsInternalEvent(event_type)) return;
+    if (tsl::profiler::IsInternalEvent(event_type)) return;
     TraceEventArguments* raw_args = raw_data.mutable_args();
     absl::string_view event_name;
     if (event.HasDisplayName()) {
@@ -159,7 +163,7 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
       container->AddCounterEvent(event_name, device_id, event.TimestampPs(),
                                  raw_data);
     } else if (special_args.flow) {
-      Timespan span(event.TimestampPs(), event.DurationPs());
+      tsl::profiler::Timespan span(event.TimestampPs(), event.DurationPs());
       if (special_args.is_async_event) {
         container->AddAsyncEvent(
             event_name, device_id, span, special_args.flow->Id(),
@@ -172,7 +176,7 @@ void ConvertXLineToTraceEventsContainer(uint32_t device_id,
             special_args.flow->Category(), &raw_data, special_args.group_id);
       }
     } else {
-      Timespan span(event.TimestampPs(), event.DurationPs());
+      tsl::profiler::Timespan span(event.TimestampPs(), event.DurationPs());
       container->AddCompleteEvent(event_name, *resource_id, device_id, span,
                                   &raw_data, special_args.group_id);
     }
@@ -187,7 +191,7 @@ void ConvertXPlaneToTraceEventsContainer(absl::string_view hostname,
                                          const XPlane& xplane,
                                          TraceEventsContainer* container) {
   uint64_t device_id = xplane.id();
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&xplane);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
   std::unique_ptr<ResourceGrouperInterface> resource_grouper =
       CreateDefaultResourceGrouper(device_id, plane.Name());
 

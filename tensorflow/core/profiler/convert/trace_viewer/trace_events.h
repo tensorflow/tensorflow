@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -96,7 +96,7 @@ class TraceEventsContainerBase {
 
   // Creates a TraceEvent prefilled with the given values.
   void AddCompleteEvent(absl::string_view name, uint32_t resource_id,
-                        uint32_t device_id, Timespan timespan,
+                        uint32_t device_id, tsl::profiler::Timespan timespan,
                         RawData* raw_data = nullptr,
                         std::optional<int64_t> group_id = std::nullopt) {
     TraceEvent* event = CreateArenaEvent();
@@ -121,8 +121,8 @@ class TraceEventsContainerBase {
   // Similar to above, but the TraceEvent also has an associated flow_id and
   // flow_entry_type, to make it part of a flow.
   void AddFlowEvent(absl::string_view name, uint32_t resource_id,
-                    uint32_t device_id, Timespan timespan, uint64_t flow_id,
-                    TraceEvent::FlowEntryType flow_entry_type,
+                    uint32_t device_id, tsl::profiler::Timespan timespan,
+                    uint64_t flow_id, TraceEvent::FlowEntryType flow_entry_type,
                     ContextType flow_category = ContextType::kGeneric,
                     RawData* raw_data = nullptr,
                     std::optional<int64_t> group_id = std::nullopt) {
@@ -153,7 +153,7 @@ class TraceEventsContainerBase {
   // associated unique flow_id and flow_entry_type to signal asynchronous
   // start and end events and match up between them.
   void AddAsyncEvent(absl::string_view name, uint32_t device_id,
-                     Timespan timespan, uint64_t flow_id,
+                     tsl::profiler::Timespan timespan, uint64_t flow_id,
                      TraceEvent::FlowEntryType flow_entry_type,
                      ContextType flow_category = ContextType::kGeneric,
                      RawData* raw_data = nullptr,

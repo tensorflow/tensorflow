@@ -120,6 +120,9 @@ ml_program::GlobalOp CreateGlobalOpFromOp(Operation* source, OpBuilder& builder,
   Attribute initial_value = GetInitialValue(source);
   if (!initial_value) {
     initial_value = builder.getZeroAttr(type);
+    if (!initial_value) {
+      initial_value = builder.getArrayAttr({});
+    }
   }
 
   if (!type) return nullptr;
@@ -147,7 +150,6 @@ struct LowerVariableOpsToMlProgramPass
   }
   void runOnOperation() override {
     auto module = getOperation();
-    if (!tf_saved_model::HasTfSavedModelSemantics(module)) return;
 
     DataFlowSolver solver;
     solver.load<dataflow::DeadCodeAnalysis>();

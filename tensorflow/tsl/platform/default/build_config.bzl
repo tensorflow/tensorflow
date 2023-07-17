@@ -654,6 +654,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:casts.h"),
         clean_dep("//tensorflow/tsl/platform/default:context.h"),
         clean_dep("//tensorflow/tsl/platform/default:cord.h"),
+        clean_dep("//tensorflow/tsl/platform/default:criticality.h"),
         clean_dep("//tensorflow/tsl/platform/default:dynamic_annotations.h"),
         clean_dep("//tensorflow/tsl/platform/default:integral_types.h"),
         clean_dep("//tensorflow/tsl/platform/default:logging.h"),
@@ -662,6 +663,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:notification.h"),
         clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
         clean_dep("//tensorflow/tsl/platform/default:status.h"),
+        clean_dep("//tensorflow/tsl/platform/default:statusor.h"),
         clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
         clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
@@ -686,7 +688,7 @@ def tf_protos_all():
         extra_deps = [
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
-            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
@@ -840,6 +842,9 @@ def tf_platform_alias(name, platform_dir = "//tensorflow/tsl/platform/"):
 
 def tf_logging_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:logging")]
+
+def tf_error_logging_deps():
+    return [clean_dep("//tensorflow/tsl/platform/default:error_logging")]
 
 def tf_resource_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:resource")]

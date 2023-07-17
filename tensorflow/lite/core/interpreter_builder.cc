@@ -232,17 +232,19 @@ InterpreterBuilder::InterpreterBuilder(
 InterpreterBuilder::InterpreterBuilder(
     const ::tflite::Model* model, const OpResolver& op_resolver,
     ErrorReporter* error_reporter,
-    const InterpreterOptions* options_experimental)
+    const InterpreterOptions* options_experimental,
+    const Allocation* allocation)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(error_reporter)),
-      metadata_(FlatBufferModel::ReadAllMetadata(model_)) {
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)),
+      allocation_(allocation) {
   if (options_experimental) {
     options_ = *options_experimental;
   }
 }
 
-InterpreterBuilder::~InterpreterBuilder() {}
+InterpreterBuilder::~InterpreterBuilder() = default;
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
@@ -370,8 +372,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
             FlatBufferIntArrayToVector(op->intermediates()),
             reinterpret_cast<const char*>(op->custom_options()->data()),
             op->custom_options()->size(), nullptr, registration);
-      } else if (op->custom_options_offset() > 1 && allocation_) {
-        if (op->custom_options_offset() + op->custom_options_size() >
+      } else if (op->large_custom_options_offset() > 1 && allocation_) {
+        if (op->large_custom_options_offset() +
+                op->large_custom_options_size() >
             allocation_->bytes()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
@@ -385,8 +388,8 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
             FlatBufferIntArrayToVector(op->outputs()),
             FlatBufferIntArrayToVector(op->intermediates()),
             reinterpret_cast<const char*>(allocation_->base()) +
-                op->custom_options_offset(),
-            op->custom_options_size(), nullptr, registration);
+                op->large_custom_options_offset(),
+            op->large_custom_options_size(), nullptr, registration);
       } else {
         subgraph->AddNodeWithParameters(
             FlatBufferIntArrayToVector(op->inputs()),
@@ -836,6 +839,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
         (*interpreter)->subgraph(subgraph_index);
+    modified_subgraph->allocation_ = allocation_;
     auto* subgraph_info =
         telemetry_registered
             ? &telemetry_settings->subgraph_infos[subgraph_index]

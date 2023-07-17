@@ -354,7 +354,7 @@ def TransformEinsumPass : Pass<"tf-einsum", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateTransformEinsumPass()";
 }
 
-def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "mlir::func::FuncOp"> {
+def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
   let summary = "Legalize from HLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
   let constructor = "TF::CreateLegalizeHloToTfPass()";
@@ -399,6 +399,49 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
     let description = [{
     For architectures that support accelerated embedding lookups, this pass will
     rewrite the graph to use pipelining for better device utilization.
+  }];
+}
+
+def EmbeddingProgramKeyPass : Pass<"tf-embedding-program-key", "mlir::func::FuncOp"> {
+  let summary = "Sets the program key for embedding ops.";
+  let constructor = "TFDevice::CreateEmbeddingProgramKeyPass()";
+    let description = [{
+    Passes in the program key to embedding ops. Will move the embedding ops
+    after a _TPUCompileMlir op if there is no predecessor _TPUCompileMlir op.
+    Both the embedding op and compile op are assumed to be wrapped in separate
+    tf_device.launch() ops. This is because the embedding op is head outside
+    compiled and the compile op is wrapped in launch to execute on host
+    during TPURewritePass.
+
+    For example, the tf.OpA with the `mini_batch_splits` attribute will be
+    moved after _TPUCompileMlir and the first input will use the
+    _TPUCompileMlir program output:
+
+    ```mlir
+    "tf_device.launch"() ({
+     %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+     "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
+     tf_device.return
+   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+   %0:2 = "tf_device.launch"() ({
+     %compilation_status, %program = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+     tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+   ```
+
+   becomes:
+
+   ```mlir
+     %0:2 = "tf_device.launch"() ({
+       %compilation_status, %program = "tf._TPUCompileMlir"() {metadata = "...", mlir_module = "..."} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+       tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+     "tf_device.launch"() ({
+       %cst = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+       "tf.OpA"(%0#1) {mini_batch_splits = ""} : (tensor<3x!tf_type.string>) -> ()
+       tf_device.return
+     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
+   ```
   }];
 }
 
@@ -1134,13 +1177,6 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
-
-  let options = [
-    Option<"globally_unique_func_names_", "globally-unique-func-names", "bool",
-           /*default=*/"true",
-           "If true, the pass adds extra identifiers to make function names "
-           "globally unique within a process, not just within a module.">
-  ];
 }
 
 def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
@@ -1305,7 +1341,7 @@ def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "Modu
     func @outside_compilation() -> tensor<f32> {
       %0 = "tf_device.parallel_execute"() ( {
         "tf_device.launch"() ( {
-          %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+          %1 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
           %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
           %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
           "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()

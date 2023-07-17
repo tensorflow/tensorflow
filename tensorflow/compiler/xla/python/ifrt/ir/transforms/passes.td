@@ -42,4 +42,16 @@ def SpmdExpandableInterfaceVerificationPass
   ];
 }
 
+def IfrtDuplicatedCalleeEliminationPass
+    : Pass<"ifrt-duplicated-callee-elimination", "mlir::ModuleOp"> {
+  let summary = "Deduplicate callees of CallOp";
+  let description = [{
+    Deduplicate `ifrt.CallOp` callee `FuncOp`s that are the same except their
+    symbol names. The callee attrs of `ifrt.CallOp`s will be merged to one of
+    them. The duplicated callee `FuncOp` will not be removed.
+  }];
+
+  let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

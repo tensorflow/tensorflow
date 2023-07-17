@@ -19,14 +19,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
 #include <cstdint>
-#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -45,8 +43,7 @@ class CostRecorder {
   // Returns the normalized average execution duration of the op keyed by
   // `op_key`. If there is no record for `op_key`, returns the uint32_t::max to
   // avoid stream merging. Note that we don't use uint64_t::max because
-  // otherwise adding op costs would cause overflow. (See details in
-  // go/tfrt-stream-analysis-doc.)
+  // otherwise adding op costs would cause overflow.
   uint64_t GetCost(int64_t op_key) const;
 
   // Writes the op cost map (in format of `OpCostMapProto`) to a file specified
@@ -65,8 +62,7 @@ class CostRecorder {
   uint64_t normalize_ratio_;
 
   mutable tensorflow::mutex op_cost_map_mutex_;
-  // Map op key to {sum of op execution duration in nanoseconds, #occurences of
-  // the op}.
+  // Map op key to {sum of op execution duration, #occurences of the op}.
   absl::flat_hash_map<int64_t, std::pair<uint64_t, uint64_t>> op_cost_map_
       TF_GUARDED_BY(op_cost_map_mutex_);
 };

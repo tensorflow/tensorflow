@@ -15,11 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 
+#include <functional>
 #include <optional>
 #include <ostream>
+#include <string>
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
@@ -101,6 +104,9 @@ struct GraphExecutionRunOptions {
   // If true, just-in-time host compilation is disabled, and then if the
   // specified graph is not compiled, the execution will return an error.
   bool disable_compilation = false;
+
+  std::function<void(absl::flat_hash_map<std::string, tensorflow::Tensor>)>
+      streamed_output_callback;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

@@ -25,6 +25,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -981,7 +982,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
   @classmethod
   def _OverloadAllOperators(cls):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._OverloadOperator(operator)
     # For slicing, bind getitem differently than a tensor (use SliceHelperVar
     # instead)
@@ -990,9 +991,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
 
   @classmethod
   def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
-    """Defer an operator overload to `ops.Tensor`.
+    """Defer an operator overload to `tensor_lib.Tensor`.
 
-    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
+    We pull the operator out of tensor_lib.Tensor dynamically to avoid ordering
+    issues.
 
     Args:
       operator: string. The operator name.
@@ -1004,7 +1006,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     if operator == "__eq__" or operator == "__ne__":
       return
 
-    tensor_oper = getattr(ops.Tensor, operator)
+    tensor_oper = getattr(tensor_lib.Tensor, operator)
 
     def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
@@ -1014,17 +1016,24 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     setattr(cls, operator, _run_op)
 
   def __hash__(self):
-    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+    if (
+        tensor_lib.Tensor._USE_EQUALITY
+        and ops.executing_eagerly_outside_functions()
+    ):  # pylint: disable=protected-access
       raise TypeError(
           "Variable is unhashable. "
-          f"Instead, use variable.ref() as the key. (Variable: {self})")
+          f"Instead, use variable.ref() as the key. (Variable: {self})"
+      )
     else:
       return id(self)
 
   # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
   def __eq__(self, other):
     """Compares two variables element-wise for equality."""
-    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+    if (
+        tensor_lib.Tensor._USE_EQUALITY
+        and ops.executing_eagerly_outside_functions()
+    ):  # pylint: disable=protected-access
       return gen_math_ops.equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
@@ -1033,7 +1042,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
   # TODO(gjn): duplicate of math_ops.tensor_not_equals, consider removing
   def __ne__(self, other):
     """Compares two variables element-wise for equality."""
-    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+    if (
+        tensor_lib.Tensor._USE_EQUALITY
+        and ops.executing_eagerly_outside_functions()
+    ):  # pylint: disable=protected-access
       return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
@@ -1342,7 +1354,7 @@ def _try_guard_against_uninitialized_dependencies(name, initial_value):
   Raises:
     TypeError: If `initial_value` is not a `Tensor`.
   """
-  if not isinstance(initial_value, ops.Tensor):
+  if not isinstance(initial_value, tensor_lib.Tensor):
     raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
   # Don't modify initial_value if it contains any cyclic dependencies.

@@ -23,7 +23,7 @@ import six
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
@@ -165,7 +165,7 @@ def to_input_signature(function_type):
           trace_type.InternalPlaceholderContext(unnest_only=True)
       )
       if any(
-          not isinstance(arg, tensor_spec.TensorSpec)
+          not isinstance(arg, tensor.TensorSpec)
           for arg in nest.flatten([constraint], expand_composites=True)
       ):
         # input_signature only supports contiguous TensorSpec composites
@@ -359,7 +359,6 @@ def make_canonicalized_monomorphic_type(
     kwargs: Any,
     capture_types: Any,
     polymorphic_type,
-    default_values,
 ) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
   """Generates function type given the function arguments."""
   kwargs = {
@@ -367,9 +366,9 @@ def make_canonicalized_monomorphic_type(
       for name, value in kwargs.items()
   }
 
-  _, function_type, type_context = (
+  function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
-          args, kwargs, default_values, capture_types, polymorphic_type
+          args, kwargs, {}, capture_types, polymorphic_type
       )
   )
 
@@ -415,10 +414,10 @@ def canonicalize_function_inputs(
   default_values = {} if not default_values else default_values
   if is_pure:
     args, kwargs = _convert_variables_to_tensors(args, kwargs)
-  args, kwargs = bind_function_inputs(
+  bound_arguments = bind_function_inputs(
       args, kwargs, function_type, default_values
   )
-  return args, kwargs
+  return bound_arguments
 
 
 def bind_function_inputs(args, kwargs, function_type, default_values):
@@ -444,7 +443,7 @@ def bind_function_inputs(args, kwargs, function_type, default_values):
         f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
         f" {function_type}."
     ) from e
-  return bound_arguments.args, bound_arguments.kwargs
+  return bound_arguments
 
 
 def _validate_signature(signature):
@@ -466,13 +465,13 @@ def _validate_signature(signature):
     )
 
   if any(
-      not isinstance(arg, tensor_spec.TensorSpec)
+      not isinstance(arg, tensor.TensorSpec)
       for arg in nest.flatten(signature, expand_composites=True)
   ):
     bad_args = [
         arg
         for arg in nest.flatten(signature, expand_composites=True)
-        if not isinstance(arg, tensor_spec.TensorSpec)
+        if not isinstance(arg, tensor.TensorSpec)
     ]
     raise TypeError(
         "input_signature must be a possibly nested sequence of "
@@ -484,7 +483,7 @@ def _validate_signature(signature):
 def _to_tensor_or_tensor_spec(x):
   return (
       x
-      if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+      if isinstance(x, (tensor.Tensor, tensor.TensorSpec))
       else ops.convert_to_tensor(x)
   )
 
@@ -503,7 +502,7 @@ def _get_variable_specs(args):
       continue
     if isinstance(arg, resource_variable_ops.VariableSpec):
       variable_specs.append(arg)
-    elif not isinstance(arg, tensor_spec.TensorSpec):
+    elif not isinstance(arg, tensor.TensorSpec):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs

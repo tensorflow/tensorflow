@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -52,16 +51,6 @@ class GemmRewriteTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  void SetUp() override {
-    tf32_state_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
-  }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(tf32_state_);
-  }
-
- private:
-  bool tf32_state_;
 };
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
@@ -208,6 +197,7 @@ class ParameterizedGemmRewriteTest
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
   void MatchOptimizedHlo(absl::string_view hlo, const absl::string_view pattern,
@@ -310,7 +300,7 @@ HloModule MultipleContractingCheckGemm
 ENTRY AddDotsFunc {
   x = f32[3,4,2] parameter(0)
   y = f32[3,4,5] parameter(1)
-  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+  ROOT dot_a = f32[2,5] dot(x, y), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, operand_precision={highest,highest}
 }
 
 )";
@@ -338,7 +328,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -672,7 +662,7 @@ ENTRY AddDotsFunc {
   y = f32[2,2] parameter(1)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   ROOT dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
 }
 
@@ -697,7 +687,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -754,7 +744,7 @@ ENTRY AddDotsFunc {
   y = f32[2,2] parameter(1)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, dot_a)
 }
@@ -777,7 +767,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1125,7 +1115,7 @@ HloModule test
 ENTRY test {
   Arg_0.1 = f16[4,3]{1,0} parameter(0)
   Arg_1.2 = f16[3,6]{1,0} parameter(1)
-  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest, highest}
 }
 )";
 
@@ -1186,10 +1176,6 @@ ENTRY test {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, SupportedMixTypeGemm) {
-  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    GTEST_SKIP() << "Mixed type cublas calls are only used on Volta and above";
-  }
-
   const char* hlo_text = R"(
 HloModule test
 
@@ -1281,6 +1267,7 @@ class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_enable_cublaslt(false);
     return debug_options;
   }
@@ -1304,7 +1291,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] negate(param_2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -1331,7 +1318,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1348,7 +1335,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   biased_out = f32[2,2] add(dot_a_multiplied, bias)
   ROOT out = f32[2,2] add(biased_out, bias)
@@ -1374,7 +1361,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1474,7 +1461,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -1502,7 +1489,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -1760,12 +1747,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -1824,12 +1806,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -1968,6 +1945,7 @@ class CublasLtGemmRewriteTest : public GemmRewriteTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 };
@@ -1982,7 +1960,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   ROOT out = f32[2,2] add(dot_a_multiplied, bias)
 }
@@ -2009,7 +1987,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2026,7 +2004,7 @@ ENTRY AddDotsFunc {
   bias = f32[2,2] parameter(2)
   k = f32[] constant(3.0)
   k_broadcast = f32[2, 2] broadcast(k), dimensions={}
-  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 2] multiply(dot_a, k_broadcast)
   biased_out = f32[2,2] add(dot_a_multiplied, bias)
   ROOT out = f32[2,2] add(biased_out, bias)
@@ -2054,7 +2032,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2299,12 +2277,12 @@ ENTRY test {
   y = f32[4,4] parameter(1)
   z = f32[4] parameter(2)
   c = f32[] constant(5)
-  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[4,4] broadcast(z), dimensions={1}
   add_a = f32[4,4] add(dot_a, z_bcast)
   c_bcast = f32[4,4] broadcast(c), dimensions={}
-  dot_b = f32[4,4] dot(dot_a, c_bcast), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT out = f32[4,4] dot(add_a, dot_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_b = f32[4,4] dot(dot_a, c_bcast), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  ROOT out = f32[4,4] dot(add_a, dot_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
 }
 
 )";
@@ -2336,7 +2314,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2357,7 +2335,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2374,7 +2352,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2389,7 +2367,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[3,5,6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
   ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
 }
@@ -2427,7 +2405,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2443,7 +2421,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={3}
   ROOT out = f32[2,3,5,6] add(dot_a, z_bcast)
 }
@@ -2481,7 +2459,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
@@ -2901,7 +2879,7 @@ HloModule test
 ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   c = f32[] constant(0)
   c_bcast = f32[2,3,5,6] broadcast(c), dimensions={}
   ROOT out = f32[2,3,5,6] maximum(dot_a, c_bcast)
@@ -2931,7 +2909,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
@@ -3127,7 +3105,7 @@ ENTRY test {
   x = f32[2,3,4] parameter(0)
   y = f32[4,5,6] parameter(1)
   z = f32[3,5,6] parameter(2)
-  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   z_bcast = f32[2,3,5,6] broadcast(z), dimensions={1,2,3}
   add = f32[2,3,5,6] add(dot_a, z_bcast)
   c = f32[] constant(0)
@@ -3167,7 +3145,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
@@ -3541,6 +3519,115 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"BIAS_GELU_AUX"
 ; CHECK:           }
       )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationBF16) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Padding of GEMM bf16 operands only implemented on "
+                    "architectures with bf16 Tensor Cores.";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[2,3] parameter(0)
+  y = bf16[3,4] parameter(1)
+  dot = bf16[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  mul.0 = bf16[2,4] multiply(dot, dot)
+  mul.1 = bf16[2,4] multiply(dot, mul.0)
+  const.0 = bf16[] constant(0.044715)
+  bcast.0 = bf16[2,4] broadcast(const.0), dimensions={}
+  mul.2 = bf16[2,4] multiply(mul.1, bcast.0)
+  add.0 = bf16[2,4] add(dot, mul.2)
+  const.1 = bf16[] constant(0.797884583)
+  bcast.1 = bf16[2,4] broadcast(const.1), dimensions={}
+  mul.3 = bf16[2,4] multiply(add.0, bcast.1)
+  tanh = bf16[2,4] tanh(mul.3)
+  const.2 = bf16[] constant(1)
+  bcast.2 = bf16[2,4] broadcast(const.2), dimensions={}
+  add.2 = bf16[2,4] add(tanh, bcast.2)
+  const.3 = bf16[] constant(0.5)
+  bcast.3 = bf16[2,4] broadcast(const.3), dimensions={}
+  mul.4 = bf16[2,4] multiply(add.2, bcast.3)
+  ROOT out = bf16[2,4] multiply(dot, mul.4)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{5e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: bf16[2,3], y: bf16[3,4]) -> bf16[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-NEXT:    [[P0_PAD:%[^ ]+]] = bf16[8,8]{1,0} pad([[P0]], [[C0]]), padding=0_6x0_5
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_PAD:%[^ ]+]] = bf16[8,8]{1,0} pad([[P1]], [[C0]]), padding=0_5x0_4
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PAD]], [[P1_PAD]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"GELU"
+; CHECK:           }
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[2,4]{1,0} slice([[DOT]]), slice={[0:2], [0:4]}
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationBitcast) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_bitcast = f32[2,2,2] bitcast(dot)
+  mul.0 = f32[2,2,2] multiply(dot_bitcast, dot_bitcast)
+  mul.1 = f32[2,2,2] multiply(dot_bitcast, mul.0)
+  const.0 = f32[] constant(0.044715)
+  bcast.0 = f32[2,2,2] broadcast(const.0), dimensions={}
+  mul.2 = f32[2,2,2] multiply(mul.1, bcast.0)
+  add.0 = f32[2,2,2] add(dot_bitcast, mul.2)
+  const.1 = f32[] constant(0.797884583)
+  bcast.1 = f32[2,2,2] broadcast(const.1), dimensions={}
+  mul.3 = f32[2,2,2] multiply(add.0, bcast.1)
+  tanh = f32[2,2,2] tanh(mul.3)
+  const.2 = f32[] constant(1)
+  bcast.2 = f32[2,2,2] broadcast(const.2), dimensions={}
+  add.2 = f32[2,2,2] add(tanh, bcast.2)
+  const.3 = f32[] constant(0.5)
+  bcast.3 = f32[2,2,2] broadcast(const.3), dimensions={}
+  mul.4 = f32[2,2,2] multiply(add.2, bcast.3)
+  ROOT out = f32[2,2,2] multiply(dot_bitcast, mul.4)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::CustomCall(
+                                        {"__cublas$lt$matmul"},
+                                        m::Parameter(0).WithShape(F32, {2, 3}),
+                                        m::Parameter(1).WithShape(F32, {3, 4})))
+                             .WithShape(F32, {2, 2, 2})));
 }
 
 // For F16, the sizes of all dimensions of the operands are required to be
@@ -4338,7 +4425,7 @@ ENTRY test {
   z = f32[4] parameter(2)
   k = f32[] constant(3.0)
   k_bcast = f32[2,4] broadcast(k), dimensions={}
-  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
   dot_a_multiplied = f32[2, 4] multiply(dot_a, k_bcast)
   z_bcast = f32[2,4] broadcast(z), dimensions={1}
   add = f32[2,4] add(dot_a_multiplied, z_bcast)
@@ -4370,7 +4457,7 @@ ENTRY test {
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:           "operand_precision":["HIGHEST","HIGHEST"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"BIAS_RELU"
 ; CHECK:           }
@@ -4511,12 +4598,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -4574,12 +4656,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -4638,12 +4715,7 @@ ENTRY test {
     const auto matched_text =
         absl::StrReplaceAll(matched_text_template, replacements);
     EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-    if (GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::VOLTA)) {
-      // The convert is only removed only Volta and above, since mixed type
-      // matmuls have precision issues on Pascal.
-      MatchOptimizedHlo(hlo_text, matched_text);
-    }
+    MatchOptimizedHlo(hlo_text, matched_text);
   }
 }
 
@@ -6308,8 +6380,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
           }
 
 )";
-  bool tf32_state_ = tsl::tensor_float_32_execution_enabled();
-  tsl::enable_tensor_float_32_execution(true);
 
   CheckFp8IfOnHopper(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
@@ -6318,7 +6388,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
                             R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
-  tsl::enable_tensor_float_32_execution(tf32_state_);
 }
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,

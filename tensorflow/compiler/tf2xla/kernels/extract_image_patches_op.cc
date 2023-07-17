@@ -149,7 +149,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
 
       int64_t unused_output_size;
       OP_REQUIRES_OK(
-          ctx, GetWindowedOutputSizeVerboseV2(
+          ctx, GetWindowedOutputSizeVerbose(
                    input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
                    window_strides[i], padding_, &unused_output_size,
                    &padding[i].first, &padding[i].second));

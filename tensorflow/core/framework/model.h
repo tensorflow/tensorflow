@@ -107,6 +107,13 @@ struct Parameter {
         max(max),
         state(std::move(state)) {}
 
+  explicit Parameter(const std::shared_ptr<Parameter> parameter)
+      : name(parameter->name),
+        value(parameter->value),
+        min(parameter->min),
+        max(parameter->max),
+        state(parameter->state) {}
+
   // Human-readable name of the parameter.
   const string name;
 
@@ -860,8 +867,13 @@ class Model {
   void RecordIteratorGapTime(uint64_t duration_usec);
 
   // Computes the target time in nsecs to use for `STAGE_BASED` autotune
-  // algorithm.
+  // algorithm. Returns 0 if there if there are not sufficient recorded iterator
+  // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
+
+  // Returns the time in nanoseconds it takes the pipeline to produce an
+  // element. Returns 0 if the model is empty.
+  double ComputeProcessingTimeNsec() const;
 
  private:
   // Determines whether optimization should stop given total processing time,

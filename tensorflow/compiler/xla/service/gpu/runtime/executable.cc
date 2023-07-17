@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -137,13 +138,22 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 
 //===----------------------------------------------------------------------===//
 
+// Executable can have only one "main" function and only graph capture function.
+static int64_t GetNumGraphs(const runtime::Executable& executable) {
+  return executable.num_functions() - 1;
+}
+
 GpuRuntimeExecutable::GpuRuntimeExecutable(
-    std::vector<int64_t> buffer_sizes,
+    std::string module_name, std::vector<int64_t> buffer_sizes,
     std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
     ModulesState modules_state, FfiModulesState ffi_modules_state)
-    : buffer_sizes_(std::move(buffer_sizes)),
+    : module_name_(std::move(module_name)),
+      buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
+#if GOOGLE_CUDA
+      graph_instances_(module_name_, GetNumGraphs(executable())),
+#endif  // GOOGLE_CUDA
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -151,12 +161,16 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 }
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
-    std::vector<int64_t> buffer_sizes,
+    std::string module_name, std::vector<int64_t> buffer_sizes,
     std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
     ModulesState modules_state, FfiModulesState ffi_modules_state)
-    : buffer_sizes_(std::move(buffer_sizes)),
+    : module_name_(std::move(module_name)),
+      buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
+#if GOOGLE_CUDA
+      graph_instances_(module_name_, GetNumGraphs(executable())),
+#endif  // GOOGL_CUDA
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -168,8 +182,9 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 //===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
-  // Options for the default XLA Runtim compilation pipeline.
+GpuRuntimeExecutable::Create(std::string module_name,
+                             std::unique_ptr<GpuRuntimeProgram> program) {
+  // Options for the default XLA Runtime compilation pipeline.
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -222,7 +237,7 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
                          ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
-      std::move(program->buffer_sizes),
+      std::move(module_name), std::move(program->buffer_sizes),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
       std::move(program->debug_options), std::move(*modules_state),
       std::move(*ffi_modules_state)));
@@ -233,7 +248,8 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 //===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
+GpuRuntimeExecutable::Create(std::string module_name,
+                             absl::Span<const int64_t> buffer_sizes,
                              Executable executable,
                              DebugOptions debug_options) {
   // Instantiate state for all registered runtime modules.
@@ -249,6 +265,7 @@ GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
                          ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
+      std::move(module_name),
       std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
       std::make_unique<Executable>(std::move(executable)),
       std::move(debug_options), std::move(*modules_state),
@@ -274,7 +291,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   assert(ptrs.empty() && "pointers storage must be empty");
   ptrs.resize_for_overwrite(num_allocations);
 
-  // Each buffer allocation pased as 1d memref to the compiled function:
+  // Each buffer allocation passed as 1d memref to the compiled function:
   //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
   size_t num_args_ptrs = 1 + num_allocations * 5;
   call_frame.args.resize_for_overwrite(num_args_ptrs);
@@ -412,6 +429,35 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
+
+#if GOOGLE_CUDA
+  // Instantiate all CUDA graphs before executing the main function.
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0 &&
+      !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
+    // To instantiate all Gpu graphs we have to pass a valid device pointer
+    // because some device operations in XLA (e.g. memcpy) query device
+    // information from a pointer. We have to find the largest allocation
+    // available, to guarantee that all memref slices are within bounds,
+    // otherwise we might get crashes from a Gpu driver.
+    void* device_ptr = temp_buffer.opaque();
+    size_t device_ptr_size = temp_buffer.size();
+
+    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
+      auto mem = buffer_allocations.GetDeviceAddress(i);
+      if (mem.size() > device_ptr_size) {
+        device_ptr = mem.opaque();
+        device_ptr_size = mem.size();
+      }
+    }
+
+    if (auto instantiated = graph_instances_.InstantiateAllGraphs(
+            run_options, executable, user_data, device_ptr);
+        !instantiated.ok()) {
+      return InternalError("Failed to instantiate CUDA graphs: %s",
+                           instantiated.message());
+    }
+  }
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

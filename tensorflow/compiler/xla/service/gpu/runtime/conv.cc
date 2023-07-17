@@ -26,9 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -38,9 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
+#endif
+
 namespace xla {
 
-using tensorflow::AutotuneResult;
 using xla::runtime::AggregateAttrDef;
 using xla::runtime::AggregateAttrEncoding;
 using xla::runtime::CustomCall;
@@ -226,6 +228,10 @@ struct SideInputAttrs {
   double side_input_scale;
 };
 
+struct LeakyReluAlphaAttrs {
+  double leaky_relu_alpha;
+};
+
 }  // namespace
 
 static GpuConvDescriptor GetConvDescriptor(
@@ -237,7 +243,8 @@ static GpuConvDescriptor GetConvDescriptor(
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
     std::optional<FusedConvAttrs> fused = std::nullopt,
-    std::optional<SideInputAttrs> side_input = std::nullopt) {
+    std::optional<SideInputAttrs> side_input = std::nullopt,
+    std::optional<LeakyReluAlphaAttrs> leakyrelu_alpha = std::nullopt) {
   // Build a convolution descriptor from the attributes.
   GpuConvDescriptor descriptor;
   descriptor.kind = kind;
@@ -311,6 +318,11 @@ static GpuConvDescriptor GetConvDescriptor(
   if (fused.has_value())
     descriptor.backend_config.set_activation_mode(fused->activation_mode);
 
+  // Set attributes specific for fused convolutions with leaky_relu_alpha.
+  if (leakyrelu_alpha.has_value())
+    descriptor.backend_config.set_leakyrelu_alpha(
+        leakyrelu_alpha->leaky_relu_alpha);
+
   // Set attributes specific for convolutions with side input.
   if (side_input.has_value())
     descriptor.backend_config.set_side_input_scale(
@@ -342,13 +354,17 @@ static absl::Status ConvImpl(
     int64_t feature_group_count, double result_scale,
     // Optional attributes for fused convolutions.
     std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
-    std::optional<double> side_input_scale = std::nullopt) {
+    std::optional<double> side_input_scale = std::nullopt,
+    std::optional<double> leakyrelu_alpha = std::nullopt) {
   // Build config for optional attributes.
   std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
   if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
   std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
   if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
+
+  std::optional<LeakyReluAlphaAttrs> leakyrelu_alpha_attrs = std::nullopt;
+  if (leakyrelu_alpha.has_value()) leakyrelu_alpha_attrs = {*leakyrelu_alpha};
 
   bool runtime_autotuning = false;
   if (backend_config.algorithm == -1) {
@@ -367,7 +383,7 @@ static absl::Status ConvImpl(
             {window_strides, padding, lhs_dilation, rhs_dilation,
              window_reversal},
             backend_config, {feature_group_count, result_scale}, fused_attrs,
-            side_input_attrs);
+            side_input_attrs, leakyrelu_alpha_attrs);
 
         TF_ASSIGN_OR_RETURN(GpuConvConfig conv_config,
                             GetGpuConvConfig(descriptor, ""));
@@ -388,20 +404,21 @@ static absl::Status ConvImpl(
 
   // Do runtime conv autotuning.
   if (runtime_autotuning) {
+#if GOOGLE_CUDA
     // Don't run autotuning concurrently on the same GPU.
     NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
         gpu_lock->UpgradeToWriterMutexLock();
 
     auto stream_exec = run_options->stream()->parent();
     auto allocator = run_options->allocator();
-    DeviceConfig device_config = {stream_exec, allocator};
-    GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
+    AutotuneConfig config(DeviceConfig{stream_exec, allocator}, *debug_options);
+    GpuConvAlgorithmPicker conv_algorithm_picker(config);
 
     GpuConvConfig gpu_conv_config = conv->config;
     TF_ASSIGN_OR_RETURN(
         AutotuneResult best_algo,
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
-            gpu_conv_config, run_options, debug_options, buffers,
+            config, gpu_conv_config, run_options, *debug_options, buffers,
             result_buffer));
 
     // Set algorithm in the convolution runner state.
@@ -411,6 +428,10 @@ static absl::Status ConvImpl(
 
     // Set scratch buffer size according to the selected algorithm.
     scratch_buffer_size = best_algo.scratch_bytes();
+#else
+    return absl::InternalError(
+        "Failed to run runtime autotuner because CUDA is not enabled");
+#endif
   }
 
   RunConvOptions opts;
@@ -488,6 +509,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         )
         .Value(std::optional<se::dnn::ActivationMode>())  // activation_mode
         .Value(std::optional<double>())                   // side_input_scale
+        .Value(std::optional<double>())                   // leaky_relu_alpha
 );
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -506,7 +528,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
             .Arg<FlatMemrefView>()                      // scratch
         )
         .Attr<se::dnn::ActivationMode>("activation_mode")
-        .Value(std::optional<double>())  // side_input_scale
+        .Value(std::optional<double>())   // side_input_scale
+        .Attr<double>("leakyrelu_alpha")  // leaky_relu_alpha
 );
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -525,7 +548,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
                            .Arg<FlatMemrefView>()     // scratch
                        )
         .Attr<se::dnn::ActivationMode>("activation_mode")
-        .Attr<double>("side_input_scale"));
+        .Attr<double>("side_input_scale")
+        .Value(std::optional<double>()));  // leaky_relu_alpha
 
 //===----------------------------------------------------------------------===//
 

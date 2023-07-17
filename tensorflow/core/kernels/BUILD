@@ -530,8 +530,9 @@ cc_library(
     hdrs = ["numeric_options_utils.h"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:numeric_options",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_cuda_library(
@@ -1531,6 +1532,7 @@ tf_kernel_library(
     deps = [
         ":cast_op",
         ":gpu_utils",
+        ":numeric_options_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -3477,6 +3479,7 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
+        ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
@@ -4165,6 +4168,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
@@ -4618,6 +4622,7 @@ tf_kernel_library(
     prefix = "parse_tensor_op",
     deps = [
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
 
@@ -4702,6 +4707,14 @@ cc_library(
     deps = [
         ":random_op",
         ":stateless_random_ops_v2_header",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "stochastic_cast_op_header",
+    hdrs = ["stochastic_cast_op.h"],
+    deps = [
         "//tensorflow/core:framework",
     ],
 )

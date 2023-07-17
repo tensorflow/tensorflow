@@ -199,7 +199,7 @@ FailureOr<linalg::ReduceOp> convertDotOpToReduce(linalg::DotOp dotOp,
   // Create empty tensor for linalg.map.
   Value lhs = dotOp.getInputs().front();
   FailureOr<OpFoldResult> inputSizeOfr =
-      tensor::createDimValue(rewriter, loc, lhs, 0);
+      tensor::getMixedSize(rewriter, loc, lhs, 0);
 
   if (failed(inputSizeOfr)) {
     return rewriter.notifyMatchFailure(

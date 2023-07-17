@@ -1,4 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 
@@ -11,7 +12,11 @@ py_strict_library(
     name = "attributes",
     srcs = ["attributes.py"],
     srcs_version = "PY3",
-    deps = [],
+    visibility = ["//tensorflow/python:__subpackages__"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:compat",
+    ],
 )
 
 py_strict_library(
@@ -33,7 +38,7 @@ py_strict_library(
     deps = [],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
@@ -47,12 +52,14 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:handle_data_util",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
     ],
@@ -66,13 +73,11 @@ cuda_py_strict_test(
     deps = [
         ":atomic_function",
         ":polymorphic_function",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -100,8 +105,8 @@ py_strict_library(
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:default_gradient",
@@ -125,9 +130,15 @@ cuda_py_strict_test(
     srcs = ["concrete_function_test.py"],
     python_version = "PY3",
     deps = [
+        ":atomic_function",
         ":concrete_function",
+        ":polymorphic_function",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
@@ -135,8 +146,8 @@ cuda_py_strict_test(
 )
 
 py_strict_library(
-    name = "tracing_compiler",
-    srcs = ["tracing_compiler.py"],
+    name = "tracing_compilation",
+    srcs = ["tracing_compilation.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
@@ -186,8 +197,10 @@ py_strict_library(
         ":eager_function_run",
         ":function_type_utils",
         ":tf_method_target",
-        ":tracing_compiler",
+        ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/eager:context",
@@ -253,8 +266,8 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
         "//tensorflow/python/framework:type_spec",
@@ -318,6 +331,10 @@ tf_py_strict_test(
 tf_xla_py_strict_test(
     name = "polymorphic_function_xla_jit_test",
     srcs = ["polymorphic_function_xla_jit_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/185944215) # Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     disabled_backends = [
         "cpu_ondemand",
     ],
@@ -339,7 +356,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:collective_ops",
@@ -424,15 +441,16 @@ py_strict_library(
 )
 
 tf_py_strict_test(
-    name = "quarantine_test",
+    name = "tracing_compilation_test",
     size = "medium",
-    srcs = ["quarantine_test.py"],
+    srcs = ["tracing_compilation_test.py"],
     python_version = "PY3",
     deps = [
-        ":polymorphic_function",
-        ":tracing_compiler",
+        ":function_type_utils",
+        ":tracing_compilation",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
@@ -440,7 +458,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
         "//tensorflow/python/layers",
@@ -463,7 +481,6 @@ tf_py_strict_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -570,10 +587,8 @@ py_strict_library(
         ":composite_tensor_utils",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:nest",
@@ -636,7 +651,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",

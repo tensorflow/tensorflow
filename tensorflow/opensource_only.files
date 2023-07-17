@@ -11,6 +11,7 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/glob_lit_test.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/example/BUILD:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
@@ -98,6 +99,7 @@ tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
 tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/BUILD:
 tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_external.cc:
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
+tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/interpreter.h:
@@ -112,7 +114,6 @@ tensorflow/lite/model_builder.h:
 tensorflow/lite/schema/conversion_metadata_generated.h:
 tensorflow/lite/schema/schema_generated.h:
 tensorflow/lite/special_rules.bzl:
-tensorflow/lite/test_util.h:
 tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/AndroidManifest.xml:
 tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/build_defs.bzl:
 tensorflow/lite/tools/verifier.h:
@@ -173,6 +174,7 @@ tensorflow/tools/toolchains/cpus/py/BUILD:
 tensorflow/tools/toolchains/cpus/py3/BUILD:
 tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tensorflow/tools/toolchains/java/BUILD:
+tensorflow/tools/toolchains/python/BUILD:
 tensorflow/tools/toolchains/remote/BUILD:
 tensorflow/tools/toolchains/remote_config/BUILD:
 tensorflow/tools/toolchains/win/BUILD:
@@ -298,6 +300,13 @@ third_party/py/BUILD.tpl:
 third_party/py/BUILD:
 third_party/py/ml_dtypes/BUILD:
 third_party/py/ml_dtypes/LICENSE:
+third_party/py/non_hermetic/BUILD.tpl:
+third_party/py/non_hermetic/BUILD:
+third_party/py/non_hermetic/README:
+third_party/py/non_hermetic/ml_dtypes/BUILD:
+third_party/py/non_hermetic/ml_dtypes/LICENSE:
+third_party/py/non_hermetic/numpy/BUILD:
+third_party/py/non_hermetic/python_configure.bzl:
 third_party/py/numpy/BUILD:
 third_party/py/python_configure.bzl:
 third_party/pybind11.BUILD:

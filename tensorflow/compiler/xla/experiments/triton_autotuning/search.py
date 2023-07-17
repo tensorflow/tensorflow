@@ -160,7 +160,7 @@ def generate_samples() -> typing.List[MatmulSize]:
   m_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
   n_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
   k_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
-  quants = [QuantizedInputType.FULL, QuantizedInputType.INT8]
+  quants = [QuantizedInputType.BFLOAT16, QuantizedInputType.INT8]
   prod = itertools.product(m_axis, n_axis, k_axis, quants[1], quants[0])
   out = random.choices((MatmulSize(*p) for p in prod), k=_NUM_SAMPLES.value)
   return out

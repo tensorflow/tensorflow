@@ -49,14 +49,12 @@ cc_library(
         "platform.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     visibility = ["//visibility:public"],
@@ -252,15 +250,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rng",
-    srcs = ["rng.cc"],
-    hdrs = ["rng.h"],
-    deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform",
-    ],
-)
-
-cc_library(
     name = "numeric_options",
     hdrs = ["numeric_options.h"],
 )
@@ -300,7 +289,6 @@ cc_library(
         "launch_dim.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
@@ -329,7 +317,6 @@ cc_library(
         ":kernel_spec",
         ":launch_dim",
         ":plugin",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -443,12 +430,10 @@ tsl_gpu_library(
         ":launch_dim",
         ":platform",
         ":plugin_registry",
-        ":rng",
         ":stream_executor_headers",
         ":stream_executor_internal",
         ":temporary_device_memory",
         ":temporary_memory_manager",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -476,7 +461,6 @@ cc_library(
         "fft.h",
         "kernel.cc",
         "plugin.h",
-        "rng.h",
         "stream.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
@@ -495,7 +479,6 @@ cc_library(
         "plugin_registry.h",
         "stream_executor.h",
         "stream_executor_internal.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -512,7 +495,6 @@ cc_library(
         ":platform",
         ":plugin",
         ":plugin_registry",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -536,14 +518,12 @@ cc_library(
     srcs = [
         "device_description.h",
         "kernel_cache_config.h",
-        "timer.cc",
     ],
     hdrs = [
         "blas.h",
         "kernel.h",
         "stream.h",
         "stream_executor.h",
-        "timer.h",
     ],
     deps = [
         ":data_type",
@@ -602,7 +582,6 @@ cc_library(
         "launch_dim.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
@@ -631,7 +610,6 @@ cc_library(
         ":launch_dim",
         ":platform",
         ":plugin",
-        ":rng",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/platform:env",
@@ -758,14 +736,12 @@ cc_library(
         "platform.h",
         "plugin.h",
         "plugin_registry.h",
-        "rng.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
-        "timer.h",
         "trace_listener.h",
     ],
     deps = [
@@ -790,7 +766,6 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_pimpl",
-        ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
@@ -830,7 +805,6 @@ xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
@@ -843,7 +817,6 @@ xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":dnn",
         "//tensorflow/tsl/platform:test",

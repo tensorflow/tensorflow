@@ -1,5 +1,6 @@
 # Helper libraries for TensorFlow API compatibility test.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -19,7 +20,7 @@ tf_proto_library(
     srcs = ["api_objects.proto"],
 )
 
-py_library(
+py_strict_library(
     name = "python_object_to_proto_visitor",
     srcs = ["python_object_to_proto_visitor.py"],
     srcs_version = "PY3",
@@ -28,7 +29,6 @@ py_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_decorator",
-        "@six_archive//:six",
     ],
 )
 

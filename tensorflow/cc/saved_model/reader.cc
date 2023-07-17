@@ -102,10 +102,9 @@ Status ReadSavedModel(absl::string_view export_dir,
 
   const std::string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  TF_ASSIGN_OR_RETURN(
-      bool saved_model_pbtxt_exists,
-      internal::FileExists(Env::Default(), saved_model_pbtxt_path));
-  if (saved_model_pbtxt_exists) {
+  auto saved_model_pbtxt_exists =
+      internal::FileExists(Env::Default(), saved_model_pbtxt_path);
+  if (saved_model_pbtxt_exists.value_or(false)) {
     Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   saved_model_proto);
     if (result.ok()) {

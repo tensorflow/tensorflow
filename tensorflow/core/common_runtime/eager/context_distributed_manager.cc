@@ -63,6 +63,20 @@ limitations under the License.
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
+
+// We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+// server object (which currently CHECK-fails) and we miss the error, instead,
+// we log the error, and then return to allow the user to see the error
+// message.
+#define LOG_AND_RETURN_IF_ERROR(...)                  \
+  do {                                                \
+    const tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {            \
+      LOG(ERROR) << _status.message();                \
+      return _status;                                 \
+    }                                                 \
+  } while (0);
+
 #if !defined(IS_MOBILE_PLATFORM)
 namespace {
 
@@ -641,7 +655,6 @@ Status UpdateContextWithServerDef(EagerContext* context,
                                           added_workers, removed_workers));
     LOG_AND_RETURN_IF_ERROR(sg.as_summary_status());
   }
-#undef LOG_AND_RETURN_IF_ERROR
 
   return OkStatus();
 }
@@ -682,21 +695,76 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
   return s;
 }
 
+Status EagerContextDistributedManager::InitializeLocalOnlyContext(
+    const ServerDef& server_def, int keep_alive_secs) {
+  string worker_name =
+      strings::StrCat("/job:", server_def.job_name(),
+                      "/replica:0/task:", server_def.task_index());
+  // New server created for new server_def. Unused if updating server_def.
+  std::unique_ptr<ServerInterface> new_server;
+  ServerInterface* server;
+  DeviceMgr* device_mgr = AreLocalDevicesCompatible(context_, server_def)
+                              ? context_->local_device_mgr()
+                              : nullptr;
+  LOG_AND_RETURN_IF_ERROR(
+      NewServerWithOptions(server_def, {device_mgr}, &new_server));
+  server = new_server.get();
+  uint64 context_id = EagerContext::NewContextId();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(
+      server->AddMasterEagerContextToEagerService(context_id, context_));
+
+  std::vector<DeviceAttributes> local_device_attributes;
+  server->worker_env()->device_mgr->ListDeviceAttributes(
+      &local_device_attributes);
+
+  auto session_name = strings::StrCat("eager_", context_id);
+  auto* session_mgr = server->worker_env()->session_mgr;
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      server->worker_env()->rendezvous_mgr->Find(context_id);
+  std::shared_ptr<WorkerSession> worker_session;
+  protobuf::RepeatedPtrField<DeviceAttributes> device_attributes(
+      local_device_attributes.begin(), local_device_attributes.end());
+  LOG_AND_RETURN_IF_ERROR(session_mgr->CreateSession(
+      session_name, server_def, device_attributes,
+      context_->session_options().config.isolate_session_state()));
+  LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
+      session_mgr->GetCoordinationServiceAgent()));
+  LOG_AND_RETURN_IF_ERROR(
+      session_mgr->WorkerSessionForSession(session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  LOG_AND_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
+  DistributedFunctionLibraryRuntime* cluster_flr =
+      eager::CreateClusterFLR(context_id, context_, worker_session.get());
+  auto remote_mgr = std::make_unique<eager::RemoteMgr>(
+      /*is_master=*/true, context_);
+
+  // The remote workers and device manager are ignored since this initialization
+  // is local only.
+  LOG_AND_RETURN_IF_ERROR(context_->InitializeRemoteMaster(
+      std::move(new_server), server->worker_env(), worker_session,
+      /*remote_eager_workers=*/nullptr, /*remote_device_manager=*/nullptr,
+      /*remote_contexts=*/{}, context_id, std::move(r),
+      server->worker_env()->device_mgr, keep_alive_secs, cluster_flr,
+      std::move(remote_mgr)));
+
+  // NOTE: We start the server after all other initialization, because the
+  // GrpcServer cannot be destroyed after it is started.
+  LOG_AND_RETURN_IF_ERROR(server->Start());
+
+  // If context is reset, make sure pointer is set to the new agent.
+  coordination_service_agent_ =
+      context_->GetServer()
+          ->worker_env()
+          ->session_mgr->GetCoordinationServiceAgent();
+  return OkStatus();
+}
+
 Status EagerContextDistributedManager::EnableCollectiveOps(
     const ServerDef& server_def) {
-  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
-  // server object (which currently CHECK-fails) and we miss the error, instead,
-  // we log the error, and then return to allow the user to see the error
-  // message.
-#define LOG_AND_RETURN_IF_ERROR(...)                  \
-  do {                                                \
-    const tensorflow::Status _status = (__VA_ARGS__); \
-    if (TF_PREDICT_FALSE(!_status.ok())) {            \
-      LOG(ERROR) << _status.message();                \
-      return _status;                                 \
-    }                                                 \
-  } while (0);
-
   ServerInterface* server = context_->GetServer();
   if (server == nullptr) {
     std::unique_ptr<ServerInterface> new_server;
@@ -789,7 +857,6 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         /*new_server=*/nullptr, server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
   }
-#undef LOG_AND_RETURN_IF_ERROR
   return OkStatus();
 }
 

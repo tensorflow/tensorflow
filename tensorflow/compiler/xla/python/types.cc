@@ -40,7 +40,9 @@ struct CustomDtypes {
   py::dtype bfloat16;
   py::dtype float8_e4m3fn;
   std::optional<py::dtype> float8_e4m3b11fnuz;
+  py::dtype float8_e4m3fnuz;
   py::dtype float8_e5m2;
+  py::dtype float8_e5m2fnuz;
   std::optional<py::dtype> int4;
   std::optional<py::dtype> uint4;
 };
@@ -57,6 +59,10 @@ const CustomDtypes& GetCustomDtypes() {
       dtypes->float8_e4m3b11fnuz =
           py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
     }
+    dtypes->float8_e4m3fnuz =
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
+    dtypes->float8_e5m2fnuz =
+        py::dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
     if (py::hasattr(ml_dtypes, "int4")) {
       dtypes->int4 = py::dtype::from_args(ml_dtypes.attr("int4"));
     }
@@ -115,7 +121,9 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
     if (custom_dtypes.float8_e4m3b11fnuz) {
       map->emplace(*custom_dtypes.float8_e4m3b11fnuz, F8E4M3B11FNUZ);
     }
+    map->emplace(custom_dtypes.float8_e4m3fnuz, F8E4M3FNUZ);
     map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
+    map->emplace(custom_dtypes.float8_e5m2fnuz, F8E5M2FNUZ);
     if (custom_dtypes.int4) {
       map->emplace(*custom_dtypes.int4, S4);
     }
@@ -172,8 +180,12 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
         return *custom_dtypes.float8_e4m3b11fnuz;
       }
       return InvalidArgument("ml_dtypes.float8_e4m3b11fnuz not found");
+    case F8E4M3FNUZ:
+      return custom_dtypes.float8_e4m3fnuz;
     case F8E5M2:
       return custom_dtypes.float8_e5m2;
+    case F8E5M2FNUZ:
+      return custom_dtypes.float8_e5m2fnuz;
     case BF16:
       return custom_dtypes.bfloat16;
     case F16:
@@ -219,6 +231,8 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
           py::object(ml_dtypes.attr("float8_e4m3b11fnuz"));
     }
     dtypes->np_float8_e5m2 = py::object(ml_dtypes.attr("float8_e5m2"));
+    dtypes->np_float8_e4m3fnuz = py::object(ml_dtypes.attr("float8_e4m3fnuz"));
+    dtypes->np_float8_e5m2fnuz = py::object(ml_dtypes.attr("float8_e5m2fnuz"));
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));

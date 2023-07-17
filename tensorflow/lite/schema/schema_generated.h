@@ -11887,8 +11887,8 @@ struct OperatorT : public ::flatbuffers::NativeTable {
   tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
   std::vector<bool> mutating_variable_inputs{};
   std::vector<int32_t> intermediates{};
-  uint64_t custom_options_offset = 0;
-  uint64_t custom_options_size = 0;
+  uint64_t large_custom_options_offset = 0;
+  uint64_t large_custom_options_size = 0;
 };
 
 struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -11904,8 +11904,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_CUSTOM_OPTIONS_FORMAT = 16,
     VT_MUTATING_VARIABLE_INPUTS = 18,
     VT_INTERMEDIATES = 20,
-    VT_CUSTOM_OPTIONS_OFFSET = 22,
-    VT_CUSTOM_OPTIONS_SIZE = 24
+    VT_LARGE_CUSTOM_OPTIONS_OFFSET = 22,
+    VT_LARGE_CUSTOM_OPTIONS_SIZE = 24
   };
   uint32_t opcode_index() const {
     return GetField<uint32_t>(VT_OPCODE_INDEX, 0);
@@ -12313,11 +12313,11 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<int32_t> *intermediates() const {
     return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_INTERMEDIATES);
   }
-  uint64_t custom_options_offset() const {
-    return GetField<uint64_t>(VT_CUSTOM_OPTIONS_OFFSET, 0);
+  uint64_t large_custom_options_offset() const {
+    return GetField<uint64_t>(VT_LARGE_CUSTOM_OPTIONS_OFFSET, 0);
   }
-  uint64_t custom_options_size() const {
-    return GetField<uint64_t>(VT_CUSTOM_OPTIONS_SIZE, 0);
+  uint64_t large_custom_options_size() const {
+    return GetField<uint64_t>(VT_LARGE_CUSTOM_OPTIONS_SIZE, 0);
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -12336,8 +12336,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyVector(mutating_variable_inputs()) &&
            VerifyOffset(verifier, VT_INTERMEDIATES) &&
            verifier.VerifyVector(intermediates()) &&
-           VerifyField<uint64_t>(verifier, VT_CUSTOM_OPTIONS_OFFSET, 8) &&
-           VerifyField<uint64_t>(verifier, VT_CUSTOM_OPTIONS_SIZE, 8) &&
+           VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_OFFSET, 8) &&
+           VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_SIZE, 8) &&
            verifier.EndTable();
   }
   OperatorT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12880,11 +12880,11 @@ struct OperatorBuilder {
   void add_intermediates(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates) {
     fbb_.AddOffset(Operator::VT_INTERMEDIATES, intermediates);
   }
-  void add_custom_options_offset(uint64_t custom_options_offset) {
-    fbb_.AddElement<uint64_t>(Operator::VT_CUSTOM_OPTIONS_OFFSET, custom_options_offset, 0);
+  void add_large_custom_options_offset(uint64_t large_custom_options_offset) {
+    fbb_.AddElement<uint64_t>(Operator::VT_LARGE_CUSTOM_OPTIONS_OFFSET, large_custom_options_offset, 0);
   }
-  void add_custom_options_size(uint64_t custom_options_size) {
-    fbb_.AddElement<uint64_t>(Operator::VT_CUSTOM_OPTIONS_SIZE, custom_options_size, 0);
+  void add_large_custom_options_size(uint64_t large_custom_options_size) {
+    fbb_.AddElement<uint64_t>(Operator::VT_LARGE_CUSTOM_OPTIONS_SIZE, large_custom_options_size, 0);
   }
   explicit OperatorBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -12908,11 +12908,11 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(
     tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> mutating_variable_inputs = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates = 0,
-    uint64_t custom_options_offset = 0,
-    uint64_t custom_options_size = 0) {
+    uint64_t large_custom_options_offset = 0,
+    uint64_t large_custom_options_size = 0) {
   OperatorBuilder builder_(_fbb);
-  builder_.add_custom_options_size(custom_options_size);
-  builder_.add_custom_options_offset(custom_options_offset);
+  builder_.add_large_custom_options_size(large_custom_options_size);
+  builder_.add_large_custom_options_offset(large_custom_options_offset);
   builder_.add_intermediates(intermediates);
   builder_.add_mutating_variable_inputs(mutating_variable_inputs);
   builder_.add_custom_options(custom_options);
@@ -12936,8 +12936,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
     tflite::CustomOptionsFormat custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS,
     const std::vector<uint8_t> *mutating_variable_inputs = nullptr,
     const std::vector<int32_t> *intermediates = nullptr,
-    uint64_t custom_options_offset = 0,
-    uint64_t custom_options_size = 0) {
+    uint64_t large_custom_options_offset = 0,
+    uint64_t large_custom_options_size = 0) {
   auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
   auto custom_options__ = custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0;
@@ -12954,8 +12954,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
       custom_options_format,
       mutating_variable_inputs__,
       intermediates__,
-      custom_options_offset,
-      custom_options_size);
+      large_custom_options_offset,
+      large_custom_options_size);
 }
 
 ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -17349,8 +17349,8 @@ inline void Operator::UnPackTo(OperatorT *_o, const ::flatbuffers::resolver_func
   { auto _e = custom_options_format(); _o->custom_options_format = _e; }
   { auto _e = mutating_variable_inputs(); if (_e) { _o->mutating_variable_inputs.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->mutating_variable_inputs[_i] = _e->Get(_i) != 0; } } else { _o->mutating_variable_inputs.resize(0); } }
   { auto _e = intermediates(); if (_e) { _o->intermediates.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intermediates[_i] = _e->Get(_i); } } else { _o->intermediates.resize(0); } }
-  { auto _e = custom_options_offset(); _o->custom_options_offset = _e; }
-  { auto _e = custom_options_size(); _o->custom_options_size = _e; }
+  { auto _e = large_custom_options_offset(); _o->large_custom_options_offset = _e; }
+  { auto _e = large_custom_options_size(); _o->large_custom_options_size = _e; }
 }
 
 inline ::flatbuffers::Offset<Operator> Operator::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -17370,8 +17370,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
   auto _custom_options_format = _o->custom_options_format;
   auto _mutating_variable_inputs = _o->mutating_variable_inputs.size() ? _fbb.CreateVector(_o->mutating_variable_inputs) : 0;
   auto _intermediates = _o->intermediates.size() ? _fbb.CreateVector(_o->intermediates) : 0;
-  auto _custom_options_offset = _o->custom_options_offset;
-  auto _custom_options_size = _o->custom_options_size;
+  auto _large_custom_options_offset = _o->large_custom_options_offset;
+  auto _large_custom_options_size = _o->large_custom_options_size;
   return tflite::CreateOperator(
       _fbb,
       _opcode_index,
@@ -17383,8 +17383,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
       _custom_options_format,
       _mutating_variable_inputs,
       _intermediates,
-      _custom_options_offset,
-      _custom_options_size);
+      _large_custom_options_offset,
+      _large_custom_options_size);
 }
 
 inline SubGraphT::SubGraphT(const SubGraphT &o)

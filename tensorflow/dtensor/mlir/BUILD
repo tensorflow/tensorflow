@@ -3,7 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,13 +11,14 @@ package(
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+        "//third_party/py/tensorflow_addons/custom_ops/dtensor:__subpackages__",
     ],
     licenses = ["notice"],
 )
 
 gentbl_cc_library(
     name = "tensorflow_dtensor_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -45,7 +46,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "dtensor_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [(
         [
             "-gen-pass-decls",
@@ -163,17 +164,11 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@stablehlo//:chlo_ops",
     ],
     alwayslink = 1,
 )
@@ -190,6 +185,7 @@ cc_library(
         "dtensor_allreduce_combine_optimization.cc",
         "dtensor_allreduce_scatter_optimization.cc",
         "dtensor_allreduce_sum_optimization.cc",
+        "dtensor_collective_type_lowering.cc",
         "dtensor_layout_to_xla_sharding_op.cc",
         "dtensor_mixed_precision_reduce.cc",
         "dtensor_mlir_passes.cc",
@@ -258,6 +254,7 @@ cc_library(
         "//tensorflow/dtensor/mlir/utils:dtensor_mlir_passes_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -379,7 +376,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )
@@ -422,7 +418,6 @@ cc_library(
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/dtensor/cc:dstatus",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//mlir:IR",

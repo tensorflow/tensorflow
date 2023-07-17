@@ -752,6 +752,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
           get_channel_constraints(instruction)
               ->LayoutShapeForChannel(buffer_shape, channel_id);
       TF_RETURN_IF_ERROR(SetInstructionLayout(new_buffer_shape, instruction));
+    } else if (instruction->preserve_layout()) {
+      TF_RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction,
+                                              /*mandatory=*/true, /*dfs=*/true,
+                                              /*allow_alias=*/true));
     }
   }
 
@@ -2323,7 +2327,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
-        !IsLayoutConstrainedCollective(instruction)) {
+        !IsLayoutConstrainedCollective(instruction) &&
+        !instruction->preserve_layout()) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -2528,6 +2533,12 @@ StatusOr<bool> LayoutAssignment::Run(
   }
 
   // Clone Conditional computations with multiple callsites.
+  struct ComputationsToClone {
+    HloInstruction* caller;
+    int64_t branch_index;
+    HloComputation* computation;
+  };
+  std::vector<ComputationsToClone> computations_to_clone;
   for (HloComputation* computation : module->computations(execution_threads)) {
     CallGraphNode& node = call_graph_->GetNode(computation);
     if (node.caller_callsites().size() == 1) {
@@ -2543,13 +2554,18 @@ StatusOr<bool> LayoutAssignment::Run(
       if (caller->opcode() == HloOpcode::kConditional) {
         for (int64_t k = 0; k < caller->branch_count(); ++k) {
           if (computation == caller->branch_computation(k)) {
-            caller->set_branch_computation(
-                k, module->AddEmbeddedComputation(computation->Clone()));
+            // Defer cloning + adding the computation since we are iterating
+            // over the list of computations.
+            computations_to_clone.push_back({caller, k, computation});
             break;
           }
         }
       }
     }
+  }
+  for (auto [caller, branch_index, computation] : computations_to_clone) {
+    caller->set_branch_computation(
+        branch_index, module->AddEmbeddedComputation(computation->Clone()));
   }
 
   // Verify computation layout is sane.

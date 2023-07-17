@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
 
-#include <functional>
+#include <optional>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
@@ -35,14 +36,10 @@ struct ReduceScatterSpec {
 std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
-    bool allow_intervening_reshape = false, int64_t min_rank = 1);
-
-// Matches the given all-reduce operation to a reduce-scatter pattern.
-std::optional<ReduceScatterSpec> MatchReduceScatter(
-    const HloAllReduceInstruction* ar, int64_t num_partitions,
-    int64_t num_replicas, bool allow_multiple_split_dims,
-    bool allow_intervening_reshape, int64_t min_rank,
-    HloPredicate match_partition_id, HloPredicate match_replica_id);
+    bool allow_intervening_reshape = false, int64_t min_rank = 1,
+    HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>,
+    HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
+    bool true_scalar_for_offset_computation = false);
 
 }  // namespace xla
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <limits>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,10 +91,6 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
-  // These values are empirically derived to obtain an overlap of one output
-  // fusion/convolution with 1 async op or 5 loop fusions with an async op.
-  static constexpr TimeCost kLowLatency = 1.0;
-  static constexpr TimeCost kHighLatency = 5000.0;
   if (IsAsyncPair(from, target)) {
     return kHighLatency;
   }
@@ -390,6 +387,22 @@ int64_t AsyncTracker::GetNumTargetDefinedResources() const { return 0; }
 
 int64_t AsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   return 0;
+}
+
+// For now, only the target-defined resources have shareable hazard type, so
+// this async tracker does not know which resources are shareable.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetReleasedShareableResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
+}
+
+// For now, only the target-defined resources have shareable hazard type, so
+// this async tracker does not know which resources are shareable.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetOccupiedShareableResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
 }
 
 BufferInfoTracker::BufferInfoTracker(
@@ -1025,6 +1038,123 @@ void DefaultSchedulerCore::LogInstruction(const HloInstruction* instr) const {
   VLOG(5) << instr->ToString();
 }
 
+void PrintOccupierList(
+    std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
+  VLOG(1) << "Occupier list:";
+  for (int64_t i = 0; i < occupiers.size(); i++) {
+    VLOG(1) << "\tOccupier at index: " << i
+            << " with projected finish time: " << occupiers[i].second
+            << " original latency: " << occupiers[i].first->Latency();
+  }
+}
+
+bool DefaultSchedulerCore::DeleteOccupierFromResource(
+    HloGraphNode::TimeCost current_time, HloEdge& edge,
+    std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
+  // If this edge does not exist in the list, return false
+  if (absl::c_any_of(
+          occupiers,
+          [&edge](const std::pair<HloEdge*, HloGraphNode::TimeCost>& element) {
+            return element.first == &edge;
+          }) == false) {
+    return false;
+  }
+  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>::iterator it =
+      occupiers.begin();
+  int64_t num_occupiers = occupiers.size();
+  HloGraphNode::TimeCost prev_time = current_time;
+  HloGraphNode::TimeCost accumulated_saved_time = 0;
+  while (it != occupiers.end() && it->first != &edge) {
+    if (it->second <= current_time) {
+      num_occupiers--;
+      it++;
+      continue;
+    }
+    HloGraphNode::TimeCost remaining_time_of_edge = it->second - prev_time;
+    prev_time = it->second;
+    CHECK_GT(num_occupiers, 0);
+    HloGraphNode::TimeCost current_saved_time =
+        remaining_time_of_edge / num_occupiers;
+    accumulated_saved_time += current_saved_time;
+    CHECK_GE(it->second, accumulated_saved_time);
+    it->second -= accumulated_saved_time;
+    num_occupiers--;
+    it++;
+  }
+  CHECK(it != occupiers.end());  // The edge has to exist
+  // If the edge has not finished yet, shorten the remaining pfts
+  if (it->second > current_time) {
+    HloGraphNode::TimeCost remaining_time_of_edge = it->second - prev_time;
+    HloGraphNode::TimeCost current_saved_time =
+        remaining_time_of_edge / num_occupiers;
+    accumulated_saved_time += current_saved_time;
+  }
+  it = occupiers.erase(it);
+  for (; it != occupiers.end(); it++) {
+    it->second -= accumulated_saved_time;
+  }
+  if (VLOG_IS_ON(2)) {
+    PrintOccupierList(occupiers);
+  }
+  return true;
+}
+
+// This function assumes the existing occupiers' latencies are already adjusted
+// and sorted by their projected finish time. WARNING: Do not add an edge with a
+// current time smaller than the current times when the existing edges were
+// inserted.
+bool DefaultSchedulerCore::AddOccupierToResource(
+    HloGraphNode::TimeCost current_time, HloEdge& new_edge,
+    std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
+  if (new_edge.Latency() <= 0 || current_time < 0) {
+    return false;
+  }
+  auto new_edge_remaining = new_edge.Latency();
+  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>::iterator it =
+      occupiers.begin();
+  int64_t num_occupiers = occupiers.size();
+  HloGraphNode::TimeCost prev_time = current_time;
+  HloGraphNode::TimeCost accumulated_delay = 0;
+  while (it != occupiers.end() &&
+         it->second - prev_time <= new_edge_remaining * num_occupiers) {
+    // This edge has already finished, so it shouldn't affect the delays.
+    if (it->second <= current_time) {
+      num_occupiers--;
+      it++;
+      continue;
+    }
+    HloGraphNode::TimeCost remaining_time_of_edge = it->second - prev_time;
+    prev_time = it->second;
+    CHECK_GT(num_occupiers, 0);
+    HloGraphNode::TimeCost current_delay =
+        remaining_time_of_edge / num_occupiers;
+    new_edge_remaining -= current_delay;
+    accumulated_delay += current_delay;
+    it->second += accumulated_delay;
+    num_occupiers--;
+    it++;
+  }
+  // Add the new edge
+  num_occupiers++;
+  HloGraphNode::TimeCost adjusted_remaining_time =
+      new_edge_remaining * num_occupiers;
+  it = occupiers.insert(
+      it, std::make_pair(&new_edge, prev_time + accumulated_delay +
+                                        adjusted_remaining_time));
+  // Since it points to the newly inserted element, increment it
+  it++;
+  accumulated_delay += new_edge_remaining;
+  CHECK(new_edge.Latency() - 0.0001 < accumulated_delay &&
+        accumulated_delay < new_edge.Latency() + 0.0001);
+  for (; it != occupiers.end(); it++) {
+    it->second += accumulated_delay;
+  }
+  if (VLOG_IS_ON(2)) {
+    PrintOccupierList(occupiers);
+  }
+  return true;
+}
+
 StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
@@ -1033,8 +1163,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   n->SetScheduled();
   // If this node is an async start/done handle the increase/decrease the number
   // of outstanding async ops.
-  for (auto& resource :
-       sched_state->async_tracker->GetResourcesFromInstruction(n->GetInstr())) {
+  for (auto& resource : n->GetResources()) {
     if (resource.second == ResourceUsageType::kResourceRelease) {
       ++(sched_state->max_concurrent_resource[resource.first]);
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
@@ -1050,13 +1179,57 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   for (const HloEdge& pred : n->GetSuccessors()) {
     const HloGraphNode::TimeCost time_from_edge =
         pred.Target().GetReadyTime() + pred.Latency();
-    if (time_from_edge > schedule_time) {
-      schedule_time = time_from_edge;
+    schedule_time = std::max(schedule_time, time_from_edge);
+    if (sched_state->config.resource_sharing) {
+      // Adjust the ready time if this edge uses shareable resources
+      auto occupied_resources = n->GetShareableResourcesOnEdge(pred);
+      for (const int64_t resource : occupied_resources) {
+        auto occupiers = sched_state->shareable_resource_occupiers[resource];
+        for (auto [occupier_edge, edge_pft] : occupiers) {
+          if (occupier_edge == &pred) {
+            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
+                     << " before update with pft: " << edge_pft
+                     << ", ready_time: " << schedule_time;
+            schedule_time = std::max(schedule_time, edge_pft);
+            VLOG(10) << "Ready time of scheduled node " << n->GetInstr().name()
+                     << " after update with pft: " << edge_pft
+                     << ", ready_time: " << schedule_time;
+          }
+        }
+      }
     }
   }
   // Set the ready time to the scheduled time for scheduled nodes.
   n->SetReadyTime(schedule_time);
   HloGraphNode::TimeCost current_time = schedule_time + n->GetCost();
+  if (sched_state->config.resource_sharing) {
+    // If a shareable resource is released by scheduling this node, delete the
+    // corresponding edge from the respective occupier(s) list.
+    for (HloEdge& edge : n->GetSuccessors()) {
+      auto released_resources = n->GetShareableResourcesOnEdge(edge);
+      for (const int64_t resource : released_resources) {
+        CHECK(DeleteOccupierFromResource(
+            schedule_time, edge,
+            sched_state->shareable_resource_occupiers[resource]));
+      }
+    }
+    // If a shareable resource is occupied by scheduling this node, insert the
+    // corresponding edge to the respective occupier(s) list.
+    for (HloEdge& edge : n->GetPredecessors()) {
+      for (HloEdge& inverse_edge : edge.Target().GetSuccessors()) {
+        if (&(inverse_edge.Target()) == n) {
+          auto occupied_resources =
+              edge.Target().GetShareableResourcesOnEdge(inverse_edge);
+          for (const int64_t resource : occupied_resources) {
+            CHECK(AddOccupierToResource(
+                current_time, inverse_edge,
+                sched_state->shareable_resource_occupiers[resource]));
+          }
+          break;
+        }
+      }
+    }
+  }
   auto ready_time_cmp = [](const HloGraphNode* a, const HloGraphNode* b) {
     return a->GetReadyTime() > b->GetReadyTime();
   };
@@ -1091,13 +1264,30 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     for (const HloEdge& pred : edge.Target().GetSuccessors()) {
       const LatencyEstimator::TimeCost edge_time =
           pred.Target().GetReadyTime() + pred.Latency();
-      if (edge_time > ready_time) {
-        ready_time = edge_time;
+      ready_time = std::max(ready_time, edge_time);
+      if (sched_state->config.resource_sharing) {
+        // Adjust the ready time if this edge uses shareable resources
+        auto occupied_resources =
+            edge.Target().GetShareableResourcesOnEdge(pred);
+        for (const int64_t resource : occupied_resources) {
+          auto occupiers = sched_state->shareable_resource_occupiers[resource];
+          for (auto [occupier_edge, edge_pft] : occupiers) {
+            if (occupier_edge == &pred) {
+              VLOG(10) << "Ready time of predecessor "
+                       << edge.Target().GetInstr().name()
+                       << " before update with pft: " << edge_pft
+                       << ", ready_time: " << ready_time;
+              ready_time = std::max(ready_time, edge_pft);
+              VLOG(10) << "Ready time of predecessor "
+                       << edge.Target().GetInstr().name()
+                       << " after update with pft: " << edge_pft
+                       << ", ready_time: " << ready_time;
+            }
+          }
+        }
       }
     }
-    for (auto& resource :
-         sched_state->async_tracker->GetResourcesFromInstruction(
-             edge.Target().GetInstr())) {
+    for (auto& resource : edge.Target().GetResources()) {
       if (resource.second == ResourceUsageType::kResourceOccupy) {
         ++(sched_state->resource_users_in_queue[resource.first]);
       }
@@ -1111,8 +1301,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     }
   }
   ++sched_state->scheduled_count;
-  for (auto& resource :
-       sched_state->async_tracker->GetResourcesFromInstruction(n->GetInstr())) {
+  for (auto& resource : n->GetResources()) {
     if (resource.second == ResourceUsageType::kResourceRelease) {
       --sched_state->resources_in_flight[resource.first];
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
@@ -1159,6 +1348,12 @@ HloScheduleGraph::HloScheduleGraph(
     new_node_it->second->cost_ = latency_estimator->NodeCost(instr);
     new_node_it->second->resources_ =
         async_tracker->GetResourcesFromInstruction(*instr);
+    new_node_it->second->released_shareable_resources_ =
+        async_tracker->GetReleasedShareableResourcesFromVector(
+            new_node_it->second->GetResources());
+    new_node_it->second->occupied_shareable_resources_ =
+        async_tracker->GetOccupiedShareableResourcesFromVector(
+            new_node_it->second->GetResources());
   }
   // Cache used to detect if we already added a dependency between two nodes
   // to avoid duplicates in the predecessors/successors lists.

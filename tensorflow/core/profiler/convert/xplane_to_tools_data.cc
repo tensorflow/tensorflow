@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
+#include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
@@ -109,6 +110,7 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
           "streaming trace viewer hasn't been supported in Cloud AI");
     }
     if (!Env::Default()->FileExists(*sstable_path).ok()) {
+      ProcessMegascaleDcn(xspace.get());
       TraceEventsContainer trace_container;
       ConvertXSpaceToTraceEventsContainer(host_name, *xspace, &trace_container);
       TF_RETURN_IF_ERROR(trace_container.StoreAsLevelDbTable(*sstable_path));
@@ -116,7 +118,8 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
     TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,
                         GetTraceViewOption(options));
     auto visibility_filter = std::make_unique<TraceVisibilityFilter>(
-        MilliSpan(trace_option.start_time_ms, trace_option.end_time_ms),
+        tsl::profiler::MilliSpan(trace_option.start_time_ms,
+                                 trace_option.end_time_ms),
         trace_option.resolution);
     TraceEventsContainer trace_container;
     // Trace smaller than threshold will be disabled from streaming.

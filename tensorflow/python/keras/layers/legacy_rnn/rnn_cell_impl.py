@@ -29,6 +29,7 @@ from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -126,7 +127,7 @@ def _concat(prefix, suffix, static=False):
     ValueError: if prefix or suffix was `None` and asked for dynamic
       Tensors out.
   """
-  if isinstance(prefix, ops.Tensor):
+  if isinstance(prefix, tensor.Tensor):
     p = prefix
     p_static = tensor_util.constant_value(prefix)
     if p.shape.ndims == 0:
@@ -140,7 +141,7 @@ def _concat(prefix, suffix, static=False):
     p = (
         constant_op.constant(p.as_list(), dtype=dtypes.int32)
         if p.is_fully_defined() else None)
-  if isinstance(suffix, ops.Tensor):
+  if isinstance(suffix, tensor.Tensor):
     s = suffix
     s_static = tensor_util.constant_value(suffix)
     if s.shape.ndims == 0:

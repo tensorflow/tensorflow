@@ -1262,8 +1262,8 @@ table Operator {
   // we instead use the following attributes to find the buffer location which
   // is stored outside of flatbuffers, the offset is calculated relative to the
   // beginning of the file and is only valid if > 1
-  custom_options_offset: ulong;
-  custom_options_size: ulong;
+  large_custom_options_offset: ulong;
+  large_custom_options_size: ulong;
 }
 
 // The root type, defining a subgraph, which typically represents an entire

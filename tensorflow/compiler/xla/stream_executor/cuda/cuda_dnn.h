@@ -62,8 +62,8 @@ class CudnnSupport : public dnn::DnnSupport {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io) override;
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io) override;
 
   tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
@@ -324,6 +324,38 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+  FusedMHASoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& d_output_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& d_output_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor& d_s_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 

@@ -291,7 +291,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
     ],
 )
 

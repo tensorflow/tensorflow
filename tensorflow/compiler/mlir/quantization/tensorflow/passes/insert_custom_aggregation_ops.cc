@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -34,7 +35,6 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr StringRef kCustomAggregatorOpName = "tf.CustomAggregator";
 constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 
 class InsertCustomAggregationOpsPass
@@ -73,8 +73,7 @@ class AddCustomAggregationOp : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     // Return early if the given operator is the custom aggregator op.
-    if (op->getName().getStringRef() == kCustomAggregatorOpName)
-      return failure();
+    if (dyn_cast_or_null<TF::CustomAggregatorOp>(op)) return failure();
 
     // Return early if the given op is a non-quantizable op.
     auto call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
@@ -89,10 +88,9 @@ class AddCustomAggregationOp : public RewritePattern {
       if (!element_type.isF32()) {
         continue;
       }
-      // Skip when there is any already existing StatisticsOp found.
+      // Skip when there is any already existing CustomAggregatorOp found.
       Operation *defining_op = input.getDefiningOp();
-      if (defining_op != nullptr &&
-          defining_op->getName().getStringRef() == kCustomAggregatorOpName) {
+      if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
         continue;
       }
 
@@ -102,17 +100,15 @@ class AddCustomAggregationOp : public RewritePattern {
         continue;
       }
 
+      // ID attribute will have empty value for now.
       SmallVector<NamedAttribute, 1> attributes{
           rewriter.getNamedAttr("id", rewriter.getStringAttr(""))};
 
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(input);
-      // ID attribute will have empty value for now.
-      OperationState state(
-          op->getLoc(), kCustomAggregatorOpName, /*operands=*/ValueRange{input},
-          /*types=*/TypeRange{input.getType()}, /*attributes=*/attributes);
-      Operation *aggregator_op = Operation::create(state);
-      rewriter.insert(aggregator_op);
+      Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
+          op->getLoc(), input.getType(), input, attributes);
+
       Value aggregator_op_result = aggregator_op->getOpResult(0);
       input.replaceAllUsesWith(aggregator_op_result);
       aggregator_op->replaceUsesOfWith(aggregator_op_result, input);

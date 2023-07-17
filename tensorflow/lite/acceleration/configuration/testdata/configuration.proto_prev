@@ -356,6 +356,9 @@ message StableDelegateLoaderSettings {
   // The path of the stable delegate shared object file. Then the stable
   // delegate provider can dynamically load the shared object file.
   optional string delegate_path = 1;
+  // Uniquely identifies a delegate. Format (snake_case): {vendor}_{delegate}.
+  // e.g. "google_edgetpu_delegate"
+  optional string delegate_name = 2;
 }
 
 // Fields related to compilation caching.  In this context compilation caching

@@ -1235,11 +1235,16 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     TPUMetadata tpu_metadata;
     {
       absl::MutexLock l(&mu_);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
-                               &enable_spmd_xla_partitioning, &tpu_metadata),
-          done);
+      // We are not using OP_REQUIRES_OK_ASYNC here as we are inside the
+      // call_once. It will be checked later whether `ordinal_selector_` is
+      // initialized.
+      if (auto status = GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
+                                             &enable_spmd_xla_partitioning,
+                                             &tpu_metadata);
+          !status.ok()) {
+        init_status = std::move(status);
+        return;
+      }
     }
     if (enable_spmd_xla_partitioning) {
       ordinal_selector_ = std::make_shared<tpu::TPUOrdinalSelector>(
@@ -1251,9 +1256,11 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     metrics::RecordTPUXlaSpmdCoresPerReplica(
         tpu_metadata.num_cores_per_replica);
   });
-  OP_REQUIRES_ASYNC(
-      ctx, ordinal_selector_ != nullptr,
-      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+  OP_REQUIRES_ASYNC(ctx, ordinal_selector_ != nullptr,
+                    absl::InternalError(absl::StrCat(
+                        "The TPUOrdinalSelector is not initialized: ",
+                        init_status.message())),
+                    done);
 
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;

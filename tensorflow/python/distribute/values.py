@@ -29,6 +29,7 @@ from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -1040,7 +1041,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def __tf_tensor__(self,
                     dtype: Optional[dtypes.DType] = None,
-                    name: Optional[str] = None) -> ops.Tensor:
+                    name: Optional[str] = None) -> tensor_lib.Tensor:
     return self._dense_var_to_tensor(dtype, name)
 
   def _export_to_saved_model_graph(self,
@@ -1097,8 +1098,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     """
     resource_variable_ops.write_object_proto_for_resource_variable(
         self, proto, options)
-    if self._is_mirrored():
-      values_util.write_object_proto(self, proto, options)
+    # Set protos in the saved model such that distributed variables are
+    # correctly restored on COMPOSITE devices (otherwise, task:0/TPU:0).
+    values_util.write_object_proto(self, proto, options)
 
   @property
   def is_distributed_variable(self):

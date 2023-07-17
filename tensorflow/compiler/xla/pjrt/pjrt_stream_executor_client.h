@@ -727,6 +727,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      std::shared_ptr<BufferSequencingEvent>>>
   CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
                      LocalDeviceState* transfer_local_device,
+                     LocalDeviceState* src_local_device,
                      se::Stream* transfer_stream,
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 

@@ -133,7 +133,7 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
                                       output_type,
                                       params.config->conv_result_scale,
                                       params.config->fusion->side_input_scale,
-                                      /* leakyrelu_alpha = */ 0.0,
+                                      params.config->fusion->leakyrelu_alpha,
                                       params.config->input_descriptor,
                                       params.config->filter_descriptor,
                                       params.config->bias_descriptor,
@@ -295,15 +295,18 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   }
 
   if (config.kind == CudnnConvKind::kForwardActivation) {
-    config.fusion.emplace();
-    GpuConvConfig::FusionConfig& fusion = *config.fusion;
     if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
       return InternalError("Bad activation mode: %s",
                            backend_config.ShortDebugString());
     }
+
+    GpuConvConfig::FusionConfig fusion;
     fusion.mode =
         static_cast<se::dnn::ActivationMode>(backend_config.activation_mode());
     fusion.side_input_scale = backend_config.side_input_scale();
+    fusion.leakyrelu_alpha = backend_config.leakyrelu_alpha();
+
+    config.fusion = fusion;
   }
 
   const Window& window = desc.window;
