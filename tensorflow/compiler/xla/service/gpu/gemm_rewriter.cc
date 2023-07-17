@@ -20,7 +20,6 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -34,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/literal_comparison.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -602,11 +601,43 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
-    // Attempt to fuse matrix bias into gemm
+    // Attempt to fuse matrix bias into gemm with optional convert
+    // add(convert(gemm(a, b)), c) -> gemm(a, b, c)
+    // add(gemm(a, b), c) -> gemm(a, b, c)
     if (Match(instr,
-              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
-      return FuseMatrixBiasAdd(instr, bias, existing_gemm);
+              m::AddAnyOrder(
+                  m::AnyOf<HloInstruction>(
+                      GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                      m::Convert(
+                          GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
+                          .WithOneUser()),
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
+      TF_ASSIGN_OR_RETURN(GemmBackendConfig gemm_backend_config,
+                          existing_gemm->backend_config<GemmBackendConfig>());
+
+      // check if type combination is supported here
+      TF_ASSIGN_OR_RETURN(
+          bool types_are_supported,
+          IsLegacyCublasMatmul(*existing_gemm)
+              ? TypesAreSupportedByLegacyCublas(*existing_gemm,
+                                                gemm_backend_config, instr)
+              : TypesAreSupportedByCublasLt(*existing_gemm, gemm_backend_config,
+                                            instr));
+
+      // for mix type gemm, only fuse add if there is no consumers
+      // ROOT add
+      // ROOT tuple(add)
+      bool has_no_consumer =
+          instr->shape().element_type() ==
+              existing_gemm->shape().element_type() ||
+          instr->user_count() == 0 ||
+          (instr->user_count() == 1 &&
+           instr->users()[0]->opcode() == HloOpcode::kTuple &&
+           instr->users()[0]->user_count() == 0);
+
+      if (types_are_supported && has_no_consumer) {
+        return FuseMatrixBiasAdd(instr, bias, existing_gemm);
+      }
     }
 
     return OkStatus();
@@ -638,34 +669,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
-    if (instr->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_simplify_all_fp_conversions()) {
-      // Attempt to remove convert if mix type is supported:
-      //   convert(gemm(a, b)) -> gemm(a, b)
-      // Only do this on Volta and above, since on Pascal mixed type matmuls
-      // results have very low precision in some cases.
-      if (Match(
-              instr,
-              m::Convert(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())) &&
-          existing_gemm->operands().size() == 2) {
-        TF_ASSIGN_OR_RETURN(GemmBackendConfig gemm_backend_config,
-                            existing_gemm->backend_config<GemmBackendConfig>());
-
-        // check if type combination is supported here
-        TF_ASSIGN_OR_RETURN(
-            bool types_are_supported,
-            IsLegacyCublasMatmul(*existing_gemm)
-                ? TypesAreSupportedByLegacyCublas(*existing_gemm,
-                                                  gemm_backend_config, instr)
-                : TypesAreSupportedByCublasLt(*existing_gemm,
-                                              gemm_backend_config, instr));
-        if (types_are_supported) {
-          return FuseMatrixConvert(existing_gemm, instr);
-        }
-      }
-    }
     // Attempt to elide the scaling and conversion of the result of an FP8
     // GEMM, including the optional calculation of the maximum of the absolute
     // values before scaling, and adapt the Custom Call.
@@ -1102,15 +1105,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status FuseMatrixConvert(HloInstruction *gemm, HloInstruction *convert) {
-    auto new_gemm = gemm->CloneWithNewShape(convert->shape());
-    return ReplaceWithNewInstruction(convert, std::move(new_gemm));
-  }
-
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
                            const HloInstruction *gemm,
                            HloInstruction *bitcast = nullptr) {
-    TF_RET_CHECK(bias->shape() == (bitcast ? bitcast->shape() : gemm->shape()));
+    TF_RET_CHECK(Shape::Equal().IgnoreElementType()(
+        bias->shape(), bitcast ? bitcast->shape() : gemm->shape()));
 
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
@@ -1170,6 +1169,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> fused_op =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
+    // set output shape to bias shape if mix type
+    fused_op->mutable_shape()->set_element_type(bias->shape().element_type());
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
 
