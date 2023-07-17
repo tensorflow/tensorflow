@@ -67,74 +67,77 @@ ModelT UnPackFlatBufferModel(const Model& flatbuffer_model) {
 }
 
 TfLiteStatus QuantizeModel(
-    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
-    const TensorType& input_type, const TensorType& output_type,
-    bool allow_float, const std::unordered_set<string>& operator_names,
+    ModelT* model, const TensorType& input_type, const TensorType& output_type,
+    const bool allow_float, const std::unordered_set<string>& operator_names,
     const TensorType& activations_type, ErrorReporter* error_reporter,
-    bool disable_per_channel = false,
+    std::string& output_buffer, const bool disable_per_channel = false,
     const absl::flat_hash_set<std::string>& blocked_ops = {},
     const absl::flat_hash_set<std::string>& blocked_nodes = {}) {
   TensorType inference_tensor_type = activations_type;
-  bool fully_quantize = !allow_float;
+  const bool fully_quantize = !allow_float;
+
+  flatbuffers::FlatBufferBuilder input_builder;
+  tflite::FinishModelBuffer(input_builder,
+                            tflite::Model::Pack(input_builder, model));
+
+  const std::string input_buffer(
+      reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
+      input_builder.GetSize());
   auto status = mlir::lite::QuantizeModel(
-      *model, input_type, output_type, inference_tensor_type,
-      /*operator_names=*/{}, disable_per_channel, fully_quantize, builder,
+      input_buffer, input_type, output_type, inference_tensor_type,
+      /*operator_names=*/{}, disable_per_channel, fully_quantize, output_buffer,
       error_reporter, /*verify_numeric=*/false, /*whole_model_verify=*/false,
       /*legacy_float_scale=*/true, blocked_ops, blocked_nodes);
   if (status != kTfLiteOk) {
     return status;
   }
-  std::string buffer(
-      reinterpret_cast<const char*>(builder->GetCurrentBufferPointer()),
-      builder->GetSize());
 
-  auto flatbuffer_model =
-      FlatBufferModel::BuildFromBuffer(buffer.c_str(), buffer.size());
+  auto flatbuffer_model = FlatBufferModel::BuildFromBuffer(
+      output_buffer.data(), output_buffer.size());
   *model = UnPackFlatBufferModel(*flatbuffer_model->GetModel());
   return kTfLiteOk;
 }
 
-TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, const TensorType& input_type,
+TfLiteStatus QuantizeModel(ModelT* model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
-                           ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type, allow_float,
-                       /*operator_names=*/{}, TensorType_INT8, error_reporter);
+                           ErrorReporter* error_reporter,
+                           std::string& output_buffer) {
+  return QuantizeModel(model, input_type, output_type, allow_float,
+                       /*operator_names=*/{}, TensorType_INT8, error_reporter,
+                       output_buffer);
 }
 
-TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, const TensorType& input_type,
+TfLiteStatus QuantizeModel(ModelT* model, const TensorType& input_type,
                            const TensorType& output_type,
-                           ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type,
-                       /*allow_float=*/false, error_reporter);
+                           ErrorReporter* error_reporter,
+                           std::string& output_buffer) {
+  return QuantizeModel(model, input_type, output_type,
+                       /*allow_float=*/false, error_reporter, output_buffer);
 }
 
-TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, TensorType_FLOAT32, TensorType_FLOAT32,
-                       /*allow_float=*/true, error_reporter);
+TfLiteStatus QuantizeModel(ModelT* model, ErrorReporter* error_reporter,
+                           std::string& output_buffer) {
+  return QuantizeModel(model, TensorType_FLOAT32, TensorType_FLOAT32,
+                       /*allow_float=*/true, error_reporter, output_buffer);
 }
 
 TfLiteStatus QuantizeModelAllOperators(
-    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
-    const TensorType& input_type, const TensorType& output_type,
+    ModelT* model, const TensorType& input_type, const TensorType& output_type,
     bool allow_float, const TensorType& activations_type,
-    bool disable_per_channel, ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+    bool disable_per_channel, ErrorReporter* error_reporter,
+    std::string& output_buffer) {
+  return QuantizeModel(model, input_type, output_type, allow_float,
                        /*operator_names=*/{}, activations_type, error_reporter,
-                       disable_per_channel);
+                       output_buffer, disable_per_channel);
 }
 
-TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
-                                       ModelT* model,
-                                       const TensorType& input_type,
-                                       const TensorType& output_type,
-                                       bool allow_float,
-                                       const TensorType& activations_type,
-                                       ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type, allow_float,
-                       /*operator_names=*/{}, activations_type, error_reporter);
+TfLiteStatus QuantizeModelAllOperators(
+    ModelT* model, const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    ErrorReporter* error_reporter, std::string& output_buffer) {
+  return QuantizeModel(model, input_type, output_type, allow_float,
+                       /*operator_names=*/{}, activations_type, error_reporter,
+                       output_buffer);
 }
 
 std::unique_ptr<FlatBufferModel> ReadModel(const string& model_name) {
@@ -180,8 +183,8 @@ class QuantizeModelTest : public testing::Test {
   std::unique_ptr<FlatBufferModel> input_model_;
   const Model* readonly_model_;
   tflite::ModelT model_;
-  flatbuffers::FlatBufferBuilder builder_;
   internal::FailOnErrorReporter error_reporter_;
+  std::string output_buffer_;  // Raw buffer for quantized output model.
 };
 
 void ExpectEqualTensor(TensorT* tensor, TensorT* expected_tensor) {
@@ -279,20 +282,21 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConvModelTestInst, QuantizeConvModelTest,
                          testing::ValuesIn({TensorType_INT8}));
 
 TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-      tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
-  const uint8_t* buffer = builder_.GetBufferPointer();
-  const Model* output_model = GetModel(buffer);
+
+  const Model* output_model = GetModel(output_buffer_.data());
   ASSERT_TRUE(output_model);
 }
 
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
-  auto status = QuantizeModel(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float=*/true, /*operator_names=*/{}, TensorType_FLOAT32,
-      &error_reporter_, /*disable_per_channel=*/false, {"CONV_2D"});
+  auto status =
+      QuantizeModel(&model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                    /*allow_float=*/true, /*operator_names=*/{},
+                    TensorType_FLOAT32, &error_reporter_, output_buffer_,
+                    /*disable_per_channel=*/false, {"CONV_2D"});
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   ModelT expected_model;
@@ -302,11 +306,11 @@ TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
 }
 
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayerByName) {
-  auto status = QuantizeModel(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float=*/true, /*operator_names=*/{}, TensorType_FLOAT32,
-      &error_reporter_, /*disable_per_channel=*/false, /*blocked_ops=*/{},
-      {"output"});
+  auto status = QuantizeModel(&model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                              /*allow_float=*/true, /*operator_names=*/{},
+                              TensorType_FLOAT32, &error_reporter_,
+                              output_buffer_, /*disable_per_channel=*/false,
+                              /*blocked_ops=*/{}, {"output"});
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   ModelT expected_model;
@@ -316,9 +320,9 @@ TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayerByName) {
 }
 
 TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_,
-      /*allow_float=*/false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   for (const auto& subgraph : model_.subgraphs) {
@@ -340,11 +344,10 @@ class QuantizeConvNoBiasModelTest : public QuantizeModelTest {
 
 TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8,
+      /*allow_float=*/false, TensorType_INT8, &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
-  const uint8_t* buffer = builder_.GetBufferPointer();
-  const Model* output_model = GetModel(buffer);
+  const Model* output_model = GetModel(output_buffer_.data());
   ASSERT_TRUE(output_model);
 }
 
@@ -361,8 +364,8 @@ class QuantizeSplitModelTest : public QuantizeModelTest {
 // should have the scales be hardcodes to the input scale value.
 TEST_F(QuantizeSplitModelTest, QuantizeSplit) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   // There is only one subgraph.
@@ -458,9 +461,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConvModel2TestInst, QuantizeConvModel2Test,
                          testing::ValuesIn({TensorType_INT8}));
 
 TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-      tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();
@@ -566,8 +569,8 @@ TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
 
 TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-      tensor_type_, /*disable_per_channel=*/true, &error_reporter_);
+      &model_, tensor_type_, tensor_type_, /*allow_float=*/false, tensor_type_,
+      /*disable_per_channel=*/true, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();
@@ -684,8 +687,8 @@ class QuantizeSoftmaxTest : public QuantizeModelTest {
 
 TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   const auto& subgraph = model_.subgraphs[0];
@@ -748,8 +751,8 @@ class QuantizeAvgPoolTest : public QuantizeModelTest {
 
 TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   const auto& subgraph = model_.subgraphs[0];
@@ -809,8 +812,8 @@ class QuantizeMultiInputAddWithReshapeTest : public QuantizeModelTest {
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
 
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
@@ -861,8 +864,8 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Verify ADD is quantized.
@@ -935,10 +938,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConstInputTestInst, QuantizeConstInputTest,
                          testing::ValuesIn({TensorType_INT8}));
 
 TEST_P(QuantizeConstInputTest, VerifyConstOpInput) {
-  auto status =
-      QuantizeModelAllOperators(
-          &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-          tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Verify ConstOp is quantized.
@@ -981,8 +983,8 @@ class QuantizeArgMaxTest : public QuantizeModelTest {
 
 TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1026,10 +1028,9 @@ class QuantizeLSTMTest : public QuantizeModelTest {
 };
 
 TEST_F(QuantizeLSTMTest, VerifyLSTM) {
-  // Quantize model.
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, true,
-      TensorType_INT8, &error_reporter_);
+      &model_, TensorType_FLOAT32, TensorType_FLOAT32, /*allow_float=*/true,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Read expected model.
@@ -1053,8 +1054,8 @@ class QuantizeLSTM2Test : public QuantizeModelTest {
 TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
   // Quantize model.
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/false, TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Read expected model.
@@ -1077,10 +1078,9 @@ class QuantizeUnidirectionalSequenceLSTMTest : public QuantizeModelTest {
 
 TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
        VerifyUnidirectionalSequenceLSTM) {
-  // Quantize model.
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_FLOAT32, TensorType_FLOAT32, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Read expected model.
@@ -1105,8 +1105,8 @@ class QuantizeSVDFTest : public QuantizeModelTest {
 TEST_F(QuantizeSVDFTest, VerifySVDF) {
   // Quantize model.
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   // Read expected model.
@@ -1129,8 +1129,8 @@ class QuantizeFCTest : public QuantizeModelTest {
 
 TEST_F(QuantizeFCTest, VerifyFC8x8) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT8, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1182,8 +1182,8 @@ TEST_F(QuantizeFCTest, VerifyFC8x8) {
 
 TEST_F(QuantizeFCTest, VerifyFCFor16x8) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, TensorType_INT8, TensorType_INT8,
-      /*allow_float=*/false, TensorType_INT16, &error_reporter_);
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT16, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
   const std::unique_ptr<tflite::SubGraphT>& subgraph = model_.subgraphs[0];
@@ -1247,9 +1247,9 @@ class QuantizeCustomOpTest
 };
 
 TEST_P(QuantizeCustomOpTest, VerifyMixedQuantization) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, GetParam(), GetParam(),
-      /*allow_float=*/true, GetParam(), &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, GetParam(), GetParam(),
+                                          /*allow_float=*/true, GetParam(),
+                                          &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
   const auto& subgraph = model_.subgraphs[0];
   auto float_graph = readonly_model_->subgraphs()->Get(0);
@@ -1286,7 +1286,7 @@ class QuantizePackTest : public QuantizeModelTest {
 };
 
 TEST_F(QuantizePackTest, VerifyPack) {
-  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+  auto status = QuantizeModel(&model_, &error_reporter_, output_buffer_);
 
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
@@ -1350,7 +1350,7 @@ class QuantizeMinimumMaximumTest
 };
 
 TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
-  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+  auto status = QuantizeModel(&model_, &error_reporter_, output_buffer_);
   ASSERT_THAT(status, Eq(kTfLiteOk));
   const auto& subgraph = model_.subgraphs[0];
   // Check that the first op is Quantize and the last is Dequant.
@@ -1413,7 +1413,7 @@ class QuantizeUnpackTest : public QuantizeModelTest {
 };
 
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
-  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+  auto status = QuantizeModel(&model_, &error_reporter_, output_buffer_);
 
   ASSERT_THAT(status, Eq(kTfLiteOk));
 
@@ -1470,9 +1470,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeBroadcastToModelTestInst,
                          testing::ValuesIn({TensorType_INT8}));
 
 TEST_P(QuantizeBroadcastToModelTest, VerifyBroadcastToQuantization) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-      tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   // There is only one subgraph.
@@ -1537,9 +1537,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeGatherNDModelTestInst,
                          testing::ValuesIn({TensorType_INT8}));
 
 TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, /*allow_float=*/false,
-      tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&model_, tensor_type_, tensor_type_,
+                                          /*allow_float=*/false, tensor_type_,
+                                          &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   // There is only one subgraph.
@@ -1596,8 +1596,8 @@ TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
   // Where operator takes a BOOL tensor as input
   // and outputs INT64 indices, both of which
   // should not be quantized
-  auto status = QuantizeModel(&builder_, &model_, TensorType_BOOL,
-                              TensorType_INT64, &error_reporter_);
+  auto status = QuantizeModel(&model_, TensorType_BOOL, TensorType_INT64,
+                              &error_reporter_, output_buffer_);
   EXPECT_THAT(status, Eq(kTfLiteOk));
 
   // There is only one subgraph.
