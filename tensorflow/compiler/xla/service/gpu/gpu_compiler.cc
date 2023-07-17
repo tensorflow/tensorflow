@@ -19,12 +19,10 @@ limitations under the License.
 #include <any>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
-#include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,9 +38,8 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -50,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
-#include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_broadcast_reorder.h"
@@ -115,8 +111,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
@@ -180,7 +174,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -990,6 +983,29 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         });
   }
 
+  GpuFloatSupport bf16_support(BF16);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
+  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
+  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
+
+  auto add_float_normalization = [&](HloPassPipeline& pipeline) {
+    auto& sub_pipeline =
+        pipeline.AddPass<HloPassPipeline>("float_normalization");
+    sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+      sub_pipeline.AddPass<SimplifyFPConversions>();
+    }
+  };
+  add_float_normalization(pipeline);
+
   // By default use an externally provided thread pool.
   tsl::thread::ThreadPool* thread_pool = options.thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
@@ -1011,18 +1027,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       &pipeline, hlo_module, stream_exec, debug_options, options,
       gpu_target_config, autotune_results, thread_pool));
 
-  GpuFloatSupport bf16_support(BF16);
-  pipeline.AddPass<FloatNormalization>(&bf16_support);
-  GpuFloatSupport f8e5m2_support(F8E5M2);
-  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
-  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-  FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ);
-  pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
-  FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ);
-  pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
-  FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ);
-  pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
+  // The Triton autotuner can insert new reductions.
+  add_float_normalization(pipeline);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
   if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
@@ -1476,7 +1482,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                .xla_gpu_enable_persistent_temp_buffers(),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module)}));
+           std::move(module), options.enable_debug_info_manager}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -1692,8 +1698,9 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   }
 
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be any other
-  // fusion output that accesses it in a different iteration order. To make sure
+  // iteration order as the fusion output. Also, there should not be two fusion
+  // outputs that consume the fusion parameter, because we do not want to share
+  // the same fusion operand with two different fusion outputs. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
@@ -1718,8 +1725,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // We still need to process the users of 'hlo_operand'. There can be other
-      // users in addition to the tuple user.
+      // The output should have at most 1 user: the tuple op (in case of a
+      // multi-output fusion)
+      if (hlo_operand->user_count() > 1) {
+        return false;
+      }
+      continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
@@ -1746,8 +1757,10 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
       } else if ((!hlo->IsElementwiseOnOperand(
                       hlo->operand_index(hlo_operand)) ||
                   hlo->opcode() == HloOpcode::kCopy) &&
-                 hlo->opcode() != HloOpcode::kBitcast &&
-                 hlo->opcode() != HloOpcode::kTuple) {
+                 hlo->opcode() != HloOpcode::kBitcast) {
+        // This check also catches the case that we reach a different fusion
+        // output, as that fusion output would have a tuple op as user, which we
+        // do not allow here.
         // Even if 'hlo' is not elementwise on the operand, it is ok if we are
         // coming from the second operand and 'hlo' is a DynamicUpdateSlice
         // which is the non_bitcast_root. This corresponds to the special case
@@ -1761,11 +1774,9 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
           return false;
         }
       }
-      if (visited.contains(hlo)) {
-        continue;
+      if (visited.insert(hlo).second) {
+        q.push(hlo);
       }
-      visited.insert(hlo);
-      q.push(hlo);
     }
   }
   return found_path_to_output;

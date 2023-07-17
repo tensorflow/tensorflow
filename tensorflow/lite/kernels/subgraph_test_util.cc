@@ -317,20 +317,32 @@ void SubgraphBuilder::BuildXNNPACKSubgraph(Subgraph* subgraph) {
 }
 
 void SubgraphBuilder::BuildInputIsOutputSubgraph(Subgraph* subgraph) {
-  enum { kInputCounter, kInputValue, kOutputCounter, kTensorCount };
+  enum {
+    kInputCounter,
+    kInputValue0,
+    kInputOutput,
+    kOutputCounter,
+    kOutputValue0,
+    kConstRhs,
+    kTensorCount
+  };
 
   int first_new_tensor_index;
   ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
             kTfLiteOk);
   ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue}), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kInputValue}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue0, kInputOutput}),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kOutputValue0, kInputOutput}),
+            kTfLiteOk);
 
   for (int i = 0; i < kTensorCount; ++i) {
     SetupTensor(subgraph, i, kTfLiteInt32);
   }
+  CreateConstantTensor(subgraph, kConstRhs, {1}, {1});
 
-  AddAddNode(subgraph, kInputCounter, kInputValue, kOutputCounter);
+  AddAddNode(subgraph, kInputCounter, kConstRhs, kOutputCounter);
+  AddAddNode(subgraph, kInputValue0, kInputOutput, kOutputValue0);
 }
 
 void SubgraphBuilder::BuildInputIsDifferentOutputSubgraph(Subgraph* subgraph) {

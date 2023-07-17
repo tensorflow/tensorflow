@@ -111,7 +111,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 82
+// Next ID: 83
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -363,6 +363,10 @@ message HloInstructionProto {
 
   // Represents the K value for top-k.
   int64 k = 81;
+
+  // Represents the information for tracking propagation of values within HLO
+  // graph.
+  xla.StatisticsViz statistics_viz = 82;
 }
 
 // Serialization of HloComputation.

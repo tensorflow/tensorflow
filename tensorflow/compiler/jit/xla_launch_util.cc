@@ -689,6 +689,11 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     const DataType& type = compilation_result.outputs[i].type;
     VLOG(2) << "Populating output for retval " << i << " type "
             << DataTypeString(type);
+    if (type == DT_VARIANT) {
+      return absl::UnimplementedError(
+          "Support for TensorList crossing the XLA/TF boundary "
+          "is not implemented");
+    }
 
     if (compilation_result.outputs[i].is_constant) {
       bool requires_copy_to_device = GetDeviceType(ctx) != DEVICE_CPU;

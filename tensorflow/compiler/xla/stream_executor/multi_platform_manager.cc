@@ -76,7 +76,7 @@ class MultiPlatformManagerImpl {
   tsl::StatusOr<Platform*> LookupByIdLocked(const Platform::Id& id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the names of the initialied platforms satisfying the given filter.
+  // Returns the names of the initialized platforms satisfying the given filter.
   // By default, it will return all initialized platform names.
   std::vector<std::string> InitializedPlatformNamesWithFilter(
       const std::function<bool(const Platform*)>& filter = [](const Platform*) {

@@ -2350,8 +2350,7 @@ HloInstruction* SliceDataFromWindowReshard(
 
 std::optional<PartitionedHlo::WindowedInputShardReturnValue> ReshardDataForPad(
     HloInstruction* pad_value, PaddingConfig pc, PartitionedHlo to_reshard,
-    const Shape& target_shape, const HloSharding& target_sharding,
-    SpmdBuilder* b) {
+    const HloSharding& target_sharding, SpmdBuilder* b) {
   // Create a window config to represent the pad.
   Window window;
   bool needs_masking = false;
@@ -2371,11 +2370,11 @@ std::optional<PartitionedHlo::WindowedInputShardReturnValue> ReshardDataForPad(
     // Need masking only if there is non-zero padding value or the operand is
     // unevenly partitioned. Halo exchange fills 0 in collective permute result
     // for non-destination cores.
-    needs_masking |=
-        shard_count > 1 &&
-        (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
-         pd.interior_padding() > 0) &&
-        (!pad_value_is_zero || target_shape.dimensions(i) % shard_count != 0);
+    needs_masking |= shard_count > 1 &&
+                     (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
+                      pd.interior_padding() > 0) &&
+                     (!pad_value_is_zero ||
+                      to_reshard.base_shape().dimensions(i) % shard_count != 0);
   }
   // In compact halo exchange, we can't skip masking.
   return to_reshard.ReshardAsWindowedInput(

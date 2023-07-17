@@ -234,8 +234,6 @@ def value_text(tensor, is_repr=False):
   return text
 
 
-enable_tensor_equality = tensor_lib.enable_tensor_equality
-disable_tensor_equality = tensor_lib.disable_tensor_equality
 Tensor = tensor_lib.Tensor
 
 
@@ -1600,8 +1598,8 @@ class Operation(pywrap_tf_session.PyOperation):
         raise ValueError("error setting the type of ", self.name,
                          ": expected TFT_UNSET or TFT_PRODUCT, got ",
                          type_proto.type_id)
-      pywrap_tf_session.SetFullType(c_graph, self._c_op,
-                                    type_proto.SerializeToString())  # pylint:disable=protected-access
+      with c_api_util.tf_buffer(type_proto.SerializeToString()) as serialized:
+        pywrap_tf_session.SetFullType(c_graph, self._c_op, serialized)  # pylint:disable=protected-access
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.

@@ -48,6 +48,7 @@ py_strict_library(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -158,6 +159,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
@@ -172,7 +174,6 @@ py_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -894,7 +895,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":distribute_lib",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
     ],
 )
@@ -929,6 +930,7 @@ py_strict_library(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
@@ -979,6 +981,7 @@ distribute_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
@@ -999,8 +1002,8 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:handle_data_util",
         "//tensorflow/python/ops:lookup_ops",
@@ -1325,6 +1328,7 @@ distribute_py_strict_test(
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -1423,6 +1427,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:collective_ops",
         "//tensorflow/python/ops:cond",
@@ -1462,6 +1467,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:type_spec",
@@ -1600,6 +1606,7 @@ distribute_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -2003,6 +2010,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
@@ -2046,6 +2054,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:math_ops",
@@ -2159,6 +2168,11 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # copybara:uncomment_begin
+    # args = [
+    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
+    # ],
+    # copybara:uncomment_end
     # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
     disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
@@ -2240,6 +2254,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -2454,6 +2469,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/util:nest",
@@ -2575,6 +2591,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/249822228)
         "noasan",  # TODO(b/237407459)
+        "nomsan",  # TODO(b/290745680)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],

@@ -271,6 +271,47 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
             literal->Relayout(src_literal.shape().layout()).data<float>());
 }
 
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  auto src_literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {src_literal.shape()}, client->addressable_devices()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+
+  absl::Mutex mu;
+  auto literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
+  bool got_literal = false;
+
+  buffer->ToLiteral(literal.get(), [&](Status s) {
+    absl::MutexLock l(&mu);
+    TF_ASSERT_OK(s);
+    got_literal = true;
+  });
+
+  absl::SleepFor(absl::Milliseconds(10));
+  ASSERT_FALSE(got_literal);
+  TF_ASSERT_OK(
+      transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
+
+  buffer.reset();
+
+  {
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&got_literal));
+  }
+
+  ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
+  ASSERT_EQ(src_literal.data<float>(),
+            literal->Relayout(src_literal.shape().layout()).data<float>());
+}
+
 TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},

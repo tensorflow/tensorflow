@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -98,7 +99,7 @@ def _convert_to_sparse_tensors(sp_inputs):
 def _make_int64_tensor(value, name):
   if isinstance(value, compat.integral_types):
     return ops.convert_to_tensor(value, name=name, dtype=dtypes.int64)
-  if not isinstance(value, ops.Tensor):
+  if not isinstance(value, tensor_lib.Tensor):
     raise TypeError("{} must be an integer value".format(name))
   if value.dtype == dtypes.int64:
     return value
@@ -215,7 +216,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
     if isinstance(axis, compat.integral_types):
       axis = ops.convert_to_tensor(axis, name="axis", dtype=dtypes.int32)
-    elif not isinstance(axis, ops.Tensor):
+    elif not isinstance(axis, tensor_lib.Tensor):
       raise TypeError("axis must be an integer value in range [-rank(sp_input)"
                       " - 1, rank(sp_input)]")
 
@@ -717,7 +718,8 @@ def _sparse_cross_internal_v2(inputs):
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be Tensor or SparseTensor.")
   sparse_inputs = [
@@ -747,7 +749,8 @@ def _sparse_cross_internal(inputs,
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be SparseTensors")
 
@@ -1901,7 +1904,7 @@ def sparse_merge_impl(sp_ids,
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
     sp_ids = [sp_ids]
-    if not (isinstance(vocab_size, ops.Tensor) or
+    if not (isinstance(vocab_size, tensor_lib.Tensor) or
             isinstance(vocab_size, numbers.Integral)):
       raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
                       type(vocab_size))
@@ -1914,7 +1917,8 @@ def sparse_merge_impl(sp_ids,
       raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
                       "Found %s" % type(vocab_size))
     for dim in vocab_size:
-      if not (isinstance(dim, ops.Tensor) or isinstance(dim, numbers.Integral)):
+      if not (isinstance(
+          dim, tensor_lib.Tensor) or isinstance(dim, numbers.Integral)):
         raise TypeError(
             "vocab_size has to be a list of Tensors or Python ints. Found %s" %
             type(dim))

@@ -20,6 +20,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -85,8 +86,8 @@ def SmartBroadcastGradientArgs(x, y, grad):
   # NOTE: It may be productive to apply these optimizations in the eager case
   # as well.
   if context.executing_eagerly() or not (
-      isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
-      and isinstance(grad, ops.Tensor)):
+      isinstance(x, tensor.Tensor) and isinstance(y, tensor.Tensor)
+      and isinstance(grad, tensor.Tensor)):
     sx = array_ops.shape(x)
     sy = array_ops.shape(y)
     rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
@@ -1303,7 +1304,7 @@ def _AddGrad(op, grad):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  if (isinstance(grad, ops.Tensor) and
+  if (isinstance(grad, tensor.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, grad
   (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
@@ -1337,7 +1338,7 @@ def _SubGrad(op, grad):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  if (isinstance(grad, ops.Tensor) and
+  if (isinstance(grad, tensor.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, -grad
   (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
@@ -1371,7 +1372,7 @@ def _MulGrad(op, grad):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  if (isinstance(grad, ops.Tensor) and
+  if (isinstance(grad, tensor.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad) and
       grad.dtype in (dtypes.int32, dtypes.float32)):
     return gen_math_ops.mul(grad, y), gen_math_ops.mul(grad, x)
@@ -1403,7 +1404,7 @@ def _MulNoNanGrad(op, grad):
   """The gradient of scalar multiplication with NaN-suppression."""
   x = op.inputs[0]
   y = op.inputs[1]
-  if (isinstance(grad, ops.Tensor) and
+  if (isinstance(grad, tensor.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return gen_math_ops.mul_no_nan(grad, y), gen_math_ops.mul_no_nan(x, grad)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
@@ -1625,7 +1626,7 @@ def _SquaredDifferenceGrad(op, grad):
     # Tensor (not a number like 2.0) which causes it to convert to Tensor.
     x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
 
-  if (isinstance(grad, ops.Tensor) and
+  if (isinstance(grad, tensor.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return x_grad, -x_grad
 

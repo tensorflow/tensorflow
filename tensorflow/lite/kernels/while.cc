@@ -251,6 +251,12 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
   }
 
+  // Prepare and check the body subgraph.
+  TF_LITE_ENSURE_OK(
+      context, CopyTensorsShapeAndType(
+                   context, this_subgraph, TfLiteIntArrayView(node->inputs),
+                   body_subgraph, body_subgraph->inputs(), true));
+
   // Detect when a WHILE input is read only.
   const std::vector<int> input_tensors_count =
       this_subgraph->GetInputTensorsCount();
@@ -265,17 +271,14 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
             body_subgraph->tensor(body_subgraph->inputs()[i]);
         if (body_input->type == kTfLiteString) continue;
         if (IsResourceOrVariant(body_input)) continue;
+        TfLiteTensor* this_output =
+            this_subgraph->tensor(node->outputs->data[i]);
+        TfLiteTensorDataFree(this_output);
         node->outputs->data[i] = kTfLiteOptionalTensor;
         body_input->allocation_type = kTfLiteCustom;
       }
     }
   }
-
-  // Prepare and check the body subgraph.
-  TF_LITE_ENSURE_OK(
-      context, CopyTensorsShapeAndType(
-                   context, this_subgraph, TfLiteIntArrayView(node->inputs),
-                   body_subgraph, body_subgraph->inputs(), true));
 
   for (int i = 0; i < num_inputs; ++i) {
     TfLiteTensor* body_input =
@@ -300,7 +303,7 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(context, !IsDynamicTensor(body_output));
       if (!TfLiteIntArrayEqual(body_input->dims, body_output->dims)) {
         // Don't unnecessarily set an output to dynamic when one of input/output
-        // is a scalar and the other an tensor of size 1.
+        // is a scalar and the other a tensor of size 1.
         // If both tensors are scalars or both tensors have shape [1], then
         // TfLiteIntArrayEqual would return true. We want to detect when one
         // tensor is a scalar and the other has shape [1], so the total number
@@ -340,6 +343,9 @@ TfLiteStatus Prepare_impl(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   if (this_subgraph->ShouldOptimizeMemoryForLargeTensors()) {
+    OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+    // Call Prepare to ensure input shapes are propagated to the body subgraph.
+    op_data->subgraphs_prepared = false;
     // Apply lazy initialization of WHILE kernel.
     // Just make node output tensors dynamic.
     int num_outputs = node->outputs->size;
@@ -351,10 +357,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     return kTfLiteOk;
   }
-  return Prepare_impl(context, node);
-}
-
-TfLiteStatus Prepare_lazy(TfLiteContext* context, TfLiteNode* node) {
   return Prepare_impl(context, node);
 }
 
@@ -584,7 +586,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* body_subgraph = (*subgraphs)[op_data->body_subgraph_index].get();
 
   if (op_data->subgraphs_prepared == false) {
-    TF_LITE_ENSURE_OK(context, Prepare_lazy(context, node));
+    TF_LITE_ENSURE_OK(context, Prepare_impl(context, node));
   } else {
     TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
     TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());

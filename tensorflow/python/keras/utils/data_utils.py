@@ -36,7 +36,7 @@ import zipfile
 
 import numpy as np
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
@@ -89,7 +89,7 @@ else:
 def is_generator_or_sequence(x):
   """Check if `x` is a Keras generator type."""
   builtin_iterators = (str, list, tuple, dict, set, frozenset)
-  if isinstance(x, (ops.Tensor, np.ndarray) + builtin_iterators):
+  if isinstance(x, (tensor.Tensor, np.ndarray) + builtin_iterators):
     return False
   return (tf_inspect.isgenerator(x) or
           isinstance(x, Sequence) or

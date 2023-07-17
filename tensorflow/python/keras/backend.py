@@ -43,9 +43,9 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.distribute import distribute_coordinator_utils as dc
@@ -213,7 +213,7 @@ def cast_to_floatx(x):
   dtype('float32')
 
   """
-  if isinstance(x, (ops.Tensor,
+  if isinstance(x, (tensor_lib.Tensor,
                     variables_module.Variable,
                     sparse_tensor.SparseTensor)):
     return math_ops.cast(x, dtype=floatx())
@@ -672,9 +672,9 @@ def _current_graph(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     if (isinstance(op_input, (
-        ops.Operation, ops.Tensor, composite_tensor.CompositeTensor)) and
-        ((not isinstance(op_input, ops.Tensor))
-         or type(op_input) == ops.Tensor)):  # pylint: disable=unidiomatic-typecheck
+        ops.Operation, tensor_lib.Tensor, composite_tensor.CompositeTensor)) and
+        ((not isinstance(op_input, tensor_lib.Tensor))
+         or type(op_input) == tensor_lib.Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
     else:
       graph_element = _as_graph_element(op_input)
@@ -1266,7 +1266,7 @@ def is_keras_tensor(x):
 
   """
   if not isinstance(x,
-                    (ops.Tensor, variables_module.Variable,
+                    (tensor_lib.Tensor, variables_module.Variable,
                      sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor,
                      keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
@@ -1339,7 +1339,7 @@ def placeholder(shape=None,
       spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
     else:
-      spec = tensor_spec.TensorSpec(
+      spec = tensor_lib.TensorSpec(
           shape=shape, dtype=dtype, name=name)
     x = keras_tensor.keras_tensor_from_type_spec(spec, name=name)
   else:
@@ -3859,7 +3859,7 @@ def print_tensor(x, message='', summarize=3):
   Returns:
       The same tensor `x`, unchanged.
   """
-  if isinstance(x, ops.Tensor) and hasattr(x, 'graph'):
+  if isinstance(x, tensor_lib.Tensor) and hasattr(x, 'graph'):
     with get_graph().as_default():
       op = logging_ops.print_v2(
           message, x, output_stream=sys.stdout, summarize=summarize)
@@ -4423,7 +4423,7 @@ def rnn(step_function,
         return tuple(
             array_ops.where_v2(m, o, fm)
             for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))
-    elif isinstance(input_length, ops.Tensor):
+    elif isinstance(input_length, tensor_lib.Tensor):
       if go_backwards:
         max_len = math_ops.reduce_max(input_length, axis=0)
         rev_input_length = math_ops.subtract(max_len - 1, input_length)
@@ -4476,7 +4476,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if isinstance(new_state, ops.Tensor):
+          if isinstance(new_state, tensor_lib.Tensor):
             new_state.set_shape(state.shape)
         flat_final_state = compute_masked_output(mask_t, flat_new_state,
                                                  flat_state)
@@ -4513,7 +4513,7 @@ def rnn(step_function,
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
-          if isinstance(new_state, ops.Tensor):
+          if isinstance(new_state, tensor_lib.Tensor):
             new_state.set_shape(state.shape)
 
         flat_output = nest.flatten(output)
@@ -4536,7 +4536,7 @@ def rnn(step_function,
 
   # static shape inference
   def set_shape(output_):
-    if isinstance(output_, ops.Tensor):
+    if isinstance(output_, tensor_lib.Tensor):
       shape = output_.shape.as_list()
       shape[0] = time_steps
       shape[1] = batch

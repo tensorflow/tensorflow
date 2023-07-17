@@ -23,7 +23,6 @@ py_strict_library(
         ":extensions",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops/numpy_ops:np_array_ops",

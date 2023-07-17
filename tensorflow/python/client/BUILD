@@ -273,6 +273,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:stack",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:session_ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",

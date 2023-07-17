@@ -42,6 +42,7 @@ struct GpuPipelineOpts {
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
   int32_t cuda_graph_level = 0;
+  int32_t min_graph_size = 0;
   bool enable_concurrent_region = false;
 };
 
@@ -101,7 +102,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOutlineCudaGraphsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createOutlineCudaGraphsPass(int32_t cuda_graph_level);
+createOutlineCudaGraphsPass(int32_t cuda_graph_level, int32_t min_graph_size);
 
 //===----------------------------------------------------------------------===//
 // Passes for marking concurrent region in CUDA graph capture function.

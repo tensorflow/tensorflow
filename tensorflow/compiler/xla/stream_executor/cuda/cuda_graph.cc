@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
 
 #include <atomic>
-#include <string>
 
 #include "absl/strings/str_format.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -45,6 +44,10 @@ std::atomic<size_t> CudaGraphSupport::alive_cuda_graph_execs_;
   return allocated_cuda_graph_execs_.fetch_add(1, std::memory_order_relaxed);
 }
 
+/*static*/ size_t CudaGraphSupport::NotifyGraphExecDestroyed() {
+  return alive_cuda_graph_execs_.fetch_sub(1, std::memory_order_relaxed) - 1;
+}
+
 /*static*/ size_t CudaGraphSupport::allocated_cuda_graph_execs() {
   return allocated_cuda_graph_execs_.load(std::memory_order_relaxed);
 }
@@ -61,16 +64,13 @@ void CudaGraphSupport::DestroyGraph::operator()(cudaGraph_t graph) {
 
 void CudaGraphSupport::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
   cudaError_t err = cudaGraphExecDestroy(instance);
-  alive_cuda_graph_execs_.fetch_sub(1, std::memory_order_relaxed);
-  VLOG(5) << "Destroy CUDA graph exec (remaining alive instances: "
-          << CudaGraphSupport::alive_cuda_graph_execs() << ")";
   CHECK(err == cudaSuccess)
       << "Failed to destroy CUDA graph instance: " << cudaGetErrorString(err);
 }
 
 tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
   VLOG(3) << "Update CUDA graph exec with a new graph after " << num_launches_
-          << " launches since last update "
+          << " launches since last update"
           << " #" << num_updates_++;
 
   num_launches_ = 0;
@@ -107,6 +107,13 @@ tsl::Status OwnedCudaGraphExec::Launch(stream_executor::Stream* stream) {
                          cudaGetErrorString(err));
 
   return tsl::OkStatus();
+}
+
+OwnedCudaGraphExec::~OwnedCudaGraphExec() {
+  if (*this)  // do not log for moved-from instances
+    VLOG(5) << "Destroy CUDA graph exec #" << id_
+            << " (remaining alive instances: "
+            << CudaGraphSupport::NotifyGraphExecDestroyed() << ")";
 }
 
 //===----------------------------------------------------------------------===//
@@ -196,7 +203,7 @@ tsl::StatusOr<OwnedCudaGraphExec> InstantiateCudaGraph(OwnedCudaGraph graph) {
   VLOG(5) << "Instantiated CUDA graph exec instance #" << id
           << " (alive instances: " << CudaGraphSupport::alive_cuda_graph_execs()
           << ")";
-  return OwnedCudaGraphExec(exec);
+  return OwnedCudaGraphExec(id, exec);
 }
 
 tsl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
@@ -33,15 +35,57 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-using ::absl::LogSeverity;
-using ::absl::ScopedMockLog;
-using ::testing::EndsWith;
 using ::testing::IsEmpty;
 using ::testing::Not;
-using ::testing::StartsWith;
 using ::testing::TempDir;
 
 using GpuCompilerTest = HloTestBase;
+
+TEST_F(GpuCompilerTest, DebugInfoManagerEnabled) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*enable_debug_info_manager=*/true})
+          .value();
+  EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
+      executable->module().unique_id()));
+}
+
+TEST_F(GpuCompilerTest, DebugInfoManagerDisabled) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*enable_debug_info_manager=*/false})
+          .value();
+  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
+      executable->module().unique_id()));
+}
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
   const char* hlo_text = R"(

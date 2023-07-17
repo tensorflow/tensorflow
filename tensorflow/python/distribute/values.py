@@ -29,6 +29,7 @@ from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -1040,7 +1041,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def __tf_tensor__(self,
                     dtype: Optional[dtypes.DType] = None,
-                    name: Optional[str] = None) -> ops.Tensor:
+                    name: Optional[str] = None) -> tensor_lib.Tensor:
     return self._dense_var_to_tensor(dtype, name)
 
   def _export_to_saved_model_graph(self,

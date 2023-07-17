@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -114,6 +115,8 @@ struct TranslatedFunction {
   std::vector<PartialTensorShape> local_output_shapes;
   // Output data types.
   std::vector<TF_DataType> output_dtypes;
+  // Number of local outputs for each layout.
+  std::vector<std::int64_t> num_local_outputs;
 };
 
 struct ExecutionFunctions {

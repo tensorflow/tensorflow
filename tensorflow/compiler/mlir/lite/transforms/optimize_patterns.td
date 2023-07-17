@@ -57,6 +57,8 @@ class HasRank<int n> : Constraint<
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
 
+class IsBoolAttrEqual<string true_or_false> : Constraint<CPred<
+  "$0.getValue() == "#true_or_false#"">>;
 
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
@@ -1430,3 +1432,82 @@ def FuseLeakyReluConst : Pat<
     (HasOneUse $geq_out),
     (HasOneUse $mul_out),
   ]>;
+
+// Return true if the product of dimension values of a subsection of the tensor
+// is equal to the non-contracting dimension after a reshape
+class BroadcastDimsProductEqual<int agg_start_idx> : Constraint<CPred<
+  "TFL::BroadcastDimsProductEqual($0, $1, "# agg_start_idx #")">>;
+
+// Returns true if the dimensions of a subsection of two tensors is equal
+// and the subsections are not empty
+class AreTensorSubSectionShapesEqual<int skip_first, int skip_last> : Constraint<CPred<
+  "($0.getType().dyn_cast<ShapedType>().getShape()"
+  ".drop_back("#skip_last#").drop_front("#skip_first#") =="
+    "$1.getType().dyn_cast<ShapedType>().getShape()"
+    ".drop_back("#skip_last#").drop_front("#skip_first#"))"
+  "&& !$0.getType().dyn_cast<ShapedType>().getShape()"
+  ".drop_back("#skip_last#").drop_front("#skip_first#").empty()">>;
+
+// Returns true if the broadcast dimension of a tensor is [1]
+// here- broadcast dimension is first prefix dimension
+// excluding the last two dimensions
+def IsBroadcastDimEqualToOne : Constraint<CPred<
+  "$0.getType().dyn_cast<ShapedType>().getShape()[0] == 1">>;
+
+// Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
+// This pattern is applied when the rank of rhs is 2
+// which means it has empty broadcast dimensions
+def FuseReshapesAroundBatchMatMulLHS: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change $input, (Arith_ConstantOp $s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp $s1)),
+  (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
+  [(HasRank<2> $rhs),
+   (HasRank<2> $initial_shape_change),
+   (BroadcastDimsProductEqual<0> $input, $initial_shape_change),
+   (BroadcastDimsProductEqual<0> $final_shape_change, $bmm_tmp_output),
+   (AreTensorSubSectionShapesEqual<0, 1> $input, $final_shape_change)]>;
+
+// Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
+// This pattern is applied when the rank of rhs is 3
+// and the broadcast dimension is [1]
+def FuseReshapesAroundBatchMatMulLHS1: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change $input, (Arith_ConstantOp $s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp $s1)),
+  (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
+  [(HasRank<3> $rhs),
+   (HasRank<3> $initial_shape_change),
+   (IsBroadcastDimEqualToOne $rhs),
+   (IsBroadcastDimEqualToOne $input),
+   (BroadcastDimsProductEqual<1> $input, $initial_shape_change),
+   (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
+   (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
+
+def AreLastTwoDimsTransposed : Constraint<CPred<
+  "TFL::AreLastTwoDimsTransposed($0, $1)">>;
+
+// Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
+def FuseTransposeIntoBatchMatMulRHS: Pat<
+  (TFL_BatchMatMulOp $lhs,
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
+    $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $input, $transposed_value),
+   (IsBoolAttrEqual<"false"> $adj_y),
+   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
+
+// Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
+def FuseTransposeIntoBatchMatMulLHS: Pat<
+  (TFL_BatchMatMulOp
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
+    $rhs, $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_BatchMatMulOp $input, $rhs, ConstBoolAttrTrue, $adj_y, $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $input, $transposed_value),
+   (IsBoolAttrEqual<"false"> $adj_x),
+   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
+

@@ -125,20 +125,6 @@ struct TfrtCompileOptions {
   // basis. This is currently experimental.
   bool enable_while_parallel_iterations = false;
 
-  // A set of flags to control auto-fusion: automatic clustering of Tensorflow
-  // operations and compiling outlined regions using MLIR based compilation
-  // stack.
-  //
-  // WARNING: These flags are experimental and are intended for manual testing
-  // of different auto-fusion strategies. They will be removed in the future.
-
-  // A list of Tensorflow operations that are supported by auto-fusion
-  // clustering and compilation (e.g. tf.Tanh).
-  std::vector<std::string> auto_fusion_oplist;
-
-  // Minimum size of the cluster to be compiled at runtime.
-  int auto_fusion_min_cluster_size = 2;
-
   // The cost threshold to decide whether a sequence of operations is cheap, and
   // then whether it can be executed inline. If the cost is smaller than the
   // threshold, it will be considered as cheap operations. Since the cost must
@@ -161,10 +147,6 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
-
-  // Whether to use bridge for GPU.
-  // TODO(b/260915352): Remove the flag and default to using bridge.
-  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

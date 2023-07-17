@@ -135,7 +135,12 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
     auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
-    MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface, ThreadPoolUseCallerThread(),
+                                   st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 

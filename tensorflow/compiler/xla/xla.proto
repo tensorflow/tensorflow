@@ -570,7 +570,9 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
 
-  // Next id: 229
+  int32 xla_gpu_triton_fusion_level = 229;
+
+  // Next id: 230
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

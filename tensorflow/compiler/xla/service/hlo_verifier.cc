@@ -849,6 +849,26 @@ Status ShapeVerifier::CheckIsTokenOperand(const HloInstruction* instruction,
   return OkStatus();
 }
 
+Status ShapeVerifier::CheckShardedParameter(
+    const HloInstruction* operand, const HloInstruction* sharded_parameter,
+    int64_t num_shards) {
+  TF_RET_CHECK(num_shards > 0);
+  Shape unsharded_parameter_shape =
+      ShapeUtil::GetUnshardedShape(sharded_parameter->shape(), num_shards);
+
+  if (!ShapesSame(operand->shape(), unsharded_parameter_shape)) {
+    return InternalError(
+        "Operand %s shape: %s does not match sharded parameter %s expected "
+        "shape: %s, actual shape: %s  "
+        "num shards: %d",
+        operand->name(), operand->shape().ToString(), sharded_parameter->name(),
+        operand->shape().ToString(), unsharded_parameter_shape.ToString(),
+        num_shards);
+  }
+
+  return OkStatus();
+}
+
 Status ShapeVerifier::CheckOperandAndParameter(
     const HloInstruction* instruction, int64_t operand_number,
     const HloComputation* computation, int64_t parameter_number) {
@@ -861,6 +881,19 @@ Status ShapeVerifier::CheckOperandAndParameter(
                          instruction->ToString());
   }
   return OkStatus();
+}
+
+Status ShapeVerifier::CheckOperandAndShardedParameter(
+    const HloInstruction* instruction, int64_t operand_number,
+    const HloComputation* computation, int64_t parameter_number,
+    int64_t num_shards) {
+  TF_RET_CHECK(num_shards > 0);
+  const HloInstruction* operand = instruction->operand(operand_number);
+  const HloInstruction* parameter =
+      computation->parameter_instruction(parameter_number);
+  // In the case of verifying a sharded called computation parameter, check that
+  // the parameter is correctly sharded amongst the specified number of shards.
+  return CheckShardedParameter(operand, parameter, num_shards);
 }
 
 Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
@@ -1310,6 +1343,24 @@ Status ShapeVerifier::HandleCall(HloInstruction* call) {
   }
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
+}
+
+Status ShapeVerifier::VerifyShardedCall(const HloInstruction* call,
+                                        int64_t num_shards) {
+  TF_RET_CHECK(num_shards > 0);
+  TF_RETURN_IF_ERROR(
+      CheckParameterCount(call, call->to_apply(), call->operand_count()));
+  for (int64_t i = 0; i < call->to_apply()->num_parameters(); ++i) {
+    TF_RETURN_IF_ERROR(CheckOperandAndShardedParameter(
+        call, i, call->to_apply(), i, num_shards));
+  }
+  // The shape of kCall should match the shape of the computation it calls.
+  // In the case of verifying a sharded called computation, check that the
+  // output is correctly sharded amongst the specified number of shards.
+  const HloComputation* to_apply_computation = call->to_apply();
+  Shape unsharded_output_shape = ShapeUtil::GetUnshardedShape(
+      to_apply_computation->root_instruction()->shape(), num_shards);
+  return CheckShape(call, unsharded_output_shape);
 }
 
 Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
@@ -2678,6 +2729,19 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       // Allow kCustomCall to contain computations on separate thread.
       return CheckCallableInstructionThreadName(
           hlo, /*skip_nested_async_op_check=*/true);
+    }
+    return OkStatus();
+  }
+
+  Status HandleScatter(HloInstruction* scatter) override {
+    int64_t rank = scatter->operand(0)->shape().rank();
+    for (int64_t operand_dim :
+         scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
+      if (operand_dim > rank) {
+        return absl::OutOfRangeError(absl::StrCat(
+            "The provided scatter_dims_to_operand_dim was out of range.",
+            " (operand_dim: ", operand_dim, ", rank: ", rank, ")"));
+      }
     }
     return OkStatus();
   }

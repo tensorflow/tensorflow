@@ -71,8 +71,8 @@ class PrepareSrqQuantizePass
 };
 
 using ReplaceStatsWithQDQs =
-    quant::ConvertStatsToQDQs<stablehlo::UniformQuantizeOp,
-                              stablehlo::UniformDequantizeOp>;
+    quant::ConvertStatsToQDQs<quantfork::QuantizeCastOp,
+                              quantfork::DequantizeCastOp>;
 
 void PrepareSrqQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();

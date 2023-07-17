@@ -1097,7 +1097,6 @@ tf_cuda_library(
         ":c_api_internal",
         "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
-        "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
 )

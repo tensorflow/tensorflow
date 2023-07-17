@@ -204,14 +204,13 @@ fused_computation {
   param_1.1 = f32[2,3]{1,0} parameter(1)
   neg = f32[2,3]{1,0} negate(param_1.1)
   mul = f32[2,3]{1,0} multiply(param_0.1, neg)
-  transpose = f32[3,2]{1,0} transpose(neg), dimensions={1,0}
-  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[3,2]{1,0}) tuple(mul, neg, transpose)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(mul, neg)
 }
 
 ENTRY main {
   param_0 = f32[2,3]{1,0} parameter(0)
   param_1 = f32[2,3]{1,0} parameter(1)
-  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[3,2]{1,0}) fusion(param_0, param_1), kind=kLoop, calls=fused_computation
+  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}) fusion(param_0, param_1), kind=kLoop, calls=fused_computation
 }
 )";
 
@@ -221,7 +220,7 @@ ENTRY main {
   ExpectOptionalTrue(
       GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
   // The second operand cannot share the buffer with the second fusion output,
-  // because the 'neg' op is also used by a non-elementwise op.
+  // because the 'neg' op is also used on the path to the first fusion output.
   ExpectOptionalFalse(
       GpuCompiler::FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
   // The first operand cannot share the buffer with the second fusion output,

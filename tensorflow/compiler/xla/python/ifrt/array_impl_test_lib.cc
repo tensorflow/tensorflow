@@ -355,7 +355,6 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
                        /*on_done_with_host_buffer=*/{}));
 
   std::vector<tsl::RCReference<Array>> arrays({array0, array1});
-  std::vector<Shape> single_device_shapes({shape, shape});
   Shape assembled_shape({4, 3});
   ShardingParam sharding_param(
       /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});

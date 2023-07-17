@@ -185,6 +185,11 @@ def OutlineCudaGraphsPass :
   }];
 
   let constructor = "createOutlineCudaGraphsPass()";
+
+  let options = [
+    Option<"min_graph_size_", "min_graph_size", "int64_t", /*default=*/"2",
+           "The minimum size of the outlined CUDA graph function.">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

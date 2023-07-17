@@ -960,9 +960,8 @@ mlir::LogicalResult LowerAllGatherOpToCollective(
   }
 
   for (int i = 0; i < src_layout.rank(); i++) {
-    if (src_layout.num_shards_for_dim(src_layout.dim(i)) ==
-            tgt_layout.num_shards_for_dim(tgt_layout.dim(i)) ||
-        src_layout.num_shards_for_dim(src_layout.dim(i)) == 1) {
+    if (src_layout.num_shards_for_dim(i) == tgt_layout.num_shards_for_dim(i) ||
+        src_layout.num_shards_for_dim(i) == 1) {
       continue;
     }
 
@@ -970,8 +969,7 @@ mlir::LogicalResult LowerAllGatherOpToCollective(
     perm_for_transpose[0] = perm_for_transpose[i];
     perm_for_transpose[i] = temp;
 
-    num_shards_per_dim.push_back(
-        src_layout.num_shards_for_dim(src_layout.dim(i)));
+    num_shards_per_dim.push_back(src_layout.num_shards_for_dim(i));
     previous_sharded_dim[i] = last_sharded_dim;
     last_sharded_dim = i;
 
@@ -1013,9 +1011,9 @@ mlir::LogicalResult LowerAllGatherOpToCollective(
 
     prev_op_result = reshape_op->getResult(0);
     for (int i = src_layout.rank() - 1; i >= 0; i--) {
-      if (src_layout.num_shards_for_dim(src_layout.dim(i)) ==
-              tgt_layout.num_shards_for_dim(tgt_layout.dim(i)) ||
-          src_layout.num_shards_for_dim(src_layout.dim(i)) == 1) {
+      if (src_layout.num_shards_for_dim(i) ==
+              tgt_layout.num_shards_for_dim(i) ||
+          src_layout.num_shards_for_dim(i) == 1) {
         continue;
       }
 
@@ -1058,7 +1056,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
 
   llvm::SmallVector<int64, 4> concat_dims;
   for (int64 i = 0; i < src_layout.rank(); ++i)
-    if (src_layout.num_shards_for_dim(src_layout.dim(i)) > 1 &&
+    if (src_layout.num_shards_for_dim(i) > 1 &&
         Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i)))
       concat_dims.push_back(i);
 
@@ -1366,9 +1364,8 @@ mlir::LogicalResult LowerAllToAllHelper(
 
   absl::flat_hash_set<std::string> dims_to_gather;
   for (int i = 0; i < src_layout.rank(); i++) {
-    if (src_layout.num_shards_for_dim(src_layout.dim(i)) ==
-            tgt_layout.num_shards_for_dim(tgt_layout.dim(i)) ||
-        src_layout.num_shards_for_dim(src_layout.dim(i)) == 1) {
+    if (src_layout.num_shards_for_dim(i) == tgt_layout.num_shards_for_dim(i) ||
+        src_layout.num_shards_for_dim(i) == 1) {
       continue;
     }
     dims_to_gather.insert(src_layout.sharding_spec(i));

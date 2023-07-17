@@ -19,6 +19,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
+        # copybara:uncomment "//learning/pathways/serving/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
@@ -101,6 +102,54 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stream",
+    srcs = ["stream.cc"],
+    hdrs = ["stream.h"],
+    deps = [
+        ":channel",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/utility",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "channel",
+    hdrs = ["channel.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "stream_test",
+    srcs = ["stream_test.cc"],
+    deps = [
+        ":stream",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/tsl/platform:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "tf_threadpool_concurrent_work_queue_test",
     srcs = ["tf_threadpool_concurrent_work_queue_test.cc"],
@@ -118,5 +167,16 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+    ],
+)
+
+tf_cc_test(
+    name = "channel_test",
+    srcs = ["channel_test.cc"],
+    deps = [
+        ":channel",
+        "//tensorflow/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
     ],
 )

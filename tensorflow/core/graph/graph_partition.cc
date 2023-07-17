@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 
 #include <deque>
+#include <memory>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -980,7 +982,10 @@ void SetIncarnation(const PartitionOptions& opts, GraphDef* gdef) {
 
 Status Partition(const PartitionOptions& opts, Graph* g,
                  std::unordered_map<string, GraphDef>* partitions) {
+  // TODO(b/290689453) Refactor this into smaller functions
   Status status;
+  absl::flat_hash_map<string, std::unique_ptr<GraphDebugInfoBuilder>>
+      debug_info_builders;
   partitions->clear();
 
   GraphInfo g_info;
@@ -1219,6 +1224,19 @@ Status Partition(const PartitionOptions& opts, Graph* g,
                  Graph::kControlSlot);
       }
     }
+
+    // For each partition, lazily create a GraphDebugInfoBuilder. Gather stack
+    // traces for the nodes in that partition into the builder.
+    const std::shared_ptr<AbstractStackTrace>& stack_trace =
+        dst->GetStackTrace();
+    if (stack_trace != nullptr) {
+      std::unique_ptr<GraphDebugInfoBuilder>& builder =
+          debug_info_builders[dstp];
+      if (!builder) {
+        builder = std::make_unique<GraphDebugInfoBuilder>();
+      }
+      builder->AccumulateStackTrace(*stack_trace, dst->name());
+    }
   }
 
   const FunctionLibraryDefinition* flib_def = opts.flib_def;
@@ -1250,6 +1268,15 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   VLOG(1) << "Added send/recv: controls=" << num_control
           << ", data=" << num_data;
+  // For each partition, build the GraphDebugInfo for all of its nodes' stack
+  // traces, and add it to the GraphDef for that partition.
+  for (auto& it : *partitions) {
+    const auto& builder_iter = debug_info_builders.find(it.first);
+    if (builder_iter != debug_info_builders.end()) {
+      GraphDef& gdef = it.second;
+      *gdef.mutable_debug_info() = builder_iter->second->Build();
+    }
+  }
   if (VLOG_IS_ON(2)) {
     for (auto& it : *partitions) {
       GraphDef* gdef = &it.second;

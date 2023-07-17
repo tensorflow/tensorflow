@@ -141,6 +141,8 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
+
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
 PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
@@ -319,6 +321,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Error_Destroy=*/pjrt::PJRT_Error_Destroy,
       /*PJRT_Error_Message=*/pjrt::PJRT_Error_Message,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
+
+      /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
 
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,
       /*PJRT_Event_IsReady=*/pjrt::PJRT_Event_IsReady,

@@ -244,6 +244,8 @@ class Compiler {
     std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>
         layout_canonicalization_callback = {};
+
+    bool enable_debug_info_manager = true;
   };
 
   virtual ~Compiler() = default;

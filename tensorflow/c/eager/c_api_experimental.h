@@ -747,6 +747,12 @@ TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
                                              int64_t barrier_timeout_in_ms,
                                              TF_Status* status);
 
+TF_CAPI_EXPORT extern void TFE_InitializeLocalOnlyContext(TFE_Context* ctx,
+                                                          int keep_alive_secs,
+                                                          const void* proto,
+                                                          size_t proto_len,
+                                                          TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
