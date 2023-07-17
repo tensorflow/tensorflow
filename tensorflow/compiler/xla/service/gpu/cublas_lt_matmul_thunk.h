@@ -16,15 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-=======
 #include <memory>
->>>>>>> upstream/master
 #include <optional>
 #include <utility>
 
@@ -34,13 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-<<<<<<< HEAD
 #else
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
-=======
 #include "tensorflow/tsl/platform/statusor.h"
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {

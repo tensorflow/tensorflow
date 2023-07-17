@@ -14,12 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
-<<<<<<< HEAD
 #if GOOGLE_CUDA || TF_HIPBLASLT
-=======
 
 #include <memory>
->>>>>>> upstream/master
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
@@ -66,13 +63,8 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
                       GetMatmulPlan(params.stream));
   if (!algorithm_) {
     TF_ASSIGN_OR_RETURN(
-<<<<<<< HEAD
-        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
-        plan_.GetAlgorithms(params.stream));
-=======
         std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
         plan->GetAlgorithms(params.stream));
->>>>>>> upstream/master
     TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
     algorithm_ = algorithms[algorithm_idx_];
   }
