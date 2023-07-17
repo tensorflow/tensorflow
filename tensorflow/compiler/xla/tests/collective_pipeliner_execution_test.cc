@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
+#include "tensorflow/compiler/xla/service/collective_pipeliner.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -31,14 +31,14 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using DataParallelCollectiveOptimizerExecutionTest = HloTestBase;
+using CollectivePipelinerExecutionTest = HloTestBase;
 
 StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
-    DataParallelCollectiveOptimizer::PipeliningDirection pipelining_direction =
-        DataParallelCollectiveOptimizer::PipeliningDirection::kForward) {
-  DataParallelCollectiveOptimizer::Config config = {
+    CollectivePipeliner::PipeliningDirection pipelining_direction =
+        CollectivePipeliner::PipeliningDirection::kForward) {
+  CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
       /*last_run=*/last_run,
@@ -52,15 +52,14 @@ StatusOr<bool> RunOptimizer(
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
-  pass.AddPass<DataParallelCollectiveOptimizer>(config);
+  pass.AddPass<CollectivePipeliner>(config);
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
   pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
   return pass.Run(module);
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
-       TransformIncrementIndexByOne) {
+TEST_F(CollectivePipelinerExecutionTest, TransformIncrementIndexByOne) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
@@ -117,7 +116,7 @@ ENTRY entry {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest, PushAgOver) {
+TEST_F(CollectivePipelinerExecutionTest, PushAgOver) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module, entry_computation_layout={(bf16[3,8,128]{2,1,0})->bf16[3,8,128]{2,1,0}}
 
@@ -188,7 +187,7 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
+TEST_F(CollectivePipelinerExecutionTest,
        TransformIncrementIndexByOneNotFirstIdx) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
@@ -250,7 +249,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest,
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest, TransformIncrementByTwo) {
+TEST_F(CollectivePipelinerExecutionTest, TransformIncrementByTwo) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
 
@@ -311,8 +310,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest, TransformIncrementByTwo) {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
-       NoTransformCantProveIndexDoesntWrap) {
+TEST_F(CollectivePipelinerExecutionTest, NoTransformCantProveIndexDoesntWrap) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
 
@@ -373,7 +371,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest,
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
+TEST_F(CollectivePipelinerExecutionTest,
        TransformNegativeIndexIterationToZero) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
@@ -435,7 +433,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest,
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest, EscapedInputNoTransform) {
+TEST_F(CollectivePipelinerExecutionTest, EscapedInputNoTransform) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
 
@@ -501,7 +499,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest, EscapedInputNoTransform) {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest, TransformWithAg) {
+TEST_F(CollectivePipelinerExecutionTest, TransformWithAg) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
 
@@ -564,8 +562,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest, TransformWithAg) {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
-       TransformWithAgWithFormatting) {
+TEST_F(CollectivePipelinerExecutionTest, TransformWithAgWithFormatting) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
 
@@ -627,8 +624,7 @@ ENTRY entry {
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
-       TransformWithAgInsertCustomCall) {
+TEST_F(CollectivePipelinerExecutionTest, TransformWithAgInsertCustomCall) {
   constexpr absl::string_view hlo_string = R"(
  HloModule module
 
@@ -684,7 +680,7 @@ TEST_F(DataParallelCollectiveOptimizerExecutionTest,
                                       ErrorSpec{0.1, 0.1}));
 }
 
-TEST_F(DataParallelCollectiveOptimizerExecutionTest,
+TEST_F(CollectivePipelinerExecutionTest,
        TransformIncrementIndexByOneBackwardsPlusForward) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
@@ -741,12 +737,11 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      RunOptimizer(
-          module.get(), /*last_run=*/true, 0, /*should_process=*/
-          HloPredicateIsOp<HloOpcode::kConcatenate>,
-          DataParallelCollectiveOptimizer::PipeliningDirection::kBackward)
-          .value());
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true,
+                           0, /*should_process=*/
+                           HloPredicateIsOp<HloOpcode::kConcatenate>,
+                           CollectivePipeliner::PipeliningDirection::kBackward)
+                  .value());
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());

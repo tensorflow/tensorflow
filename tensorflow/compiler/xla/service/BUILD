@@ -500,9 +500,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "data_parallel_collective_optimizer",
-    srcs = ["data_parallel_collective_optimizer.cc"],
-    hdrs = ["data_parallel_collective_optimizer.h"],
+    name = "collective_pipeliner",
+    srcs = ["collective_pipeliner.cc"],
+    hdrs = ["collective_pipeliner.h"],
     deps = [
         ":constant_value",
         ":hlo_pass",
@@ -530,10 +530,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "data_parallel_collective_optimizer_test",
-    srcs = ["data_parallel_collective_optimizer_test.cc"],
+    name = "collective_pipeliner_test",
+    srcs = ["collective_pipeliner_test.cc"],
     deps = [
-        ":data_parallel_collective_optimizer",
+        ":collective_pipeliner",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",

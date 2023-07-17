@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/collective_pipeliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
-#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
@@ -602,26 +602,26 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
     if (debug_options.xla_gpu_enable_pipelined_all_reduce()) {
-      DataParallelCollectiveOptimizer::Config config{
+      CollectivePipeliner::Config config{
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
-          DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
+          CollectivePipeliner::PipeliningDirection::kForward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
-      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+      collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (debug_options.xla_gpu_enable_pipelined_all_gather()) {
-      DataParallelCollectiveOptimizer::Config config{
+      CollectivePipeliner::Config config{
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
-          DataParallelCollectiveOptimizer::PipeliningDirection::kBackward,
+          CollectivePipeliner::PipeliningDirection::kBackward,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>};
-      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+      collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when

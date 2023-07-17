@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
+#include "tensorflow/compiler/xla/service/collective_pipeliner.h"
 
 #include <cstdint>
 #include <functional>
@@ -55,7 +55,7 @@ limitations under the License.
 
 namespace xla {
 
-const char* const DataParallelCollectiveOptimizer::kInsertedByPreviousStep =
+const char* const CollectivePipeliner::kInsertedByPreviousStep =
     "InsertedByPreviousStep";
 
 namespace {
@@ -149,8 +149,7 @@ bool CheckParameterUsageIsCompatible(const HloInstruction* gte,
 
 // Given a kInsertedByPreviousStep custom call return the level it represents.
 std::optional<int64_t> GetLevelFromCustomCall(const HloInstruction* instr) {
-  if (!instr->IsCustomCall(
-          DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
+  if (!instr->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep)) {
     return std::nullopt;
   }
   return Cast<HloConstantInstruction>(instr->operand(1))
@@ -246,7 +245,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                           HloOpcode::kConvert, HloOpcode::kReshape,
                           HloOpcode::kTranspose>(folded_user) &&
         !folded_user->IsCustomCall(
-            DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
+            CollectivePipeliner::kInsertedByPreviousStep)) {
       break;
     }
 
@@ -496,7 +495,7 @@ class WhileLoopAnalysis {
   bool ComputeLoopStatistics();
   void CollectCollectivesToMove(
       int64_t level_to_operate_on,
-      DataParallelCollectiveOptimizer::PipeliningDirection direction,
+      CollectivePipeliner::PipeliningDirection direction,
       HloPredicate should_process);
   HloInstruction* while_loop_instruction() const { return while_; }
 
@@ -603,7 +602,7 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
 
 void WhileLoopAnalysis::CollectCollectivesToMove(
     int64_t level_to_operate_on,
-    DataParallelCollectiveOptimizer::PipeliningDirection direction,
+    CollectivePipeliner::PipeliningDirection direction,
     HloPredicate should_process) {
   move_infos_.clear();
   HloComputation* while_body = while_->while_body();
@@ -649,8 +648,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     }
   }
   for (auto* instr : while_body->instructions()) {
-    if (direction ==
-            DataParallelCollectiveOptimizer::PipeliningDirection::kForward &&
+    if (direction == CollectivePipeliner::PipeliningDirection::kForward &&
         (instr->operand_count() != 1 ||
          instr->shape().dimensions_size() !=
              instr->operand(0)->shape().dimensions_size())) {
@@ -659,8 +657,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     if (!should_process(instr)) {
       continue;
     }
-    if (direction ==
-        DataParallelCollectiveOptimizer::PipeliningDirection::kForward) {
+    if (direction == CollectivePipeliner::PipeliningDirection::kForward) {
       auto [dyn_update, formatting_ops] = CheckStoreIntoSliceIsCompatible(
           instr, while_body, level_to_operate_on);
       if (dyn_update == nullptr) {
@@ -746,8 +743,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       move_infos_.push_back({instr, dyn_update, std::move(formatting_ops),
                              *sliced_dim, *output_idx});
     } else {
-      CHECK_EQ(direction,
-               DataParallelCollectiveOptimizer::PipeliningDirection::kBackward);
+      CHECK_EQ(direction, CollectivePipeliner::PipeliningDirection::kBackward);
       auto chain_collected = CollectChainsToPushBackwards(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_);
@@ -761,8 +757,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       break;
     }
   }
-  if (direction !=
-      DataParallelCollectiveOptimizer::PipeliningDirection::kForward) {
+  if (direction != CollectivePipeliner::PipeliningDirection::kForward) {
     return;
   }
   dus_index_map_.clear();
@@ -987,8 +982,7 @@ static Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
-      level_to_operate_on,
-      DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
+      level_to_operate_on, CollectivePipeliner::PipeliningDirection::kForward,
       should_process);
   CHECK_EQ(new_loop_analysis.GetMoveInfos().size(),
            loop_analysis.GetMoveInfos().size());
@@ -1018,7 +1012,7 @@ static Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
       processed = stacked_data->parent()->AddInstruction(
           HloInstruction::CreateCustomCall(
               processed->shape(), {processed, level},
-              DataParallelCollectiveOptimizer::kInsertedByPreviousStep));
+              CollectivePipeliner::kInsertedByPreviousStep));
     }
     InstructionMap cloned_map;
     cloned_map[move_info.collective_to_move] = processed;
@@ -1104,7 +1098,7 @@ static Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
       input_dus_idx =
           new_while_body->AddInstruction(HloInstruction::CreateCustomCall(
               index_shape, {input_dus_idx, level},
-              DataParallelCollectiveOptimizer::kInsertedByPreviousStep));
+              CollectivePipeliner::kInsertedByPreviousStep));
     }
     HloInstruction* output_dus_idx =
         loop_computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1436,7 +1430,7 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   return OkStatus();
 }
 
-StatusOr<bool> DataParallelCollectiveOptimizer::Run(
+StatusOr<bool> CollectivePipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -1499,7 +1493,7 @@ StatusOr<bool> DataParallelCollectiveOptimizer::Run(
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->IsCustomCall(
-                DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
+                CollectivePipeliner::kInsertedByPreviousStep)) {
           to_remove.push_back(instruction);
           TF_RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));

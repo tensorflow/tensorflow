@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DATA_PARALLEL_COLLECTIVE_OPTIMIZER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_DATA_PARALLEL_COLLECTIVE_OPTIMIZER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_PIPELINER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_PIPELINER_H_
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -54,7 +54,7 @@ namespace xla {
 //   x_prev = x
 //   y_prev = y
 // }
-class DataParallelCollectiveOptimizer : public HloModulePass {
+class CollectivePipeliner : public HloModulePass {
  public:
   enum PipeliningDirection {
     kBackward,
@@ -71,18 +71,15 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
     HloPredicate should_process;
   };
   static const char* const kInsertedByPreviousStep;
-  explicit DataParallelCollectiveOptimizer(const Config& config)
-      : config_(config) {}
-  DataParallelCollectiveOptimizer(DataParallelCollectiveOptimizer&& other) =
-      default;
-  DataParallelCollectiveOptimizer& operator=(
-      DataParallelCollectiveOptimizer&& other) = default;
+  explicit CollectivePipeliner(const Config& config) : config_(config) {}
+  CollectivePipeliner(CollectivePipeliner&& other) = default;
+  CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;
 
   absl::string_view name() const override {
     if (config_.pipelining_direction == kForward) {
-      return "data-parallel-collective-optimizer-forward";
+      return "collective-pipeliner-forward";
     } else {
-      return "data-parallel-collective-optimizer-backward";
+      return "collective-pipeliner-backward";
     }
   }
 
@@ -97,4 +94,4 @@ class DataParallelCollectiveOptimizer : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_DATA_PARALLEL_COLLECTIVE_OPTIMIZER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_PIPELINER_H_
