@@ -719,7 +719,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
     int_ty = i32_ty;
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const DotFusionAnalysis analysis(dot_instr->parent(), config.split_k());
+  TF_ASSIGN_OR_RETURN(
+      const auto analysis,
+      DotFusionAnalysis::Execute(dot_instr->parent(), config.split_k()));
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.

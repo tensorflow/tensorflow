@@ -871,7 +871,9 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
       }
     }
   }
-  TF_RET_CHECK(fuse_inputs(1).ok());
+  if (auto result = fuse_inputs(1); !result.ok()) {
+    return result.status();
+  }
 
   Fuse(dot, old_to_new_mapping, fusion_inputs, builder);
 
@@ -1088,7 +1090,8 @@ Status MakeDotComputationSplitKBatch(
     bool disable_reduced_precision_reduction) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  const DotFusionAnalysis analysis(computation);
+  TF_ASSIGN_OR_RETURN(const auto analysis,
+                      DotFusionAnalysis::Execute(computation));
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
@@ -1362,21 +1365,28 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   return OkStatus();
 }
 
-DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
-                                     const int64_t split_k) {
-  VLOG(5) << dot_computation->ToString();
+StatusOr<DotFusionAnalysis> DotFusionAnalysis::Execute(
+    const HloComputation* computation, const int64_t split_k) {
+  DotFusionAnalysis analysis;
+  TF_RETURN_IF_ERROR(analysis.ExecuteImpl(computation, split_k));
+  return analysis;
+}
 
-  const HloInstruction* dot = hlo_query::GetFirstInstructionWithOpcode(
-      *dot_computation, HloOpcode::kDot);
+Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
+                                      const int64_t split_k) {
+  VLOG(5) << computation->ToString();
+
+  const HloInstruction* dot =
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
 
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
     const HloInstruction* operand = dot->operand(operand_number);
     DimensionOrder dot_operand_dim_order =
         DimensionOrder::FromDotOperand(*dot, operand_number, split_k);
-    CHECK(dot_operand_dim_order.HandleInstruction(
+    TF_RET_CHECK(dot_operand_dim_order.HandleInstruction(
         operand, DimensionOrder::TransformDirection::kOutputToInput));
-    CHECK_OK(PropagateDimensionOrdersToParameters(
+    TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
         *operand, dot_operand_dim_order, parameters_[scope],
         iter_specs_[scope]));
   }
@@ -1396,23 +1406,25 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.
   while (!output->IsRoot()) {
-    CHECK_EQ(output->user_count(), 1);
+    TF_RET_CHECK(output->user_count() == 1);
     output = output->users()[0];
-    CHECK(dim_order.HandleInstruction(
+    TF_RET_CHECK(dim_order.HandleInstruction(
         output, DimensionOrder::TransformDirection::kInputToOutput));
-    CHECK(RequireTritonGemmSupportedDimOrder(dim_order));
+    TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(dim_order));
   }
-  CHECK(iter_specs_[Scope::OUTPUT]
-            .insert({output, DimensionOrderToTensorIterationSpec(dim_order)})
-            .second);
+  TF_RET_CHECK(
+      iter_specs_[Scope::OUTPUT]
+          .insert({output, DimensionOrderToTensorIterationSpec(dim_order)})
+          .second);
   if (output != dot) {
     // Propagate back to parameters of the output fusion.
-    CHECK(dim_order.HandleInstruction(
+    TF_RET_CHECK(dim_order.HandleInstruction(
         output, DimensionOrder::TransformDirection::kOutputToInput));
-    CHECK_OK(PropagateDimensionOrdersToParameters(*output, dim_order,
-                                                  parameters_[Scope::OUTPUT],
-                                                  iter_specs_[Scope::OUTPUT]));
+    TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
+        *output, dim_order, parameters_[Scope::OUTPUT],
+        iter_specs_[Scope::OUTPUT]));
   }
+  return OkStatus();
 }
 
 const DimIterationSpec* DotFusionAnalysis::IterSpec(
