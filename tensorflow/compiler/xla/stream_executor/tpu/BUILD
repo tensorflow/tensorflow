@@ -378,6 +378,7 @@ cc_library(
     hdrs = ["tpu_op_executable.h"],
     deps = [
         ":c_api_conversions",
+        ":c_api_decl",
         ":proto_helper",
         ":status_helper",
         ":tpu_api",

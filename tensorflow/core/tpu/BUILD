@@ -237,6 +237,8 @@ cc_library(
     srcs = ["tpu_execute.cc"],
     hdrs = ["tpu_execute.h"],
     deps = [
+        ":outside_compilation_params",
+        ":tf_rendezvous_c_api_conversions",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_tree",
@@ -344,6 +346,60 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
+)
+
+cc_library(
+    name = "outside_compilation_params",
+    hdrs = ["outside_compilation_params.h"],
+    deps = [
+        ":tf_rendezvous_c_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api",
+    hdrs = ["tf_rendezvous_c_api.h"],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api_defn",
+    hdrs = ["tf_rendezvous_c_api_defn.h"],
+    deps = [
+        ":tf_rendezvous_c_api",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api_conversions",
+    srcs = ["tf_rendezvous_c_api_conversions.cc"],
+    hdrs = ["tf_rendezvous_c_api_conversions.h"],
+    deps = [
+        ":outside_compilation_params",
+        ":tf_rendezvous_c_api",
+        ":tf_rendezvous_c_api_defn",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/framework:allocator",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_rendezvous_c_api_conversions_test",
+    srcs = ["tf_rendezvous_c_api_conversions_test.cc"],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    deps = [
+        ":tf_rendezvous_c_api",
+        ":tf_rendezvous_c_api_conversions",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/tsl/framework:allocator",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 # For a more maintainable build this target should not exist and the headers
