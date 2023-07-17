@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -113,6 +114,17 @@ Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   }
   VariantTensorDataReader reader(data);
   return iterator_->Restore(ctx_.get(), &reader);
+}
+
+std::optional<double> Iterator::GetProcessingTimeNsec() const {
+  if (ctx_->model() == nullptr) return std::nullopt;
+
+  double processing_time_nsec =
+      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
+  if (processing_time_nsec > 0)
+    return processing_time_nsec;
+  else
+    return std::nullopt;
 }
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
