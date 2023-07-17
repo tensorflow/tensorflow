@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -85,15 +86,16 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Mutex mutex_;
 
-  // When compiling an HLO module, we need to find a path to the nvvm libdevice
-  // files.  We search in the module's config.debug_options().cuda_data_dir()
-  // and in tensorflow::LibdeviceRoot(), the latter of which is a constant.
-  //
-  // We cache the cuda_data_dir() and the result of our search, so that if the
-  // next module we have to compile has the same cuda_data_dir(), we can skip
-  // the search.
-  std::string cached_cuda_data_dir_ ABSL_GUARDED_BY(mutex_);
-  std::string cached_libdevice_dir_ ABSL_GUARDED_BY(mutex_);
+  enum class LinkingMethod {
+    kNone,
+    kNvLink,
+    kDriver,
+  };
+  absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
+      ABSL_GUARDED_BY(mutex_);
+
+  StatusOr<LinkingMethod> ChooseLinkingMethod(
+      const std::string& preferred_cuda_dir);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.

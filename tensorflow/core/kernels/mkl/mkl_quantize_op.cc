@@ -560,7 +560,12 @@ class MklQuantizeV2Op : public OpKernel {
     fwdParams.post_op_params.param.push_back(scale_factor);
 #endif  // ENABLE_ONEDNN_V3
 
-    MklDnnThreadPool eigen_tp(ctx);
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     MklReorderWithScalePrimitive* reorder_prim =
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);

@@ -1016,7 +1016,12 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   MklMatMulParams params("dnnl_gemm", a_dims, b_dims, c_dims, a_strides,
                          b_strides, c_strides);
   auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
-  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+  // Create the oneDNN wrapper over Eigen threadpool and set max threads
+  // in oneDNN.
+  Eigen::ThreadPoolInterface* eigen_interface =
+      EigenThreadPoolFromTfContext(ctx);
+  tsl::OneDnnThreadPool eigen_tp(eigen_interface, ThreadPoolUseCallerThread(),
+                                 st ? 1 : -1);
   MklMatMulPrimitive<T, T, T>* matmul_prim =
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 

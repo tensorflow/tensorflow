@@ -324,6 +324,8 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
 
   fallback_request_state.set_cancellation_manager(
       caller_fallback_request_state.cancellation_manager());
+  fallback_request_state.set_runtime_config(
+      caller_fallback_request_state.runtime_config());
 
   tensorflow::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.

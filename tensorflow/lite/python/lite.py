@@ -2127,6 +2127,11 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     return TFLiteKerasModelConverterV2(model)
 
   @classmethod
+  @_deprecation.deprecated(
+      None,
+      "Use `jax2tf.convert` and (`lite.TFLiteConverter.from_saved_model`"
+      " or `lite.TFLiteConverter.from_concrete_functions`) instead.",
+  )
   def experimental_from_jax(cls, serving_funcs, inputs):
     # Experimental API, subject to changes.
     # TODO(b/197690428): Currently only support single function.

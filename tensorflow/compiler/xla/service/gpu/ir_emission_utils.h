@@ -227,6 +227,12 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 
+// Returns the hero reduction of the computation.
+// We always use the first reduce root that triggers unnested reduction emitter
+// as the hero reduction, since all the reductions are required to have the same
+// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots);
+
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 // Whether there is a fusion root triggering transposition emitter.

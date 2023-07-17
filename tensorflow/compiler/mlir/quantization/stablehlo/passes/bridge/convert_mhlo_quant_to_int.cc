@@ -447,21 +447,15 @@ template <typename OpType, typename OpAdaptorType>
 LogicalResult matchAndRewriteDotLikeHybridOp(
     OpType &op, OpAdaptorType &adaptor, ConversionPatternRewriter &rewriter,
     const quant::UniformQuantizedType &rhs_element_type) {
-  auto res_float32_tensor_type_or = GetSameShapeTensorType(
-      op, op.getResult().getType().template cast<TensorType>(),
-      rewriter.getF32Type(), rewriter);
-  if (failed(res_float32_tensor_type_or)) {
-    return failure();
-  }
-
-  Value lhs_float32_tensor = adaptor.getLhs();
-  Value rhs = adaptor.getRhs();
-
   // For dot like hybrid ops, lhs is float type, rhs is uniform
   // quantized type and result is float type.
   // For weight-only quantization:
   // result = hybridOp(lhs, dequant(rhs))
-  //
+  Value lhs_float32_tensor = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  auto res_float32_tensor_type =
+      op.getResult().getType().template cast<TensorType>();
+
   // Get scales and zero points for rhs.
   Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
@@ -472,36 +466,24 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
 
   // Dequantize rhs_float32_tensor.
   Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), *res_float32_tensor_type_or, rhs);
+      op->getLoc(), res_float32_tensor_type, rhs);
   rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), *res_float32_tensor_type_or, rhs_float32_tensor,
-      rhs_zero_point, nullptr);
+      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
+      nullptr);
   rhs_float32_tensor = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), *res_float32_tensor_type_or, rhs_float32_tensor,
+      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor,
       rhs_scale_constant, nullptr);
 
   // Execute conversion target op.
   SmallVector<Value, 2> operands{lhs_float32_tensor, rhs_float32_tensor};
   Value res_float32 = rewriter.create<OpType>(
-      op->getLoc(), *res_float32_tensor_type_or, operands, op->getAttrs());
+      op->getLoc(), res_float32_tensor_type, operands, op->getAttrs());
 
   Value half = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getF32FloatAttr(0.5f));
   res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), *res_float32_tensor_type_or, res_float32, half, nullptr);
-  res_float32 = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float32);
-
-  // Cast res_float_tensor_type to res_int_tensor_type.
-  auto res_int32_tensor_type_or = GetSameShapeTensorType(
-      op, op.getResult().getType().template cast<TensorType>(),
-      rewriter.getI32Type(), rewriter);
-  if (failed(res_int32_tensor_type_or)) {
-    return failure();
-  }
-
-  rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_int32_tensor_type_or,
-                                               res_float32);
-
+      op->getLoc(), res_float32_tensor_type, res_float32, half, nullptr);
+  rewriter.replaceOpWithNewOp<mhlo::FloorOp>(op, res_float32);
   return success();
 }
 
@@ -660,8 +642,7 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   LogicalResult matchAndRewrite(
       mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp<mhlo::DotOp, mhlo::DotOpAdaptor>(
-        op, adaptor, rewriter);
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
   }
 };
 
@@ -673,9 +654,7 @@ class ConvertUniformQuantizedConvolutionOp
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp op, mhlo::ConvolutionOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp<mhlo::ConvolutionOp,
-                                    mhlo::ConvolutionOpAdaptor>(op, adaptor,
-                                                                rewriter);
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
   }
 };
 

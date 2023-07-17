@@ -997,6 +997,16 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       });
 }
 
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
+    return IsReductionFromOrToContiguousDimensions(*instr);
+  });
+  if (it == roots.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
 void LogAndVerify(const llvm::Module* m) {
   if (VLOG_IS_ON(5)) {
     XLA_VLOG_LINES(5, llvm_ir::DumpToString(m));

@@ -629,11 +629,9 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
   if (!IsSupportedDataType(hlo.shape().element_type(), gpu_version)) {
     return "Unsupported output data type.";
   }
-  if (hlo.IsConstant()) {
-    return "Not fusing a constant.";
-  }
-  if (hlo.opcode() == HloOpcode::kBroadcast) {
-    return "Not fusing a broadcast.";
+  if (hlo.opcode() == HloOpcode::kBroadcast &&
+      !hlo_query::IsScalarConstant(hlo.operand(0))) {
+    return "Skipping unsupported broadcast.";
   }
   if (as_input) {
     if (hlo.GetModule()
@@ -1188,6 +1186,65 @@ Status MakeDotComputationSplitKBatch(
   return OkStatus();
 }
 
+// Propagate dimension orders in consumer->producer direction starting at
+// `origin` with input `origin_dim_order` till parameters of the computation.
+// Store the found parameters and their iteration specs.
+Status PropagateDimensionOrdersToParameters(
+    const HloInstruction& origin, const DimensionOrder& origin_dim_order,
+    absl::flat_hash_set<const HloInstruction*>& parameters,
+    absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
+        iter_specs) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::queue<const HloInstruction*> to_process;
+  // Dimension orders describing inputs of corresponding instructions.
+  absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
+  TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(origin_dim_order));
+  dim_orders.insert({&origin, origin_dim_order});
+  visited.insert(&origin);
+  to_process.push(&origin);
+  while (!to_process.empty()) {
+    const HloInstruction* hlo = to_process.front();
+    to_process.pop();
+    if (hlo->opcode() == HloOpcode::kParameter) {
+      // One parameter corresponds to one iteration spec in the results of the
+      // analysis. This describes well situations when a parameter has one or
+      // more elementwise users - they share the same tiling. Situations when
+      // one instruction is read differently by different users in the same
+      // scope of the dot are currently prevented during the fusion.
+      TF_RET_CHECK(parameters.insert(hlo).second);
+      VLOG(5) << hlo->ToString();
+    }
+    for (const HloInstruction* operand : hlo->operands()) {
+      if (!visited.insert(operand).second) {
+        continue;
+      }
+      if (operand->opcode() == HloOpcode::kDot) {
+        // Encountering the dot itself happens during the processing of the
+        // output fusion. The propagation should stop at it.
+        continue;
+      }
+      // Operand's output is described by its consumer's input.
+      auto [it, inserted] =
+          dim_orders.insert({operand, DimensionOrder(dim_orders.at(hlo))});
+      TF_RET_CHECK(inserted);
+      DimensionOrder& hlo_operand_dim_order = it->second;
+      TF_RET_CHECK(hlo_operand_dim_order.HandleInstruction(
+          operand, DimensionOrder::TransformDirection::kOutputToInput))
+          << operand->ToString();
+      TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(hlo_operand_dim_order));
+      to_process.push(operand);
+    }
+  }
+  // For now all parameters of one scope have to use the same tiling.
+  for (const HloInstruction* parameter : parameters) {
+    TF_RET_CHECK(dim_orders.at(parameter).IsPhysicallyEquivalent(
+        dim_orders.at(*parameters.cbegin())));
+    iter_specs[parameter] =
+        DimensionOrderToTensorIterationSpec(dim_orders.at(parameter));
+  }
+  return OkStatus();
+}
+
 }  // anonymous namespace
 
 // BF16 is supported in a sense that all operations on it are implemented
@@ -1314,52 +1371,14 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
 
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    const HloInstruction* dot_operand = dot->operand(operand_number);
-    absl::flat_hash_set<const HloInstruction*> visited;
-    std::queue<const HloInstruction*> to_process;
-    // Dimension orders describing inputs of corresponding instructions.
-    absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
+    const HloInstruction* operand = dot->operand(operand_number);
     DimensionOrder dot_operand_dim_order =
         DimensionOrder::FromDotOperand(*dot, operand_number, split_k);
     CHECK(dot_operand_dim_order.HandleInstruction(
-        dot_operand, DimensionOrder::TransformDirection::kOutputToInput));
-    CHECK(RequireTritonGemmSupportedDimOrder(dot_operand_dim_order))
-        << dot_computation->ToString();
-    dim_orders.insert({dot_operand, dot_operand_dim_order});
-    visited.insert(dot_operand);
-    to_process.push(dot_operand);
-    while (!to_process.empty()) {
-      const HloInstruction* hlo = to_process.front();
-      to_process.pop();
-      if (hlo->opcode() == HloOpcode::kParameter) {
-        CHECK(parameters_[scope].insert(hlo).second);
-        VLOG(5) << hlo->ToString();
-      }
-      for (const HloInstruction* hlo_operand : hlo->operands()) {
-        if (!visited.insert(hlo_operand).second) {
-          continue;
-        }
-        // Operand's output is described by its consumer's input.
-        auto [it, inserted] = dim_orders.insert(
-            {hlo_operand, DimensionOrder(dim_orders.at(hlo))});
-        CHECK(inserted);
-        DimensionOrder& hlo_operand_dim_order = it->second;
-        CHECK(hlo_operand_dim_order.HandleInstruction(
-            hlo_operand, DimensionOrder::TransformDirection::kOutputToInput));
-        CHECK(RequireTritonGemmSupportedDimOrder(hlo_operand_dim_order))
-            << " " << dot_computation->ToString();
-        to_process.push(hlo_operand);
-      }
-    }
-
-    // For now all parameters of one scope have to use the same tiling.
-    for (const HloInstruction* parameter : parameters_[scope]) {
-      CHECK(dim_orders.at(parameter).IsPhysicallyEquivalent(
-          dim_orders.at(*parameters_[scope].cbegin())))
-          << dot_computation->ToString();
-      iter_specs_[scope][parameter] =
-          DimensionOrderToTensorIterationSpec(dim_orders.at(parameter));
-    }
+        operand, DimensionOrder::TransformDirection::kOutputToInput));
+    CHECK_OK(PropagateDimensionOrdersToParameters(
+        *operand, dot_operand_dim_order, parameters_[scope],
+        iter_specs_[scope]));
   }
 
   int64_t lhs_nc_split_major_part_size = -1;
@@ -1375,6 +1394,7 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
       *dot, split_k, lhs_nc_split_major_part_size);
   const HloInstruction* output = dot;
   // Currently supported is one fusion output and one path from dot to it.
+  // Propagate dimension order from dot to root.
   while (!output->IsRoot()) {
     CHECK_EQ(output->user_count(), 1);
     output = output->users()[0];
@@ -1385,6 +1405,14 @@ DotFusionAnalysis::DotFusionAnalysis(const HloComputation* dot_computation,
   CHECK(iter_specs_[Scope::OUTPUT]
             .insert({output, DimensionOrderToTensorIterationSpec(dim_order)})
             .second);
+  if (output != dot) {
+    // Propagate back to parameters of the output fusion.
+    CHECK(dim_order.HandleInstruction(
+        output, DimensionOrder::TransformDirection::kOutputToInput));
+    CHECK_OK(PropagateDimensionOrdersToParameters(*output, dim_order,
+                                                  parameters_[Scope::OUTPUT],
+                                                  iter_specs_[Scope::OUTPUT]));
+  }
 }
 
 const DimIterationSpec* DotFusionAnalysis::IterSpec(

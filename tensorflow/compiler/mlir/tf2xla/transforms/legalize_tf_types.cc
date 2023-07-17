@@ -20,6 +20,10 @@ limitations under the License.
 // TODO(b/180234029): The rewrite here should be part of the LegalizeTF pass
 // rather than its own pass.
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -31,12 +35,19 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 #define DEBUG_TYPE "xla-legalize-tf-types"
 
 namespace mlir {
 namespace mhlo {
 namespace {
+
+// TODO: b/290366702 - Temporarily added metrics for debugging.
+auto *mlir_tf_quant_op_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/tf_quant_op_count" /*metric_name*/,
+    "Counts the number of ops that has qint types" /*metric description*/,
+    "op_name" /*metric label*/);
 
 bool IsIllegalElementType(Type type) {
   return type
@@ -142,6 +153,11 @@ class TfTypePattern : public ConversionPattern {
     }
     rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
+    // TODO: b/290366702 - Temporarily added metrics for debugging.
+    if (llvm::any_of(op->getResultTypes(), IsIllegalType)) {
+      mlir_tf_quant_op_count->GetCell(std::string(op->getName().getStringRef()))
+          ->IncrementBy(1);
+    }
     return success();
   }
 };

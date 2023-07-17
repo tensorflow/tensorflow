@@ -104,6 +104,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -502,9 +503,9 @@ IrEmitterUnnested::KernelAndIrArrays IrEmitterUnnested::BuildKernelPrototype(
   llvm::SmallVector<int> to_arg_no;
   to_arg_no.reserve(arguments.size());
   for (const auto& [arg_no, argument] : llvm::enumerate(arguments)) {
-    if (argument.first_with_same_slice.has_value()) {
+    if (argument.first_with_same_slice().has_value()) {
       to_llvm_arg_no[arg_no] =
-          to_llvm_arg_no[argument.first_with_same_slice.value()];
+          to_llvm_arg_no[argument.first_with_same_slice().value()];
       continue;
     }
 
@@ -549,14 +550,14 @@ IrEmitterUnnested::KernelAndIrArrays IrEmitterUnnested::BuildKernelPrototype(
     llvm_arg.setName(StrCat("arg", llvm_arg_no));
 
     kernel->addDereferenceableParamAttr(llvm_arg_no,
-                                        kernel_argument.slice.size());
+                                        kernel_argument.slice().size());
 
     kernel->addParamAttr(
         llvm_arg_no,
         llvm::Attribute::get(llvm_arg.getContext(), llvm::Attribute::Alignment,
-                             kernel_argument.alignment));
+                             kernel_argument.alignment()));
 
-    if (!kernel_argument.aliased) {
+    if (!kernel_argument.aliased()) {
       kernel->addParamAttr(llvm_arg_no,
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::NoAlias));
@@ -569,12 +570,12 @@ IrEmitterUnnested::KernelAndIrArrays IrEmitterUnnested::BuildKernelPrototype(
     llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
 
     llvm::Type* ir_type =
-        llvm_ir::ShapeToIrType(kernel_argument.shape, module_);
+        llvm_ir::ShapeToIrType(kernel_argument.shape(), module_);
     llvm_ir::IrArray ir_array(
-        CastToTypedValue(kernel_argument.shape, &llvm_arg, &b_), ir_type,
-        kernel_argument.shape);
+        CastToTypedValue(kernel_argument.shape(), &llvm_arg, &b_), ir_type,
+        kernel_argument.shape());
 
-    if (!kernel_argument.written) {
+    if (!kernel_argument.written()) {
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
     }
 
@@ -585,9 +586,9 @@ IrEmitterUnnested::KernelAndIrArrays IrEmitterUnnested::BuildKernelPrototype(
 }
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSlice(
-    mlir::Value v, std::string* constant_name) {
+    mlir::Value v) {
   return xla::gpu::GetAllocationSlice(v, ir_emitter_context_->allocations(),
-                                      constant_name);
+                                      nullptr);
 }
 
 Status IrEmitterUnnested::EmitUnreachable(mlir::Operation* op,
@@ -1785,30 +1786,17 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 
   // Create BufferSlice array from launch_func arguments, using the
   // attribute depicting which arguments are written by the kernel.
-  std::vector<KernelArgument> kernel_arguments;
-  unsigned num_kernel_operands = launch_func.getNumKernelOperands();
-  kernel_arguments.reserve(num_kernel_operands);
-  mlir::ArrayRef<mlir::Attribute> written_operands =
-      mlir::getWrittenOperandsAttribute(launch_func).getValue();
-  for (const auto& [operand, written] :
-       llvm::zip_first(launch_func.getKernelOperands(),
-                       written_operands.take_back(num_kernel_operands))) {
-    TF_ASSIGN_OR_RETURN(
-        KernelArgument kernel_argument,
-        ValueToKernelArgument(
-            operand, /*is_written=*/written.cast<mlir::BoolAttr>().getValue()));
-    kernel_arguments.push_back(kernel_argument);
-  }
-  ProcessKernelArguments(absl::MakeSpan(kernel_arguments));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->allocations(), launch_func));
 
   // Add kernel prototype to module_, kernel thunk to thunk_sequence_.
   std::string kernel_name = GetIrNameFromLoc(launch_func.getLoc());
-  auto [kernel, ir_arrays] =
-      BuildKernelPrototype(kernel_name, kernel_arguments, launch_dimensions);
+  auto [kernel, ir_arrays] = BuildKernelPrototype(
+      kernel_name, kernel_arguments.args(), launch_dimensions);
   TF_RETURN_IF_ERROR(BuildKernelThunkImpl(kernel->getName().str(),
-                                          kernel_arguments, GetThunkInfo(op),
-                                          launch_dimensions)
-                         .status());
+                                          kernel_arguments.args(),
+                                          GetThunkInfo(op), launch_dimensions));
 
   // Move function body into kernel prototype.
   llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
@@ -1842,94 +1830,78 @@ Status IrEmitterUnnested::EmitTritonFusion(
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
-  TF_ASSIGN_OR_RETURN(std::vector<KernelArgument> kernel_arguments,
-                      GetKernelArgumentsForFusion(fusion_op));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->allocations(), fusion_op));
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* hlo_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op->getRegion(0),
                                           /*is_fusion=*/false));
 
-  std::string fingerprint = GetFingerprint(hlo_computation, kernel_arguments);
-  VLOG(4) << "Fingerprint: ";
-  XLA_VLOG_LINES(4, fingerprint);
+  auto generate = [&]() -> StatusOr<KernelReuseCache::Entry> {
+    VLOG(3) << "Generating: " << suggested_kernel_name;
 
-  if (auto cache_it = kernel_reuse_cache_.find(fingerprint);
-      cache_it != kernel_reuse_cache_.end()) {
-    KernelThunk* old_thunk = cache_it->second;
+    const std::string impl_fn_name =
+        ir_emitter_context_->name_uniquer()->GetUniqueName(
+            llvm_ir::SanitizeFunctionName(
+                absl::StrCat(suggested_kernel_name, "_impl")));
 
-    VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-            << old_thunk->kernel_name();
+    FusionBackendConfig backend_config;
+    auto backend_config_str = fusion_op.getBackendConfig()
+                                  .value_or(mlir::Attribute())
+                                  .dyn_cast_or_null<mlir::StringAttr>();
+    CHECK(backend_config_str);
+    TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(backend_config_str.str(),
+                                                     &backend_config));
+    absl::string_view fusion_kind = backend_config.kind();
 
-    TF_RETURN_IF_ERROR(BuildKernelThunkImpl(old_thunk->kernel_name(),
-                                            kernel_arguments,
-                                            GetThunkInfo(fusion_op),
-                                            old_thunk->launch_dimensions())
-                           .status());
+    LaunchDimensions launch_dimensions;
+    if (fusion_kind == kTritonSoftmaxFusionKind) {
+      TF_ASSIGN_OR_RETURN(
+          launch_dimensions,
+          TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
+                        ir_emitter_context_->cuda_compute_capability(),
+                        ir_emitter_context_->gpu_device_info(), config, module_,
+                        &SoftMax, *ir_emitter_context_->mlir_context()));
+    } else {  // Must be a MatMul
+      CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
+      TF_ASSIGN_OR_RETURN(
+          launch_dimensions,
+          TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
+                        ir_emitter_context_->cuda_compute_capability(),
+                        ir_emitter_context_->gpu_device_info(), config, module_,
+                        &MatMul, *ir_emitter_context_->mlir_context()));
+    }
 
-    return OkStatus();
-  }
+    llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
+    TF_RET_CHECK(impl_fn);
 
-  VLOG(3) << "Generating: " << suggested_kernel_name;
+    auto [kernel, ir_arrays] = BuildKernelPrototype(
+        suggested_kernel_name, kernel_arguments.args(), launch_dimensions);
 
-  const std::string impl_fn_name =
-      ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeFunctionName(
-              absl::StrCat(suggested_kernel_name, "_impl")));
+    // Move function body into kernel prototype.
+    llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
+    prototype_func->splice(prototype_func->begin(), impl_fn);
+    for (const auto& [arg, ir_array] :
+         llvm::zip_first(impl_fn->args(), ir_arrays)) {
+      arg.replaceAllUsesWith(ir_array.GetBasePointer());
+    }
+    impl_fn->eraseFromParent();
 
-  FusionBackendConfig backend_config;
-  auto backend_config_str = fusion_op.getBackendConfig()
-                                .value_or(mlir::Attribute())
-                                .dyn_cast_or_null<mlir::StringAttr>();
-  CHECK(backend_config_str);
-  TF_RETURN_IF_ERROR(
-      tsl::HumanReadableJsonToProto(backend_config_str.str(), &backend_config));
-  absl::string_view fusion_kind = backend_config.kind();
+    LogAndVerify(module_);
+    return {{kernel->getName().str(), launch_dimensions}};
+  };
 
-  LaunchDimensions launch_dimensions;
-
-  if (fusion_kind == kTritonSoftmaxFusionKind) {
-    TF_ASSIGN_OR_RETURN(
-        launch_dimensions,
-        TritonWrapper(impl_fn_name, hlo_computation, kTritonSoftmaxFusionKind,
-                      ir_emitter_context_->cuda_compute_capability(),
-                      ir_emitter_context_->gpu_device_info(), config, module_,
-                      &SoftMax, *ir_emitter_context_->mlir_context()));
-  } else {  // Must be a MatMul
-    CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
-    TF_ASSIGN_OR_RETURN(
-        launch_dimensions,
-        TritonWrapper(impl_fn_name, hlo_computation, kTritonGemmFusionKind,
-                      ir_emitter_context_->cuda_compute_capability(),
-                      ir_emitter_context_->gpu_device_info(), config, module_,
-                      &MatMul, *ir_emitter_context_->mlir_context()));
-  }
-
-  llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
-  TF_RET_CHECK(impl_fn);
-
-  auto [kernel, ir_arrays] = BuildKernelPrototype(
-      suggested_kernel_name, kernel_arguments, launch_dimensions);
-
-  TF_ASSIGN_OR_RETURN(
-      KernelThunk * thunk,
-      BuildKernelThunkImpl(kernel->getName().str(), kernel_arguments,
-                           GetThunkInfo(fusion_op), launch_dimensions));
-  kernel_reuse_cache_[fingerprint] = thunk;
-
-  // Move function body into kernel prototype.
-  llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
-  prototype_func->splice(prototype_func->begin(), impl_fn);
-  for (const auto& [arg, ir_array] :
-       llvm::zip_first(impl_fn->args(), ir_arrays)) {
-    arg.replaceAllUsesWith(ir_array.GetBasePointer());
-  }
-  impl_fn->eraseFromParent();
-
-  LogAndVerify(module_);
-
-  return OkStatus();
+  auto [kernel, was_cached] = kernel_reuse_cache_.GetWithStatus(
+      hlo_computation, kernel_arguments.args(),
+      /*discriminator=*/"", generate);
+  TF_RETURN_IF_ERROR(kernel.status());
+  return BuildKernelThunkImpl(kernel->kernel_name, kernel_arguments.args(),
+                              GetThunkInfo(fusion_op),
+                              kernel->launch_dimensions);
 }
+
 #endif  // GOOGLE_CUDA
 
 // TODO(timshen): update the comment once the HandleFusion code path deleted.
@@ -2077,9 +2049,9 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return EmitUnnestedTranspose(fusion_op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return EmitInputFusibleNonStridedSlices(op);
+      return EmitInputFusibleNonStridedSlices(op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
-      return EmitScatter(fusion_op, fused_computation);
+      return EmitScatter(fusion_op, fused_computation, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // Special case: DUS
       bool is_single = IsSingleInstructionFusion(fusion_op);
@@ -3189,160 +3161,6 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   return OkStatus();
 }
 
-StatusOr<IrEmitterUnnested::KernelArgument>
-IrEmitterUnnested::ValueToKernelArgument(mlir::Value operand, bool is_written) {
-  KernelArgument kernel_argument;
-  kernel_argument.value = operand;
-  kernel_argument.shape = GetShape(operand);
-  TF_ASSIGN_OR_RETURN(kernel_argument.slice,
-                      GetAllocationSlice(operand, nullptr));
-  // Note: We may change this later in ProcessKernelArguments.
-  kernel_argument.written = is_written;
-  return kernel_argument;
-}
-
-StatusOr<std::vector<IrEmitterUnnested::KernelArgument>>
-IrEmitterUnnested::GetKernelArgumentsForFusion(
-    mlir::lmhlo::FusionOp fusion_op) {
-  std::vector<KernelArgument> kernel_arguments;
-
-  llvm::SmallVector<mlir::Value> operands = GetHloOperands(fusion_op);
-  llvm::SmallVector<mlir::Value> outputs = GetHloOutputs(fusion_op);
-  kernel_arguments.reserve(operands.size() + outputs.size());
-
-  int i = 0;
-  for (mlir::Value value : llvm::concat<mlir::Value>(operands, outputs)) {
-    TF_ASSIGN_OR_RETURN(
-        KernelArgument kernel_argument,
-        ValueToKernelArgument(value, /*is_written=*/i >= operands.size()));
-    kernel_arguments.push_back(kernel_argument);
-    i += 1;
-  }
-
-  ProcessKernelArguments(absl::MakeSpan(kernel_arguments));
-
-  return kernel_arguments;
-}
-
-StatusOr<std::vector<IrEmitterUnnested::KernelArgument>>
-IrEmitterUnnested::GetKernelArgumentsForNonFusionOp(
-    mlir::Operation* op, mlir::ValueRange needed_operands) {
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(needed_operands.size());
-
-  for (const auto& [i, value] : llvm::enumerate(needed_operands)) {
-    TF_ASSIGN_OR_RETURN(KernelArgument kernel_argument,
-                        ValueToKernelArgument(
-                            value, /*is_written=*/WritesMlirBuffer(op, value)));
-    kernel_arguments.push_back(kernel_argument);
-  }
-
-  ProcessKernelArguments(absl::MakeSpan(kernel_arguments));
-
-  return kernel_arguments;
-}
-
-void IrEmitterUnnested::ProcessKernelArguments(
-    absl::Span<KernelArgument> kernel_arguments) {
-  absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
-    if (kernel_argument.written) {
-      buffers_written.insert(kernel_argument.slice);
-    }
-  }
-
-  for (int i = 0; i < static_cast<int>(kernel_arguments.size()); ++i) {
-    KernelArgument& kernel_argument = kernel_arguments[i];
-
-    kernel_argument.first_with_same_slice = [&]() -> std::optional<int> {
-      for (int j = 0; j < i; ++j) {
-        const KernelArgument& other_kernel_argument = kernel_arguments[j];
-        if (kernel_argument.slice == other_kernel_argument.slice) {
-          return j;
-        }
-      }
-      return std::nullopt;
-    }();
-
-    if (kernel_argument.first_with_same_slice.has_value()) {
-      const KernelArgument& same =
-          kernel_arguments[kernel_argument.first_with_same_slice.value()];
-      kernel_argument.alignment = same.alignment;
-      kernel_argument.aliased = same.aliased;
-      kernel_argument.written = same.written;
-      continue;
-    }
-
-    kernel_argument.alignment = [&] {
-      const BufferAllocation* alloc = kernel_argument.slice.allocation();
-      if (alloc->is_entry_computation_parameter()) {
-        return kEntryParameterAlignBytes;
-      } else if (alloc->is_constant()) {
-        return kConstantBufferAlignBytes;
-      } else {
-        return kXlaAllocatedBufferAlignBytes;
-      }
-    }();
-
-    // Note: This code here doesn't check if any partially overlapping buffers
-    // are written. Our investigation shows that HloDataflowAnalysis only
-    // aliases input and output buffers if they are exactly the same size and
-    // location and it aliases one output with at most one input. If that
-    // changes then we will have to modify this to something like:
-    //
-    // kernel_argument.written =
-    //   OverlapsAny(buffers_written, kernel_argument.slice);
-    kernel_argument.written = buffers_written.contains(kernel_argument.slice);
-
-    kernel_argument.aliased = kernel_argument.written && [&] {
-      for (size_t j = 0; j < kernel_arguments.size(); ++j) {
-        const KernelArgument& other_kernel_argument = kernel_arguments[j];
-        if (i != j && kernel_argument.slice != other_kernel_argument.slice &&
-            kernel_argument.slice.OverlapsWith(other_kernel_argument.slice)) {
-          return true;
-        }
-      }
-      return false;
-    }();
-  }
-}
-
-std::string IrEmitterUnnested::GetArgumentFingerprint(
-    absl::Span<const KernelArgument> kernel_arguments) {
-  return absl::StrJoin(
-      kernel_arguments, ",", [](std::string* s, const KernelArgument& arg) {
-        if (arg.first_with_same_slice.has_value()) {
-          absl::StrAppend(s, "=", arg.first_with_same_slice.value());
-          return;
-        }
-        absl::StrAppend(s, arg.alignment);
-        if (arg.aliased) {
-          absl::StrAppend(s, "a");
-        }
-        if (arg.written) {
-          absl::StrAppend(s, "w");
-        }
-      });
-}
-
-std::string IrEmitterUnnested::GetFingerprint(
-    const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
-    absl::string_view discriminator) {
-  // We have to print constants, because otherwise we would accidentally reuse
-  // kernels which have different builtin constants.
-  //
-  // It is not a problem to recursively print subcomputations, because we don't
-  // have them at this point.
-  auto print_options = HloPrintOptions::Fingerprint()
-                           .set_print_only_essential_constants(false)
-                           .set_print_operand_shape(false);
-
-  return absl::StrCat(discriminator, "(",
-                      GetArgumentFingerprint(kernel_arguments), ")",
-                      fused_computation->ToString(print_options));
-}
-
 StatusOr<mlir::Value> IrEmitterUnnested::RemoveTransformingOperations(
     mlir::Value value) {
   mlir::Operation* defining_op = value.getDefiningOp();
@@ -3365,7 +3183,7 @@ StatusOr<mlir::Value> IrEmitterUnnested::RemoveTransformingOperations(
                        defining_op->getName().getStringRef().str());
 }
 
-StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
+Status IrEmitterUnnested::BuildKernelThunkImpl(
     absl::string_view kernel_name,
     absl::Span<const KernelArgument> kernel_arguments,
     Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions) {
@@ -3374,29 +3192,26 @@ StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
   std::vector<bool> written;
   written.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice.has_value()) {
-      arg_slices.push_back(kernel_argument.slice);
-      written.push_back(kernel_argument.written);
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      arg_slices.push_back(kernel_argument.slice());
+      written.push_back(kernel_argument.written());
     }
   }
 
   std::vector<mlir::Value> values;
   values.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice.has_value()) {
-      TF_ASSIGN_OR_RETURN(mlir::Value value,
-                          RemoveTransformingOperations(kernel_argument.value));
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      TF_ASSIGN_OR_RETURN(mlir::Value value, RemoveTransformingOperations(
+                                                 kernel_argument.value()));
       values.push_back(value);
     }
   }
-
-  auto thunk_ptr = std::make_unique<KernelThunk>(
+  AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       std::move(thunk_info), std::move(arg_slices), std::move(written),
-      std::string(kernel_name), launch_dimensions, std::move(values));
-  KernelThunk* raw_thunk_ptr = thunk_ptr.get();
-  AddThunkToThunkSequence(std::move(thunk_ptr));
+      std::string(kernel_name), launch_dimensions, std::move(values)));
 
-  return raw_thunk_ptr;
+  return tsl::OkStatus();
 }
 
 StatusOr<std::optional<std::vector<llvm_ir::IrArray>>>
@@ -3405,52 +3220,35 @@ IrEmitterUnnested::BuildKernelThunkForFusion(
     absl::string_view discriminator) {
   std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
 
-  TF_ASSIGN_OR_RETURN(std::vector<KernelArgument> kernel_arguments,
-                      GetKernelArgumentsForFusion(fusion_op));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->allocations(), fusion_op));
 
   TF_ASSIGN_OR_RETURN(
       const HloComputation* fused_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
                                           /*is_fusion=*/true));
-  std::string fingerprint =
-      GetFingerprint(fused_computation, kernel_arguments, discriminator);
-  VLOG(4) << "Fingerprint: ";
-  XLA_VLOG_LINES(4, fingerprint);
 
-  auto cache_it = kernel_reuse_cache_.find(fingerprint);
-  if (cache_it != kernel_reuse_cache_.end()) {
-    KernelThunk* old_thunk = cache_it->second;
-
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  auto [entry, cached] = kernel_reuse_cache_.Get(
+      fused_computation, kernel_arguments.args(), discriminator,
+      [&]() -> KernelReuseCache::Entry {
+        auto prototype = BuildKernelPrototype(
+            suggested_kernel_name, kernel_arguments.args(), launch_dimensions);
+        ir_arrays = std::move(prototype.ir_arrays);
+        return {prototype.kernel->getName().str(), launch_dimensions};
+      });
+  if (cached) {
     VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-            << old_thunk->kernel_name();
-
-    // The calculated launch dimensions must be the same for kernels which are
-    // deduplicated.
-    // TODO(tdanyluk): Consider avoiding the recalculation of launch dimensions
-    // when reusing kernels.
-    TF_RET_CHECK(old_thunk->launch_dimensions() == launch_dimensions);
-
-    // We are not reusing the ThunkInfo of the old thunk, because the current
-    // thunk info must reference the current HLO operation.
-    TF_RETURN_IF_ERROR(
-        BuildKernelThunkImpl(old_thunk->kernel_name(), kernel_arguments,
-                             GetThunkInfo(fusion_op), launch_dimensions)
-            .status());
-
-    return {std::nullopt};
+            << entry.kernel_name;
   }
 
-  VLOG(3) << "Generating: " << suggested_kernel_name;
-
-  auto [kernel, ir_arrays] = BuildKernelPrototype(
-      suggested_kernel_name, kernel_arguments, launch_dimensions);
-
-  TF_ASSIGN_OR_RETURN(
-      KernelThunk * thunk,
-      BuildKernelThunkImpl(kernel->getName().str(), kernel_arguments,
+  TF_RETURN_IF_ERROR(
+      BuildKernelThunkImpl(entry.kernel_name, kernel_arguments.args(),
                            GetThunkInfo(fusion_op), launch_dimensions));
-  kernel_reuse_cache_[fingerprint] = thunk;
-
+  if (cached) {
+    return {std::nullopt};
+  }
   return {ir_arrays};
 }
 
@@ -3463,18 +3261,19 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   std::string suggested_kernel_name = GetIrNameFromLoc(op->getLoc());
 
-  TF_ASSIGN_OR_RETURN(std::vector<KernelArgument> kernel_arguments,
-                      GetKernelArgumentsForNonFusionOp(op, needed_operands));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->allocations(), op,
+                              needed_operands));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
   auto [kernel, ir_arrays] = BuildKernelPrototype(
-      suggested_kernel_name, kernel_arguments, launch_dimensions);
+      suggested_kernel_name, kernel_arguments.args(), launch_dimensions);
 
   TF_RETURN_IF_ERROR(BuildKernelThunkImpl(kernel->getName().str(),
-                                          kernel_arguments, GetThunkInfo(op),
-                                          launch_dimensions)
-                         .status());
+                                          kernel_arguments.args(),
+                                          GetThunkInfo(op), launch_dimensions));
 
   return {ir_arrays};
 }
@@ -5043,25 +4842,19 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
-    mlir::Operation* op) {
+    mlir::Operation* op, HloFusionAnalysis& fusion_analysis) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  constexpr int unroll_factor = 1;
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
                                                           /*is_fusion=*/true));
 
-  TF_ASSIGN_OR_RETURN(Shape element_shape,
-                      GetConsistentInputShapeForRootSlices(fused_computation));
   bool use_experimental_block_size =
       hlo_module_config_.debug_options()
           .xla_gpu_enable_experimental_block_size();
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          element_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size, {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
@@ -5072,6 +4865,8 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   }
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
 
+  TF_ASSIGN_OR_RETURN(Shape element_shape,
+                      GetConsistentInputShapeForRootSlices(fused_computation));
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(fused_computation,
@@ -5178,7 +4973,8 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                                      const HloComputation* fused_computation) {
+                                      const HloComputation* fused_computation,
+                                      HloFusionAnalysis& fusion_analysis) {
   auto* root = fused_computation->root_instruction();
 
   // The initialization from 'operand' is using different loop bounds, so
@@ -5190,12 +4986,9 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 
   TF_RETURN_IF_ERROR([&] {
     auto unroll_factor = ComputeMaxUnrollFactor(fusion_op);
-    const Shape& element_shape = root->shape();
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
-        CalculateLaunchDimensions(
-            element_shape, ir_emitter_context_->gpu_device_info(),
-            use_experimental_block_size, {unroll_factor, /*few_waves=*/false}));
+        fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
     TF_ASSIGN_OR_RETURN(
         std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,

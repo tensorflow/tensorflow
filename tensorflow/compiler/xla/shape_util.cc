@@ -1731,9 +1731,8 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  CHECK(
-      ForEachIndexParallelWithStatus(shape, base, count, incr, visitor_function)
-          .ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, base, count, incr,
+                                             visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -1748,7 +1747,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
-  CHECK(ForEachIndexParallelWithStatus(shape, visitor_function).ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -2122,6 +2121,28 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
     size *= dim;
   }
   return size;
+}
+
+Shape ShapeUtil::GetUnshardedShape(const Shape& sharded_shape,
+                                   int64_t num_shards) {
+  if (ShapeUtil::IsScalar(sharded_shape)) {
+    return sharded_shape;
+  }
+
+  Shape unsharded_shape = sharded_shape;
+
+  ShapeUtil::ForEachMutableSubshape(
+      &unsharded_shape,
+      [sharded_shape, num_shards](Shape* subshape, const ShapeIndex& index) {
+        if (subshape->IsArray() && subshape->rank() >= 1 &&
+            !subshape->is_dynamic()) {
+          const Shape& sharded_subshape =
+              ShapeUtil::GetSubshape(sharded_shape, index);
+          subshape->set_dimensions(0,
+                                   sharded_subshape.dimensions(0) * num_shards);
+        }
+      });
+  return unsharded_shape;
 }
 
 }  // namespace xla

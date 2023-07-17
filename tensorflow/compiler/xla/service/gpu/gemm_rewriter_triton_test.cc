@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
@@ -94,7 +95,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseConstants) {
+TEST_F(GemmRewriterTritonTest, DoNotFuseVectorConstants) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -102,8 +103,8 @@ HloModule m
 ENTRY e {
   p0 = s8[60,5] parameter(0)
   c0 = f16[60,5] convert(p0)
-  cst1 = f16[] constant(1234)
-  r1 = f16[5,120] broadcast(cst1)
+  cst1 = f16[5] constant({...})
+  r1 = f16[5,120] broadcast(cst1), dimensions={0}
   ROOT d = f16[60,120] dot(c0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
@@ -448,6 +449,52 @@ ENTRY e {
                             /*subfragments=*/ElementsAre(2, 12))));
   EXPECT_THAT(
       *analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, dot_output, 1),
+      ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3,
+                            /*subfragments=*/ElementsAre(3))));
+}
+
+TEST_F(TritonDotAnalysisTest, OutputParameterIsHandled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+triton_dot {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[4,3]{1,0} parameter(1)
+  dot = bf16[24,3]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f16[3,24]{1,0} parameter(2)
+  p2t = f16[24,3]{1,0} transpose(p2), dimensions={1,0}
+  p2tc = bf16[24,3]{1,0} convert(p2t)
+  ROOT r = bf16[24,3]{1,0} divide(p2tc, dot)
+}
+
+ENTRY e {
+  p0 = bf16[24,4]{1,0} parameter(0)
+  p1 = bf16[4,3]{1,0} parameter(1)
+  p2 = f16[3,24]{1,0} parameter(2)
+  ROOT r = bf16[24,3]{1,0} fusion(p0, p1, p2), kind=kCustom,
+    calls=triton_dot
+})"));
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const HloInstruction* output_param =
+      dot_computation->parameter_instruction(2);
+  const DotFusionAnalysis analysis(dot_computation);
+  EXPECT_EQ(
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, output_param, 0)
+          ->size(),
+      1);
+  EXPECT_THAT(
+      *analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, output_param, 0),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24,
+                            /*subfragments=*/ElementsAre(24))));
+  EXPECT_EQ(
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, output_param, 1)
+          ->size(),
+      1);
+  EXPECT_THAT(
+      *analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, output_param, 1),
       ElementsAre(FieldsAre(/*stride=*/24, /*count=*/3,
                             /*subfragments=*/ElementsAre(3))));
 }
@@ -1140,6 +1187,58 @@ ENTRY e {
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
             DotFusionAnalysis::kMaxParameterPerScope * 2);
+}
+
+TEST_F(GemmRewriterTritonLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[1,35] parameter(0)
+  p0n = f32[1,35] negate(p0)
+  p0e = f32[1,35] exponential(p0)
+  a = f32[1,35] add(p0e, p0n)
+  p1 = f16[35,1] parameter(1)
+  p1c = f32[35,1] convert(p1)
+  ROOT dot = f32[1,1] dot(a, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::VOLTA, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
+  const DotFusionAnalysis analysis(module->entry_computation()
+                                       ->root_instruction()
+                                       ->called_computations()[0]);
+  EXPECT_EQ(analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size(), 1);
+  EXPECT_EQ(analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).size(), 1);
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       ParameterUsedNonElementwiseTwiceIsFusedOnlyOnOnePath) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[4,4] parameter(0)
+  p0t = f32[4,4] transpose(p0), dimensions={1,0}
+  a = f32[4,4] add(p0, p0t)
+  p1 = f16[4,5] parameter(1)
+  p1c = f32[4,5] convert(p1)
+  ROOT dot = f32[4,5] dot(a, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::VOLTA, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Transpose(), m::Parameter()))));
 }
 
 }  // namespace

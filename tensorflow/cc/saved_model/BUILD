@@ -575,6 +575,7 @@ cc_library(
 #     ],
 #     deps = [
 #         ":fingerprinting",
+#         "@com_google_absl//absl/container:flat_hash_set",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core:test",
 #         "//tensorflow/core/platform:path",

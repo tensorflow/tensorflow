@@ -872,8 +872,10 @@ class Model {
   double ComputeTargetTimeNsec();
 
   // Returns the time in nanoseconds it takes the pipeline to produce an
-  // element. Returns 0 if the model is empty.
-  double ComputeProcessingTimeNsec() const;
+  // element, according to the latest model snapshot obtained from optimization.
+  // Returns 0 if the model snapshot is empty or null. This may be caused by not
+  // having executed an optimization round before.
+  double ComputeSnapshotProcessingTimeNsec() const;
 
  private:
   // Determines whether optimization should stop given total processing time,
