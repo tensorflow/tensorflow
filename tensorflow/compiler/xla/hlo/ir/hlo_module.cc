@@ -83,6 +83,28 @@ void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
       entry_computation_->root_instruction()->shape());
 }
 
+HloModule::StackFrame HloModule::get_stack_frame(int id) const {
+  HloModule::StackFrame stack_frame;
+  if (!stack_frame_index_.has_value() || id < 1 ||
+      id > stack_frame_index_->stack_frames().size()) {
+    return stack_frame;
+  }
+
+  auto& frame = stack_frame_index_->stack_frames(id - 1);
+  auto& file_location =
+      stack_frame_index_->file_locations(frame.file_location_id() - 1);
+
+  stack_frame.file_name =
+      stack_frame_index_->file_names(file_location.file_name_id() - 1);
+  stack_frame.function_name =
+      stack_frame_index_->function_names(file_location.function_name_id() - 1);
+  stack_frame.line = file_location.line();
+  stack_frame.column = file_location.column();
+  stack_frame.parent_frame_id = frame.parent_frame_id();
+
+  return stack_frame;
+}
+
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
     bool uniquify_identifiers, bool preserve_entry_layouts) {
@@ -422,6 +444,10 @@ HloModuleProto HloModule::ToProto() const {
         this->config_.static_device_assignment().Serialize(&device_assignment));
     (*proto.mutable_device_assignment()) = device_assignment;
   }
+
+  if (stack_frame_index_.has_value()) {
+    (*proto.mutable_stack_frame_index()) = *stack_frame_index_;
+  }
   return proto;
 }
 
@@ -591,6 +617,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
       module->config_.set_static_device_assignment(*device_assignment);
+    }
+  }
+
+  if (proto.has_stack_frame_index()) {
+    if (!module->stack_frame_index_.has_value()) {
+      module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
   return std::move(module);
