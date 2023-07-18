@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
@@ -125,12 +124,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addPass(mlir::odml::CreateRenameEntrypointToMainPass());
   pass_manager->addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
-
-  // This pass only targets a specific set of models that contain "decomposed"
-  // quantized ops produced from the framework level. There is a plan to make
-  // the framework directly produce StableHLO uniform quantized ops.
-  pass_manager->addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
-
   pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
