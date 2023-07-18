@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -210,8 +211,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
-  Status EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
-                        HloFusionAnalysis& fusion_analysis);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
   Status EmitWhile(mlir::Operation* op);
@@ -546,9 +545,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation,
                      HloFusionAnalysis& fusion_analysis);
-
-  Status EmitDynamicUpdateSlice(mlir::lmhlo::FusionOp fusion_op,
-                                const HloComputation* fused_computation);
 
   struct TilingKernelInfo {
     // Tiling bounds.

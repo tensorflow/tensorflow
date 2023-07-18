@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fused_mha_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fusions/fusions.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -289,122 +290,6 @@ int ComputeMaxUnrollFactor(mlir::Operation* op) {
   return ComputeMaxUnrollFactor(element_shape);
 }
 
-// Returns the llvm type for the indices used in the kernel that contains the
-// hlo instruction. Such indices include the index for the parallel loop and
-// the indices for the tensors accessed by the kernel. The return type is i32
-// iff the following conditions are met:
-//  . The launch_size of the kernel is within the range of i32.
-//  . The sizes of all the tensors accessed within the kernel are within the
-//    range of i32.
-// Otherwise, the return type is i64.
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b) {
-  // Find the unnested hlo instruction for which the kernel is generated for.
-  const HloInstruction* unnested_hlo = hlo;
-  const HloComputation* computation = hlo->parent();
-  if (computation->IsFusionComputation()) {
-    unnested_hlo = computation->FusionInstruction();
-  }
-
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  if (!shape_in_range(unnested_hlo->shape())) {
-    return i64_ty;
-  }
-
-  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
-    return shape_in_range(operand->shape());
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!absl::c_all_of(
-            unnested_hlo->fused_instructions_computation()->instructions(),
-            hlo_shape_in_range)) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
-}
-
-// The same as GetIndexTypeForKernel, but works with MLIR ops.
-llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
-                                  llvm::IRBuilder<>* b) {
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  for (auto result : GetHloOutputs(op)) {
-    if (!shape_in_range(GetShape(result))) {
-      return i64_ty;
-    }
-  }
-
-  auto hlo_shape_in_range = [&](mlir::Value operand) -> bool {
-    return shape_in_range(GetShape(operand));
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(op->getOperands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    auto result = fusion.getRegion().walk([&](mlir::Operation* op) {
-      for (mlir::Value result : op->getResults()) {
-        if (!hlo_shape_in_range(result)) {
-          return mlir::WalkResult::interrupt();
-        }
-      }
-      return mlir::WalkResult::advance();
-    });
-    if (result.wasInterrupted()) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
-}
-
 // Gets the input shape of the ROOT slices, which will be used as the kernel
 // launch dims. The slice input fusion requires the input shapes of the ROOT
 // slices to be the same although the (slice) output shapes can be different.
@@ -435,12 +320,6 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
   }
 
   return first_slice_operand_shape;
-}
-
-// Returns a sanitized (doesn't need quoting) identifier name from a location.
-std::string GetIrNameFromLoc(mlir::Location loc) {
-  return llvm_ir::SanitizeConstantName(
-      mlir::mhlo::GetDebugNameFromLocation(loc));
 }
 
 // For a row reduction, returns the number of rows we can process in parallel
@@ -1904,59 +1783,6 @@ Status IrEmitterUnnested::EmitTritonFusion(
 
 #endif  // GOOGLE_CUDA
 
-// TODO(timshen): update the comment once the HandleFusion code path deleted.
-//
-// This is migrated from IrEmitter::HandleFusion() with IrEmitterUnnested as the
-// subclass. The logic is de-virtualized and less scattered.
-Status IrEmitterUnnested::EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
-                                         HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
-                      fusion_analysis.GetLaunchDimensions());
-
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-      BuildKernelThunkForFusion(fusion, launch_dimensions));
-  if (!opt_ir_arrays.has_value()) {
-    // The kernel was reused, no need to emit code.
-    return OkStatus();
-  }
-  std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
-
-  absl::Span<llvm_ir::IrArray> operand_arrays =
-      absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size());
-  absl::Span<llvm_ir::IrArray> output_element_arrays =
-      absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size(),
-                                        fusion.getOutputBuffers().size());
-
-  FusedIrEmitter fused_emitter(elemental_emitter_);
-
-  const HloComputation* fused_computation = fusion_analysis.fused_computation();
-  for (int i = 0; i < fusion.getInputBuffers().size(); i++) {
-    auto* builder = &b_;
-    auto ir_array = operand_arrays[i];
-    fused_emitter.BindGenerator(
-        *fused_computation->parameter_instruction(i),
-        [builder, ir_array](llvm_ir::IrArray::Index index) {
-          return ir_array.EmitReadArrayElement(index, builder);
-        });
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto element_generator,
-      fused_emitter.GetGenerator(*fused_computation->root_instruction()));
-
-  llvm::Type* index_type =
-      GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
-
-  TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(element_generator, output_element_arrays,
-                          launch_dimensions, &b_,
-                          *fusion_analysis.GetLoopFusionConfig())
-          .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
-
-  b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  return OkStatus();
-}
-
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
   auto* tiling_scheme = fusion_analysis.GetTransposeTilingScheme();
@@ -2016,6 +1842,17 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                           &fusion, &device_info,
                           ir_emitter_context_->cuda_compute_capability()));
 
+  auto emitter = GetFusionEmitter(fusion_analysis, *ir_emitter_context_,
+                                  elemental_emitter_, fusion_op, fusion);
+  if (emitter != std::nullopt) {
+    TF_ASSIGN_OR_RETURN(auto emission_result,
+                        (*emitter)->Emit(kernel_reuse_cache_, &b_));
+    if (emission_result.thunk != std::nullopt) {
+      AddThunkToThunkSequence(std::move(*emission_result.thunk));
+    }
+    return OkStatus();
+  }
+
   // Dispatch to the fusion specific emitter.
   auto emitter_fusion_kind = fusion_analysis.GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
@@ -2052,45 +1889,9 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       return EmitInputFusibleNonStridedSlices(op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return EmitScatter(fusion_op, fused_computation, fusion_analysis);
-    case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      // Special case: DUS
-      bool is_single = IsSingleInstructionFusion(fusion_op);
-      if (!is_single && CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                            fusion_op, ir_emitter_context_->allocations())) {
-        return EmitDynamicUpdateSlice(fusion_op, fused_computation);
-      }
-      // Special case: copy
-      if (is_single && fusion_root->opcode() == HloOpcode::kCopy) {
-        llvm::SmallVector<mlir::Value> operands = GetHloOperands(fusion_op);
-        llvm::SmallVector<mlir::Value> outputs = GetHloOutputs(fusion_op);
-        TF_RET_CHECK(operands.size() == 1);
-        TF_RET_CHECK(outputs.size() == 1);
-        Shape operand_shape = GetShape(operands[0]);
-        Shape output_shape = GetShape(outputs[0]);
-
-        CHECK(ShapeUtil::Compatible(operand_shape, output_shape));
-        StatusOr<BufferAllocation::Slice> maybe_slice =
-            GetAllocationSlice(operands[0]);
-        if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
-            maybe_slice.ok()) {
-          BufferAllocation::Slice operand_buffer = *maybe_slice;
-          BufferAllocation::Slice destination_buffer =
-              *GetAllocationSlice(outputs[0]);
-          if (operand_buffer != destination_buffer) {
-            AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-                GetThunkInfo(op),
-                /*source_buffer=*/operand_buffer,
-                /*destination_buffer=*/destination_buffer,
-                /*mem_size=*/ByteSizeOf(operand_shape),
-                /*source_value=*/operands[0],
-                /*destination_value=*/outputs[0]));
-          }
-          return OkStatus();
-        }
-      }
-      // Default loop fusion emitter.
-      return EmitLoopFusion(fusion_op, fusion_analysis);
-    }
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+      return FailedPrecondition(
+          "Loop fusion should have been handled by GetFusionEmitter.");
   }
 }
 
@@ -4876,100 +4677,6 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
       .EmitLoop(
           IrName(GetIrNameFromLoc(fusion.getLoc())),
           GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_));
-}
-
-Status IrEmitterUnnested::EmitDynamicUpdateSlice(
-    mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation) {
-  // Fusion node where the root is either:
-  // 1. a dynamic-update-slice op
-  // 2. a bitcast of a dynamic-update-slice op
-  // 3. a tuple op returning the result of several dynamic-update-slice ops
-  // 4. a tuple op returning the result of several bitcasted
-  //    dynamic-update-slice ops
-  //
-  // Additionally, all the dynamic-update-slice ops have exactly one user. The
-  // fusion parameter that they update can have users (in addition to the
-  // dynamic-update-slice op) that read in either
-  // a. a dynamic-slice corresponding exactly to the slice of the parameter that
-  //    is updated by the dynamic-update-slice op
-  // b. a dynamic-slice reading in a single element anywhere in the parameter.
-  //    This is only allowed if the dynamic-update-slice op updates a single
-  //    element
-  //
-  // In both cases, the additional users must not flow into any other output
-  // than the dynamic-slice-update corresponding to that particular slice of the
-  // parameter.
-  //
-  // The assumption is that each op's input (i.e. array to update) shares the
-  // same slice as its output. In this case, we have a special algorithm that
-  // modifies the output in place without touching the un-updated elements.
-  // The update slice is assumed to be the exact same for all the
-  // dynamic-update-slice ops.
-  auto dus_ops = GetOutputDefiningDynamicUpdateSlices(fused_computation);
-  CHECK_EQ(dus_ops.size(), GetHloOutputs(fusion_op).size());
-
-  // Shape of the dynamic-update-slice's "update" operand.
-  Shape update_shape = dus_ops.front()->operand(1)->shape();
-
-  bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
-          .xla_gpu_enable_experimental_block_size();
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          update_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size));
-
-  // Set up kernel thunk and fused ir emitter.
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-      BuildKernelThunkForFusion(fusion_op, launch_dimensions));
-  if (!opt_ir_arrays.has_value()) {
-    // The kernel was reused, no need to emit code.
-    return OkStatus();
-  }
-  std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
-  auto get_output_array = [&](int output_index) -> llvm_ir::IrArray& {
-    CHECK_LT(output_index, dus_ops.size());
-    return ir_arrays[ir_arrays.size() - dus_ops.size() + output_index];
-  };
-
-  // In case a dynamic slice update's output is bitcasted, we need to ensure we
-  // write to the output array using the shape and layout of the dynamic slice
-  // update. This cast is known to be safe to do iff, in the case the output of
-  // the dynamic slice update is bitcasted, that bitcast is either the fusion's
-  // output, or has a single user and is part of the fusion's tuple output.
-  // This condition should be enforced explicitly in the
-  // 'CanEmitFusedDynamicUpdateSliceInPlaceForGpu' matcher.
-  for (int output_ix = 0; output_ix < dus_ops.size(); output_ix++) {
-    auto dus_op = dus_ops[output_ix];
-    IrArray& output_array = get_output_array(output_ix);
-    output_array = output_array.CastToShape(dus_op->shape(), &b_);
-  }
-
-  FusedIrEmitter fused_emitter(elemental_emitter_);
-  for (int i = 0; i < fused_computation->num_parameters(); i++) {
-    auto fused_operand = fused_computation->parameter_instruction(i);
-    fused_emitter.BindGenerator(
-        *fused_operand, [this, &ir_arrays, i,
-                         fused_operand](const llvm_ir::IrArray::Index& index) {
-          return ir_arrays[i].EmitReadArrayElement(index, &b_,
-                                                   fused_operand->name());
-        });
-  }
-
-  std::vector<std::pair<const HloInstruction*, const IrArray>>
-      dus_and_output_array;
-  dus_and_output_array.reserve(dus_ops.size());
-
-  for (int i = 0; i < dus_ops.size(); i++) {
-    dus_and_output_array.push_back(std::make_pair(
-        dus_ops[i], ir_arrays[ir_arrays.size() - dus_ops.size() + i]));
-  }
-
-  return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
-      fused_computation, dus_and_output_array, &fused_emitter,
-      launch_dimensions, &b_);
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
