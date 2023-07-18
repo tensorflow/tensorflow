@@ -114,7 +114,10 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
 
   // BatchNormalization forward execute
   //   src_data:         input data buffer of src
-  //   scale_shift_data: input data buffer of scale_shift
+  //   scale_shift_data: input data buffer of scale and shift. oneDNN v3.x
+  //                     requires them to be passed as separate buffers whereas
+  //                     previous oneDNN versions required them to be passed as
+  //                     a single combined buffer.
   //   dst_data:         output data buffer of dst
   //   mean_data:        output data buffer of means
   //   variance_data:    output data buffer of variances
@@ -258,10 +261,8 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   };
 
   void Setup(const MklBatchNormFwdParams& fwdParams) {
-    context_.flags =
-        fwdParams.training
-            ? GET_SCALE_AND_SHIFT_FLAGS
-            : (GET_SCALE_AND_SHIFT_FLAGS | GET_FLAG(use_global_stats));
+    context_.flags = GET_SCALE_AND_SHIFT_FLAGS |
+                     (fwdParams.training ? false : GET_FLAG(use_global_stats));
     context_.pkind =
         fwdParams.training ? prop_kind::forward_training : FORWARD_INFERENCE;
 
@@ -661,11 +662,13 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
           diff_src_mem(nullptr) {}
   };
 
+  inline int64 GetBatchNormFlags(const MklBatchNormBwdParams& bwdParams) const {
+    return GET_SCALE_AND_SHIFT_FLAGS |
+           (bwdParams.training ? false : GET_FLAG(use_global_stats));
+  }
+
   void Setup(const MklBatchNormBwdParams& bwdParams) {
-    context_.flags =
-        bwdParams.training
-            ? GET_SCALE_AND_SHIFT_FLAGS
-            : (GET_SCALE_AND_SHIFT_FLAGS | GET_FLAG(use_global_stats));
+    context_.flags = GetBatchNormFlags(bwdParams);
 
     // Memory descriptors.
     auto src_md = bwdParams.src_md;
@@ -685,10 +688,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
     // Forward batch-normalization descriptor and primitive descriptor.
     // Adding this back due to type difference with context.flags
-    auto bn_flags =
-        bwdParams.training
-            ? GET_SCALE_AND_SHIFT_FLAGS
-            : (GET_SCALE_AND_SHIFT_FLAGS | GET_FLAG(use_global_stats));
+    auto bn_flags = GetBatchNormFlags(bwdParams);
 #ifndef ENABLE_ONEDNN_V3
     auto fwd_desc = batch_normalization_forward::desc(
         prop_kind::forward_training, src_md, bwdParams.eps,
