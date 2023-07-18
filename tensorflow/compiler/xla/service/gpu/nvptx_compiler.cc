@@ -690,8 +690,9 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
              "disabling parallel compilation, which may slow down compilation. "
              "You should update your NVIDIA driver or use the NVIDIA-provided "
              "CUDA forward compatibility packages.";
+    } else {
+      linking_method = LinkingMethod::kDriver;
     }
-    linking_method = LinkingMethod::kDriver;
   }
   {
     absl::MutexLock lock(&mutex_);
