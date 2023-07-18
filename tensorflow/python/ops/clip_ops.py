@@ -195,8 +195,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     t: A `Tensor` or `IndexedSlices`.  This must be a floating point type.
     clip_norm: A 0-D (scalar) `Tensor` > 0. A maximum clipping value, also
       floating point.
-      Note: If clip_norm given as a negative value then it will be converted
-       into Zero internally and exception will not be raised here.
+      Note: If a negative clip_norm is provided, it will be treated as zero.
     axes: A 1-D (vector) `Tensor` of type int32 containing the dimensions
       to use for computing the L2-norm. If `None` (the default), uses all
       dimensions.
