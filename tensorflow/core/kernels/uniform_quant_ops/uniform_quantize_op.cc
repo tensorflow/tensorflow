@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -70,15 +72,16 @@ void EvalQuantize(const Tensor& input, const Tensor& scales,
 
 }  // namespace
 
-template <typename Tin, typename Tout>
 class UniformQuantizeOp : public OpKernel {
  public:
   explicit UniformQuantizeOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES(context, (std::is_same<Tin, float>()),
+    OP_REQUIRES_OK(context, context->GetAttr("Tin", &tin_));
+    OP_REQUIRES(context, tin_ == DataType::DT_FLOAT,
                 InvalidArgument("Unsupported input type."));
+    OP_REQUIRES_OK(context, context->GetAttr("Tout", &tout_));
     OP_REQUIRES(context,
-                (std::is_same<Tout, qint32>() || std::is_same<Tout, qint8>()),
+                tout_ == DataType::DT_QINT8 || tout_ == DataType::DT_QINT32,
                 InvalidArgument("Unsupported output type."));
 
     OP_REQUIRES_OK(context, context->GetAttr("quantization_min_val",
@@ -106,12 +109,19 @@ class UniformQuantizeOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
 
-    EvalQuantize<Tin, Tout>(input, scales, zero_points, quantization_axis_,
-                            quantization_min_val_, quantization_max_val_,
-                            *output);
+    if (tout_ == DataType::DT_QINT8) {
+      EvalQuantize<float, qint8>(input, scales, zero_points, quantization_axis_,
+                                 quantization_min_val_, quantization_max_val_,
+                                 *output);
+    } else {
+      EvalQuantize<float, qint32>(input, scales, zero_points,
+                                  quantization_axis_, quantization_min_val_,
+                                  quantization_max_val_, *output);
+    }
   }
 
  private:
+  DataType tin_, tout_;
   int quantization_axis_;
   int32_t quantization_min_val_;
   int32_t quantization_max_val_;
@@ -120,13 +130,7 @@ class UniformQuantizeOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("UniformQuantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("Tin")
-                            .TypeConstraint<qint8>("Tout"),
-                        UniformQuantizeOp<float, qint8>);
-
-REGISTER_KERNEL_BUILDER(Name("UniformQuantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("Tin")
-                            .TypeConstraint<qint32>("Tout"),
-                        UniformQuantizeOp<float, qint32>);
+                            .TypeConstraint("Tout", {DT_QINT8, DT_QINT32}),
+                        UniformQuantizeOp);
 
 }  // namespace tensorflow
