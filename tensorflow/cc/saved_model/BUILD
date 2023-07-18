@@ -503,8 +503,6 @@ cc_library(
 #         "@com_google_absl//absl/status",
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
-#         "//third_party/riegeli/bytes:file_reader",
-#         "//third_party/riegeli/records:record_reader",
 #         "//tensorflow/core:lib",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core/graph/regularization:simple_delete",
@@ -514,6 +512,8 @@ cc_library(
 #         "//tensorflow/tools/proto_splitter:merge",
 #         "//tensorflow/tools/proto_splitter/cc:util",
 #         "//tensorflow/tsl/platform:protobuf",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
 #     ],
 #     alwayslink = True,
 # )
@@ -533,8 +533,8 @@ cc_library(
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
 #         "//tensorflow/tsl/platform:protobuf",
-#         "//third_party/riegeli/bytes:file_reader",
-#         "//third_party/riegeli/records:record_reader",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
 #         "//tensorflow/core:lib",
 #     ]),
 # )
@@ -551,8 +551,6 @@ cc_library(
 #         "@com_google_absl//absl/status",
 #         "@com_google_absl//absl/strings",
 #         "//third_party/protobuf",
-#         "//third_party/riegeli/bytes:file_reader",
-#         "//third_party/riegeli/records:record_reader",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core/platform:errors",
 #         "//tensorflow/core/platform:path",
@@ -562,6 +560,8 @@ cc_library(
 #         "//tensorflow/tools/proto_splitter/cc:util",
 #         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
 #         "@com_google_googletest//:gtest_main",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
 #     ],
 # )
 #
