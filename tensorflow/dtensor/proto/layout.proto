@@ -38,6 +38,14 @@ message MeshDimensionProto {
 message LayoutProto {
   repeated ShardingSpec sharding_specs = 1;
   MeshProto mesh_config = 2;
+  enum LayoutType {
+    UNKNOWN = 0;
+    STATIC = 1;  // A tiled layout for static and evenly shaped local shards.
+    RAGGED = 2;  // A tiled layout for dynamic (and/or) uneven local  sharded.
+    SINGLE_DEVICE = 3;  // A single device layout that represents DTensor on a
+                        // single device Mesh.
+  }
+  LayoutType type = 3;
 }
 
 // Proto representation of a Mesh.

@@ -692,7 +692,7 @@ TEST_F(LayoutTest, GetSingleDeviceMeshSuccess) {
 
 TEST_F(LayoutTest, GetSingleDeviceLayoutInvalidMesh) {
   auto mesh = Mesh::Empty();
-  EXPECT_THAT(Layout::GetSingleDeviceLayout(mesh),
+  EXPECT_THAT(Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh),
               StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
@@ -703,7 +703,8 @@ TEST_F(LayoutTest, GetSingleDeviceLayoutSuccess) {
       auto layout,
       Layout::FromString(
           "maximal:true, mesh:/job:localhost/task:1/device:CPU:0"));
-  EXPECT_THAT(Layout::GetSingleDeviceLayout(mesh), IsOkAndHolds(layout));
+  EXPECT_THAT(Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh),
+              IsOkAndHolds(layout));
 }
 
 TEST(DynamicSizeTest, IsDynamicSize) {
@@ -712,6 +713,31 @@ TEST(DynamicSizeTest, IsDynamicSize) {
   EXPECT_FALSE(IsDynamicSize(10));
 }
 
+TEST_F(LayoutTest, LayoutType) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto maximal,
+      Layout::FromString(
+          "maximal:true, mesh:/job:localhost/task:1/device:CPU:0"));
+  EXPECT_EQ(maximal.type(), Layout::LayoutType::kSingleDevice);
+  TF_ASSERT_OK_AND_ASSIGN(auto ragged,
+                          Layout::FromString("ragged:x, mesh:|x=2|*TPU"));
+  EXPECT_EQ(ragged.type(), Layout::LayoutType::kRagged);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto static_layout,
+      Layout::FromString("sharding_specs:x, mesh:|x=2|*TPU"));
+  EXPECT_EQ(static_layout.type(), Layout::LayoutType::kStatic);
+}
+
+TEST_F(LayoutTest, RaggedLayoutToFromString) {
+  TF_ASSERT_OK_AND_ASSIGN(Layout layout, BatchLayout().ToRagged());
+  std::string layout_str = layout.ToString();
+  TF_ASSERT_OK_AND_ASSIGN(Layout layout_from_str,
+                          Layout::FromString(layout_str));
+  TF_ASSERT_OK_AND_ASSIGN(LayoutProto layout_from_str_proto,
+                          layout_from_str.ToProto());
+  EXPECT_THAT(layout.ToProto(),
+              IsOkAndHolds(EqualsProto(layout_from_str_proto)));
+}
 }  // namespace
 }  // namespace dtensor
 }  // namespace tensorflow
