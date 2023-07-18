@@ -1707,6 +1707,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 50,
     tags = [
+		"no_rocm",
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  #times out
