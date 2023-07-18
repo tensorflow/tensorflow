@@ -123,18 +123,8 @@ class BufferSequencingEvent {
   }
 
   void SetDefinedStatus(Status status) {
-    {
-      absl::MutexLock lock(&mu_);
-      defined_status_.emplace(status);
-    }
-
-    this->ExecuteFutureTasks();
-  }
-
-  Status GetDefinedStatus() {
     absl::MutexLock lock(&mu_);
-    CHECK(defined_status_.IsConcrete());
-    return defined_status_.get();
+    defined_status_.emplace(status);
   }
 
  private:
