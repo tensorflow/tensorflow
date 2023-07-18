@@ -105,10 +105,22 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
 
   Status FinishVisit(const HloInstruction* /*root*/) override {
     module_->AddEntryComputation(builder_.Build());
-    for (auto computation : module_->MakeComputationPostOrder()) {
-      for (auto instruction : computation->MakeInstructionPostOrder()) {
-        module_->SetAndUniquifyInstrName(instruction, instruction->name());
+    // Rename HLOs so that their name matches the original. By default,
+    // HLOs get new unique names when adding a new entry computation to
+    // a module.
+    for (auto computation : old_module_.MakeComputationPostOrder()) {
+      for (auto old_instruction : computation->MakeInstructionPostOrder()) {
+        if (auto new_instruction =
+                clone_context_.FindInstruction(old_instruction)) {
+          new_instruction->SetAndSanitizeName(old_instruction->name());
+        }
       }
+    }
+    // For the extra created instructions (e.g., the ones created when replacing
+    // with broadcasted zeros), we make sure they have unique names without
+    // breaking the matches made at above code.
+    for (HloInstruction* instruction : extra_created_instructions_) {
+      module_->SetAndUniquifyInstrName(instruction, instruction->name());
     }
 
     return OkStatus();
@@ -155,6 +167,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       }
       auto zero_tuple =
           builder.AddInstruction(HloInstruction::CreateTuple(tuple_operands));
+      extra_created_instructions_.push_back(zero_tuple);
       return zero_tuple;
     } else {
       // If not a tuple, we need to create a zero constant of
@@ -165,10 +178,12 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       Shape element_zero_shape = ShapeUtil::MakeShape(shape.element_type(), {});
       element_zero = builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(element_zero_shape.element_type())));
+      extra_created_instructions_.push_back(element_zero);
 
       // Broadcast the element_zero to create an hlo of the desired shape.
       auto zero_broadcast = builder.AddInstruction(
           HloInstruction::CreateBroadcast(shape, element_zero, {}));
+      extra_created_instructions_.push_back(zero_broadcast);
       return zero_broadcast;
     }
   }
@@ -190,6 +205,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   ExtractSelector extract_selector_;
   ReplaceTypeSelector replace_type_selector_;
   int64_t parameter_number_ = 0;
+  std::vector<HloInstruction*> extra_created_instructions_;
 };
 
 void ComputeBoundary(const HloInstruction* root, int64_t limit,
