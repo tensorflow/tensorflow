@@ -2336,7 +2336,7 @@ func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7
 // CHECK-DAG: %[[PROD:.*]] = arith.muli %[[DIM1]], %[[DIM2]]
 // CHECK-DAG: %[[SHAPE_VALUES:.*]] = tensor.from_elements %[[C1]], %[[DIM0]], %[[PROD]]
 // CHECK-DAG: %[[RESHAPED_VALUES:.*]] = tensor.reshape %arg0(%[[SHAPE_VALUES]])
-// CHECK-DAG: %[[RESHAPED_INDICES:.*]] = "tosa.reshape"(%arg1) {new_shape = array<i64: 1, -1>}
+// CHECK-DAG: %[[RESHAPED_INDICES:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, -1>}>
 // CHECK-DAG: %[[GATHER:.*]] = "tosa.gather"(%[[RESHAPED_VALUES]], %[[RESHAPED_INDICES]])
 // CHECK-DAG: %[[SHAPE_RESULT:.*]] = tensor.from_elements %[[DIM3]], %[[DIM4]], %[[DIM1]], %[[DIM2]]
 // CHECK-DAG: %[[RESULT:.*]] = tensor.reshape %[[GATHER]](%[[SHAPE_RESULT]])
