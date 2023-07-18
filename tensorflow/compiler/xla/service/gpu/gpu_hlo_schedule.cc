@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
@@ -405,6 +406,31 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
   }
 };
 
+tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
+    tensorflow::profiler::ProfiledInstructionsProto& profile,
+    const std::string& fingerprint) {
+  tensorflow::profiler::ProfiledInstructionsProto result;
+  for (const auto& cost : profile.costs()) {
+    std::string cost_name = cost.name();
+    std::string new_cost_name = cost_name;
+    std::string cost_sep = "::";
+    if (absl::StrContains(cost_name, cost_sep)) {
+      std::vector<std::string> split_names =
+          absl::StrSplit(cost_name, cost_sep);
+      if (split_names.size() != 2 || split_names[0] != fingerprint) {
+        continue;
+      }
+      new_cost_name = split_names[1];
+    }
+
+    auto* new_cost = result.add_costs();
+    new_cost->set_cost_us(cost.cost_us());
+    new_cost->set_name(new_cost_name);
+  }
+
+  return result;
+}
+
 std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     const HloModule* module, const std::string& fingerprint) {
   tensorflow::profiler::ProfiledInstructionsProto profile;
@@ -416,14 +442,14 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     if (tsl::ParseProtoUnlimited(&profile, fdo_profile.data(),
                                  fdo_profile.size())) {
       LOG(INFO) << "Using PGLE profile for module from fdo_profile (binary)";
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     // If not a binary proto, attempt to parse it as a text proto.
     profile.Clear();
     if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
                                                    &profile)) {
       LOG(INFO) << "Using PGLE profile for module from fdo_profile (text)";
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     LOG(ERROR) << "Unable to prase FDO profile: not a valid text or binary "
                   "ProfiledInstructionsProto";
@@ -437,20 +463,20 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     return std::nullopt;
   }
   tsl::Env* env = tsl::Env::Default();
-  auto read_text_or_binary_profile = [&profile, env](
+  auto read_text_or_binary_profile = [&profile, env, &fingerprint](
                                          const std::string& text_path,
                                          const std::string& binary_path)
       -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
     Status s = tsl::ReadTextProto(env, text_path, &profile);
     if (s.ok()) {
       LOG(INFO) << "Using PGLE profile from " << text_path;
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     profile.Clear();
     s = tsl::ReadBinaryProto(env, binary_path, &profile);
     if (s.ok()) {
       LOG(INFO) << "Using PGLE profile from " << binary_path;
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     return std::nullopt;
   };

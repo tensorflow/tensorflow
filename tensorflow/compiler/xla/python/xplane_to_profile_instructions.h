@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
 
 #include <string>
 #include <vector>
 
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/profiler/protobuf/profiled_instructions.pb.h"
 
-namespace tsl {
-namespace profiler {
+namespace xla {
+
+// Separator for fingerprint and hlo_name in the cost name of
+// ProfiledInstructionsProto.
+extern const char kCostNameSep[];
 
 // Latency info for a single HLO instruction.
 struct HloLatencyInfo {
@@ -36,7 +39,6 @@ Status ConvertXplaneToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto);
 
-}  // namespace profiler
-}  // namespace tsl
+}  // namespace xla
 
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_XPLANE_TO_PROFILE_INSTRUCTIONS_H_
