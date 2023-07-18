@@ -22,10 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/text_format.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -281,12 +281,17 @@ void MapFnOp::Invoke() {
               /*msg=*/
               absl::StrCat(last_iter_futures[j].GetError().message(),
                            ". First Error Index=", j, " of ",
-                           last_iter_futures.size()),
+                           last_iter_futures.size())
+#if defined(PLATFORM_GOOGLE)
+                  ,
               absl::SourceLocation());
           for (const auto& location :
                last_iter_futures[j].GetError().GetSourceLocations()) {
             status.AddSourceLocation(location);
           }
+#else
+          );
+#endif  // PLATFORM_GOOGLE
         }
       } else {
         results[j].Set(
@@ -335,7 +340,15 @@ void CreateOp::Invoke() {
   auto& fallback_request_state = context().fallback_request_state();
 
   tensorflow::NodeDef node_def;
-  if (!proto2::TextFormat::ParseFromString(node_def_text(), &node_def)) {
+  // TODO(182876485): Remove the conditional selection after protobuf version
+  // is bumped up.
+  if (!google::protobuf::TextFormat::ParseFromString(
+#if defined(PLATFORM_GOOGLE)
+          node_def_text(),
+#else
+          std::string(node_def_text()),
+#endif
+          &node_def)) {
     execution_context().Fail(absl::InternalError(
         absl::StrCat("CreateOp: failed to parse NodeDef: ", node_def_text())));
     return;

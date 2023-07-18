@@ -1,6 +1,7 @@
 # Fallback from TFRT to TF kernels and related utilities.
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_test",
     "tf_cc_test",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -40,7 +41,7 @@ cc_library(
     }),
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "tfrt_op_kernel_test",
     srcs = ["tfrt_op_kernel_test.cc"],
     tags = ["no_oss"],

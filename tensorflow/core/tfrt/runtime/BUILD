@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,9 +45,10 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "runtime_test",
     srcs = ["runtime_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":runtime",
         "//tensorflow/core:test",
@@ -138,14 +139,16 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "stream_test",
     srcs = ["stream_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":stream",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -176,6 +179,7 @@ tf_cc_test(
     deps = [
         ":channel",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],

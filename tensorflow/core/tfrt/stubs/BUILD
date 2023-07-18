@@ -3,6 +3,7 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/native_lowering:__subpackages__",
+        "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
     ],
     licenses = ["notice"],

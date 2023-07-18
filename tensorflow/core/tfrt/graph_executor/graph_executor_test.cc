@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {

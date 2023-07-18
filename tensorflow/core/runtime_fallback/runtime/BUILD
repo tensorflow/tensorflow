@@ -152,6 +152,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback:__subpackages__",
     ],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",

@@ -18,14 +18,17 @@ package_group(
 
 pytype_strict_binary(
     name = "saved_model_load_and_run_py",
-    srcs = ["saved_model_load_and_run.py"],
+    srcs = [
+        "saved_model_load_and_run.py",
+    ],
+    data = ["//tensorflow/core/tfrt/graph_executor:graph_execution_options.so"],  # copybara:comment
     main = "saved_model_load_and_run.py",
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":_pywrap_saved_model",
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@absl_py//absl:app",
+        # copybara:uncomment "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
     ],
 )
 
@@ -77,21 +80,23 @@ tf_python_pybind_extension(
     ],
 )
 
-pytype_strict_contrib_test(
-    name = "saved_model_aot_compile_test",
-    size = "small",
-    srcs = [
-        "saved_model_aot_compile_test.py",
-    ],
-    data = [
-        "//learning/brain/tfrt/cpp_tests/gpu_inference:testdata",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":_pywrap_saved_model_aot_compile",
-        "//base/python:pywrapbase",
-        "//tensorflow/python/platform:client_testlib",
-        "//testing/pybase",
-        "//third_party/py/lingvo:compat",
-    ],
-)
+# copybara:uncomment_begin(AoT)
+# pytype_strict_contrib_test(
+#     name = "saved_model_aot_compile_test",
+#     size = "small",
+#     srcs = [
+#         "saved_model_aot_compile_test.py",
+#     ],
+#     data = [
+#         "//learning/brain/tfrt/cpp_tests/gpu_inference:testdata",
+#     ],
+#     python_version = "PY3",
+#     deps = [
+#         ":_pywrap_saved_model_aot_compile",
+#         "//base/python:pywrapbase",
+#         "//testing/pybase",
+#         "//third_party/py/lingvo:compat",
+#         "//tensorflow/python/platform:client_testlib",
+#     ],
+# )
+# copybara:uncomment_end
