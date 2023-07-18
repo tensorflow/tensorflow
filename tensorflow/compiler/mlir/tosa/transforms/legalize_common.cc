@@ -4011,8 +4011,10 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<int64_t> params_idx_batch, params_idx_indices,
       params_idx_left_channels, params_idx_right_channels;
 
-  auto params_shape = tensor::getMixedSizes(rewriter, op->getLoc(), params_value);
-  auto indices_shape = tensor::getMixedSizes(rewriter, op->getLoc(), indices_value);
+  auto params_shape =
+      tensor::getMixedSizes(rewriter, op->getLoc(), params_value);
+  auto indices_shape =
+      tensor::getMixedSizes(rewriter, op->getLoc(), indices_value);
 
   // Read through the params tensor dimensions left-to-right and extract the
   // different fields.
@@ -4035,12 +4037,13 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
 
   // Calculate N, K, W, C
   OpFoldResult N =
-    multiply_dims(llvm::ArrayRef(params_shape).take_front(batch_dims),
-                  rewriter, op->getLoc());
+      multiply_dims(llvm::ArrayRef(params_shape).take_front(batch_dims),
+                    rewriter, op->getLoc());
 
-  OpFoldResult W = multiply_dims(
-      llvm::ArrayRef(indices_shape).slice(batch_dims, indices_rank - batch_dims),
-      rewriter, op->getLoc());
+  OpFoldResult W =
+      multiply_dims(llvm::ArrayRef(indices_shape)
+                        .slice(batch_dims, indices_rank - batch_dims),
+                    rewriter, op->getLoc());
 
   OpFoldResult K = params_shape[axis];
 
@@ -4124,12 +4127,12 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<OpFoldResult> tosa_gather_result_shape = {N, W, C};
 
   std::optional<Value> params_transpose_perm_val = getConstTensor<int32_t>(
-    rewriter, op, params_transpose_perm,
-    {static_cast<int64_t>(params_transpose_perm.size())});
+      rewriter, op, params_transpose_perm,
+      {static_cast<int64_t>(params_transpose_perm.size())});
 
   std::optional<Value> result_transpose_perm_val = getConstTensor<int32_t>(
-    rewriter, op, result_transpose_perm,
-    {static_cast<int64_t>(result_transpose_perm.size())});
+      rewriter, op, result_transpose_perm,
+      {static_cast<int64_t>(result_transpose_perm.size())});
 
   if (!params_transpose_perm_val || !result_transpose_perm_val)
     return std::nullopt;
@@ -4141,12 +4144,13 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       params_value, params_transpose_perm_val.value());
 
   Value tosa_values_reshape_op =
-    build_reshape(rewriter, op->getLoc(), params_transpose_op, {N, K, C});
+      build_reshape(rewriter, op->getLoc(), params_transpose_op, {N, K, C});
 
   Value tosa_indices_reshape_op =
-    build_reshape(rewriter, op->getLoc(), indices_value, {N, W});
+      build_reshape(rewriter, op->getLoc(), indices_value, {N, W});
 
-  auto tosa_gather_static_shape = as_static_dimension_list(tosa_gather_result_shape);
+  auto tosa_gather_static_shape =
+      as_static_dimension_list(tosa_gather_result_shape);
 
   auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
       rewriter, op->getLoc(),
@@ -4155,12 +4159,12 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       tosa_values_reshape_op, tosa_indices_reshape_op);
 
   Value tosa_result_reshape_op = build_reshape(
-    rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape);
+      rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape);
 
   return CreateOpAndInfer<tosa::TransposeOp>(
-    rewriter, op->getLoc(), result_type, tosa_result_reshape_op,
-    result_transpose_perm_val.value())
-    .getResult();
+             rewriter, op->getLoc(), result_type, tosa_result_reshape_op,
+             result_transpose_perm_val.value())
+      .getResult();
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.
