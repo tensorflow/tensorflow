@@ -245,7 +245,7 @@ class Compiler {
         const HloModule& module)>
         layout_canonicalization_callback = {};
 
-    bool enable_debug_info_manager = true;
+    bool is_autotuning_compilation = false;
   };
 
   virtual ~Compiler() = default;

@@ -190,7 +190,7 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
       std::move(*new_hlo_module), &stream_executor_,
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
                                /*layout_canonicalization_callback=*/{},
-                               /*enable_debug_info_manager=*/false});
+                               /*is_autotuning_compilation=*/true});
   if (out.status().code() == absl::StatusCode::kResourceExhausted) {
     // Being out of shared memory budget is an expected failure.
     return std::unique_ptr<Executable>();

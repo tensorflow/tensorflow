@@ -480,7 +480,8 @@ StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version, bool relocatable,
-                                   const HloModule* debug_module) {
+                                   const HloModule* debug_module,
+                                   const CompileOptions& options) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -493,9 +494,13 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
-        (debug_module != nullptr ? debug_module->name() : "(unknown")));
+    // This may print multiple lines per HLO compilation because of the
+    // parallelized compilation of LLVM modules.
+    XLA_SCOPED_LOGGING_TIMER_IF(
+        absl::StrCat(
+            "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+            (debug_module != nullptr ? debug_module->name() : "(unknown")),
+        !options.is_autotuning_compilation);
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx,
                         nvptx::CompileToPtx(selected_module, gpu_version,
@@ -510,7 +515,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
       ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
       (debug_module != nullptr ? debug_module->name() : "(unknown)"),
-      relocatable);
+      relocatable, options);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
@@ -519,9 +524,13 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     const std::string& ptx, se::CudaComputeCapability cc,
     const HloModuleConfig& hlo_module_config, absl::string_view module_name,
-    bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
-      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
+    bool relocatable, const CompileOptions& options) {
+  // This may print multiple lines per HLO compilation because of the
+  // parallelized compilation of LLVM modules.
+  XLA_SCOPED_LOGGING_TIMER_IF(
+      absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
+                   module_name),
+      !options.is_autotuning_compilation);
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
