@@ -874,6 +874,10 @@ class PjRtBuffer {
     return on_device_shape().layout();
   }
 
+  // PjRtBuffers can either represent a single array buffer or a tuple of array
+  // buffers. Returns true if this buffer represents a tuple, false if an array.
+  virtual bool IsTuple() const { return on_device_shape().IsTuple(); }
+
   virtual const Shape& on_device_shape() const = 0;
 
   // Same as dimensions() when the shape is static. When the shape is dynamic,

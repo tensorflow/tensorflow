@@ -270,6 +270,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   const Layout& layout() const override;
 
+  // PJRT C API doesn't support tuple buffers.
+  bool IsTuple() const override { return false; }
+
   const Shape& on_device_shape() const override;
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
