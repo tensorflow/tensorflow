@@ -377,22 +377,6 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   return OkStatus();
 }
 
-HloInstruction* HloComputation::NextInstruction(HloInstruction* current) {
-  InstructionList::iterator instructions_it;
-  if (current == nullptr) {
-    instructions_it = instructions_.begin();
-  } else {
-    auto it = instruction_iterators_.find(current);
-    CHECK(it != instruction_iterators_.end());
-    instructions_it = it->second;
-    ++instructions_it;
-  }
-  if (instructions_it == instructions_.end()) {
-    return nullptr;
-  }
-  return instructions_it->get();
-}
-
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
                                           bool accept_different_shape) {
   // The shape of the root (ignoring layout) is an invariant of the computation
@@ -583,14 +567,13 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   absl::flat_hash_set<HloComputation*> visited;
   std::vector<HloComputation*> post_order;
   // The first element of the pair is the currently processed computation, the
-  // second is the instruction within the computation that is currently being
-  // processed. 'nullptr' for the instruction indicates that no instruction has
-  // been processed so far.
-  std::stack<std::pair<HloComputation*, HloInstruction*>> st;
+  // second is iterator inside the instructions list of the computation that is
+  // currently being processed.
+  std::stack<std::pair<HloComputation*, InstructionList::const_iterator>> st;
 
-  // We cannot directly push (this, nullptr) to the stack, as the stack should
-  // contain only mutable computations. Also, we don't want to include the
-  // computation itself in the list of embedded computations.
+  // We cannot directly push (this, instructions_.cbegin()) to the stack, as the
+  // stack should contain only mutable computations. Also, we don't want to
+  // include the computation itself in the list of embedded computations.
   for (auto* instruction : instructions()) {
     auto process_called_computations =
         [&](std::vector<HloComputation*> called_computations) {
@@ -600,21 +583,21 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
           absl::c_reverse(called_computations);
           for (HloComputation* called_computation : called_computations) {
             if (visited.insert(called_computation).second) {
-              st.emplace(called_computation, nullptr);
+              st.emplace(called_computation,
+                         called_computation->instructions_.cbegin());
             }
           }
         };
     process_called_computations(instruction->called_computations());
     while (!st.empty()) {
-      auto cur = st.top();
-      st.pop();
+      auto& cur = st.top();
       HloComputation* computation = cur.first;
-      HloInstruction* next_instruction =
-          computation->NextInstruction(cur.second);
-      if (next_instruction == nullptr) {
+      if (cur.second == computation->instructions_.cend()) {
+        st.pop();
         post_order.push_back(computation);
       } else {
-        st.emplace(computation, next_instruction);
+        HloInstruction* next_instruction = cur.second->get();
+        ++cur.second;
         process_called_computations(next_instruction->called_computations());
       }
     }
