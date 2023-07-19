@@ -507,7 +507,8 @@ class IrEmitterUnnested : public IrEmitter {
   // different. On the other hand, the input ranges of slices can be
   // overlapping. Further generalization/specialization when the needs are seen
   // in the future.
-  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op);
+  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op,
+                                          HloFusionAnalysis& fusion_analysis);
 
   Status EmitElementForInputFusibleSlices(
       const HloComputation* fused_computation,
@@ -558,7 +559,8 @@ class IrEmitterUnnested : public IrEmitter {
                            const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                     const HloComputation* fused_computation);
+                     const HloComputation* fused_computation,
+                     HloFusionAnalysis& fusion_analysis);
 
   Status EmitDynamicUpdateSlice(mlir::lmhlo::FusionOp fusion_op,
                                 const HloComputation* fused_computation);

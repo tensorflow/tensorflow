@@ -1191,49 +1191,49 @@ bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
 
 bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   tensorflow::XlaCallModuleLoader* loader;
-  {
-    const auto [it, inserted] = xla_call_module_loaders_.insert({op, nullptr});
-
+  if (auto it = xla_call_module_loaders_.find(op);
+      it != xla_call_module_loaders_.end()) {
+    loader = it->second.get();
+  } else {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
-    if (inserted) {
-      std::vector<std::string> dim_args_spec;
-      for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-        dim_args_spec.push_back(attr.getValue().str());
-      }
-      std::vector<std::string> disabled_checks;
-      for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
-        disabled_checks.push_back(attr.getValue().str());
-      }
-      std::vector<std::string> platforms;
-      for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
-        platforms.push_back(attr.getValue().str());
-      }
-      // Always use the first platform. The assumption is that shape inference
-      // results should be the same regardless of which platform is chosen.
-      // Very old versions of the op have an empty platforms attribute.
-      std::string loading_platform =
-          (platforms.empty() ? "CPU" : platforms.front());
 
-      // It is a terrible idea to have local MLIR contexts so we need to
-      // register extensions here, again.
-      mlir::DialectRegistry registry;
-      registry.insert<mlir::func::FuncDialect>();
-      mlir::func::registerAllExtensions(registry);
-      xla_call_module_context_.appendDialectRegistry(registry);
+    std::vector<std::string> dim_args_spec;
+    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
+      dim_args_spec.push_back(attr.getValue().str());
+    }
+    std::vector<std::string> disabled_checks;
+    for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+      disabled_checks.push_back(attr.getValue().str());
+    }
+    std::vector<std::string> platforms;
+    for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+      platforms.push_back(attr.getValue().str());
+    }
+    // Always use the first platform. The assumption is that shape inference
+    // results should be the same regardless of which platform is chosen.
+    // Very old versions of the op have an empty platforms attribute.
+    std::string loading_platform =
+        (platforms.empty() ? "CPU" : platforms.front());
 
-      auto l = tensorflow::XlaCallModuleLoader::Create(
-          &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-          std::move(dim_args_spec), std::move(disabled_checks),
-          std::move(platforms), std::move(loading_platform));
-      if (!l.ok()) {
-        LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
-                                << l.status().ToString() << "\n");
-        return false;
-      }
-      it->second = *std::move(l);
+    // It is a terrible idea to have local MLIR contexts so we need to
+    // register extensions here, again.
+    mlir::DialectRegistry registry;
+    registry.insert<mlir::func::FuncDialect>();
+    mlir::func::registerAllExtensions(registry);
+    xla_call_module_context_.appendDialectRegistry(registry);
+
+    auto l = tensorflow::XlaCallModuleLoader::Create(
+        &xla_call_module_context_, op.getVersion(), op.getModule().str(),
+        std::move(dim_args_spec), std::move(disabled_checks),
+        std::move(platforms), std::move(loading_platform));
+    if (!l.ok()) {
+      LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
+                              << l.status().ToString() << "\n");
+      return false;
     }
 
+    it = xla_call_module_loaders_.insert({op, *std::move(l)}).first;
     loader = it->second.get();
   }
 

@@ -39,6 +39,15 @@ message CudnnConvBackendConfig {
   // is provided, this field must be 0.
   double side_input_scale = 5;
 
+  // The negative slope coefficient alpha for leaky_relu activation, used only
+  // when activation_mode is kLeakyRelu.
+  //
+  // leakyrelu(x) is defined as x > 0 ? x : alpha * x.
+  //
+  // Since this is a proto3 proto, leakyrelu_alpha is 0 if not specified (in
+  // which case the leakyrelu activation is equivalent to relu).
+  double leakyrelu_alpha = 8;
+
   // If the filter (and bias, if present) have been reordered, set this flag.
   // It's placed into a `oneof` block to skip the serialization when not set.
   oneof filter_and_bias_reordering_oneof {

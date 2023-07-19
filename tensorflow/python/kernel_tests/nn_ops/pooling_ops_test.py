@@ -2334,6 +2334,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         data_format=data_format,
         use_gpu=use_gpu)
 
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
     #os.environ["TF_USE_ROCM_NHWC"] = "1"
     self.skipTest("Re-enable when NHWC is fully supported on ROCM.")

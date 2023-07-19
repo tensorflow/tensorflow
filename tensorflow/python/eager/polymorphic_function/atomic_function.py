@@ -234,6 +234,9 @@ class AtomicFunction:
     if len(args) != expected_len:
       raise ValueError(
           f"Signature specifies {expected_len} arguments, got: {len(args)}."
+          f" Expected inputs: {self.cached_definition.signature.input_arg}."
+          f" Received inputs: {args}."
+          f" Function Type: {self.function_type!r}"
       )
 
     with InterpolateRuntimeError(self):

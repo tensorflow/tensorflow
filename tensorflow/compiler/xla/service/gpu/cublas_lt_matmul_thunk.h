@@ -21,6 +21,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -33,13 +34,15 @@ limitations under the License.
 #else
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 class CublasLtMatmulThunk : public Thunk {
  public:
-  CublasLtMatmulThunk(ThunkInfo thunk_info, cublas_lt::MatmulPlan plan,
+  CublasLtMatmulThunk(ThunkInfo thunk_info, GemmConfig gemm_config,
+                      se::gpu::BlasLt::Epilogue epilogue,
                       int64_t algorithm_idx, BufferAllocation::Slice a_buffer,
                       BufferAllocation::Slice b_buffer,
                       BufferAllocation::Slice c_buffer,
@@ -55,7 +58,16 @@ class CublasLtMatmulThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  cublas_lt::MatmulPlan plan_;
+  StatusOr<cublas_lt::MatmulPlan*> GetMatmulPlan(
+      const stream_executor::Stream* stream);
+
+  absl::Mutex matmul_plans_cache_mutex_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<cublas_lt::MatmulPlan>>
+      matmul_plans_cache_ ABSL_GUARDED_BY(matmul_plans_cache_mutex_);
+
+  GemmConfig gemm_config_;
+  se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
   BufferAllocation::Slice a_buffer_;
   BufferAllocation::Slice b_buffer_;

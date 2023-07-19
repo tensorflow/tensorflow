@@ -31,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -540,14 +541,14 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     # Attempt to fetch before killing worker task should succeed.
     fetched = remote_value.get()[0]
-    self.assertIsInstance(fetched, ops.Tensor)
+    self.assertIsInstance(fetched, tensor.Tensor)
     self.assertEqual(fetched.device, "/job:chief/replica:0/task:0/device:CPU:0")
     self.assertEqual((1, -1), remote_value.get())
     remote_value.get()[0].numpy()
 
     # As well as the remote tensors that point to worker0 or worker1.
     values = remote_value._values[0]
-    self.assertIsInstance(values, ops.Tensor)
+    self.assertIsInstance(values, tensor.Tensor)
     self.assertRegex(values.device,
                      "/job:worker/replica:0/task:[0-1]/device:CPU:0")
     self.assertEqual((1, -1), remote_value._values)

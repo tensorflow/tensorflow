@@ -17,7 +17,7 @@
 # pylint: disable=g-direct-tensorflow-import
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops.numpy_ops import np_dtypes
 
@@ -47,4 +47,4 @@ def convert_to_tensor(value, dtype=None, dtype_hint=None):
       value, dtype=dtype, dtype_hint=dtype_hint)
 
 
-ndarray = ops.Tensor
+ndarray = tensor.Tensor

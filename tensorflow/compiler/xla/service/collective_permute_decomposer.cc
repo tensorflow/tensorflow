@@ -98,6 +98,7 @@ Status DecomposeCollectivePermute(
   int64_t channel_id = collective_permute->channel_id().value_or(0);
   HloInstruction* data = collective_permute->mutable_operand(0);
   const Shape& data_shape = data->shape();
+  const OpMetadata& metadata = collective_permute->metadata();
 
   xla::FrontendAttributes attributes;
   std::string source_target_pairs_string =
@@ -121,10 +122,12 @@ Status DecomposeCollectivePermute(
   HloInstruction* recv = computation->AddInstruction(
       HloInstruction::CreateRecv(data_shape, after_all, channel_id));
   recv->set_frontend_attributes(attributes);
+  recv->set_metadata(metadata);
 
   HloInstruction* send = computation->AddInstruction(
       HloInstruction::CreateSend(data, after_all, channel_id));
   send->set_frontend_attributes(attributes);
+  send->set_metadata(metadata);
   // We want the Recv to be scheduled before the Send, enforce this with a
   // control dependency.
   TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));

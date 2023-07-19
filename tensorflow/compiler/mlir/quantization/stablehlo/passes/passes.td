@@ -24,6 +24,6 @@ def QuantizeWeightPass : Pass<"stablehlo-quantize-weight", "mlir::func::FuncOp">
 def PrepareSrqQuantizePass : Pass<"stablehlo-prepare-srq-quantize", "mlir::func::FuncOp"> {
   let summary = "Prepare StableHLO dialect for static range quantization.";
   let constructor = "CreatePrepareSrqQuantizePass()";
-  let dependentDialects = ["stablehlo::StablehloDialect", "quant::QuantizationDialect"];
+  let dependentDialects = ["stablehlo::StablehloDialect", "quant::QuantizationDialect", "quantfork::QuantizationForkDialect"];
 }
 

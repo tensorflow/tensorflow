@@ -8,7 +8,6 @@ load(
     _cuda_py_test = "cuda_py_test",
     _filegroup = "filegroup",
     _genrule = "genrule",
-    _get_compatible_with_cloud = "get_compatible_with_cloud",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_indexing_source_code = "if_indexing_source_code",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
@@ -81,7 +80,6 @@ tf_external_workspace_visible = _tf_external_workspace_visible
 tf_grpc_dependencies = _tf_grpc_dependencies
 tf_grpc_cc_dependencies = _tf_grpc_cc_dependencies
 get_compatible_with_portable = _get_compatible_with_portable
-get_compatible_with_cloud = _get_compatible_with_cloud
 cc_header_only_library = _cc_header_only_library
 tf_gen_op_libs = _tf_gen_op_libs
 tf_gen_op_wrapper_cc = _tf_gen_op_wrapper_cc

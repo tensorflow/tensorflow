@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 7
+#define PJRT_API_MINOR 9
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -138,6 +138,50 @@ typedef PJRT_Error* (*PJRT_CallbackError)(PJRT_Error_Code code,
                                           const char* message,
                                           size_t message_size);
 
+// ---------------------------- Named Values -----------------------------------
+
+typedef enum {
+  PJRT_NamedValue_kString = 0,
+  PJRT_NamedValue_kInt64,
+  PJRT_NamedValue_kInt64List,
+  PJRT_NamedValue_kFloat,
+} PJRT_NamedValue_Type;
+
+// Named value for key-value pairs.
+struct PJRT_NamedValue {
+  size_t struct_size;
+  void* priv;
+  const char* name;
+  size_t name_size;
+  PJRT_NamedValue_Type type;
+  union {
+    const char* string_value;
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    float float_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
+
+// ---------------------------------- Plugin -----------------------------------
+
+struct PJRT_Plugin_Attributes_Args {
+  size_t struct_size;
+  void* priv;
+  // Returned attributes have the lifetime of the process.
+  PJRT_NamedValue* attributes;  // out
+  size_t num_attributes;        // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, attributes);
+
+// Returns an array of plugin attributes which are key-value pairs. One example
+// attribute is the minimum supported StableHLO version.
+// TODO(b/280349977): standardize the list of attributes.
+typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
+
 // ---------------------------------- Events -----------------------------------
 
 // Represents a notifying event that is returned by PJRT APIs that enqueue
@@ -220,34 +264,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_OnReady_Args, user_arg);
 // Registers `callback` to be called once `event` is ready, with `event`'s
 // error status and a pointer to an object of the caller's choice as arguments.
 typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
-
-// ------------------------ Other Common Data Types ----------------------------
-
-typedef enum {
-  PJRT_NamedValue_kString = 0,
-  PJRT_NamedValue_kInt64,
-  PJRT_NamedValue_kInt64List,
-  PJRT_NamedValue_kFloat,
-} PJRT_NamedValue_Type;
-
-// Named value for key-value pairs.
-struct PJRT_NamedValue {
-  size_t struct_size;
-  void* priv;
-  const char* name;
-  size_t name_size;
-  PJRT_NamedValue_Type type;
-  union {
-    const char* string_value;
-    int64_t int64_value;
-    const int64_t* int64_array_value;
-    float float_value;
-  };
-  // `value_size` is the number of elements for array/string and 1 for scalar
-  // values.
-  size_t value_size;
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
 
 // ---------------------------------- Client -----------------------------------
 
@@ -1352,6 +1368,10 @@ struct PJRT_Buffer_ToHostBuffer_Args {
   void* priv;
   PJRT_Buffer* src;
 
+  // The caller can specify an optional host layout. If nullptr, the layout of
+  // the src buffer will be used. The caller is responsible to keep the data
+  // (tiled or strides) in the host_layout alive during the call.
+  PJRT_Buffer_MemoryLayout* host_layout;
   // `dst` can be nullptr to query required size which will be set into
   // `dst_size`.
   void* dst;  // in/out
@@ -1659,6 +1679,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_IsReady);

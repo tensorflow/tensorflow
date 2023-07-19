@@ -210,6 +210,13 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+// ---------------------------------- Plugin -----------------------------------
+
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  args->num_attributes = 0;
+  return nullptr;
+}
+
 // ---------------------------------- Client -----------------------------------
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
@@ -471,7 +478,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
           PJRT_Buffer_MemoryLayout_Type_Strides: {
         PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
             "PJRT_Buffer_MemoryLayout_Type_Strides in device_layout is not "
-            "supported in  PJRT_Client_BufferFromHostBuffer for platform '%s'",
+            "supported in  PJRT_Client_BufferFromHostBuffer for platform ",
             args->client->client->platform_name())));
         break;
       }
@@ -1347,8 +1354,24 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
   } else {
     device_shape = args->src->buffer->on_device_shape();
   }
-  const xla::Shape& host_shape =
-      xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  xla::Shape host_shape = xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  if (args->host_layout != nullptr) {
+    if (args->host_layout->type ==
+        PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Strides) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with strides for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    if (args->host_layout->tiled.num_tiles > 0) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with tiled dimension for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    PJRT_ASSIGN_OR_RETURN(*host_shape.mutable_layout(),
+                          ConvertToLayout(args->host_layout->tiled));
+  }
 
   size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
 

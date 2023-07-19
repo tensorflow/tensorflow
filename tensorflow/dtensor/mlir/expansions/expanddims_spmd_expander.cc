@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -47,14 +48,14 @@ StatusOr<mlir::Operation*> ExpandDimsExpander::ExpandOp(mlir::Operation* op) {
                       ExtractConstIntFromValue(expand_dims_op.getDim()));
 
   if (dim < 0) dim += global_output_shape.size();
-  std::vector<ShardingSpec> sharding_specs(global_output_shape.size());
+  std::vector<std::string> sharding_specs(global_output_shape.size());
   for (int i = 0; i < global_output_shape.size(); ++i) {
     if (i < dim)
-      sharding_specs[i] = operand_layout->dim(i);
+      sharding_specs[i] = operand_layout->sharding_spec(i);
     else if (i == dim)
-      sharding_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+      sharding_specs[i] = Layout::kUnshardedDim;
     else
-      sharding_specs[i] = operand_layout->dim(i - 1);
+      sharding_specs[i] = operand_layout->sharding_spec(i - 1);
   }
   TF_ASSIGN_OR_RETURN(const Layout current_output_layout,
                       Layout::GetLayout(sharding_specs, output_layout->mesh()));

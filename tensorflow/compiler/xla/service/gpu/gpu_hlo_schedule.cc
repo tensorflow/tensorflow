@@ -241,9 +241,15 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
 }
 
 // GPU specific resources for latency hiding scheduler.
+//
+// We use two resources to model collective operations: a resource for sending
+// data and a resource for receiving data. All collective operations require
+// both resources while the Send and Recv operations requires only the single
+// resource corresponding to the operation.
 enum class GpuResourceType {
-  kGpuAsyncStream = 0,  // The async stream for collectives.
-  kNumTargetResources = 1,
+  kGpuAsyncStreamSend = 0,  // The resource for sending data.
+  kGpuAsyncStreamRecv = 1,  // The resource for receiving data.
+  kNumTargetResources = 2,
 };
 
 // Base GPU async tracker that enables async tracking only for async collectives
@@ -285,11 +291,20 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
       ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
                                     ? ResourceUsageType::kResourceRelease
                                     : ResourceUsageType::kResourceOccupy;
+      ResourcesVector resources;
+      auto add_resource = [&](GpuResourceType resource_type) {
+        const int64_t gpu_stream_resource = GetFirstTargetDefinedResource() +
+                                            static_cast<int64_t>(resource_type);
+        resources.push_back(std::make_pair(gpu_stream_resource, usage));
+      };
 
-      const int64_t gpu_stream_resource =
-          GetFirstTargetDefinedResource() +
-          static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
-      return {std::make_pair(gpu_stream_resource, usage)};
+      if (op.inner != HloOpcode::kRecv) {
+        add_resource(GpuResourceType::kGpuAsyncStreamSend);
+      }
+      if (op.inner != HloOpcode::kSend) {
+        add_resource(GpuResourceType::kGpuAsyncStreamRecv);
+      }
+      return resources;
     }
     return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
   }
@@ -304,9 +319,9 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     if (resource_type < first_target_resource) {
       return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
     }
-    CHECK_EQ(resource_type,
+    CHECK_LT(resource_type,
              first_target_resource +
-                 static_cast<int64_t>(GpuResourceType::kGpuAsyncStream));
+                 static_cast<int64_t>(GpuResourceType::kNumTargetResources));
 
     // We will allow upto 1 outstanding collective on the async stream. This
     // controls the number of collectives in flight in the schedule (a
@@ -329,8 +344,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
     switch (resource_type - first_target_resource) {
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStream):
-        return "kGpuAsyncStream";
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend):
+        return "kGpuAsyncStreamSend";
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamRecv):
+        return "kGpuAsyncStreamRecv";
       default:
         return "kUnsupportedResource";
     }
@@ -420,31 +437,37 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     return std::nullopt;
   }
   tsl::Env* env = tsl::Env::Default();
+  auto read_text_or_binary_profile = [&profile, env](
+                                         const std::string& text_path,
+                                         const std::string& binary_path)
+      -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
+    Status s = tsl::ReadTextProto(env, text_path, &profile);
+    if (s.ok()) {
+      LOG(INFO) << "Using PGLE profile from " << text_path;
+      return profile;
+    }
+    profile.Clear();
+    s = tsl::ReadBinaryProto(env, binary_path, &profile);
+    if (s.ok()) {
+      LOG(INFO) << "Using PGLE profile from " << binary_path;
+      return profile;
+    }
+    return std::nullopt;
+  };
+
   // If its a directory, use fingerprint to look for the profile for this
   // specific module.
   if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
-    std::string pgle_profile_path =
-        pgle_profile_file_or_dir_path + "/" + fingerprint + ".pbtxt";
-    Status s =
-        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &profile);
-    if (!s.ok()) {
-      // Unable to read PGLE using fingerprint.
-      return std::nullopt;
-    }
-    LOG(INFO) << "Using PGLE profile from " << pgle_profile_path;
-    return profile;
+    std::string pgle_profile_path_prefix =
+        pgle_profile_file_or_dir_path + "/" + fingerprint;
+    return read_text_or_binary_profile(pgle_profile_path_prefix + ".pbtxt",
+                                       pgle_profile_path_prefix + ".pb");
   }
 
-  // The pgle_profile_file_or_dir is a file. Read the profile and see if its
-  // applicable for this HLO module (all instruction names in the profile should
-  // be present in the HLO module)
-  Status s = tsl::ReadTextProto(tsl::Env::Default(),
-                                pgle_profile_file_or_dir_path, &profile);
-  if (s.ok()) {
-    LOG(INFO) << "Using PGLE profile from " << pgle_profile_file_or_dir_path;
-    return profile;
-  }
-  return std::nullopt;
+  // The pgle_profile_file_or_dir is a file. Attempt to read the profile as text
+  // proto or binary proto.
+  return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
+                                     pgle_profile_file_or_dir_path);
 }
 
 // Return true if the profile is applicable to the module. That is true if every

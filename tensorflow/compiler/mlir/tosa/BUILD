@@ -3,7 +3,7 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
@@ -35,12 +35,12 @@ filegroup(
     srcs = [
         "@llvm-project//mlir:TosaDialectTdFiles",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
 )
 
 gentbl_cc_library(
     name = "tosa_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -63,7 +63,7 @@ cc_library(
         "transforms/passes.h",
         "transforms/passes.h.inc",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//mlir:FuncDialect",
@@ -82,7 +82,7 @@ cc_library(
         "transforms/legalize_common.h",
         "transforms/legalize_utils.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -105,7 +105,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "tosa_legalize_tf_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -135,7 +135,7 @@ cc_library(
         "tf_passes.h",
         "transforms/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [":friends"],
     deps = [
         ":legalize_common",
@@ -158,7 +158,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "tosa_legalize_tfl_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -194,7 +194,7 @@ cc_library(
         "tfl_passes.h",
         "transforms/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [":friends"],
     deps = [
         ":legalize_common",
@@ -228,7 +228,7 @@ cc_library(
         "tf_tfl_passes.h",
         "transforms/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [":friends"],
     deps = [
         ":legalize_common",

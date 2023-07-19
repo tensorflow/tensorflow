@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
@@ -36,11 +38,19 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
       absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {{"visible_devices",
+            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
+           {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
            {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64}});
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
+  std::optional<std::set<int>> visible_devices;
+  if (auto it = create_options.find("visible_devices");
+      it != create_options.end()) {
+    const auto& vec = std::get<std::vector<int64_t>>(it->second);
+    visible_devices->insert(vec.begin(), vec.end());
+  }
   int node_id = 0;
   if (auto it = create_options.find("node_id"); it != create_options.end()) {
     node_id = std::get<int64_t>(it->second);
@@ -53,16 +63,15 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   // TODO(b/261916900) initializing allocator_config is important as should be
   // passed through the args later.
   xla::GpuAllocatorConfig allocator_config;
-  PJRT_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::PjRtClient> client,
-      xla::GetStreamExecutorGpuClient(
-          /*asynchronous=*/true, allocator_config, node_id, num_nodes,
-          /*allowed_devices=*/std::nullopt,
-          /*platform_name=*/std::nullopt, true,
-          pjrt::ToCppKeyValueGetCallback(args->kv_get_callback,
-                                         args->kv_get_user_arg),
-          pjrt::ToCppKeyValuePutCallback(args->kv_put_callback,
-                                         args->kv_put_user_arg)));
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::GetStreamExecutorGpuClient(
+                            /*asynchronous=*/true, allocator_config, node_id,
+                            num_nodes, visible_devices,
+                            /*platform_name=*/std::nullopt, true,
+                            pjrt::ToCppKeyValueGetCallback(
+                                args->kv_get_callback, args->kv_get_user_arg),
+                            pjrt::ToCppKeyValuePutCallback(
+                                args->kv_put_callback, args->kv_put_user_arg)));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }

@@ -1275,15 +1275,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
    }
  };
  
-@@ -1143,7 +1210,7 @@
-     // function. This is sufficient because we only support one function per
-     // program at the moment.
-     // TODO(#1048): Find out why .maxIterations = 1 no longer works.
--    // There have been recent refactors to applyPatternsAndFoldGreedily
-+    // There have been recent refactors in applyPatternsAndFoldGreedily
-     // upstream, and that might be the reason.
-     GreedyRewriteConfig config;
-     config.useTopDownTraversal = true;
 @@ -1181,7 +1248,9 @@
      patterns.add<RefineDynamicConvOpPattern>(&getContext());
      patterns.add<RefineDynamicIotaOpPattern>(&getContext());

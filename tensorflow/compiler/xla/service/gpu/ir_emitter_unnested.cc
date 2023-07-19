@@ -75,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -100,7 +99,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fused_mha_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
@@ -139,7 +137,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
-#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -1086,6 +1083,8 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.kind = CudnnConvKind::kForwardActivation;
     fill_conv_descriptor(conv);
     TF_RETURN_IF_ERROR(set_activation_mode(conv));
+    descriptor.backend_config.set_leakyrelu_alpha(
+        conv.getLeakyreluAlpha().convertToDouble());
   } else if (auto conv = dyn_cast<ConvForwardFusedSideInputOp>(op)) {
     descriptor.kind = CudnnConvKind::kForwardActivation;
     fill_conv_descriptor(conv);
@@ -1141,11 +1140,12 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(aux, GetAllocationSlice(matmul.getAux()));
   }
 
-  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                      cublas_lt::MatmulPlan::For(matmul));
+  TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
+                      cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),
+      a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1183,12 +1183,12 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
 
   BufferAllocation::Slice aux;  // Not used.
 
-  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                      cublas_lt::MatmulPlan::For(matmul));
-
+  TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),
+      a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1989,8 +1989,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
 
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(auto tiling_scheme,
-                      fusion_analysis.GetTransposeTilingScheme());
+  auto* tiling_scheme = fusion_analysis.GetTransposeTilingScheme();
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions());
 
@@ -2042,12 +2041,13 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 
   // Create HloFusionAnalysis instance.
   GpuDeviceInfo device_info = ir_emitter_context_->gpu_device_info();
-  HloFusionAnalysis fusion_analysis(
-      &fusion, &device_info, ir_emitter_context_->cuda_compute_capability());
+  TF_ASSIGN_OR_RETURN(auto fusion_analysis,
+                      HloFusionAnalysis::Create(
+                          &fusion, &device_info,
+                          ir_emitter_context_->cuda_compute_capability()));
 
   // Dispatch to the fusion specific emitter.
-  TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind,
-                      fusion_analysis.GetEmitterFusionKind());
+  auto emitter_fusion_kind = fusion_analysis.GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
 #if GOOGLE_CUDA
@@ -2079,9 +2079,9 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return EmitUnnestedTranspose(fusion_op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return EmitInputFusibleNonStridedSlices(op);
+      return EmitInputFusibleNonStridedSlices(op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
-      return EmitScatter(fusion_op, fused_computation);
+      return EmitScatter(fusion_op, fused_computation, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       // Special case: DUS
       bool is_single = IsSingleInstructionFusion(fusion_op);
@@ -2639,6 +2639,10 @@ Status IrEmitterUnnested::EmitScatter(
           index.GetType());
 
       int64_t operand_dim = desc.dim_numbers.getScatterDimsToOperandDims()[i];
+      if (operand_dim > rank) {
+        return absl::OutOfRangeError(
+            "The provided scatter_dims_to_operand_dims was out of range.");
+      }
       TF_ASSIGN_OR_RETURN(
           llvm::Value* const loaded_scatter_index,
           desc.scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(
@@ -2727,6 +2731,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     TF_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
+    module->config().set_debug_options(hlo_module_config_.debug_options());
 
     if (is_fusion) {
       HloComputation* fused_computation = module->entry_computation();
@@ -4870,8 +4875,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
 
 Status IrEmitterUnnested::EmitUnnestedReduction(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
-  TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
-                      fusion_analysis.GetReductionCodegenInfo());
+  auto* reduction_codegen_info = fusion_analysis.GetReductionCodegenInfo();
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions());
 
@@ -5041,25 +5045,19 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
 }
 
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
-    mlir::Operation* op) {
+    mlir::Operation* op, HloFusionAnalysis& fusion_analysis) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  constexpr int unroll_factor = 1;
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
                                                           /*is_fusion=*/true));
 
-  TF_ASSIGN_OR_RETURN(Shape element_shape,
-                      GetConsistentInputShapeForRootSlices(fused_computation));
   bool use_experimental_block_size =
       hlo_module_config_.debug_options()
           .xla_gpu_enable_experimental_block_size();
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          element_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size, {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
@@ -5070,6 +5068,8 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   }
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
 
+  TF_ASSIGN_OR_RETURN(Shape element_shape,
+                      GetConsistentInputShapeForRootSlices(fused_computation));
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(fused_computation,
@@ -5176,7 +5176,8 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
-                                      const HloComputation* fused_computation) {
+                                      const HloComputation* fused_computation,
+                                      HloFusionAnalysis& fusion_analysis) {
   auto* root = fused_computation->root_instruction();
 
   // The initialization from 'operand' is using different loop bounds, so
@@ -5188,12 +5189,9 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 
   TF_RETURN_IF_ERROR([&] {
     auto unroll_factor = ComputeMaxUnrollFactor(fusion_op);
-    const Shape& element_shape = root->shape();
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
-        CalculateLaunchDimensions(
-            element_shape, ir_emitter_context_->gpu_device_info(),
-            use_experimental_block_size, {unroll_factor, /*few_waves=*/false}));
+        fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
 
     TF_ASSIGN_OR_RETURN(
         std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,

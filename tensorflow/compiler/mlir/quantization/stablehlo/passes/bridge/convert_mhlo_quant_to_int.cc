@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -435,6 +438,55 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
   }
 };
 
+// A shared matchAndRewrite implementation for dot-like hybrid quantized
+// operators. Hybrid ops are currently only interpreted as weight-only
+// quantization ops, this might change in the future.
+//
+// All attrs of the original op are preserved after the conversion.
+template <typename OpType, typename OpAdaptorType>
+LogicalResult matchAndRewriteDotLikeHybridOp(
+    OpType &op, OpAdaptorType &adaptor, ConversionPatternRewriter &rewriter,
+    const quant::UniformQuantizedType &rhs_element_type) {
+  // For dot like hybrid ops, lhs is float type, rhs is uniform
+  // quantized type and result is float type.
+  // For weight-only quantization:
+  // result = hybridOp(lhs, dequant(rhs))
+  Value lhs_float32_tensor = adaptor.getLhs();
+  Value rhs = adaptor.getRhs();
+  auto res_float32_tensor_type =
+      op.getResult().getType().template cast<TensorType>();
+
+  // Get scales and zero points for rhs.
+  Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(),
+      rewriter.getF32FloatAttr((rhs_element_type.getZeroPoint())));
+  Value rhs_scale_constant = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getF32FloatAttr(
+                        static_cast<float_t>(rhs_element_type.getScale())));
+
+  // Dequantize rhs_float32_tensor.
+  Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
+      op->getLoc(), res_float32_tensor_type, rhs);
+  rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
+      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
+      nullptr);
+  rhs_float32_tensor = rewriter.create<chlo::BroadcastMulOp>(
+      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor,
+      rhs_scale_constant, nullptr);
+
+  // Execute conversion target op.
+  SmallVector<Value, 2> operands{lhs_float32_tensor, rhs_float32_tensor};
+  Value res_float32 = rewriter.create<OpType>(
+      op->getLoc(), res_float32_tensor_type, operands, op->getAttrs());
+
+  Value half = rewriter.create<mhlo::ConstantOp>(
+      op->getLoc(), rewriter.getF32FloatAttr(0.5f));
+  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
+      op->getLoc(), res_float32_tensor_type, res_float32, half, nullptr);
+  rewriter.replaceOpWithNewOp<mhlo::FloorOp>(op, res_float32);
+  return success();
+}
+
 // A shared matchAndRewrite implementation for dot-like quantized operators.
 //
 // Dot-like operators refer to operators that generate a tensor where each
@@ -446,24 +498,42 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
 template <typename OpType, typename OpAdaptorType>
 LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
                                        ConversionPatternRewriter &rewriter) {
-  auto lhs_element_type = op.getLhs()
-                              .getType()
-                              .getElementType()
-                              .template dyn_cast<quant::UniformQuantizedType>();
-  auto rhs_element_type = op.getRhs()
-                              .getType()
-                              .getElementType()
-                              .template dyn_cast<quant::UniformQuantizedType>();
-  auto res_element_type = op.getResult()
-                              .getType()
-                              .getElementType()
-                              .template dyn_cast<quant::UniformQuantizedType>();
+  auto lhs_element_type = getElementTypeOrSelf(op.getLhs().getType());
+  auto rhs_element_quant_type =
+      op.getRhs()
+          .getType()
+          .getElementType()
+          .template dyn_cast<quant::UniformQuantizedType>();
+  auto res_element_type = getElementTypeOrSelf(op.getResult());
 
-  // Check if the operands and result are UniformQuantizedTypes.
-  if (!lhs_element_type || !rhs_element_type || !res_element_type) {
+  // Check if the right operand is UniformQuantizedTypes.
+  if (!rhs_element_quant_type) {
     return rewriter.notifyMatchFailure(
         op, "Legalization failed: supports only per-tensor quantization.");
   }
+
+  if (lhs_element_type.template isa<quant::UniformQuantizedType>()) {
+    // If lhs is uniform quantized type, result should also be uniform
+    // quantized type, representing none-hybrid op.
+    if (!res_element_type.template isa<quant::UniformQuantizedType>()) {
+      op->emitError("Unsupported result element type for " +
+                    op->getName().getStringRef().str());
+      return failure();
+    }
+  } else if (lhs_element_type.isF32()) {
+    // If lhs is float32 type, result should also be float32 type,
+    // representing hybrid op.
+    if (!res_element_type.isF32()) {
+      op->emitError("Unsupported result element type for " +
+                    op->getName().getStringRef().str());
+      return failure();
+    }
+    return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter,
+                                          rhs_element_quant_type);
+  } else {
+    return rewriter.notifyMatchFailure(op, "Unsupported input element type.");
+  }
+
   auto res_float32_tensor_type_or = GetSameShapeTensorType(
       op, op.getResult().getType().template cast<TensorType>(),
       rewriter.getF32Type(), rewriter);
@@ -471,6 +541,10 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
     return failure();
   }
 
+  auto lhs_element_quant_type =
+      lhs_element_type.template dyn_cast<quant::UniformQuantizedType>();
+  auto res_element_quant_type =
+      res_element_type.template dyn_cast<quant::UniformQuantizedType>();
   Value lhs = adaptor.getLhs();
   Value rhs = adaptor.getRhs();
 
@@ -481,10 +555,10 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
   // Get scales and zero points for both operands.
   Value lhs_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
-      rewriter.getF32FloatAttr((lhs_element_type.getZeroPoint())));
+      rewriter.getF32FloatAttr((lhs_element_quant_type.getZeroPoint())));
   Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
-      rewriter.getF32FloatAttr((rhs_element_type.getZeroPoint())));
+      rewriter.getF32FloatAttr((rhs_element_quant_type.getZeroPoint())));
 
   // Offset xxx_int32_tensor according to zero points.
   Value lhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
@@ -507,10 +581,10 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
   // scales.
   Value result_zero_point = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
-      rewriter.getF32FloatAttr((res_element_type.getZeroPoint())));
-  const double effective_scale = lhs_element_type.getScale() *
-                                 rhs_element_type.getScale() /
-                                 res_element_type.getScale();
+      rewriter.getF32FloatAttr((res_element_quant_type.getZeroPoint())));
+  const double effective_scale = lhs_element_quant_type.getScale() *
+                                 rhs_element_quant_type.getScale() /
+                                 res_element_quant_type.getScale();
   Value effective_scale_constant = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(),
       rewriter.getF32FloatAttr(static_cast<float_t>(effective_scale)));
@@ -543,10 +617,10 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
   // Clamp results by [quantization_min, quantization_max].
   Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                        res_element_type.getStorageTypeMin())));
+                        res_element_quant_type.getStorageTypeMin())));
   Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                        res_element_type.getStorageTypeMax())));
+                        res_element_quant_type.getStorageTypeMax())));
   res_int32 = rewriter.create<mhlo::ClampOp>(
       op->getLoc(), *res_int32_tensor_type_or, result_quantization_min,
       res_int32, result_quantization_max);
@@ -554,7 +628,7 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
   // Convert results back to int8.
   auto res_final_tensor_type_or = GetSameShapeTensorType(
       op, res_int32_tensor_type_or->template cast<TensorType>(),
-      res_element_type.getStorageType(), rewriter);
+      res_element_quant_type.getStorageType(), rewriter);
   rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
                                                res_int32);
 
@@ -568,8 +642,7 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   LogicalResult matchAndRewrite(
       mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp<mhlo::DotOp, mhlo::DotOpAdaptor>(
-        op, adaptor, rewriter);
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
   }
 };
 
@@ -581,9 +654,7 @@ class ConvertUniformQuantizedConvolutionOp
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp op, mhlo::ConvolutionOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp<mhlo::ConvolutionOp,
-                                    mhlo::ConvolutionOpAdaptor>(op, adaptor,
-                                                                rewriter);
+    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
   }
 };
 

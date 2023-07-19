@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
+// Placeholder for protosplitter riegeli includes.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
@@ -178,8 +179,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
 
   return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
 
-  return absl::UnimplementedError(
-      "Chunked proto fingerprinting unimplemented.");
+  return absl::PermissionDeniedError("Chunked proto format is not available in OSS.");
 }
 
 absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
@@ -36,9 +35,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+#ifdef GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -134,6 +137,23 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
            rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
 
   return true;
+}
+
+int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config) {
+#ifdef GOOGLE_CUDA
+  auto ptxas_config =
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+  auto ptxas_version_tuple =
+      se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir);
+  // ptxas versions prior to 12.2 have a very rare bug when very high register
+  // spilling occurs with some order of instructions, so use less threads to
+  // reduce register pressure.
+  if (!ptxas_version_tuple.ok() ||
+      ptxas_version_tuple.value() < std::array<int64_t, 3>{12, 2, 0}) {
+    return 512;
+  }
+#endif  // GOOGLE_CUDA
+  return 1024;
 }
 
 Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
@@ -777,11 +797,13 @@ Shape GetShape(mlir::Value value) {
   return {};
 }
 
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions) {
+bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
+                         const ReductionDimensions& reduction_dimensions) {
   Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
-              MinThreadsXRowReduction() * reduction_tiling[2] &&
+              MinThreadsXRowReduction(hlo_module_config) *
+                  reduction_tiling[2] &&
           reduction_dimensions.dimensions[0] <=
               BatchedReductionRaceFreeBound()) ||
          (!reduction_dimensions.is_row_reduction &&
@@ -973,6 +995,16 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
       GetFusionRoots(computation), [&](const HloInstruction* instr) {
         return IsReductionFromOrToContiguousDimensions(*instr);
       });
+}
+
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
+    return IsReductionFromOrToContiguousDimensions(*instr);
+  });
+  if (it == roots.end()) {
+    return nullptr;
+  }
+  return *it;
 }
 
 void LogAndVerify(const llvm::Module* m) {

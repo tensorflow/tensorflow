@@ -5695,20 +5695,20 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
             PrecisionConfig::HIGHEST);
 }
 
-TEST_F(AlgebraicSimplifierTest, DotAttentionReorder) {
+TEST_F(AlgebraicSimplifierTest, DotAssociativeReorder) {
   const char* hlo_string = R"(
     HloModule module
 
     ENTRY test {
-        a = f32[1024,2] parameter(0)
-        b = f32[2,1024] parameter(1)
-        c = f32[1024,2] parameter(2)
-        inner_dot = f32[1024,1024] dot(a,b),
-                    lhs_contracting_dims={1},
-                    rhs_contracting_dims={0}
-        ROOT outer_dot = f32[1024,2] dot(inner_dot, c),
-                         lhs_contracting_dims={1},
-                         rhs_contracting_dims={0}
+        a = f32[2,3,4,5] parameter(0)
+        b = f32[6,7,5] parameter(1)
+        c = f32[4,7] parameter(2)
+        inner_dot = f32[2,3,4,6,7] dot(a,b),
+                    lhs_contracting_dims={3},
+                    rhs_contracting_dims={2}
+        ROOT outer_dot = f32[2,3,6] dot(inner_dot,c),
+                         lhs_contracting_dims={2,4},
+                         rhs_contracting_dims={0,1}
       }
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -9449,6 +9449,42 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
               .WithPredicate([](const HloInstruction* instr) {
                 return instr->dimensions() == std::vector<int64_t>({0, 3});
               })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4]{3,2,1,0} broadcast(f32[2,4]{1,0} parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4]{3,1,0,2} bitcast(bcast)
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  EXPECT_TRUE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Broadcast(m::Parameter(0))
+              .WithPredicate([](const HloInstruction* instr) {
+                return instr->dimensions() == std::vector<int64_t>({0, 3});
+              })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastWithLayoutCheckSkipped) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4]{3,2,1,0} broadcast(f32[2,4]{1,0} parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4]{0,1,2,3} transpose(bcast), dimensions={1,2,0,3}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  EXPECT_FALSE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {

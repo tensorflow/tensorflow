@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
@@ -40,7 +41,6 @@ from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
-from tensorflow.python.util import dispatch
 
 
 pi = np_export.np_export_constant(__name__, 'pi', np.pi)
@@ -569,7 +569,6 @@ def bitwise_xor(x1, x2):
   return _bitwise_binary_op(bitwise_ops.bitwise_xor, x1, x2)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('bitwise_not', link=np_utils.AliasOf('invert'))
 def bitwise_not(x):
 
@@ -602,73 +601,61 @@ def _scalar(tf_fn, x, promote_to_float=False):
   return tf_fn(x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('log')
 def log(x):
   return _scalar(math_ops.log, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('exp')
 def exp(x):
   return _scalar(math_ops.exp, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sqrt')
 def sqrt(x):
   return _scalar(math_ops.sqrt, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('abs', link=np_utils.AliasOf('absolute'))
 def abs(x):  # pylint: disable=redefined-builtin
   return _scalar(math_ops.abs, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('absolute')
 def absolute(x):
   return abs(x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('fabs')
 def fabs(x):
   return abs(x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('ceil')
 def ceil(x):
   return _scalar(math_ops.ceil, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('floor')
 def floor(x):
   return _scalar(math_ops.floor, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('conj')
 def conj(x):
   return _scalar(math_ops.conj, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('negative')
 def negative(x):
   return _scalar(math_ops.negative, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('reciprocal')
 def reciprocal(x):
   return _scalar(math_ops.reciprocal, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('signbit')
 def signbit(x):
 
@@ -680,79 +667,66 @@ def signbit(x):
   return _scalar(f, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sin')
 def sin(x):
   return _scalar(math_ops.sin, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('cos')
 def cos(x):
   return _scalar(math_ops.cos, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('tan')
 def tan(x):
   return _scalar(math_ops.tan, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sinh')
 def sinh(x):
   return _scalar(math_ops.sinh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('cosh')
 def cosh(x):
   return _scalar(math_ops.cosh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('tanh')
 def tanh(x):
   return _scalar(math_ops.tanh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arcsin')
 def arcsin(x):
   return _scalar(math_ops.asin, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arccos')
 def arccos(x):
   return _scalar(math_ops.acos, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arctan')
 def arctan(x):
   return _scalar(math_ops.atan, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arcsinh')
 def arcsinh(x):
   return _scalar(math_ops.asinh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arccosh')
 def arccosh(x):
   return _scalar(math_ops.acosh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('arctanh')
 def arctanh(x):
   return _scalar(math_ops.atanh, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('deg2rad')
 def deg2rad(x):
 
@@ -762,7 +736,6 @@ def deg2rad(x):
   return _scalar(f, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('rad2deg')
 def rad2deg(x):
   return x * (180.0 / np.pi)
@@ -773,7 +746,6 @@ _tf_float_types = [
 ]
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('angle')
 def angle(z, deg=False):  # pylint: disable=missing-function-docstring
 
@@ -790,7 +762,6 @@ def angle(z, deg=False):  # pylint: disable=missing-function-docstring
   return y
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('cbrt')
 def cbrt(x):
 
@@ -802,13 +773,11 @@ def cbrt(x):
   return _scalar(f, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
   return _scalar(math_ops.conj, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('exp2')
 def exp2(x):
 
@@ -818,13 +787,11 @@ def exp2(x):
   return _scalar(f, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('expm1')
 def expm1(x):
   return _scalar(math_ops.expm1, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('fix')
 def fix(x):
 
@@ -880,7 +847,6 @@ nansum = _make_nan_reduction('nansum', np_array_ops.sum, 0)
 nanprod = _make_nan_reduction('nanprod', np_array_ops.prod, 1)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('nanmean')
 def nanmean(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=missing-docstring
   a = np_array_ops.array(a)
@@ -921,31 +887,26 @@ def isposinf(x):
   return False
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('log2')
 def log2(x):
   return log(x) / np.log(2)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('log10')
 def log10(x):
   return log(x) / np.log(10)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('log1p')
 def log1p(x):
   return _scalar(math_ops.log1p, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('positive')
 def positive(x):
   return _scalar(lambda x: x, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sinc')
 def sinc(x):
 
@@ -957,13 +918,11 @@ def sinc(x):
   return _scalar(f, x, True)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('square')
 def square(x):
   return _scalar(math_ops.square, x)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('diff')
 def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
 
@@ -1245,7 +1204,6 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
   return np_array_ops.array(tf_ans, dtype=np.intp)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('sort')
 def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
   if kind != 'quicksort':
@@ -1292,7 +1250,6 @@ def append(arr, values, axis=None):
     return concatenate([arr, values], axis=axis)
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('average')
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
   if axis is not None and not isinstance(axis, int):
@@ -1355,7 +1312,6 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
   return avg
 
 
-@dispatch.add_dispatch_support
 @np_utils.np_doc('trace')
 def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
   if dtype:
@@ -1456,39 +1412,44 @@ def _tensor_size(self):
 
 
 def _tensor_tolist(self):
-  if isinstance(self, ops.EagerTensor):
-    return self._numpy().tolist()  # pylint: disable=protected-access
+  if ops.is_symbolic_tensor(self):
+    raise ValueError('Symbolic Tensors do not support the tolist API.')
 
-  raise ValueError('Symbolic Tensors do not support the tolist API.')
+  return self._numpy().tolist()  # pylint: disable=protected-access
+
+
+def _enable_numpy_methods(tensor_class):
+  """A helper method for adding additional NumPy methods."""
+  t = property(_tensor_t)
+  setattr(tensor_class, 'T', t)
+
+  ndim = property(_tensor_ndim)
+  setattr(tensor_class, 'ndim', ndim)
+
+  size = property(_tensor_size)
+  setattr(tensor_class, 'size', size)
+
+  setattr(tensor_class, '__pos__', _tensor_pos)
+  setattr(tensor_class, 'tolist', _tensor_tolist)
+
+  # TODO(b/178540516): Make a custom `setattr` that changes the method's
+  #   docstring to the TF one.
+  setattr(tensor_class, 'transpose', np_array_ops.transpose)
+  setattr(tensor_class, 'flatten', np_array_ops.flatten)
+  setattr(tensor_class, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
+  setattr(tensor_class, 'ravel', np_array_ops.ravel)
+  setattr(tensor_class, 'clip', clip)
+  setattr(tensor_class, 'astype', math_ops.cast)
+  setattr(tensor_class, '__round__', np_array_ops.around)
+  setattr(tensor_class, 'max', np_array_ops.amax)
+  setattr(tensor_class, 'mean', np_array_ops.mean)
+  setattr(tensor_class, 'min', np_array_ops.amin)
+
+  # TODO(wangpeng): Remove `data` when all uses of it are removed
+  data = property(lambda self: self)
+  setattr(tensor_class, 'data', data)
 
 
 def enable_numpy_methods_on_tensor():
   """Adds additional NumPy methods on tf.Tensor class."""
-  t = property(_tensor_t)
-  setattr(ops.Tensor, 'T', t)
-
-  ndim = property(_tensor_ndim)
-  setattr(ops.Tensor, 'ndim', ndim)
-
-  size = property(_tensor_size)
-  setattr(ops.Tensor, 'size', size)
-
-  setattr(ops.Tensor, '__pos__', _tensor_pos)
-  setattr(ops.Tensor, 'tolist', _tensor_tolist)
-
-  # TODO(b/178540516): Make a custom `setattr` that changes the method's
-  #   docstring to the TF one.
-  setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
-  setattr(ops.Tensor, 'flatten', np_array_ops.flatten)
-  setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
-  setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
-  setattr(ops.Tensor, 'clip', clip)
-  setattr(ops.Tensor, 'astype', math_ops.cast)
-  setattr(ops.Tensor, '__round__', np_array_ops.around)
-  setattr(ops.Tensor, 'max', np_array_ops.amax)
-  setattr(ops.Tensor, 'mean', np_array_ops.mean)
-  setattr(ops.Tensor, 'min', np_array_ops.amin)
-
-  # TODO(wangpeng): Remove `data` when all uses of it are removed
-  data = property(lambda self: self)
-  setattr(ops.Tensor, 'data', data)
+  _enable_numpy_methods(tensor.Tensor)

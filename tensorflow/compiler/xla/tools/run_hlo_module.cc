@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
@@ -254,6 +255,10 @@ Status RunAndCompare(
                          options.use_buffer_assignment_from_proto
                              ? &buffer_assignment_proto
                              : nullptr));
+  HloVerifier verifier(
+      HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
+          true));
+  TF_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
   if (compilation_env_modifier_hook) {
     TF_CHECK_OK(compilation_env_modifier_hook(options, *test_module))
         << "Could not adjust the compilation environment for user provided "

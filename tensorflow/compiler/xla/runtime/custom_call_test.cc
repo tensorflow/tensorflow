@@ -72,7 +72,8 @@ static absl::StatusOr<JitExecutable> Compile(
   };
 
   opts.compiler.create_compilation_pipeline = [=](PassManager& passes) {
-    CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+    CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts,
+                                                  /*add_async_passes=*/true);
   };
 
   return JitExecutable::Instantiate(source, opts, exported);

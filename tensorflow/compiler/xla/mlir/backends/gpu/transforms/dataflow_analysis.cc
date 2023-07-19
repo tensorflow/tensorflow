@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
 
 #include <algorithm>
+#include <queue>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -165,6 +168,50 @@ bool HasDependency(llvm::ArrayRef<BufferUse> buffer_uses_a,
   return false;
 }
 
+bool Reachable(const DataflowAnalysis::DataflowGraph& graph, size_t from_index,
+               size_t to_index) {
+  std::queue<size_t> bfs_queue;
+  bfs_queue.push(from_index);
+
+  while (!bfs_queue.empty()) {
+    size_t index = bfs_queue.front();
+    bfs_queue.pop();
+    if (index == to_index) return true;
+
+    const DataflowAnalysis::Node& node = graph[index];
+    for (size_t child_index : node.children) {
+      bfs_queue.push(child_index);
+    }
+  }
+
+  return false;
+}
+
+// Remove edges that are redundant for determining the execution order of
+// kernels. We use the following algorithm to compute the transitive reduction:
+//
+// for edge (u,v) do
+//   if there is a path from u to v in that does not use edge (u,v) then
+//     remove edge (u,v)
+//
+// TODO(b/288594057): Use a more efficient algorithm.
+void TransitiveReduction(DataflowAnalysis::DataflowGraph& graph) {
+  for (DataflowAnalysis::Node& node : graph) {
+    auto is_reducible = [&](size_t to_index) -> bool {
+      for (size_t child_index : node.children) {
+        if (child_index != to_index) {
+          if (Reachable(graph, child_index, to_index)) return true;
+        }
+      }
+      return false;
+    };
+
+    node.children.erase(std::remove_if(node.children.begin(),
+                                       node.children.end(), is_reducible),
+                        node.children.end());
+  }
+}
+
 }  // namespace
 
 DataflowAnalysis::DataflowGraph DataflowAnalysis::GetDataflowGraph(
@@ -192,7 +239,34 @@ DataflowAnalysis::DataflowGraph DataflowAnalysis::GetDataflowGraph(
     }
   }
 
+  TransitiveReduction(graph);
   return graph;
+}
+
+std::string DataflowAnalysis::ToDot(const DataflowGraph& graph) {
+  std::string pad;
+  std::string res;
+  auto indent = [&] { pad.append(2, ' '); };
+  auto outdent = [&] { pad.resize(pad.size() - 2); };
+  auto addline = [&](auto&&... args) {
+    absl::StrAppend(&res, pad, args..., "\n");
+  };
+  auto get_name = [](const Node& node) -> std::string {
+    return absl::StrCat("\"", node.operation->getName().getStringRef().str(),
+                        "_", node.index, "\"");
+  };
+
+  addline("digraph {");
+  indent();
+  for (const Node& node : graph) {
+    for (size_t child_index : node.children) {
+      Node child = graph[child_index];
+      addline(get_name(node), " -> ", get_name(child));
+    }
+  }
+  outdent();
+  addline("}");
+  return res;
 }
 
 }  // namespace gpu

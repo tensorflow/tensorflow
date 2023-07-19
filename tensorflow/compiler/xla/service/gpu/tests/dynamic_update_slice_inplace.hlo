@@ -22,7 +22,7 @@
 // CHECK:         %[[VAL_16:.*]] = zext i32 %[[VAL_15]] to i64
 // CHECK:         %[[VAL_17:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK:         %[[VAL_18:.*]] = zext i32 %[[VAL_17]] to i64
-// CHECK:         %[[VAL_19:.*]] = mul nuw nsw i64 %[[VAL_16]], 1024
+// CHECK:         %[[VAL_19:.*]] = mul nuw nsw i64 %[[VAL_16]], 128
 // CHECK:         %[[VAL_20:.*]] = add nuw nsw i64 %[[VAL_19]], %[[VAL_18]]
 // CHECK:         %[[VAL_21:.*]] = icmp ult i64 %[[VAL_20]], 98304
 // CHECK:         call void @llvm.assume(i1 %[[VAL_21]])

@@ -85,4 +85,26 @@ TfLiteStatus SignatureRunner::Invoke() {
   return kTfLiteOk;
 }
 
+TfLiteStatus SignatureRunner::SetCustomAllocationForInputTensor(
+    const char* input_name, const TfLiteCustomAllocation& allocation,
+    int64_t flags) {
+  const auto& it = signature_def_->inputs.find(input_name);
+  if (it == signature_def_->inputs.end()) {
+    subgraph_->ReportError("Input name %s was not found", input_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetCustomAllocationForTensor(it->second, allocation, flags);
+}
+
+TfLiteStatus SignatureRunner::SetCustomAllocationForOutputTensor(
+    const char* output_name, const TfLiteCustomAllocation& allocation,
+    int64_t flags) {
+  const auto& it = signature_def_->outputs.find(output_name);
+  if (it == signature_def_->outputs.end()) {
+    subgraph_->ReportError("Output name %s was not found", output_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetCustomAllocationForTensor(it->second, allocation, flags);
+}
+
 }  // namespace tflite

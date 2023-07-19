@@ -20,6 +20,7 @@ import re
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -498,7 +499,7 @@ class _ParseOpParams:
     else:
       if default_value is None:
         default_value = constant_op.constant([], dtype=dtype)
-      elif not isinstance(default_value, ops.Tensor):
+      elif not isinstance(default_value, tensor.Tensor):
         key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)

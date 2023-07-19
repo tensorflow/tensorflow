@@ -21,6 +21,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -179,9 +180,9 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
 
   def _apply_combiner_to_embeddings(
       self,
-      embeddings: ops.Tensor,
-      weight: ops.Tensor,
-      combiner: Optional[Text] = None) -> ops.Tensor:
+      embeddings: tensor.Tensor,
+      weight: tensor.Tensor,
+      combiner: Optional[Text] = None) -> tensor.Tensor:
     """Apply the combiner to the embedding look up result on second to last axis.
 
     Args:
@@ -213,8 +214,9 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
           f"combiner must be one of 'mean', 'sqrtn' or 'sum', got {combiner}")
     return embeddings
 
-  def _pad_or_truncate_with_sequence_length(self, embeddings: ops.Tensor,
-                                            sequence_length: int) -> ops.Tensor:
+  def _pad_or_truncate_with_sequence_length(
+      self, embeddings: tensor.Tensor, sequence_length: int
+  ) -> tensor.Tensor:
     """Pad or truncate the embedding lookup result based on the sequence length.
 
     Args:
@@ -272,7 +274,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
       table = self.embedding_tables[feature.table]
 
       if weight is not None:
-        if isinstance(inp, ops.Tensor):
+        if isinstance(inp, tensor.Tensor):
           raise ValueError(
               "Weight specified for {}, but input is dense.".format(path))
         elif type(weight) is not type(inp):
@@ -283,7 +285,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
           raise ValueError("Weight specified for {}, but this is a sequence "
                            "feature.".format(path))
 
-      if isinstance(inp, ops.Tensor):
+      if isinstance(inp, tensor.Tensor):
         if feature.max_sequence_length > 0:
           raise ValueError(
               "Feature {} is a sequence feature but a dense tensor "
@@ -307,7 +309,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
       self, inp: sparse_tensor.SparseTensor,
       weight: Optional[sparse_tensor.SparseTensor],
       table: tf_variables.Variable,
-      feature: tpu_embedding_v2_utils.FeatureConfig) -> ops.Tensor:
+      feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
     """Embedding lookup for sparse tensor based on its feature config.
 
     Args:
@@ -352,7 +354,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
       self, inp: ragged_tensor.RaggedTensor,
       weight: Optional[ragged_tensor.RaggedTensor],
       table: tf_variables.Variable,
-      feature: tpu_embedding_v2_utils.FeatureConfig) -> ops.Tensor:
+      feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
     """Embedding lookup for ragged tensor based on its feature config.
 
     Args:
@@ -398,7 +400,10 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
         # If the data batch size is a factor of the output batch size, the
         # divide result will be the sequence length. Ignore the weights and
         # combiner.
-        elif output_batch_size > batch_size and output_batch_size % batch_size == 0:
+        elif (
+            output_batch_size > batch_size
+            and output_batch_size % batch_size == 0
+        ):
           # Pad or truncate in the sequence dimension
           seq_length = output_batch_size // batch_size
           inp = inp.to_tensor(shape=(batch_size, seq_length))

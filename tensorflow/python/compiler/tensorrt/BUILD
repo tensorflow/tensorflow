@@ -49,6 +49,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops_gen",

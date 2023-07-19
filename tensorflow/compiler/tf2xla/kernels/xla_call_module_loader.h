@@ -61,7 +61,7 @@ class XlaCallModuleLoader {
   // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
   // much easier to detect here.
-  tsl::Status ValidateStaticShapes();
+  absl::Status ValidateStaticShapes();
 
   // Lowers the StableHLO module to MHLO in place.
   absl::Status LowerModuleToMhlo();
@@ -97,6 +97,9 @@ class XlaCallModuleLoader {
   // a platform index arg.
   int platform_index_;
   std::vector<std::string> dim_args_spec_;
+  // The disabled checks at loading time, including those from the
+  // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
+  std::vector<std::string> loading_disabled_checks_;
   mlir::func::FuncOp main_;
 };
 

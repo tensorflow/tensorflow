@@ -69,10 +69,8 @@ StatusOr<mlir::Operation*> BiasAddExpander::ExpandOp(mlir::Operation* op) {
 
   // Check if output is sharded more, change input layout to match output
   // layout.
-  int64_t num_input_shards =
-      input_layout.num_shards_for_dim(input_layout.dim(c_dim_idx));
-  int64_t num_output_shards =
-      output_layout.num_shards_for_dim(output_layout.dim(c_dim_idx));
+  int64_t num_input_shards = input_layout.num_shards_for_dim(c_dim_idx);
+  int64_t num_output_shards = output_layout.num_shards_for_dim(c_dim_idx);
 
   if (num_input_shards < num_output_shards) {
     mlir::Value output;

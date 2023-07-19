@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -14,7 +14,7 @@ cc_library(
     name = "fake_quant_utils",
     srcs = ["fake_quant_utils.cc"],
     hdrs = ["fake_quant_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -29,7 +29,7 @@ td_library(
     srcs = [
         "lift_as_function_call_utils.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:FuncTdFiles",
     ],
@@ -39,7 +39,7 @@ cc_library(
     name = "lift_as_function_call_utils",
     srcs = ["lift_as_function_call_utils.cc"],
     hdrs = ["lift_as_function_call_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
@@ -56,7 +56,7 @@ cc_library(
     name = "tf_to_uniform_attribute_utils",
     srcs = ["tf_to_uniform_attribute_utils.cc"],
     hdrs = ["tf_to_uniform_attribute_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
@@ -73,7 +73,7 @@ cc_library(
     name = "tf_to_xla_attribute_utils",
     srcs = ["tf_to_xla_attribute_utils.cc"],
     hdrs = ["tf_to_xla_attribute_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",

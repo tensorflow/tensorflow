@@ -355,9 +355,10 @@ class FunctionType(inspect.Signature):
   def flat_inputs(self) -> List[trace.TraceType]:
     """Flat tensor inputs accepted by this FunctionType."""
     if not hasattr(self, "_cached_flat_inputs"):
-      self._cached_flat_inputs = []
+      cached_flat_inputs = []
       for p in self.parameters.values():
-        self._cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+        cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+      self._cached_flat_inputs = cached_flat_inputs
 
     return self._cached_flat_inputs
 
@@ -399,9 +400,10 @@ class FunctionType(inspect.Signature):
   def flat_captures(self) -> List[trace.TraceType]:
     """Flat tensor captures needed by this FunctionType."""
     if not hasattr(self, "_cached_flat_captures"):
-      self._cached_flat_captures = []
+      cached_flat_captures = []
       for t in self.captures.values():
-        self._cached_flat_captures.extend(t._flatten())  # pylint: disable=protected-access
+        cached_flat_captures.extend(t._flatten())  # pylint: disable=protected-access
+      self._cached_flat_captures = cached_flat_captures
 
     return self._cached_flat_captures
 

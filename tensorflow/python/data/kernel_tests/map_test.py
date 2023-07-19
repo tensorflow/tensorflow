@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.map()`."""
 import collections
+import dataclasses
 import functools
 import threading
 import time
@@ -133,6 +134,59 @@ class Foo:
 
   def __init__(self):
     pass
+
+
+@dataclasses.dataclass
+class MyDataclass:
+  value1: ops.Tensor
+  value2: ops.Tensor
+
+  def __tf_flatten__(self):
+    metadata = tuple()
+    components = (self.value1, self.value2)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    del metadata
+    return cls(value1=components[0], value2=components[1])
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: ops.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+
+@dataclasses.dataclass
+class NestedMaskedTensor:
+  mask: bool
+  value: MaskedTensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return NestedMaskedTensor(mask=mask, value=value)
+
+  def __eq__(self, other):
+    return self.mask == other.mask and self.value == other.value
 
 
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -546,6 +600,118 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = apply_map(dataset, lambda d: d["foo"] + d["bar"])
     self.assertDatasetProduces(
         dataset, expected_output=[i * 2 + i**2 for i in range(10)])
+
+  @combinations.generate(_test_combinations())
+  def testMapDataclass(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MyDataclass(value1=x, value2=2 * x))
+    dataset = apply_map(dataset, lambda x: x.value1 + x.value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapMaskedTensor(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(dataset, lambda x: 3 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDataclassWithInputAndOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.from_tensors(MyDataclass(value1=1, value2=2))
+    dataset = apply_map(dataset, lambda x: (x.value1 * 5, x.value2))
+    dataset = apply_map(
+        dataset, lambda x, y: MaskedTensor(mask=True, value=x + y)
+    )
+    dataset = apply_map(
+        dataset, lambda m: NestedMaskedTensor(mask=False, value=m)
+    )
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            NestedMaskedTensor(
+                mask=False, value=MaskedTensor(mask=True, value=7)
+            )
+        ],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapListOfDataclassObjects(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a list of dataclass objects.
+    dataset = apply_map(
+        dataset,
+        lambda x: [  # pylint: disable=g-long-lambda
+            MyDataclass(value1=x, value2=1),
+            MyDataclass(value1=2, value2=2 * x),
+        ],
+    )
+
+    # Takes a list of dataclass objects as input.
+    dataset = apply_map(dataset, lambda *x: x[0].value1 + x[1].value2)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapDictOfDataclassValues(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Creates a dict of {str -> dataclass}.
+    dataset = apply_map(
+        dataset,
+        lambda x: {  # pylint: disable=g-long-lambda
+            "a": MyDataclass(value1=x, value2=1),
+            "b": MyDataclass(value1=2, value2=2 * x),
+        },
+    )
+    # Takes a dict of dataclass values as input.
+    dataset = apply_map(dataset, lambda x: x["a"].value1 + x["b"].value2)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[3 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassInput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(dataset, lambda x: MaskedTensor(mask=True, value=x))
+    dataset = apply_map(
+        dataset,
+        # Takes a MaskedTensor as input.
+        lambda x: NestedMaskedTensor(mask=False, value=x),
+    )
+    dataset = apply_map(dataset, lambda x: 5 * x.value.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[5 * x for x in range(10)],
+    )
+
+  @combinations.generate(_test_combinations())
+  def testMapNestedMaskedTensorWithDataclassOutput(self, apply_map):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = apply_map(
+        dataset,
+        lambda x: NestedMaskedTensor(  # pylint: disable=g-long-lambda
+            mask=False, value=MaskedTensor(mask=True, value=x)
+        ),
+    )
+
+    # Return a MaskedTensor as the return value.
+    dataset = apply_map(dataset, lambda x: x.value)
+    dataset = apply_map(dataset, lambda x: 7 * x.value)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[7 * x for x in range(10)],
+    )
 
   @combinations.generate(_test_combinations())
   def testMapNamedtuple(self, apply_map):

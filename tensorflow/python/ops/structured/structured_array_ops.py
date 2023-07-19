@@ -20,6 +20,7 @@ from tensorflow.core.config import flags
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -515,7 +516,7 @@ def _structured_tensor_from_row_partitions(shape, row_partitions):
 # pylint: disable=protected_access
 def _all_nested_row_partitions(rt):
   """Returns all nested row partitions in rt, including for dense dimensions."""
-  if isinstance(rt, ops.Tensor):
+  if isinstance(rt, tensor_lib.Tensor):
     if rt.shape.rank <= 1:
       return ()
     else:
@@ -529,7 +530,7 @@ def _all_nested_row_partitions(rt):
 
 def _structured_tensor_like(t):
   """Create a StructuredTensor with the shape of a (composite) tensor."""
-  if isinstance(t, ops.Tensor):
+  if isinstance(t, tensor_lib.Tensor):
     return _structured_tensor_from_dense_tensor(t)
   if ragged_tensor.is_ragged(t):
     return StructuredTensor.from_fields(

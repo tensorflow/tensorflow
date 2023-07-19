@@ -1407,6 +1407,7 @@ TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
   if (ShouldOptimizeMemoryForLargeTensors()) {
     for (int i = 0; i < node->outputs->size; ++i) {
       int tensor_index = node->outputs->data[i];
+      if (tensor_index == kTfLiteOptionalTensor) continue;
       TfLiteTensor* tensor = &context_.tensors[tensor_index];
       if (tensor->data.raw == nullptr &&
           tensor->allocation_type == kTfLiteDynamic) {

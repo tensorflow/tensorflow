@@ -19,8 +19,10 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import flexible_dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import weak_tensor_test_util
@@ -861,6 +863,18 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       dtype, is_weak = flexible_dtypes.result_type()
       self.assertEqual(dtype, dtypes.float32)
       self.assertTrue(is_weak)
+
+  def testResultTypeUnsupportedInputType(self):
+    class MyTensor(extension_type.ExtensionType):
+      value: tensor.Tensor
+
+    with DtypeConversionTestEnv('all'):
+      a = MyTensor(constant_op.constant(1))
+      with self.assertRaisesRegex(
+          NotImplementedError,
+          f'Auto dtype conversion semantics does not support {type(a)} type.',
+      ):
+        _ = flexible_dtypes.result_type(a)
 
   # Test v1 + v2 = v2 + v1.
   def testCommunicativity(self):

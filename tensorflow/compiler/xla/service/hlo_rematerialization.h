@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -23,7 +25,7 @@
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -57,48 +59,60 @@ class HloRematerialization : public HloModulePass {
     kRecomputeAndCompress  // Consider both kRecompute and kRemat.
   };
 
-  // Enum to specify whether this rematerialization pass occurs before or after
-  // multi-output fusion.
-  enum class RematerializationPass {
-    kPreFusion,  // Rematerialization pass before multi-output fusion.
-    kPostFusion  // Rematerialization pass after multi-output fusion.
-  };
-
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
-  // Constructor parameters:
-  //
-  //   size_function: Function which returns the size in bytes of the top-level
-  //     buffer of the given shape.
-  //
-  //   memory_limit_bytes: The threshold number of bytes to reduce memory use to
-  //     via rematerialization. Size of aliased outputs should be subtracted
-  //     from this.
-  //
-  //   sizes: Pointer to data structure which records the peak memory usage of
-  //     the HLO module before/after rematerialization. Value are set during
-  //     Run(). Can be nullptr.
-  //
-  //   compact_shape_function: Function which returns the compact form of a
-  //   shape. If nullptr is provided, an default identity function is used.
-  explicit HloRematerialization(
-      const ShapeSizeFunction& size_function, int64_t memory_limit_bytes,
-      RematerializationSizes* sizes, RematerializationPass pass_location,
-      int block_size_limit, int block_rematerialization_factor,
-      CompactShapeFunction compact_shape_function = nullptr,
-      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress,
-      int64_t min_remat_size = 0)
-      : size_function_(size_function),
-        memory_limit_bytes_(memory_limit_bytes),
-        sizes_(sizes),
-        pass_location_(pass_location),
-        block_size_limit_(block_size_limit),
-        block_rematerialization_factor_(block_rematerialization_factor),
-        compact_shape_function_(compact_shape_function == nullptr
-                                    ? DefaultCompactShapeFunction
-                                    : std::move(compact_shape_function)),
-        mode_(mode),
-        min_remat_size_(min_remat_size) {}
+  struct Options {
+    explicit Options(const ShapeSizeFunction& size_function,
+                     int64_t memory_limit_bytes, int block_size_limit,
+                     int block_rematerialization_factor,
+                     CompactShapeFunction compact_shape_function = nullptr,
+                     RematerializationMode mode =
+                         RematerializationMode::kRecomputeAndCompress,
+                     int64_t min_remat_size = 0)
+        : size_function(size_function),
+          memory_limit_bytes(memory_limit_bytes),
+          block_size_limit(block_size_limit),
+          block_rematerialization_factor(block_rematerialization_factor),
+          compact_shape_function(compact_shape_function == nullptr
+                                     ? DefaultCompactShapeFunction
+                                     : std::move(compact_shape_function)),
+          mode(mode),
+          min_remat_size(min_remat_size) {}
+
+    // Function which computes the size of the top-level buffer of a shape.
+    const ShapeSizeFunction size_function;
+
+    // The threshold number of bytes to reduce memory use to via
+    // rematerialization. Size of aliased outputs should be subtracted
+    // from this.
+    int64_t memory_limit_bytes;
+
+    // Maximum number of consecutive instructions to consider for
+    // rematerialization.
+    int block_size_limit;
+
+    // Controls the amount of effort spent trying to find large blocks for
+    // rematerialization. Larger values leads to longer compilation times in
+    // return for potentially reduced memory consumption.
+    int block_rematerialization_factor;
+
+    // Converts a shape into compact form, returns the same shape if a shape is
+    // already considered compact.
+    const CompactShapeFunction compact_shape_function;
+
+    // Holds the rematerialization strategy configuration to be used by the
+    // pass.
+    RematerializationMode mode;
+
+    // The minimim size, in bytes, of a tensor to be considered for
+    // rematerialization. All tensors smaller than this size will be skipped
+    // over.
+    int64_t min_remat_size;
+  };
+
+  explicit HloRematerialization(Options options, RematerializationSizes& sizes)
+      : options_(std::move(options)), sizes_(sizes) {}
+
   ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
@@ -160,36 +174,11 @@ class HloRematerialization : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       absl::string_view thread) const;
 
-  // Selects an algorithm to use for HLO scheduling.
-  MemorySchedulerAlgorithm scheduler_algorithm_;
+  const Options options_;
 
-  // Function which computes the size of the top-level buffer of a shape.
-  const ShapeSizeFunction size_function_;
-
-  // The threshold number of bytes to reduce memory use to via
-  // rematerialization.
-  const int64_t memory_limit_bytes_;
-
-  // Pointer to data structure which records the peak memory usage of the HLO
-  // module before/after rematerialization
-  RematerializationSizes* sizes_;
-
-  // Specifies whether this rematerialization pass occurs before or after
-  // multi-output fusion.
-  RematerializationPass pass_location_;
-
-  // Maximum number of consecutive instructions to consider for
-  // rematerialization.
-  int block_size_limit_;
-
-  // Controls the amount of effort spent trying to find large blocks for
-  // rematerialization. Larger values leads to longer compilation times in
-  // return for potentially reduced memory consumption.
-  int block_rematerialization_factor_ = 1;
-
-  // Converts a shape into compact form, returns the same shape if a shape is
-  // already considered compact.
-  const CompactShapeFunction compact_shape_function_;
+  // Reference to data structure which records the peak memory usage of the HLO
+  // module before/after rematerialization.
+  RematerializationSizes& sizes_;
 
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
@@ -220,10 +209,6 @@ class HloRematerialization : public HloModulePass {
   // Size of the largest block that has been rematerialized. This is actually an
   // upper bound (within a factor of 2) on the block size.
   int max_rematerialized_block_size_ = 0;
-
-  RematerializationMode mode_;
-
-  int64_t min_remat_size_;
 
   // Tracking available channel id numbers to use to apply to rematerialized
   // channel instructions

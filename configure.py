@@ -84,6 +84,10 @@ def is_ppc64le():
   return platform.machine() == 'ppc64le'
 
 
+def is_s390x():
+  return platform.machine() == 's390x'
+
+
 def is_cygwin():
   return platform.system().startswith('CYGWIN_NT')
 
@@ -1100,7 +1104,12 @@ def system_specific_test_config(environ_cp):
 
 
 def set_system_libs_flag(environ_cp):
+  """Set system libs flags."""
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
+
+  if is_s390x() and 'boringssl' not in syslibs:
+    syslibs = 'boringssl' + (', ' + syslibs if syslibs else '')
+
   if syslibs:
     if ',' in syslibs:
       syslibs = ','.join(sorted(syslibs.split(',')))

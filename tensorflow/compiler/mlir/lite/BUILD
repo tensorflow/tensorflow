@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
@@ -39,7 +39,7 @@ td_library(
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
@@ -63,7 +63,7 @@ td_library(
         "transforms/tensorlist_patterns.td",
         "utils/utils.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflow_lite_ops_td_files",
@@ -76,7 +76,7 @@ td_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -95,7 +95,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -122,7 +122,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_op_interfaces_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
@@ -150,7 +150,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_op_enums_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-enum-decls"],
@@ -178,7 +178,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_prepare_tf_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -192,7 +192,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_lower_static_tensor_list_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -206,7 +206,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_tf_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -220,7 +220,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_variables_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -234,7 +234,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_optimize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -248,7 +248,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_quantize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -262,7 +262,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_post_quantize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -276,7 +276,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tensorflow_lite_legalize_tensorlist_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -852,7 +852,7 @@ filegroup(
 
 gentbl_cc_library(
     name = "op_quant_spec_getters_inc",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [([], "utils/generated_op_quant_spec_getters.inc")],
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
@@ -863,7 +863,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tflite_op_coverage_spec_inc",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [([], "utils/tflite_op_coverage_spec.inc")],
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:tflite_op_coverage_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
@@ -878,7 +878,7 @@ tf_native_cc_binary(
     srcs = [
         "converter_gen.cc",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
@@ -888,7 +888,7 @@ tf_native_cc_binary(
 
 gentbl_cc_library(
     name = "converter_inc",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["--gen-operator-converters"],

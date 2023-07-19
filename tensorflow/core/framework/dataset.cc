@@ -545,7 +545,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
     auto factory = [ctx, this](model::Node::Args args) {
       return CreateNode(ctx, std::move(args));
     };
-    model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
+    model->AddNode(std::move(factory), prefix(),
+                   parent == nullptr ? nullptr : parent->model_node(), &node_);
     cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
   }
   return OkStatus();

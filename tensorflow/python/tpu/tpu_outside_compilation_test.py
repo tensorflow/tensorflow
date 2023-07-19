@@ -33,7 +33,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
@@ -812,11 +812,11 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     partitioned_tpu_fn = _tpu_partitioned_call_wrapper(tpu_fn)
 
     concrete = partitioned_tpu_fn.get_concrete_function(
-        x=tensor_spec.TensorSpec(
+        x=tensor.TensorSpec(
             shape=(1), dtype=dtypes.float32, name="input_tensor"))
 
     self.assertIsInstance(
-        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], ops.Tensor)
+        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], tensor.Tensor)
 
 
 if __name__ == "__main__":

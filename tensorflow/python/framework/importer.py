@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
@@ -194,7 +195,7 @@ def _ConvertInputMapValues(name, input_map):
   Raises:
     ValueError: if input map values cannot be converted due to empty name scope.
   """
-  if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
+  if not all(isinstance(v, tensor.Tensor) for v in input_map.values()):
     if name == '':  # pylint: disable=g-explicit-bool-comparison
       raise ValueError(
           'tf.import_graph_def() requires a non-empty `name` if `input_map` '

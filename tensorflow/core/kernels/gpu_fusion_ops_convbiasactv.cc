@@ -93,14 +93,14 @@ class ROCmFusionKernelConvolutionBiasActivation : public OpKernel {
 
     int64 output_rows = 0, padding_left = 0, padding_right = 0;
     OP_REQUIRES_OK(
-        ctx, GetWindowedOutputSizeVerboseV2(
+        ctx, GetWindowedOutputSizeVerbose(
                  input_rows, filter_rows, dilation_rows, stride_rows,
                  padding_type_, &output_rows, &padding_left, &padding_right));
     int64 padding_rows = padding_left + padding_right;
 
     int64 output_cols = 0, padding_top = 0, padding_bottom = 0;
     OP_REQUIRES_OK(
-        ctx, GetWindowedOutputSizeVerboseV2(
+        ctx, GetWindowedOutputSizeVerbose(
                  input_cols, filter_cols, dilation_cols, stride_cols,
                  padding_type_, &output_cols, &padding_top, &padding_bottom));
     int64 padding_cols = padding_top + padding_bottom;

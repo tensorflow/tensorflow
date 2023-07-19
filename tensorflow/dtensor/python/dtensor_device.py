@@ -32,6 +32,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util import _pywrap_utils
 
@@ -119,7 +120,7 @@ class DTensorDevice(object):
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
 
-  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
+  def copy_to_mesh(self, tensor, new_layout) -> tensor_lib.Tensor:
     """Copy `tensor` to `device` with the given layout."""
     self._register_mesh(new_layout.mesh)
     with ops.device(self.name):

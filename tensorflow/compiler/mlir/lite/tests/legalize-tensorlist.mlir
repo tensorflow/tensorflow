@@ -79,6 +79,7 @@ func.func @listFromTensor(%tensor: tensor<3xi32>, %shape : tensor<?xi32>) -> ten
   func.return %0 :  tensor<!tf_type.variant<tensor<i32>>>
   // CHECK: %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "TensorListFromTensor", custom_option = #tfl<const_bytes : "0x">} : (tensor<3xi32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<i32>>>
 }
+
 // -----
 
 // CHECK-LABEL: typeNotSupportedNotLegalized

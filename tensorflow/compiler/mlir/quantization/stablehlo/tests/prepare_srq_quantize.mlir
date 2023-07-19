@@ -9,13 +9,13 @@ func.func @main(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
 }
 
 // CHECK: %[[cst:.*]] = stablehlo.constant
-// CHECK: %[[q1:.*]] = stablehlo.uniform_quantize %arg0
+// CHECK: %[[q1:.*]] = "quantfork.qcast"(%arg0)
 // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
-// CHECK: %[[dq1:.*]] = stablehlo.uniform_dequantize %[[q1]]
+// CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
 // CHECK: %[[dot:.*]] = stablehlo.dot %[[dq1]], %[[cst]]
-// CHECK: %[[q2:.*]] = stablehlo.uniform_quantize %[[dot]]
+// CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[dot]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.036254937041039562:-28>>
-// CHECK: %[[dq2:.*]] = stablehlo.uniform_dequantize %[[q2]]
+// CHECK: %[[dq2:.*]] = "quantfork.dcast"(%[[q2]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.036254937041039562:-28>>
 // CHECK: return %[[dq2]]

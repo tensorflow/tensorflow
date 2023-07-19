@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/embedder.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/tools/benchmark/register_custom_op.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
@@ -116,6 +117,9 @@ int RunEmbedder(const EmbedderOptions& options) {
   resolver.AddCustom(
       "validation/decode_jpeg",
       ::tflite::acceleration::decode_jpeg_kernel::Register_DECODE_JPEG(), 1);
+
+  RegisterSelectedOps(&resolver);
+
   auto status = embedder.CreateModelWithEmbeddedValidation(&fbb, &resolver);
   if (!status.ok()) {
     std::cerr << "Creating model with embedded validation failed: "

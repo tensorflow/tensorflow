@@ -31,11 +31,25 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Compiler
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.compiler.xla import xla
+from tensorflow.python.compiler.mlir import mlir
+
 # Data
 from tensorflow.python import data
 
+# TensorFlow Debugger (tfdbg).
+from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import dumping_callback
+from tensorflow.python.ops import gen_debug_ops
+
 # Distribute
 from tensorflow.python import distribute
+
+# DLPack
+from tensorflow.python.dlpack.dlpack import from_dlpack
+from tensorflow.python.dlpack.dlpack import to_dlpack
 
 # Eager
 from tensorflow.python.eager import context

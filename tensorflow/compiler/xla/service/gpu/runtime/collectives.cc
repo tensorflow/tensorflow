@@ -193,10 +193,10 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
       NcclCollectiveThunk::GetDeviceString(params);
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
                           replica_group_values, is_async);
-  if (!comm.ok()) return ToAbslStatus(comm.status());
+  if (!comm.ok()) return comm.status();
 
   auto device_buffers = device_buffers_getter(args);
-  if (!device_buffers.ok()) return ToAbslStatus(device_buffers.status());
+  if (!device_buffers.ok()) return device_buffers.status();
   if (device_buffers->size() != 1) {
     return absl::InternalError(absl::StrFormat(
         "Expected device buffer size: 1, got %d", device_buffers->size()));

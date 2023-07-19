@@ -72,7 +72,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   DeviceList devices_;
 };
 
-std::ostream& operator<<(std::ostream& os, const Shape& shape);
+std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
 
 // Single-device sharding.
 //
@@ -83,7 +83,7 @@ class SingleDeviceSharding final
     : public llvm::RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
-  static std::unique_ptr<Sharding> Create(Device* device);
+  static std::unique_ptr<SingleDeviceSharding> Create(Device* device);
 
   // Sharding implementation.
 
@@ -110,7 +110,7 @@ class SingleDeviceSharding final
 class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
-  static std::unique_ptr<Sharding> Create(DeviceList devices);
+  static std::unique_ptr<OpaqueSharding> Create(DeviceList devices);
 
   // Sharding implementation.
 
@@ -138,8 +138,8 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: devices.size() == shard_shapes.size()
-  static std::unique_ptr<Sharding> Create(DeviceList devices, Shape shape,
-                                          std::vector<Shape> shard_shapes);
+  static std::unique_ptr<ConcreteSharding> Create(
+      DeviceList devices, Shape shape, std::vector<Shape> shard_shapes);
 
   Shape shape() const {
     DCHECK(this);
@@ -179,8 +179,9 @@ class ConcreteEvenSharding
     : public llvm::RTTIExtends<ConcreteEvenSharding, Sharding> {
  public:
   // Creates a concrete even sharding.
-  static std::unique_ptr<Sharding> Create(DeviceList devices, Shape shape,
-                                          Shape shard_shape);
+  static std::unique_ptr<ConcreteEvenSharding> Create(DeviceList devices,
+                                                      Shape shape,
+                                                      Shape shard_shape);
 
   Shape shape() const {
     DCHECK(this);
@@ -216,7 +217,7 @@ class ConcreteEvenSharding
 class ShardingParamSharding
     : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
  public:
-  static StatusOr<std::unique_ptr<Sharding>> Create(
+  static StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
       ShardingParam sharding_param, DeviceList devices);
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>

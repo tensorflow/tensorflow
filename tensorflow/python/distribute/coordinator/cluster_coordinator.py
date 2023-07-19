@@ -766,11 +766,16 @@ class CoordinationServicePreemptionHandler(object):
     raise PSUnavailableError(e)
 
   def _get_task_states(self):
+    """Get task states and reset to None if coordination service is down."""
     try:
       self._task_states = context.context().get_task_states(
           [("worker", self._num_workers), ("ps", self._num_ps)]
       )
-    except errors.UnavailableError:
+    except (errors.UnavailableError, errors.InternalError) as e:
+      if isinstance(
+          e, errors.InternalError
+      ) and "coordination service is not enabled" not in str(e).lower():
+        raise
       # Coordination service is down
       self._task_states = None
     with self._next_task_state_cond:

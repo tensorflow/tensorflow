@@ -36,13 +36,13 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #ifdef DNNL_AARCH64_USE_ACL
 #include "tensorflow/core/platform/mutex.h"
 #endif
+#include "tensorflow/tsl/util/onednn_threadpool.h"
 
 using dnnl::engine;
 using dnnl::memory;
@@ -274,7 +274,7 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
   return true;
 }
 
-inline dnnl::stream* CreateStream(MklDnnThreadPool* eigen_tp,
+inline dnnl::stream* CreateStream(tsl::OneDnnThreadPool* eigen_tp,
                                   const engine& engine) {
 #ifndef ENABLE_ONEDNN_OPENMP
   if (eigen_tp != nullptr) {
@@ -649,6 +649,13 @@ class MklDnnShape {
   }
 };
 
+inline Eigen::ThreadPoolInterface* EigenThreadPoolFromTfContext(
+    OpKernelContext* context) {
+  return context->device()
+      ->tensorflow_cpu_worker_threads()
+      ->workers->AsEigenThreadPool();
+}
+
 // List of MklShape objects. Used in Concat/Split layers.
 typedef std::vector<MklDnnShape> MklDnnShapeList;
 
@@ -663,9 +670,14 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   DCHECK(net_args);
   DCHECK_EQ(net.size(), net_args->size());
   std::unique_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp;
+  // Create the oneDNN wrapper over Eigen threadpool and set max threads
+  // in oneDNN.
+  tsl::OneDnnThreadPool eigen_tp;
   if (context != nullptr) {
-    eigen_tp = MklDnnThreadPool(context);
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(context);
+    eigen_tp =
+        tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
     cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
   } else {
     cpu_stream.reset(CreateStream(nullptr, cpu_engine));
@@ -706,8 +718,8 @@ inline Status ConvertMklToTF(OpKernelContext* context,
       bool status = input.CheckReorderToOpMem(output_tf_md, output_tf_tensor,
                                               net, net_args, cpu_engine);
       if (!status) {
-        return Status(absl::StatusCode::kInternal,
-                      "ConvertMklToTF(): Failed to create reorder for input");
+        return absl::InternalError(
+            "ConvertMklToTF(): Failed to create reorder for input");
       }
       ExecutePrimitive(net, &net_args, cpu_engine, context);
     } else {
@@ -715,8 +727,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
       bool status =
           output_tf_tensor->CopyFrom(input_mkl_tensor, output_tf_shape);
       if (!status) {
-        return Status(
-            absl::StatusCode::kInternal,
+        return absl::InternalError(
             "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
@@ -1114,8 +1125,7 @@ inline memory::format_tag MklTensorFormatToMklDnnDataFormat(
 inline MklTensorFormat TFDataFormatToMklDnn3DDataFormat(TensorFormat format) {
   if (format == FORMAT_NHWC) return MklTensorFormat::FORMAT_NDHWC;
   if (format == FORMAT_NCHW) return MklTensorFormat::FORMAT_NCDHW;
-  TF_CHECK_OK(
-      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
+  TF_CHECK_OK(absl::InvalidArgumentError("Unsupported data format"));
   return MklTensorFormat::FORMAT_INVALID;
 }
 
@@ -1127,8 +1137,7 @@ inline MklTensorFormat TFDataFormatToMklDnn3DDataFormat(TensorFormat format) {
 inline MklTensorFormat TFDataFormatToMklDnnDataFormat(TensorFormat format) {
   if (format == FORMAT_NHWC) return MklTensorFormat::FORMAT_NHWC;
   if (format == FORMAT_NCHW) return MklTensorFormat::FORMAT_NCHW;
-  TF_CHECK_OK(
-      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
+  TF_CHECK_OK(absl::InvalidArgumentError("Unsupported data format"));
   return MklTensorFormat::FORMAT_INVALID;
 }
 
@@ -1144,8 +1153,7 @@ inline TensorFormat MklDnnDataFormatToTFDataFormat(MklTensorFormat format) {
   if (format == MklTensorFormat::FORMAT_NCHW ||
       format == MklTensorFormat::FORMAT_NCDHW)
     return FORMAT_NCHW;
-  TF_CHECK_OK(
-      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
+  TF_CHECK_OK(absl::InvalidArgumentError("Unsupported data format"));
 
   // Return to prevent compiler warnings, otherwise TF_CHECK_OK will ensure
   // that we don't come here.
@@ -1311,10 +1319,9 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   } catch (dnnl::error& e) {
     delete[] input_dims;
     delete[] input_strides;
-    return Status(absl::StatusCode::kInternal,
-                  tensorflow::strings::StrCat(
-                      "Failed to create blocked memory descriptor.",
-                      "Status: ", e.status, ", message: ", e.message));
+    return absl::InternalError(
+        absl::StrCat("Failed to create blocked memory descriptor.",
+                     "Status: ", e.status, ", message: ", e.message));
   }
   return OkStatus();
 }
@@ -1322,11 +1329,22 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
 inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
                                     const memory& src_mem,
                                     const memory& dst_mem, const engine& engine,
-                                    OpKernelContext* ctx = nullptr) {
+                                    OpKernelContext* ctx = nullptr,
+                                    memory* scale_mem = nullptr) {
   std::vector<primitive> net;
   net.push_back(dnnl::reorder(reorder_desc));
   std::vector<MemoryArgsMap> net_args;
+#ifndef ENABLE_ONEDNN_V3
   net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+#else
+  if (scale_mem != nullptr) {
+    net_args.push_back({{DNNL_ARG_FROM, src_mem},
+                        {DNNL_ARG_TO, dst_mem},
+                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *scale_mem}});
+  } else {
+    net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
+  }
+#endif  // !ENABLE_ONEDNN_V3
   ExecutePrimitive(net, &net_args, engine, ctx);
 }
 
@@ -1596,9 +1614,12 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp;
+      tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
-        eigen_tp = MklDnnThreadPool(context);
+        Eigen::ThreadPoolInterface* eigen_interface =
+            EigenThreadPoolFromTfContext(context);
+        eigen_tp =
+            tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
       } else {
         cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
@@ -1663,9 +1684,12 @@ class MklDnnData {
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
       auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp;
+      tsl::OneDnnThreadPool eigen_tp;
       if (context != nullptr) {
-        eigen_tp = MklDnnThreadPool(context);
+        Eigen::ThreadPoolInterface* eigen_interface =
+            EigenThreadPoolFromTfContext(context);
+        eigen_tp =
+            tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
         cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
       } else {
         cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));
@@ -1774,9 +1798,12 @@ class MklDnnData {
     net_args.push_back(
         {{DNNL_ARG_FROM, *reorder_memory_}, {DNNL_ARG_TO, *user_memory_}});
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp;
+    tsl::OneDnnThreadPool eigen_tp;
     if (ctx != nullptr) {
-      eigen_tp = MklDnnThreadPool(ctx);
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      eigen_tp =
+          tsl::OneDnnThreadPool(eigen_interface, ThreadPoolUseCallerThread());
       cpu_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
     } else {
       cpu_stream.reset(CreateStream(nullptr, prim->GetEngine()));

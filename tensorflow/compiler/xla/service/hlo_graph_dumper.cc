@@ -202,6 +202,45 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
   }
 }
 
+// Given a Statistic object, returns a hex string for the fill color of the node
+// with that statistic.
+const char* NodeFillColorForStatistic(const Statistic& statistic) {
+  auto stat_val = statistic.stat_val();
+  if (stat_val == 0) {
+    return "#f5f5f5";
+  } else if (stat_val < 10) {
+    return "#f7d4cc";
+  } else if (stat_val < 20) {
+    return "#f8b2a3";
+  } else if (stat_val < 30) {
+    return "#f9a28f";
+  } else if (stat_val < 40) {
+    return "#fa917b";
+  } else if (stat_val < 50) {
+    return "#fb8066";
+  } else if (stat_val < 60) {
+    return "#fc7052";
+  } else if (stat_val < 70) {
+    return "#fd5f3d";
+  } else if (stat_val < 80) {
+    return "#fd4e29";
+  } else if (stat_val < 90) {
+    return "#fe3e14";
+  } else {
+    return "#ff2d00";
+  }
+}
+
+// Given a Statistic object, returns a hex string for the font color of the node
+// with that statistic.
+const char* NodeFontColorForStatistic(const Statistic& statistic) {
+  if (statistic.stat_val() < 60) {
+    return "black";
+  } else {
+    return "white";
+  }
+}
+
 // Given a ColorScheme, returns an attribute string for a node of that color.
 // Sets the node's style and fill/stroke/text colors.
 //
@@ -658,7 +697,13 @@ std::string HloDotDumper::DumpSubcomputation(
     bool highlight = filter_.Highlight(parent_instr);
     const char* fillcolor;
     const char* strokecolor;
-    if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
+
+    if (!highlight && parent_instr->has_statistics()) {
+      // Use color from the statistic
+      fillcolor =
+          NodeFillColorForStatistic(parent_instr->statistic_to_visualize());
+      strokecolor = "#c2c2c2";
+    } else if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
       // Use the sharding color, if the node isn't highlighted.
       NodeColors node_colors =
           NodeColorsForScheme(GetInstructionColor(parent_instr));
@@ -837,6 +882,22 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
       color = kDarkRed;
     }
   }
+
+  NodeColors node_colors = NodeColorsForScheme(color);
+  if (instr->has_statistics()) {
+    // override node's color to show statistics
+    const auto& statistic_to_visualize = instr->statistic_to_visualize();
+    node_colors.fill_color = NodeFillColorForStatistic(statistic_to_visualize);
+    node_colors.stroke_color = "#c2c2c2";
+    node_colors.font_color = NodeFontColorForStatistic(statistic_to_visualize);
+  }
+
+  // Build the node style
+  std::string node_style =
+      StrFormat(R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
+                node_colors.style, node_colors.font_color,
+                node_colors.stroke_color, node_colors.fill_color);
+
   // Build the text that will be displayed inside the node.
   std::string node_body = node_label;
   for (const std::string& s : {trivial_subcomputation, extra_info,
@@ -849,7 +910,7 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
                    "\n",
                    InstructionId(instr), node_body, node_shape, node_metadata,
-                   NodeColorAttributes(color));
+                   node_style);
 }
 
 std::string HloDotDumper::GetInstructionNodeInlinedOperands(
@@ -1204,6 +1265,9 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
   }
   if (config.side_input_scale() != 0 && config.side_input_scale() != 1) {
     props.emplace_back("side_input_scale", StrCat(config.side_input_scale()));
+  }
+  if (config.activation_mode() == se::dnn::ActivationMode::kLeakyRelu) {
+    props.emplace_back("leakyrelu_alpha", StrCat(config.leakyrelu_alpha()));
   }
   props.emplace_back(
       "activation_mode",
@@ -2072,10 +2136,11 @@ void RegisterFusionState(const HloComputation& computation,
   fusion_progress.AddState(dot_txt, label, producer_to_highlight);
 }
 
-StatusOr<std::string> RenderGraph(
-    const HloComputation& computation, absl::string_view label,
-    const DebugOptions& debug_options, RenderedGraphFormat format,
-    HloRenderOptions hlo_render_options) {
+StatusOr<std::string> RenderGraph(const HloComputation& computation,
+                                  absl::string_view label,
+                                  const DebugOptions& debug_options,
+                                  RenderedGraphFormat format,
+                                  HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");

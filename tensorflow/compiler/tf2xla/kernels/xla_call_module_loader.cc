@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/python/refine_polymorphic_shapes.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -84,16 +86,29 @@ constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
 // mandates a non-empty `platforms` attribute.
 // Used in jax2tf since June 2023.
 constexpr int VERSION_START_SUPPORT_DISABLED_CHECKS = 6;
+// Version 7 adds support for `stablehlo.shape_assertion` operations and
+// for `shape_assertions` specified in `disabled_checks`.
+// Used in JAX serialization since July 2023.
+constexpr int VERSION_START_SUPPORT_SHAPE_ASSERTIONS = 7;
 constexpr int VERSION_MINIMUM_SUPPORTED =
     VERSION_START_STABLE_HLO_COMPATIBILITY;
 
-constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_DISABLED_CHECKS;
+constexpr int VERSION_MAXIMUM_SUPPORTED =
+    VERSION_START_SUPPORT_SHAPE_ASSERTIONS;
 
 constexpr absl::string_view DISABLED_CHECK_PLATFORM = "platform";
 
 bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
-  return std::find(disabled_checks.begin(), disabled_checks.end(),
-                   DISABLED_CHECK_PLATFORM) != disabled_checks.end();
+  return llvm::is_contained(disabled_checks, DISABLED_CHECK_PLATFORM);
+}
+
+constexpr absl::string_view DISABLED_CHECK_SHAPE_ASSERTIONS =
+    "shape_assertions";
+
+bool IsShapeAssertionsCheckDisabled(
+    absl::Span<const std::string> loading_disabled_checks) {
+  return llvm::is_contained(loading_disabled_checks,
+                            DISABLED_CHECK_SHAPE_ASSERTIONS);
 }
 
 // Computes a dimension value from the dim_arg specification.
@@ -379,7 +394,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     auto arg = main_body.getArgument(i);
     arg.setType(static_array_input_types[i]);
     // If the argument is used by `func.return`, then we also need to
-    // update function result types. It's not great that we need this hack,
+    // update the function result types. It's not great that we need this hack,
     // but in the future when we have stablehlo.func, stablehlo.return, etc,
     // this will not be needed.
     // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
@@ -395,34 +410,14 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
   }
+  bool enable_shape_assertions =
+      (version_ >= VERSION_START_SUPPORT_SHAPE_ASSERTIONS &&
+       !IsShapeAssertionsCheckDisabled(loading_disabled_checks_));
+  TF_RETURN_IF_ERROR(
+      xla::RefinePolymorphicShapes(*module_, enable_shape_assertions));
 
-  // Verify the module before running passes on it.
-  // If the module doesn't pass verification, all sorts of weirdness might
-  // happen if we run the pass manager.
-  {
-    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-
-    if (failed(verify(*module_))) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Module verification failed: ",
-                       diag_handler.ConsumeStatus().ToString()));
-    }
-
-    mlir::PassManager pm(module_->getContext());
-    applyTensorflowAndCLOptions(pm);
-    pm.addPass(mlir::createCSEPass());
-    pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
-    if (mlir::failed(pm.run(*module_))) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Module shape refinement failed: ",
-                       diag_handler.ConsumeStatus().ToString()));
-    }
-
-    if (VLOG_IS_ON(3)) {
-      DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
-    }
+  if (VLOG_IS_ON(3)) {
+    DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
   return tsl::OkStatus();
 }
@@ -458,22 +453,22 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
   }
 
-  std::vector<std::string> loading_disabled_checks = disabled_checks;
-  loading_disabled_checks.insert(
-      loading_disabled_checks.end(),
+  loading_disabled_checks_ = disabled_checks;
+  loading_disabled_checks_.insert(
+      loading_disabled_checks_.end(),
       GetXlaCallModuleFlags()->disabled_checks.begin(),
       GetXlaCallModuleFlags()->disabled_checks.end());
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
 
-  VLOG(3) << "Parsed serialized module (version " << version
+  VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
           << "], loading_platform = " << loading_platform
           << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
           << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
           << "], loading_disabled_checks = ["
-          << absl::StrJoin(loading_disabled_checks, ", ") << "]), module = "
+          << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
           << DumpMlirOpToFile("xla_call_module.parsed", *module_);
 
   if (version < VERSION_MINIMUM_SUPPORTED) {
@@ -493,7 +488,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     auto found_platform =
         std::find(platforms.begin(), platforms.end(), loading_platform);
     if (found_platform == platforms.end()) {
-      if (!IsPlatformCheckDisabled(loading_disabled_checks)) {
+      if (!IsPlatformCheckDisabled(loading_disabled_checks_)) {
         return absl::NotFoundError(absl::StrCat(
             "The current platform ", loading_platform,
             " is not among the platforms required by the module: [",
@@ -559,35 +554,8 @@ tsl::Status XlaCallModuleLoader::ValidateDialect() {
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::ValidateStaticShapes() {
-  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-  bool moduleHasDynamicShapes = false;
-
-  module_->walk([&](mlir::Operation *op) {
-    // It's sufficient to only check results because operands either come from
-    // results or from block arguments which are checked below.
-    auto hasDynamicShape = [](mlir::Value value) {
-      auto shaped_type = value.getType().dyn_cast<mlir::ShapedType>();
-      return shaped_type ? !shaped_type.hasStaticShape() : false;
-    };
-    bool opHasDynamicShapes = false;
-    opHasDynamicShapes |= llvm::any_of(op->getResults(), hasDynamicShape);
-    for (mlir::Region &region : op->getRegions()) {
-      opHasDynamicShapes |=
-          llvm::any_of(region.getArguments(), hasDynamicShape);
-    }
-    if (opHasDynamicShapes) {
-      moduleHasDynamicShapes = true;
-      op->emitOpError() << "has dynamic shapes";
-    }
-  });
-
-  if (moduleHasDynamicShapes) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Module has dynamic shapes: ",
-                     diag_handler.ConsumeStatus().ToString()));
-  }
-  return tsl::OkStatus();
+absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
+  return xla::ValidateStaticShapes(*module_);
 }
 
 absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
