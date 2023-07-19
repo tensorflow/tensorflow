@@ -70,6 +70,10 @@ struct GpuConvConfig {
   Shape filter_shape;
   Shape output_shape;
   std::optional<FusionConfig> fusion;
+
+  // String serialization of the subgraph of adjacent ops to be fused into the
+  // cuDNN convolution Custom Call. Currently used for FP8 convolutions only.
+  // Additional information is provided in gpu_fused_conv_rewriter.cc.
   std::string serialized_graph;
 };
 
@@ -85,7 +89,8 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
-  // Buffers for operands of pointwise ops.
+  // Buffers for operands of pointwise ops to be fused into the cuDNN
+  // convolution Custom Call.
   std::vector<se::DeviceMemoryBase> operand_bufs;
 
   std::optional<FusionParams> fusion;
@@ -95,7 +100,7 @@ struct GpuConvParams {
 // convolution is fused (and has extra arguments) or unfused, which doesn't
 // naturally play well with the typed APIs provided by StreamExecutor; rather
 // than rewriting everything here, just propagate the dynamic typing to one more
-// place by having either a FusedConvRunner or a ConvRunner.
+// place by having a ConvRunner, FusedConvRunner or GraphConvRunner.
 class GenericConvRunner {
  public:
   GenericConvRunner() = default;

@@ -161,7 +161,7 @@ struct ConvOp {
 // Implementation of the concept required by LazyOpRunner, for
 // GraphConvolveRunner.
 struct GraphConvOp {
-  using Signature = ConvSignature;
+  using Signature = GraphConvSignature;
 
   struct Config {
     ConvolutionKind kind;
@@ -173,7 +173,7 @@ struct GraphConvOp {
     string serialized_graph;
   };
 
-  static tsl::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return stream->GraphConvolveRunnerFromDesc(

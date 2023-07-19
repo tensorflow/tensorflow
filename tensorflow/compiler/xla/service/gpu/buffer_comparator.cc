@@ -44,26 +44,27 @@ static constexpr double kTolerance = 0.1f;
 
 // NaN's are considered equal, and for half's we clamp all numbers to largest
 // and smallest numbers representable to avoid miscomparisons due to overflows.
-
+//
 // The PTX below is compiled from the following CUDA code:
-
+//
 // #include <cuda_bf16.h>
 // #include <cuda_fp16.h>
 // #include <cuda_fp8.h>
-
+//
 // namespace {
-
+//
 // __device__ __inline__ float __xla_buffer_comparator_canonicalize(float input)
 // {
 //   // All fp16 infinities are treated as 65505 or -65505, in order to avoid
 //   // differences due to overflows.
 //   return isnan(input) ? input : max(-65505.0f, min(input, 65505.0f));
 // }
-
+//
 // } // end anonymous namespace
-
+//
 // extern "C" { // avoid name mangling
-
+//
+//
 // __global__ void __xla_fp8_e4m3fn_comparison(__nv_fp8_storage_t *buffer_a,
 //                                             __nv_fp8_storage_t *buffer_b,
 //                                             float rel_error_threshold,
@@ -82,14 +83,14 @@ static constexpr double kTolerance = 0.1f;
 //   elem_b = __xla_buffer_comparator_canonicalize(elem_b);
 //   if (isnan(elem_a) && isnan(elem_b))
 //     return;
-
+//
 //   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
 //   1);
-
+//
 //   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
+//
 // __global__ void __xla_fp8_e5m2_comparison(__nv_fp8_storage_t *buffer_a,
 //                                           __nv_fp8_storage_t *buffer_b,
 //                                           float rel_error_threshold,
@@ -108,121 +109,114 @@ static constexpr double kTolerance = 0.1f;
 //   elem_b = __xla_buffer_comparator_canonicalize(elem_b);
 //   if (isnan(elem_a) && isnan(elem_b))
 //     return;
-
+//
 //   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
 //   1);
-
+//
 //   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
-// __global__ void __xla_fp16_comparison(__half *buffer_a, __half *buffer_b,
+//
+// __global__ void __xla_fp16_comparison(__half* buffer_a, __half* buffer_b,
 //                                       float rel_error_threshold,
 //                                       unsigned long long buffer_length,
-//                                       int *mismatch_count) {
+//                                       int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
+//   if (idx >= buffer_length) return;
 //   float elem_a = __half2float(buffer_a[idx]);
 //   float elem_b = __half2float(buffer_b[idx]);
 //   elem_a = __xla_buffer_comparator_canonicalize(elem_a);
 //   elem_b = __xla_buffer_comparator_canonicalize(elem_b);
-//   if (isnan(elem_a) && isnan(elem_b))
-//     return;
-
-//   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
-//   1);
-
+//   if (isnan(elem_a) && isnan(elem_b)) return;
+//
+//   float rel_error = abs(elem_a - elem_b)
+//       / (max(abs(elem_a), abs(elem_b)) + 1);
+//
 //   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
-// __global__ void __xla_fp32_comparison(float *buffer_a, float *buffer_b,
+//
+// __global__ void __xla_fp32_comparison(float* buffer_a, float* buffer_b,
 //                                       float rel_error_threshold,
 //                                       unsigned long long buffer_length,
-//                                       int *mismatch_count) {
+//                                       int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
+//   if (idx >= buffer_length) return;
 //   float elem_a = buffer_a[idx];
 //   float elem_b = buffer_b[idx];
-//   if (isnan(elem_a) && isnan(elem_b))
-//     return;
+//   if (isnan(elem_a) && isnan(elem_b)) return;
 //   if (isinf(elem_a) && isinf(elem_b) && signbit(elem_a) == signbit(elem_b))
 //     return;
-
-//   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
-//   1); if (rel_error > rel_error_threshold || isnan(rel_error))
+//
+//   float rel_error = abs(elem_a - elem_b)
+//       / (max(abs(elem_a), abs(elem_b)) + 1);
+//   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
-// __global__ void __xla_fp64_comparison(double *buffer_a, double *buffer_b,
+//
+// __global__ void __xla_fp64_comparison(double* buffer_a, double* buffer_b,
 //                                       float rel_error_threshold,
 //                                       unsigned long long buffer_length,
-//                                       int *mismatch_count) {
+//                                       int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
-
+//   if (idx >= buffer_length) return;
+//
 //   double elem_a = buffer_a[idx];
 //   double elem_b = buffer_b[idx];
-//   if (isnan(elem_a) && isnan(elem_b))
-//     return;
+//   if (isnan(elem_a) && isnan(elem_b)) return;
 //   if (isinf(elem_a) && isinf(elem_b) && signbit(elem_a) == signbit(elem_b))
 //     return;
-//   double rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
-//   1); if (rel_error > rel_error_threshold || isnan(rel_error))
+//   double rel_error = abs(elem_a - elem_b)
+//       / (max(abs(elem_a), abs(elem_b)) + 1);
+//   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
-// __global__ void __xla_bf16_comparison(__nv_bfloat16 *buffer_a,
-//                                       __nv_bfloat16 *buffer_b,
+//
+// __global__ void __xla_bf16_comparison(__nv_bfloat16* buffer_a,
+//                                       __nv_bfloat16* buffer_b,
 //                                       float rel_error_threshold,
 //                                       unsigned long long buffer_length,
-//                                       int *mismatch_count) {
+//                                       int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
+//   if (idx >= buffer_length) return;
 //   float elem_a = __bfloat162float(buffer_a[idx]);
 //   float elem_b = __bfloat162float(buffer_b[idx]);
 //   elem_a = __xla_buffer_comparator_canonicalize(elem_a);
 //   elem_b = __xla_buffer_comparator_canonicalize(elem_b);
-//   if (isnan(elem_a) && isnan(elem_b))
-//     return;
-
-//   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
-//   1);
-
+//   if (isnan(elem_a) && isnan(elem_b)) return;
+//
+//   float rel_error = abs(elem_a - elem_b)
+//       / (max(abs(elem_a), abs(elem_b)) + 1);
+//
 //   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
-
+//
 // // TODO(b/191520348): The comparison below requires exact equality.
-// __global__ void __xla_int8_comparison(int8_t *buffer_a, int8_t *buffer_b,
+// __global__ void __xla_int8_comparison(int8_t* buffer_a, int8_t* buffer_b,
 //                                       float rel_error_threshold,
 //                                       unsigned long long buffer_length,
-//                                       int *mismatch_count) {
+//                                       int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
+//   if (idx >= buffer_length) return;
 //   float a = buffer_a[idx];
 //   float b = buffer_b[idx];
 //   float rel_error = abs(a - b) / (max(abs(a), abs(b)) + 1);
 //   if (rel_error > rel_error_threshold || isnan(rel_error))
-//     atomicAdd(mismatch_count, 1);
+//       atomicAdd(mismatch_count, 1);
 // }
-
-// __global__ void __xla_int32_comparison(int *buffer_a, int *buffer_b,
+//
+// __global__ void __xla_int32_comparison(int* buffer_a, int* buffer_b,
 //                                        float rel_error_threshold,
 //                                        unsigned long long buffer_length,
-//                                        int *mismatch_count) {
+//                                        int* mismatch_count) {
 //   int idx = threadIdx.x + blockIdx.x * blockDim.x;
-//   if (idx >= buffer_length)
-//     return;
+//   if (idx >= buffer_length) return;
 //   float elem_a = static_cast<float>(buffer_a[idx]);
 //   float elem_b = static_cast<float>(buffer_b[idx]);
-//   float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) +
-//   1); if (rel_error > rel_error_threshold || isnan(rel_error))
+//   float rel_error = abs(elem_a - elem_b)
+//       / (max(abs(elem_a), abs(elem_b)) + 1);
+//   if (rel_error > rel_error_threshold || isnan(rel_error))
 //     atomicAdd(mismatch_count, 1);
 // }
 // } // end extern declaration
@@ -1190,10 +1184,10 @@ StatusOr<bool> BufferComparator::CompareEqual(
   switch (shape_.element_type()) {
     case xla::F8E4M3FN:
       return CompareEqualParameterized<tsl::float8_e4m3fn, float>(
-          stream, lhs, rhs, shape_, config_, "__xla_fp8_e4m3fn_comparison");
+          stream, current, expected, shape_, config_, "__xla_fp8_e4m3fn_comparison");
     case xla::F8E5M2:
       return CompareEqualParameterized<tsl::float8_e5m2, float>(
-          stream, lhs, rhs, shape_, config_, "__xla_fp8_e5m2_comparison");
+          stream, current, expected, shape_, config_, "__xla_fp8_e5m2_comparison");
     case xla::F16:
       return CompareEqualParameterized<Eigen::half, float>(
           stream, current, expected, shape_, config_, "__xla_fp16_comparison");

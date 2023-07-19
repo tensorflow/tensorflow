@@ -60,7 +60,7 @@ message CudnnConvBackendConfig {
 
   // Serialization of the graph described by the convolution and adjacent
   // pointwise ops.
-  optional string serialized_graph = 8;
+  optional string serialized_graph = 9;
 }
 
 // Backend config for the GEMM operation running through cuBLAS.
