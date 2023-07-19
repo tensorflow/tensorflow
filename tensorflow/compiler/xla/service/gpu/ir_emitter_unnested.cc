@@ -258,38 +258,6 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
   return instruction_count == 1;
 }
 
-// Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(mlir::Type type) {
-  constexpr int kMaxUnrollFactor = 4;
-
-  // Find the largest possible power of two to unroll by.
-  // TODO(kramerb): Make this smarter.
-
-  auto shaped_type = type.cast<mlir::ShapedType>();
-  int64_t num_elements = std::accumulate(
-      shaped_type.getShape().begin(), shaped_type.getShape().end(), int64_t{1},
-      std::multiplies<int64_t>());
-  for (int i = kMaxUnrollFactor; i > 1; i /= 2) {
-    if (num_elements % i == 0) {
-      return i;
-    }
-  }
-
-  // Cannot unroll.
-  return 1;
-}
-
-// Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(mlir::Operation* op) {
-  mlir::Type element_shape = [&] {
-    if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-      return fusion.getFusionRoots()[0]->getResult(0).getType();
-    }
-    return GetHloOutputs(op)[0].getType();
-  }();
-  return ComputeMaxUnrollFactor(element_shape);
-}
-
 // Gets the input shape of the ROOT slices, which will be used as the kernel
 // launch dims. The slice input fusion requires the input shapes of the ROOT
 // slices to be the same although the (slice) output shapes can be different.
@@ -4692,7 +4660,6 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
           .xla_gpu_enable_experimental_block_size();
 
   TF_RETURN_IF_ERROR([&] {
-    auto unroll_factor = ComputeMaxUnrollFactor(fusion_op);
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
         fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
@@ -4722,7 +4689,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
 
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(generator, {ir_arrays.back()}, launch_dimensions,
-                            &b_, {unroll_factor})
+                            &b_, *fusion_analysis.GetLoopFusionConfig())
             .EmitLoop(IrName(GetIrNameFromLoc(fusion_op.getLoc())),
                       GetIndexTypeForKernel(
                           fusion_op, launch_dimensions.launch_bound(), &b_)));
