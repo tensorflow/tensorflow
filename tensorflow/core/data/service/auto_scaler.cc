@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
 
@@ -202,6 +203,25 @@ tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
     return absl::NotFoundError(absl::StrCat("AutoScaler for iteration_id ",
                                             iteration_id, " does not exist"));
   auto_scalers_.erase(iteration_id);
+  return tsl::OkStatus();
+}
+
+tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric()
+    TF_LOCKS_EXCLUDED(mu_) {
+  std::optional<int64_t> optimal_number_of_workers =
+      GetOptimalNumberOfWorkers();
+  if (!optimal_number_of_workers)
+    return absl::UnavailableError(
+        "Cannot update the optimal number of workers metric because there are "
+        "no reported processing and target processing times for at least one "
+        "iteration");
+
+  constexpr float FIVE_MINUTES = 60.0 * 5.0;
+  LOG_EVERY_N_SEC(INFO, FIVE_MINUTES) << "Estimated optimal number of workers: "
+                                      << optimal_number_of_workers.value();
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(
+      optimal_number_of_workers.value());
+
   return tsl::OkStatus();
 }
 

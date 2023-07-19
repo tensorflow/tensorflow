@@ -18,6 +18,8 @@ limitations under the License.
 #include <optional>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 
@@ -329,6 +331,62 @@ TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
   MultipleIterationsAutoScaler auto_scaler;
   EXPECT_THAT(auto_scaler.UnregisterIteration(0),
               StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricNoReportedTimes) {
+  MultipleIterationsAutoScaler auto_scaler;
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricNoReportedPTs) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricNoReportedTPTs) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     UpdateOptimalNumberOfWorkersMetricWithReportedTimes) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.UpdateOptimalNumberOfWorkersMetric());
+  monitoring::testing::CellReader<int64_t> cell_reader(
+      "/tensorflow/data/service/optimal_number_of_workers");
+  EXPECT_GT(cell_reader.Read(), 0);
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(0);
 }
 
 TEST(MultipleIterationsAutoScalerTest, GetOptimalNumberOfWorkersInitialState) {
