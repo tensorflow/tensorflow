@@ -364,7 +364,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
              const std::vector<memory::desc>& srcs_md) {
     // Create memory descriptors for concat with specified srcs format
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
-      dnnl::memory::desc source_md(memory::desc(GET_MEMORY_DESC(srcs_md[i])));
+      dnnl::memory::desc source_md((memory::desc(GET_MEMORY_DESC(srcs_md[i]))));
       context_.src_md.push_back(source_md);
       std::shared_ptr<dnnl::memory> src_mem(
           new dnnl::memory(source_md, cpu_engine_, DummyData));
