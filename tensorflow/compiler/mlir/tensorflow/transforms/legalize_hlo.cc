@@ -3736,6 +3736,66 @@ class ConvertGetDimensionSizeOp
   }
 };
 
+class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicIotaOp dynamic_iota_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    RankedTensorType type =
+        dynamic_iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type || type.getElementType().isUnsignedInteger(64)) {
+      return rewriter.notifyMatchFailure(dynamic_iota_op,
+                                         "TF::RangeOp doesn't support UI64");
+    }
+    // Only support 1D for now.
+    if (type.getRank() > 1 || dynamic_iota_op.getIotaDimension() != 0) {
+      return rewriter.notifyMatchFailure(
+          dynamic_iota_op, [&](::mlir::Diagnostic& diag) {
+            diag << "Only 1D DynamicIotaOp with iota dimension 0 is supported";
+          });
+    }
+
+    const uint64_t dimension = dynamic_iota_op.getIotaDimension();
+    Type element_type = type.getElementType();
+    Attribute start, delta;
+    if (element_type.isa<FloatType>()) {
+      start = rewriter.getFloatAttr(element_type, 0.0);
+      delta = rewriter.getFloatAttr(element_type, 1.0);
+    } else if (element_type.isa<IntegerType>()) {
+      start = rewriter.getIntegerAttr(element_type, 0);
+      delta = rewriter.getIntegerAttr(element_type, 1);
+    } else {
+      return failure();
+    }
+    auto output_shape = dynamic_iota_op.getOperand();
+    if (element_type.isa<FloatType>()) {
+      auto cast_type =
+          output_shape.getType().cast<ShapedType>().clone(element_type);
+      output_shape = rewriter.create<TF::CastOp>(dynamic_iota_op.getLoc(),
+                                                 cast_type, output_shape);
+    }
+    DenseIntElementsAttr scalar_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({0}, rewriter.getI32Type()),
+        llvm::ArrayRef<int32_t>({}));
+    auto scalar_shape =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), scalar_attr);
+    auto limit_scalar = rewriter.create<TF::ReshapeOp>(
+        dynamic_iota_op.getLoc(), RankedTensorType::get({}, element_type),
+        output_shape, scalar_shape);
+    auto range_type =
+        RankedTensorType::get({type.getShape()[dimension]}, element_type);
+    Value start_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), start);
+    Value delta_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), delta);
+    Value range_op = rewriter.create<TF::RangeOp>(
+        dynamic_iota_op.getLoc(), range_type, start_op, limit_scalar, delta_op);
+    rewriter.replaceOp(dynamic_iota_op, range_op);
+    return success();
+  }
+};
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3827,18 +3887,18 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns
-      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
-            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp>(context);
+  patterns->add<
+      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
+      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
+      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp,
+      ConvertGetDimensionSizeOp, ConvertDynamicIotaOp>(context);
   populateWithGenerated(*patterns);
 }
 

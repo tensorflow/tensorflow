@@ -3790,6 +3790,33 @@ func.func @get_dimension_size_dynamic(%arg0: tensor<4x256x?xf32>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: func @dynamic_iota_i32_1d(
+// CHECK-SAME:                  %[[ARG_0:.*]]: tensor<1xi32>) -> tensor<?xi32> {
+// CHECK-DAG:     %[[CST_0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+// CHECK:         %[[VAL_0:.*]] = "tf.Reshape"(%arg0, %[[CST_0]]) : (tensor<1xi32>, tensor<0xi32>) -> tensor<i32>
+// CHECK-DAG:     %[[CST_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:     %[[CST_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:         %[[VAL_1:.*]] = "tf.Range"(%[[CST_1]], %[[VAL_0]], %[[CST_2]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+// CHECK:         return %[[VAL_1]] : tensor<?xi32>
+func.func @dynamic_iota_i32_1d(%arg0: tensor<1xi32>) -> tensor<?xi32> {
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL: func @dynamic_iota_f32_1d(
+// CHECK-SAME:                  %[[ARG_0:.*]]: tensor<1xi32>) -> tensor<?xf32> {
+// CHECK:         %[[VAL_0:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1xi32>) -> tensor<1xf32>
+// CHECK-DAG:     %[[CST_0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+// CHECK:         %[[VAL_1:.*]] = "tf.Reshape"(%[[VAL_0]], %[[CST_0]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+// CHECK-DAG:     %[[CST_1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG:     %[[CST_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK:         %[[VAL_2:.*]] = "tf.Range"(%[[CST_1]], %[[VAL_1]], %[[CST_2]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+// CHECK:         return %[[VAL_2]] : tensor<?xf32>
+func.func @dynamic_iota_f32_1d(%arg0: tensor<1xi32>) -> tensor<?xf32> {
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @convert_approx_top_k_custom_call(
 // CHECK-SAME:                                        %[[ARG_0:.*]]: tensor<1x4xf32>,
 // CHECK-SAME:                                        %[[ARG_1:.*]]: tensor<1x4xi32>,
