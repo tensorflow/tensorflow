@@ -228,33 +228,8 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def(
           "memory",
-          [](const ClientAndPtr<PjRtDevice>& device, std::string kind) {
-            std::string memories = absl::StrJoin(
-                device->memory_spaces(), ", ",
-                [](std::string* out, const auto& memory_space) {
-                  absl::StrAppend(out, memory_space->memory_space_kind());
-                });
-            PjRtMemorySpace* result_memory_space = nullptr;
-            auto device_kind = device->device_kind();
-            for (auto* memory_space : device->memory_spaces()) {
-              if (memory_space->memory_space_kind() == kind) {
-                if (result_memory_space != nullptr) {
-                  ThrowIfError(InvalidArgument(
-                      "Found more than one memories with kind %s addressable "
-                      "by device %s. Here are all the addressable memories for "
-                      "device %s: %s",
-                      kind, device_kind, device_kind, memories));
-                }
-                result_memory_space = memory_space;
-              }
-            }
-            if (result_memory_space == nullptr) {
-              ThrowIfError(InvalidArgument(
-                  "Could not find memory addressable by device %s. %s are "
-                  "all the memories device %s can address. Got memory kind: %s",
-                  device_kind, memories, device_kind, kind));
-            }
-            return WrapWithClient(device.client(), result_memory_space);
+          [](const ClientAndPtr<PjRtDevice>& device, const std::string& kind) {
+            return jax::GetMemory(device, kind);
           },
           py::arg("kind"))
       // Returns all the memories that a device can address.

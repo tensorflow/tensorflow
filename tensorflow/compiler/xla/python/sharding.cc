@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/sharding.h"
 
+#include <string>
 #include <utility>
 
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
@@ -113,6 +114,45 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
   }
 
   return a.equal(b);
+}
+
+xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
+    const xla::ClientAndPtr<xla::PjRtDevice>& device, const std::string& kind) {
+  xla::PjRtMemorySpace* result_memory_space = nullptr;
+  for (auto* memory_space : device->memory_spaces()) {
+    if (memory_space->memory_space_kind() == kind) {
+      if (result_memory_space != nullptr) {
+        std::string memories = absl::StrJoin(
+            device->memory_spaces(), ", ",
+            [](std::string* out, const auto& memory_space) {
+              absl::StrAppend(out, memory_space->memory_space_kind());
+            });
+        auto device_kind = device->device_kind();
+        xla::ThrowIfError(
+            xla::InvalidArgument("Found more than one addressable memory for "
+                                 "kind %s which is not allowed. There can only "
+                                 "be one memory for each "
+                                 "kind. Device %s can address the following "
+                                 "memory kinds: %s",
+                                 kind, device_kind, memories));
+      }
+      result_memory_space = memory_space;
+    }
+  }
+  if (result_memory_space == nullptr) {
+    std::string memories =
+        absl::StrJoin(device->memory_spaces(), ", ",
+                      [](std::string* out, const auto& memory_space) {
+                        absl::StrAppend(out, memory_space->memory_space_kind());
+                      });
+    auto device_kind = device->device_kind();
+    xla::ThrowIfError(xla::InvalidArgument(
+        "Could not find memory addressable by device %s. Device %s "
+        "can address the following memory kinds: %s. "
+        "Got memory kind: %s",
+        device_kind, device_kind, memories, kind));
+  }
+  return WrapWithClient(device.client(), result_memory_space);
 }
 
 NamedSharding::NamedSharding(py::object mesh, py::object spec,
