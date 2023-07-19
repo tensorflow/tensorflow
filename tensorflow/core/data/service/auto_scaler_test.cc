@@ -486,6 +486,45 @@ TEST(MultipleIterationsAutoScalerTest,
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(MultipleIterationsAutoScalerTest, RemoveWorkerUnregisteredIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/1:20000"),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(auto_scaler.RemoveWorker(1, "/worker/task/1:20000"),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveWorkerSuccessful) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker(0, "/worker/task/0:20000"));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker(1, "/worker/task/0:20000"));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentWorker) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/0:20000"),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveWorkerAfterNewPTReported) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveWorker(0, "/worker/task/0:20000"));
+}
+
 }  // namespace
 
 }  // namespace data

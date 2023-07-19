@@ -231,5 +231,18 @@ tsl::Status MultipleIterationsAutoScaler::ReportTargetProcessingTime(
   return status;
 }
 
+tsl::Status MultipleIterationsAutoScaler::RemoveWorker(
+    int64_t iteration_id, const std::string& worker_address)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::tf_shared_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat(
+        "Could not find AutoScaler for iteration_id ", iteration_id));
+
+  tsl::Status status =
+      auto_scalers_[iteration_id]->RemoveWorker(worker_address);
+  return status;
+}
+
 }  // namespace data
 }  // namespace tensorflow
