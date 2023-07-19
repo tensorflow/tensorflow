@@ -454,6 +454,11 @@ message DebugOptions {
   // Identify concurrent regions in cuda graphs and execute them concurrently.
   bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
 
+  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
+  // instantiates new Gpu graphs, it evicts graphs that were not recently
+  // executed to free space on device.
+  int32 xla_gpu_cuda_graph_eviction_timeout_seconds = 230;
+
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
   // run concurrently if this is enabled.
@@ -572,7 +577,7 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  // Next id: 230
+  // Next id: 231
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

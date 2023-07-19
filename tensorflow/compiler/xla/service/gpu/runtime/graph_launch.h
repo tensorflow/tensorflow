@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -87,48 +88,32 @@ class StreamExecutorGraphInstances
 // end up with thousands of unused (or rarely used) graphs in device memory.
 class GraphInstances {
  public:
+  struct Impl;
+
   GraphInstances(std::string module_name, int64_t num_graphs);
   ~GraphInstances();
 
-  StreamExecutorGraphInstances* operator()(se::StreamExecutor* executor);
+  std::shared_ptr<StreamExecutorGraphInstances> operator()(
+      se::StreamExecutor* executor);
 
   // Instantiates all Gpu graphs defined by the given executable using user
   // provided run options. This guarantees that once we start execution, all Gpu
   // graphs are ready, and will only require cheap update operation and will not
   // require allocating new resources (we avoid non deterministic OOM errors).
-  Status InstantiateAllGraphs(const ServiceExecutableRunOptions* run_options,
-                              const runtime::Executable& executable,
-                              const runtime::CustomCall::UserData& user_data,
-                              void* ptr);
+  //
+  // If timeout is not nullopt it will evict all previously instantiated graphs
+  // that were used more than `eviction_timeout_seconds` seconds ago.
+  Status InstantiateAllGraphs(
+      const ServiceExecutableRunOptions* run_options,
+      const runtime::Executable& executable,
+      const runtime::CustomCall::UserData& user_data, void* ptr,
+      std::optional<uint64_t> eviction_timeout_seconds = std::nullopt);
 
   // Returns true if all Gpu graphs were already instantiated.
   bool InstantiatedAllGraphs(const ServiceExecutableRunOptions* run_options,
                              const runtime::Executable& executable);
 
  private:
-  struct State {
-    // A flag signalling if `InstantiateAllGraphs` was already called and we
-    // have all Gpu graph instantiated ahead of time.
-    bool instantiated = false;
-
-    // Last time graph instances were used by a particular stream executor.
-    uint64_t last_use_micros = 0;
-
-    StreamExecutorGraphInstances instances;
-  };
-
-  struct Impl {
-    // XLA module name that owns graph instances. We use it only to produce logs
-    // that can be attributed back to XLA executables.
-    std::string module_name;
-
-    // Number of graphs in the parent module.
-    int64_t num_graphs;
-
-    mutable absl::Mutex mu;
-    absl::node_hash_map<se::StreamExecutor*, State> graphs ABSL_GUARDED_BY(mu);
-  };
-
   std::shared_ptr<Impl> impl_;
 };
 

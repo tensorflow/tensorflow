@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -73,14 +74,38 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 // CUDA graphs caching.
 //===----------------------------------------------------------------------===//
 
-static absl::Mutex* GetGraphInstancesMutex() {
-  static auto* mu = new absl::Mutex();
-  return mu;
-}
+struct GraphInstances::Impl {
+  struct State {
+    // A flag signalling if `InstantiateAllGraphs` was already called and we
+    // have all Gpu graph instantiated ahead of time.
+    bool instantiated = false;
+
+    // Last time graph instances were used by a particular stream executor.
+    uint64_t last_use_micros = 0;
+
+    std::shared_ptr<StreamExecutorGraphInstances> instances =
+        std::make_shared<StreamExecutorGraphInstances>();
+  };
+
+  // XLA module name that owns graph instances. We use it only to produce logs
+  // that can be attributed back to XLA executables.
+  std::string module_name;
+
+  // Number of graphs in the parent module.
+  int64_t num_graphs = 0;
+
+  mutable absl::Mutex mu;
+  absl::node_hash_map<se::StreamExecutor*, State> graphs ABSL_GUARDED_BY(mu);
+};
 
 // Keep track of instantiated graphs on each StreamExecutor, we use this
 // information in the graph eviction policy.
 using GraphInstancesState = absl::flat_hash_map<se::StreamExecutor*, int64_t>;
+
+static absl::Mutex* GetGraphInstancesStateMutex() {
+  static auto* mu = new absl::Mutex();
+  return mu;
+}
 
 static GraphInstancesState& GetGraphInstancesState() {
   static auto* state = new GraphInstancesState();
@@ -89,38 +114,121 @@ static GraphInstancesState& GetGraphInstancesState() {
 
 static int64_t NotifyGraphInstancesCreated(se::StreamExecutor* executor,
                                            int64_t num_graphs) {
-  absl::MutexLock lock(GetGraphInstancesMutex());
+  absl::MutexLock lock(GetGraphInstancesStateMutex());
   return GetGraphInstancesState()[executor] += num_graphs;
 }
 
 static int64_t NotifyGraphInstancesDestroyed(se::StreamExecutor* executor,
                                              int64_t num_graphs) {
-  absl::MutexLock lock(GetGraphInstancesMutex());
+  absl::MutexLock lock(GetGraphInstancesStateMutex());
   return GetGraphInstancesState()[executor] -= num_graphs;
+}
+
+// We keep track of all graph instances in the process, to implement graph
+// eviction on OOM. Graph instances owned by GpuExecutable, so we rely on
+// weak ptr to check if they are still alive.
+using GraphInstancesVec = std::vector<std::weak_ptr<GraphInstances::Impl>>;
+
+static absl::Mutex* GetGraphInstancesVecMutex() {
+  static auto* mu = new absl::Mutex();
+  return mu;
+}
+
+static GraphInstancesVec& GetGraphInstancesVec() {
+  static auto* vec = new GraphInstancesVec();
+  return *vec;
+}
+
+static void AddGraphInstances(std::weak_ptr<GraphInstances::Impl> impl) {
+  absl::MutexLock lock(GetGraphInstancesVecMutex());
+  GetGraphInstancesVec().push_back(std::move(impl));
+}
+
+// Evicts all graphs for a given executor in the current process.
+static void EvictAllGraphs(
+    se::StreamExecutor* executor,
+    std::optional<uint64_t> eviction_timeout_seconds = std::nullopt) {
+  LOG(WARNING) << "Evict "
+               << (eviction_timeout_seconds.has_value() ? "timed out" : "all")
+               << " gpu graphs from executor " << executor;
+
+  TraceMe trace_instantiation([&] {
+    return TraceMeEncode("cuda.graph.evict_all_graphs",
+                         {{"device_ordinal", executor->device_ordinal()}});
+  });
+
+  absl::MutexLock lock(GetGraphInstancesVecMutex());
+  auto& vec = GetGraphInstancesVec();
+
+  // Erase all expired graph instances.
+  vec.erase(std::remove_if(vec.begin(), vec.end(),
+                           [](auto& weak_ptr) { return weak_ptr.expired(); }),
+            vec.end());
+
+  auto timed_out = [&](GraphInstances::Impl::State& state) -> bool {
+    auto diff = tsl::Env::Default()->NowMicros() - state.last_use_micros;
+    return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
+  };
+
+  for (auto& weak_ptr : vec) {
+    auto ptr = weak_ptr.lock();
+    if (!ptr) continue;
+
+    if (!ptr->mu.TryLock()) continue;
+
+    auto it = ptr->graphs.find(executor);
+    if (it == ptr->graphs.end()) {
+      ptr->mu.Unlock();
+      continue;
+    }
+
+    // If we have a timeout value, than check it first, otherwise always evict
+    // graphs for a given executor.
+    bool is_timed_out = timed_out(it->second);
+    if (eviction_timeout_seconds.has_value() && !is_timed_out) {
+      ptr->mu.Unlock();
+      continue;
+    }
+
+    if (ptr->num_graphs > 0) {
+      VLOG(3) << "Evict " << ptr->num_graphs << " graphs for: @"
+              << ptr->module_name << " at executor: " << executor
+              << " (timed_out = " << is_timed_out << ")."
+              << " Total remaining graphs at given executor: "
+              << NotifyGraphInstancesDestroyed(executor, ptr->num_graphs);
+    }
+    ptr->graphs.erase(it);
+    ptr->mu.Unlock();
+  }
 }
 
 GraphInstances::GraphInstances(std::string module_name, int64_t num_graphs)
     : impl_(std::make_shared<Impl>()) {
   impl_->module_name = std::move(module_name);
   impl_->num_graphs = num_graphs;
-  VLOG(3) << "Construct graph instances cache for: @" << impl_->module_name
-          << " (num_graphs = " << impl_->num_graphs << ")";
+  if (impl_->num_graphs > 0) {
+    VLOG(3) << "Construct graph instances cache for: @" << impl_->module_name
+            << " (num_graphs = " << impl_->num_graphs << ")";
+  }
+  AddGraphInstances(impl_);
 }
 
 GraphInstances::~GraphInstances() {
-  VLOG(3) << "Destroy graph instances cache for: @" << impl_->module_name
-          << " (num_graphs = " << impl_->num_graphs << ")";
+  if (impl_->num_graphs > 0) {
+    VLOG(3) << "Destroy graph instances cache for: @" << impl_->module_name
+            << " (num_graphs = " << impl_->num_graphs << ")";
 
-  absl::MutexLock lock(&impl_->mu);
-  for (auto& [executor, state] : impl_->graphs) {
-    VLOG(3) << "Destroy " << impl_->num_graphs << " graphs for: @"
-            << impl_->module_name << " at executor: " << executor
-            << ". Total remaining graphs at given executor: "
-            << NotifyGraphInstancesDestroyed(executor, impl_->num_graphs);
+    absl::MutexLock lock(&impl_->mu);
+    for (auto& [executor, state] : impl_->graphs) {
+      VLOG(3) << "Destroy " << impl_->num_graphs << " graphs for: @"
+              << impl_->module_name << " at executor: " << executor
+              << ". Total remaining graphs at given executor: "
+              << NotifyGraphInstancesDestroyed(executor, impl_->num_graphs);
+    }
   }
 }
 
-StreamExecutorGraphInstances* GraphInstances::operator()(
+std::shared_ptr<StreamExecutorGraphInstances> GraphInstances::operator()(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(&impl_->mu);
 
@@ -132,9 +240,9 @@ StreamExecutorGraphInstances* GraphInstances::operator()(
             << NotifyGraphInstancesCreated(executor, impl_->num_graphs);
   }
 
-  State& state = it.first->second;
+  Impl::State& state = it.first->second;
   state.last_use_micros = tsl::Env::Default()->NowMicros();
-  return &state.instances;
+  return state.instances;
 }
 
 bool GraphInstances::InstantiatedAllGraphs(
@@ -149,22 +257,29 @@ bool GraphInstances::InstantiatedAllGraphs(
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
-    void* ptr) {
+    void* ptr, std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
 
   absl::MutexLock lock(&impl_->mu);
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  State& state = impl_->graphs[executor];
+  Impl::State& state = impl_->graphs[executor];
 
   // All Gpu graphs are already instantiated for a given executor.
   if (state.instantiated) return OkStatus();
 
   TraceMe trace("cuda.graph.instantiate_all");
 
-  // Initialize graph instances snapshot for a given executor.
-  StreamExecutorGraphInstances::Snapshot instances = state.instances.snapshot();
+  // Evict all timeout graphs before trying to instantiate new ones.
+  EvictAllGraphs(executor, eviction_timeout_seconds);
+
+  // We'll retry graph instantiation on OOM errors after evicting all graphs
+  // instantiated on `executor`.
+  int32_t num_retries = 0;
+
+  StreamExecutorGraphInstances::Snapshot instances =
+      state.instances->snapshot();
 
   // Instantiate all Gpu graphs by calling graph capture functions with fake
   // arguments. Once we'll execute them first time for real, they'll be updated
@@ -217,9 +332,19 @@ Status GraphInstances::InstantiateAllGraphs(
       return GraphInstance(0, std::move(e));
     };
 
-    TF_ASSIGN_OR_RETURN(GraphInstance * instance,
-                        instances.GetOrCreate(ordinal, instantiate));
-    (void)instance;
+    absl::StatusOr<GraphInstance*> instance =
+        instances.GetOrCreate(ordinal, instantiate);
+
+    // Retry on OOM error after evicting all graphs from executor.
+    if (instance.status().code() == absl::StatusCode::kResourceExhausted &&
+        num_retries++ == 0) {
+      EvictAllGraphs(executor);
+      --ordinal;  // we'll try to instantiate the same graph one more time
+      continue;
+    }
+
+    // Otherwise return an error to the caller.
+    if (!instance.ok()) return instance.status();
 #endif  // GOOGLE_CUDA
   }
 

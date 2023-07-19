@@ -386,8 +386,11 @@ Status GpuRuntimeExecutable::Execute(
       conv_runners_(executor)->snapshot();
 
 #if GOOGLE_CUDA
+  std::shared_ptr<StreamExecutorGraphInstances> executor_graphs =
+      graph_instances_(executor);
+
   StreamExecutorGraphInstances::Snapshot graph_instances =
-      graph_instances_(executor)->snapshot();
+      executor_graphs->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
@@ -451,7 +454,8 @@ Status GpuRuntimeExecutable::Execute(
     }
 
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
-            run_options, executable, user_data, device_ptr);
+            run_options, executable, user_data, device_ptr,
+            debug_options_.xla_gpu_cuda_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
       return InternalError("Failed to instantiate CUDA graphs: %s",
                            instantiated.message());
