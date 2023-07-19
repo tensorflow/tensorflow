@@ -2288,7 +2288,10 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           "device %s, but replica is assigned to device %s.",
           i, replica, handle->device()->DebugString(), device->DebugString());
     }
-    bool must_donate = donate_it != donated_params.end() && *donate_it == i;
+    bool donation_denied_at_runtime =
+        options.non_donatable_input_indices.contains(i);
+    bool must_donate = donate_it != donated_params.end() && *donate_it == i &&
+                       !donation_denied_at_runtime;
     if (must_donate) {
       ++donate_it;
     }
