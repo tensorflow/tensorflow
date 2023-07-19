@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -381,7 +382,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(WARNING)
+    LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
         << default_protocol << "'; falling back to grpc. "
         << "Original error: " << transfer_server.status();
@@ -408,6 +409,11 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
       DCHECK_EQ(next_task_index_, 0);
     }
   }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng;
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
+  }
   return OkStatus();
 }
 
@@ -420,6 +426,11 @@ void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     if (round_robin_round_limit_.has_value()) {
       req.set_blocked_round(round_robin_round_limit_.value());
     }
+  }
+  {
+    mutex_lock l(mu_);
+    double target_processing_time_nsec = ctx_->GetTargetProcessingTimeNsec();
+    req.set_target_processing_time_nsec(target_processing_time_nsec);
   }
   ClientHeartbeatResponse resp;
   Status s = dispatcher_->ClientHeartbeat(req, resp);

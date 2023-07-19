@@ -162,6 +162,9 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 // Records distributed tf.data snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
+// Records the current estimated optimal number of tf.data service workers.
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -187,6 +190,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // Records the number of times each tf.data autotuning algorithm stopping
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
+
+// Records the number of times an error of this type occurred with this status
+// code.
+void RecordTFDataError(const string& error_type, const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);

@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -281,8 +281,8 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   BuildXSpaceForTest(*xspace2, kHost2);
 
   std::vector<std::string> xspace_paths;
-  xspace_paths.push_back("xspace_path1");
-  xspace_paths.push_back("xspace_path2");
+  xspace_paths.push_back("host1.pb");
+  xspace_paths.push_back("host2.pb");
 
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace1));

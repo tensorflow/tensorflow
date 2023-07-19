@@ -17,8 +17,8 @@
 This file is copied from tensorflow/python/ops/control_flow_util.py.
 """
 
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import variables
@@ -124,7 +124,7 @@ def constant_value(pred):  # pylint: disable=invalid-name
     TypeError: If `pred` is not a Variable, Tensor or bool, or Python
       integer 1 or 0.
   """
-  if isinstance(pred, ops.Tensor):
+  if isinstance(pred, tensor.Tensor):
     return tensor_util.constant_value(pred)
   if pred in {0, 1}:  # Accept 1/0 as valid boolean values
     return bool(pred)

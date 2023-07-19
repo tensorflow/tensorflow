@@ -193,6 +193,42 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
+#define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSumGradV2")                                    \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentSumGradV2Op<CPUDevice, type, index_type,             \
+                               segment_ids_type>);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_CPU_SPARSE_KERNELS
+
+#define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentMeanGradV2")                                   \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentMeanGradV2Op<CPUDevice, type, index_type,            \
+                                segment_ids_type>);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_CPU_SPARSE_KERNELS
+
+#define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSqrtNGradV2")                                  \
+          .Device(DEVICE_CPU)                                           \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentSqrtNGradV2Op<CPUDevice, type, index_type,           \
+                                 segment_ids_type>);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_CPU_SPARSE_KERNELS
+
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE
 

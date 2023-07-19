@@ -353,8 +353,8 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
 template <class Shape>
 int64_t TensorShapeBase<Shape>::dim_size(int d) const {
   if (unknown_rank()) return -1;
-  DCHECK_GE(d, 0);
-  DCHECK_LT(d, dims());
+  CHECK_GE(d, 0);                  // Crash OK
+  if (d > 0) CHECK_LT(d, dims());  // Crash OK
   if (tag() == REP16) {
     uint16 dim = as16()->dims_[d];
     if (kIsPartial && dim == kUnknownRep16) return -1;

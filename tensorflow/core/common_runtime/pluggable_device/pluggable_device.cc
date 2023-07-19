@@ -21,7 +21,10 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 #include <map>
+#include <memory>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
@@ -215,12 +218,12 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     TF_RETURN_IF_ERROR(
         ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &device_thread_count));
     if (device_thread_mode == "gpu_private") {
-      thread_pool_.reset(new thread::ThreadPool(
+      thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
           strings::StrCat("gpu_private_", tf_device_id_.value()),
           static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
-          /*allocator=*/nullptr));
+          /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (device_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(

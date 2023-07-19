@@ -26,6 +26,11 @@ Status GpuShapeVerifier::Preprocess(HloInstruction* hlo) {
                 "The XLA GPU backend does not support sparse shapes: %s",
                 hlo->ToString());
           }
+          if (shape.layout().element_size_in_bits() != 0) {
+            return InvalidArgument(
+                "The XLA GPU backend does not support custom element sizes: %s",
+                hlo->ToString());
+          }
         }
         return OkStatus();
       }));

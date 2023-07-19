@@ -677,8 +677,14 @@ class Graph {
   // contain references to functions whose definition is not included. It can
   // make sense to do this in cases where the caller already has a copy of the
   // function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
   void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
-                          bool include_flib_def = true) const;
+                          bool include_flib_def = true,
+                          bool include_debug_info = false) const;
 
   // Serialize to a GraphDef. `include_flib_def` indicates whether the function
   // library will be populated in the `graph_def`. `include_flib_def` should be
@@ -687,7 +693,13 @@ class Graph {
   // `graph_def` is incomplete and may contain references to functions whose
   // definition is not included. It can make sense to do this in cases where the
   // caller already has a copy of the function library.
-  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true) const;
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true,
+                  bool include_debug_info = false) const;
 
   // This version can be called from debugger to inspect the graph content.
   // Use the previous version outside debug context for efficiency reasons.

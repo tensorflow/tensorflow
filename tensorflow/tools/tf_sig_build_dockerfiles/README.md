@@ -101,7 +101,6 @@ Now let's build `tf-nightly`.
     - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
-    - `tensorflow/build:latest-python3.8`
 
     For this example we'll use `tensorflow/build:latest-python3.9`.
 

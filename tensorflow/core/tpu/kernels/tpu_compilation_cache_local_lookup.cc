@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 
+#include <memory>
+
 namespace tensorflow {
 namespace tpu {
 

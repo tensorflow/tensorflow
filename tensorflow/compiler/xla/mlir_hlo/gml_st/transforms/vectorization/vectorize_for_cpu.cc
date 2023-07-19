@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
@@ -386,7 +387,7 @@ struct VectorizeForCPUPass
                ThloReverseVectorizationPattern,
                TransferReadOfOneDimExpandShape>(ctx);
       tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);
-      vector::populateVectorTransferTensorSliceTransforms(patterns);
+      tensor::populateFoldTensorSubsetIntoVectorTransferPatterns(patterns);
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
         return signalPassFailure();
     }

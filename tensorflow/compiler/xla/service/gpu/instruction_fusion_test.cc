@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
@@ -32,6 +34,30 @@ class InstructionFusionTest : public HloTestBase {
   GpuInstructionFusion duplicating_instruction_fusion_{
       /*may_duplicate=*/true, TestGpuDeviceInfo::RTXA6000DeviceInfo()};
 };
+
+TEST_F(InstructionFusionTest, NoFusionIntoCustomFusionConsumer) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+c {
+  p0 = bf16[3000,53]{1,0} parameter(0)
+  p1 = bf16[22,53]{1,0} parameter(1)
+  d = bf16[3000,22]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  r = bf16[1,1,3000,22]{3,2,1,0} reshape(d)
+  ROOT c = bf16[1,1,3000,22]{2,1,3,0} copy(r)
+}
+
+ENTRY e {
+  p1 = bf16[3000,53]{1,0} parameter(1)
+  p0 = bf16[22,53]{1,0} parameter(0)
+  cp0 = bf16[22,53]{1,0} convert(p0)
+  ROOT f = bf16[1,1,3000,22]{2,1,3,0} fusion(p1, cp0), kind=kCustom, calls=c
+})"));
+
+  EXPECT_FALSE(duplicating_instruction_fusion_.Run(module.get()).value());
+}
 
 TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {

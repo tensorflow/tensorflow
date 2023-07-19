@@ -1,12 +1,11 @@
-// This is used for convolution logging. Also see
-// tensorflow/core/protobuf/autotuing.h
+// This is used for convolution logging.
 syntax = "proto3";
 
 package xla.gpu;
 
+import "tensorflow/compiler/xla/autotuning.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/tsl/protobuf/autotuning.proto";
 
 message ConvInstructionLog {
   xla.HloInstructionProto instruction = 1;
@@ -22,8 +21,8 @@ message DenylistedAlgorithm {
 
 message AlgorithmDenylistEntry {
   string hlo = 1;
-  tensorflow.ComputeCapability cc = 2;
-  tensorflow.CudnnVersion cudnn_version = 3;
+  ComputeCapability cc = 2;
+  CudnnVersion cudnn_version = 3;
   string blas_version = 5;
   repeated DenylistedAlgorithm algos = 4;
 }

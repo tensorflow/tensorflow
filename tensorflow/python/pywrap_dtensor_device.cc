@@ -39,7 +39,7 @@ using tensorflow::dtensor::ExperimentalClearDefaultMesh;
 using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
-using tensorflow::dtensor::GetFunctionCacheStats;
+using tensorflow::dtensor::GetStats;
 using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Layout;
@@ -368,11 +368,11 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return is_sparse;
   });
-  m.def("GetFunctionCacheStats", [](const py::handle& context,
-                                    const py::capsule& device_info) {
+  m.def("GetStats", [](const py::handle& context,
+                       const py::capsule& device_info) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
-    return GetFunctionCacheStats(
+    return GetStats(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
         device_info, status.get());
   });
@@ -395,6 +395,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
               tensor_handle, element_layouts, device_info, status.get());
         });
   py::class_<Mesh>(m, "Mesh")
+      .def(py::init([](Mesh& mesh) { return mesh; }), py::arg("mesh"),
+           "Create a copy of a mesh.")
       .def(py::init(&Mesh::CreateMesh))
       .def(py::init([](absl::string_view single_device) {
              auto mesh = Mesh::GetSingleDeviceMesh(single_device);
@@ -444,6 +446,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           py::arg("dim_name"), "Returns the size of mesh dimension.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
+      .def("host_mesh", &Mesh::host_mesh,
+           "Returns a host mesh corresponding to this mesh.")
       .def("num_local_devices", &Mesh::num_local_devices,
            "Returns the number of local devices.")
       .def("min_global_device_id", &Mesh::min_global_device_id,

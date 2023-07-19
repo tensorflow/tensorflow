@@ -63,5 +63,10 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
 
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    mlir::mhlo::DotDimensionNumbersAttr input);
+
+StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+    const mlir::ArrayAttr& array);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/tsl/platform/errors.h"
 namespace xla {
 
 class DummyAutoSharding : public HloModulePass {
@@ -162,7 +161,20 @@ struct AutoShardingOption {
   // Explore other mesh shapes with the same number of devices as the provided
   // one for a potentially better auto-sharding solution.
   bool try_multiple_mesh_shapes = false;
+
+  // Timeout for the solver. If the solver fails to find an optimal solution
+  // before the timeout, we rely on the heuristic-based sharding implemented in
+  // sharding_propagation.cc.
+  int64_t solver_timeout_in_seconds = 3600;
+
+  // Static estimate for iteration count of a while loop, used in the cost model
+  int64_t loop_iteration_count_estimate = 100;
+
   std::vector<int64_t> strategy_vector;
+  // If greater than zero, tensors with size smaller than or equal to this limit
+  // will always be replicated if they don't have a different user-specified
+  // sharding.
+  int64_t small_tensor_byte_size = 0;
 
   std::string ToString() {
     std::vector<std::string> lines;
@@ -320,13 +332,19 @@ struct AutoShardingOption {
   }
 };
 
+enum class AutoShardingResult {
+  kModuleUnchanged,
+  kModuleChangedShardingPerformed,
+  kModuleUnchangedNoShardingPerfomed
+};
+
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
   // using HloPassInterface::Run;
-  StatusOr<bool> RunAutoSharding(
+  StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

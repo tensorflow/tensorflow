@@ -60,6 +60,10 @@ class DelegateKernel : public SimpleDelegateKernelInterface {
   const std::map<int, int>& GetTensorReleaseMap() const;
 
   std::unique_ptr<OpData> op_data_;
+
+  // Indicates that the output shapes may be inferred using the input shapes and
+  // May be allocated during Prepare.
+  bool shapes_are_valid_ = true;
 };
 
 }  // namespace flex

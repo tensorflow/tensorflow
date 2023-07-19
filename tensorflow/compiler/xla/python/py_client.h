@@ -232,6 +232,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // callback can be passed to `PyClient::Compile` or
   // `PyClient::DeserializeExecutable`. The corresponding Send/Recv ops in the
   // XLA computation can trigger the execution of this host callback.
+  // `serializer` is a function that takes `callable` as an argument and returns
+  // a serialized callable as a string.
   //
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
@@ -240,7 +242,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       pybind11::function callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
       absl::Span<uint16_t const> send_channel_ids,
-      absl::Span<uint16_t const> recv_channel_ids);
+      absl::Span<uint16_t const> recv_channel_ids,
+      pybind11::function serializer);
 
   std::vector<pybind11::object> LiveArrays();
 

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <optional>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/STLExtras.h"
@@ -150,14 +153,16 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
-  MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  MLIRContext context(registry);
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
-  mlir::DialectRegistry registry;
 
   if (input_mlir) {
     // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
     // back to do it properly in the future
+    mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
     registry.insert<mlir::func::FuncDialect>();
     context.appendDialectRegistry(registry);
@@ -285,6 +290,7 @@ int main(int argc, char **argv) {
   pass_config.outline_tf_while = true;
   pass_config.preserve_assert_op = preserve_assert_op;
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
+  pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;
@@ -297,6 +303,9 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   toco_flags.set_post_training_quantize(post_training_quantization);
+  toco_flags.set_use_buffer_offset(use_buffer_offset);
+  toco_flags.set_legalize_custom_tensor_list_ops(
+      legalize_custom_tensor_list_ops);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))

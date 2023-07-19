@@ -49,7 +49,7 @@ COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
 RUN apt-get update
-RUN apt-get install -y libcudnn8-dev=8.9.1.23-1+cuda12.1
+RUN apt-get install -y libcudnn8-dev=8.9.1.23-1+cuda12.1 libcudnn8=8.9.1.23-1+cuda12.1
 
 # LLVM/Clang: https://apt.llvm.org/
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
@@ -72,13 +72,11 @@ COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
 COPY install/build_and_install_python.sh /install/
-RUN /install/build_and_install_python.sh "3.8.2"
 RUN /install/build_and_install_python.sh "3.9.4"
 RUN /install/build_and_install_python.sh "3.10.0"
 RUN /install/build_and_install_python.sh "3.11.0"
 
 COPY install/install_pip_packages_by_version.sh /install/
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8" "jax"
 # https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"

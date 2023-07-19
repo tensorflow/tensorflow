@@ -1,17 +1,9 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-
-# TODO(b/249181641): Restructure source codes for TF quantization.
-package_group(
-    name = "internal_visibility_allowlist_package",
-    packages = [
-        "//tensorflow/compiler/mlir/lite/...",
-        "//tensorflow/compiler/mlir/quantization/...",
-    ] + internal_visibility_allowlist(),
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,18 +14,16 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "constants",
-    hdrs = [
-        "constants.h",
-    ],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
+# TODO(b/249181641): Restructure source codes for TF quantization.
+package_group(
+    name = "internal_visibility_allowlist_package",
+    packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/compiler/mlir/quantization/...",
+    ] + internal_visibility_allowlist(),
 )
 
-py_binary(
+py_strict_binary(
     name = "gen_quantized_function_library",
     srcs = ["gen_quantized_function_library.py"],
     deps = [
@@ -55,7 +45,7 @@ genrule(
         "passes/quantized_function_library.h",
     ],
     cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tools = ["gen_quantized_function_library"],
 )
 
@@ -67,7 +57,7 @@ cc_library(
     hdrs = [
         "passes/utils.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -86,7 +76,7 @@ cc_library(
     hdrs = [
         "passes/manipulate_model_attr.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
@@ -103,7 +93,7 @@ cc_library(
     hdrs = [
         "passes/remove_identity_op_pattern.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
@@ -128,7 +118,7 @@ td_library(
         "passes/tf_quant_ops.td",
         "passes/utils.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils_td_files",
@@ -140,7 +130,7 @@ td_library(
 
 gentbl_cc_library(
     name = "cast_bf16_ops_to_f32_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -154,7 +144,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "prepare_lifting_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -168,7 +158,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -182,7 +172,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_drq_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -196,7 +186,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "prepare_quantize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -210,7 +200,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "quantize_composite_functions_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -224,7 +214,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_quant_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -244,7 +234,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "optimize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -258,7 +248,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "convert_tpu_model_to_cpu_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -272,7 +262,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "post_quantize_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -286,7 +276,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "preprocess_op_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -306,7 +296,7 @@ cc_library(
         "passes/tf_quant_ops.h.inc",
     ],
     hdrs = ["passes/tf_quant_ops.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
@@ -334,7 +324,7 @@ cc_library(
         "ops/tf_op_quant_spec.cc",
     ],
     hdrs = ["ops/tf_op_quant_spec.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -350,7 +340,7 @@ cc_library(
         "ops/uniform_op_quant_spec.cc",
     ],
     hdrs = ["ops/uniform_op_quant_spec.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -363,7 +353,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -382,7 +372,6 @@ cc_library(
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
-        "passes/convert_tf_quant_ops_to_mhlo.cc",
         "passes/convert_tpu_model_to_cpu.cc",
         "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",
@@ -425,9 +414,8 @@ cc_library(
         "passes/constants.h",
         "passes/passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":constants",
         ":manipulate_model_attr",
         ":pass_utils",
         ":quantization_options_proto_cc",
@@ -439,6 +427,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",
@@ -484,6 +474,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
     # Alwayslink is required for registering the MLIR passes.
     # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
@@ -498,25 +489,19 @@ cc_library(
     hdrs = [
         "quantize_preprocess.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_freeze_variables",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
-        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -532,7 +517,7 @@ cc_library(
     hdrs = [
         "quantize_passes.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":pass_utils",
         ":passes",
@@ -551,6 +536,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -625,6 +611,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",

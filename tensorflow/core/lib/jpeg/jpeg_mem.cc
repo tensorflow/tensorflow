@@ -20,8 +20,11 @@ limitations under the License.
 
 #include <setjmp.h>
 #include <string.h>
+
 #include <algorithm>
+#include <functional>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 

@@ -1062,6 +1062,17 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_slice_minus1_size
+// CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 4, 13, 1>, start = array<i64: 6, 8, 0>}>
+func.func @test_slice_minus1_size(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[6, 8, 0]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[4, -1, 1]> : tensor<3xi32>
+  %0 = "tfl.slice"(%arg0, %cst, %cst_0) : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_strided_slice_simple
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 9, 21, 2>, start = array<i64: 4, 0, 1>}>
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 7, 3, 2>}>
@@ -1071,7 +1082,7 @@ func.func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 3, 1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1086,7 +1097,7 @@ func.func @test_strided_slice_simple_negative(%arg0: tensor<13x21x3xf32>) -> ten
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, -3, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 3, 1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 1 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 1 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1099,7 +1110,7 @@ func.func @test_strided_slice_strideless(%arg0: tensor<13x21x3xf32>) -> tensor<*
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 2 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 2 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1114,7 +1125,7 @@ func.func @test_strided_slice_shrink(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 3, 1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 5 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 5 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1127,7 +1138,7 @@ func.func @test_strided_slice_shrink_ignore_stride(%arg0: tensor<13x21x3xf32>) -
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 3, 1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 3 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 3 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1142,7 +1153,7 @@ func.func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<*x
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, 1, -1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1157,7 +1168,7 @@ func.func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> t
   %cst = arith.constant dense<[4, 0]> : tensor<2xi32>
   %cst_0 = arith.constant dense<[13, 21]> : tensor<2xi32>
   %cst_1 = arith.constant dense<[1, -1]> : tensor<2xi32>
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1171,7 +1182,7 @@ func.func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> t
 func.func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor<3xi32>) -> tensor<*xf32> {
   %cst_0 = arith.constant dense<[13, -1, 3]> : tensor<3xi32>
   %cst_1 = arith.constant dense<[1, -1, -1]> : tensor<3xi32>
-  %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1190,7 +1201,7 @@ func.func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor
   // CHECK: %[[VAR0:.*]] = "tosa.reverse"(%arg0) <{axis = 1 : i64}>
   // CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) <{axis = 2 : i64}>
   // CHECK: return %[[VAR1]]
-  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 // -----
@@ -1206,7 +1217,7 @@ func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*
   // CHECK: %[[RESHAPE1:.+]] = "tosa.reshape"(%[[SLICE1]]) <{new_shape = array<i64: 7, -1, 2, 1>}>
   // CHECK: %[[SLICE2:.+]] = "tosa.slice"(%[[RESHAPE1]]) <{size = array<i64: 7, -1, 1, 1>, start = array<i64: 0, 0, 0, 0>}>
   // CHECK: %[[RESHAPE2:.+]] = "tosa.reshape"(%[[SLICE2]]) <{new_shape = array<i64: 7, -1>}>
-  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 2 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 4 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 2 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 4 : i32, offset = false}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   // CHECK: return %[[RESHAPE2]]
   func.return %0 : tensor<*xf32>
 }
@@ -2767,4 +2778,29 @@ func.func @test_imag(%arg0: tensor<1x8x9xcomplex<f32>>) -> (tensor<1x8x9xf32>) {
 func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>) {
   %0 = "tfl.imag"(%arg0) {} : (tensor<1x8x9xf32>) -> tensor<1x8x9xf32>
   return %0 : tensor<1x8x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_qi8
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg1)
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.sub"(%[[VAR0]], %[[VAR1]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR2]]) <{shift = 0 : i32}> :
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.rescale"(%[[VAR3]])
+// CHECK: return %[[VAR4]]
+func.func @test_squared_difference_qi8(%arg0: tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, %arg1: tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>
+  func.return %0 : tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>
+}
+
+// -----
+
+// CHECK-LABEL: test_squared_difference_f32
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.sub"(%arg0, %arg1)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.mul"(%[[VAR0]], %[[VAR0]]) <{shift = 0 : i32}> :
+// CHECK: return %[[VAR1]]
+func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tensor<1x197x1xf32>) -> tensor<1x197x768xf32> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768xf32>, tensor<1x197x1xf32>) -> tensor<1x197x768xf32>
+  func.return %0 : tensor<1x197x768xf32>
 }

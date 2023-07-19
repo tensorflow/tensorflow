@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -271,6 +272,11 @@ Status BatchResourceBase::RegisterInput(
   batch_components->start_time = EnvTime::NowNanos();
   batch_components->guid = guid;
   batch_components->propagated_context = Context(ContextKind::kThread);
+
+  if (batcher_queue_options_.enable_priority_queue) {
+    batch_components->criticality = tsl::criticality::GetCriticality();
+  }
+
   OpInputList tensors;
   TF_RETURN_IF_ERROR(context->input_list("in_tensors", &tensors));
   batch_components->inputs.reserve(tensors.size());
@@ -357,6 +363,20 @@ Status BatchResourceBase::RegisterInput(
   BatcherQueueT* batcher_queue;
   TF_RETURN_IF_ERROR(
       LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
+
+  if (!session_metadata().name().empty()) {
+    absl::MutexLock lock(&outstanding_batch_mu_);
+    WarmupStateRegistry::Key key(session_metadata().name(),
+                                 session_metadata().version());
+    if (GetGlobalWarmupStateRegistry().Lookup(key)) {
+      outstanding_batch_mu_.Await({+[](int* num_outstanding_batches) {
+                                     return *num_outstanding_batches == 0;
+                                   },
+                                   &num_outstanding_batches_});
+    }
+    num_outstanding_batches_ += batch_components->size();
+  }
+
   return batcher_queue->Schedule(&batch_components);
 }
 
@@ -366,10 +386,44 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t batch_timeout_micros, int32_t max_enqueued_batches,
     const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting, bool disable_padding) {
+  return GetBatcherQueueOptions(
+      num_batch_threads, max_batch_size, batch_timeout_micros,
+      max_enqueued_batches, allowed_batch_sizes, enable_large_batch_splitting,
+      disable_padding, /*low_priority_max_batch_size=*/0,
+      /*low_priority_batch_timeout_micros=*/0,
+      /*low_priority_max_enqueued_batches=*/0,
+      /*low_priority_allowed_batch_sizes=*/{});
+}
+
+/*static*/ BatchResourceBase::BatcherT::QueueOptions
+BatchResourceBase::GetBatcherQueueOptions(
+    int32_t num_batch_threads, int32_t max_batch_size,
+    int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+    const std::vector<int32>& allowed_batch_sizes,
+    bool enable_large_batch_splitting, bool disable_padding,
+    int32_t low_priority_max_batch_size,
+    int32_t low_priority_batch_timeout_micros,
+    int32_t low_priority_max_enqueued_batches,
+    const std::vector<int32>& low_priority_allowed_batch_sizes) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
+  if (low_priority_max_batch_size > 0) {
+    batcher_queue_options.enable_priority_queue = true;
+  }
+  batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
+      max_batch_size;
+  batcher_queue_options.high_priority_queue_options.max_enqueued_batches =
+      max_enqueued_batches;
+  batcher_queue_options.high_priority_queue_options.batch_timeout_micros =
+      batch_timeout_micros;
+  batcher_queue_options.low_priority_queue_options.input_batch_size_limit =
+      low_priority_max_batch_size;
+  batcher_queue_options.low_priority_queue_options.max_enqueued_batches =
+      low_priority_max_enqueued_batches;
+  batcher_queue_options.low_priority_queue_options.batch_timeout_micros =
+      low_priority_batch_timeout_micros;
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {
@@ -383,9 +437,21 @@ BatchResourceBase::GetBatcherQueueOptions(
 
     if (allowed_batch_sizes.empty()) {
       batcher_queue_options.max_execution_batch_size = max_batch_size;
+      batcher_queue_options.high_priority_queue_options
+          .max_execution_batch_size = max_batch_size;
     } else {
       batcher_queue_options.max_execution_batch_size =
           *allowed_batch_sizes.rbegin();
+      batcher_queue_options.high_priority_queue_options
+          .max_execution_batch_size = *allowed_batch_sizes.rbegin();
+    }
+    if (low_priority_allowed_batch_sizes.empty()) {
+      batcher_queue_options.low_priority_queue_options
+          .max_execution_batch_size = low_priority_max_batch_size;
+    } else {
+      batcher_queue_options.low_priority_queue_options
+          .max_execution_batch_size =
+          *low_priority_allowed_batch_sizes.rbegin();
     }
   }
   batcher_queue_options.disable_padding = disable_padding;
@@ -913,6 +979,10 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 
   std::unique_ptr<BatcherQueueT> new_queue;
   auto process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
+    if (!session_metadata().name().empty()) {
+      absl::MutexLock lock(&outstanding_batch_mu_);
+      num_outstanding_batches_ -= batch->size();
+    }
     if (!has_process_batch_function_) {
       ProcessBatch(std::move(batch));
     } else {

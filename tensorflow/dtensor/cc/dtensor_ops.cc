@@ -43,9 +43,10 @@ REGISTER_OP("Relayout")
 // Relayout the input according to the layout of layout_input.
 REGISTER_OP("RelayoutLike")
     .Input("input: T")
-    .Input("layout_input: T")  // To infer the output mesh.
+    .Input("layout_input: U")  // To infer the output mesh.
     .Output("output: T")
     .Attr("T: type")
+    .Attr("U: type")
     .SetShapeFn(UnchangedShape);
 
 // Copy `input` to the given mesh and layout.

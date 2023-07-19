@@ -45,6 +45,11 @@ namespace {
 
 constexpr char kNextSplitIndex[] = "next_split_index";
 
+StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
+  tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
+  tsl::StringPiece repetition_dir_name = tsl::io::Basename(repetition_dir_path);
+  return ParseRepetitionDirectoryName(repetition_dir_name);
+}
 }  // namespace
 
 SnapshotSplitProvider::SnapshotSplitProvider(
@@ -84,8 +89,7 @@ Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
     return OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(
-      GetSplitsFiles(next_split_index_, split_to_file_map_, repetition_index_));
+  TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
   TF_RETURN_IF_ERROR(ValidateSplitFiles(split_to_file_map_, next_split_index_,
                                         dispatcher_split_index,
                                         *end_of_splits));
@@ -98,6 +102,11 @@ Status SnapshotSplitProvider::GetSplitFromFile(const std::string& split_file,
                                                bool* end_of_splits)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(3) << "Getting the next split from file: " << split_file;
+  TF_ASSIGN_OR_RETURN(int64_t repetition_index, GetRepetitionIndex(split_file));
+  if (repetition_index_ < repetition_index) {
+    *end_of_splits = true;
+    return OkStatus();
+  }
   snapshot_util::TFRecordReaderImpl reader(split_file,
                                            tsl::io::compression::kNone);
   TF_RETURN_IF_ERROR(reader.Initialize(env_));
@@ -129,11 +138,10 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
   return local_split_index;
 }
 
-Status SnapshotSplitProvider::GetSplitsFiles(
-    int64_t start_index,
-    absl::btree_map<int64_t, std::string>& split_to_file_map,
-    int64_t& repetition_index) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  split_to_file_map.clear();
+StatusOr<absl::btree_map<int64_t, std::string>>
+SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  absl::btree_map<int64_t, std::string> split_to_file_map;
   std::string splits_directory = SourceDirectory(
       snapshot_task_.base_path(), snapshot_task_.stream_index(), source_index_);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
@@ -152,11 +160,8 @@ Status SnapshotSplitProvider::GetSplitsFiles(
       }
     }
   }
-
   TF_RETURN_IF_ERROR(ValidateSplitFiles(split_to_file_map, start_index));
-  repetition_index =
-      repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
-  return OkStatus();
+  return split_to_file_map;
 }
 
 Status SnapshotSplitProvider::ValidateSplitFiles(
@@ -231,8 +236,12 @@ Status SnapshotSplitProvider::Restore(
       reader->ReadScalar(full_name(kNextSplitIndex), &next_split_index));
   mutex_lock l(mu_);
   next_split_index_ = next_split_index;
-  TF_RETURN_IF_ERROR(
-      GetSplitsFiles(next_split_index_, split_to_file_map_, repetition_index_));
+  TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
+  auto next_split_file = split_to_file_map_.find(next_split_index_);
+  if (next_split_file != split_to_file_map_.end()) {
+    TF_ASSIGN_OR_RETURN(repetition_index_,
+                        GetRepetitionIndex(next_split_file->second));
+  }
   return OkStatus();
 }
 

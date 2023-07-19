@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/verifier.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -261,13 +262,16 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
     return nullptr;
   }
 
-  flatbuffers::Verifier base_verifier(
-      reinterpret_cast<const uint8_t*>(allocation->base()),
-      allocation->bytes());
-  if (!VerifyModelBuffer(base_verifier)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The model is not a valid Flatbuffer buffer");
-    return nullptr;
+  // Only run validator on models less than 2GB
+  if (allocation->bytes() < flatbuffer_size_max) {
+    flatbuffers::Verifier base_verifier(
+        reinterpret_cast<const uint8_t*>(allocation->base()),
+        allocation->bytes());
+    if (!VerifyModelBuffer(base_verifier)) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "The model is not a valid Flatbuffer buffer");
+      return nullptr;
+    }
   }
 
   if (extra_verifier &&
@@ -285,6 +289,13 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
+  if (CheckBufferOutsideModel(caller_owned_model_spec)) {
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model contains weights not accessible from "
+                         "tflite::Model *, please use other api");
+    return nullptr;
+  }
+
   std::unique_ptr<FlatBufferModel> model(
       new FlatBufferModel(caller_owned_model_spec, error_reporter));
   if (!model->initialized()) {
@@ -295,12 +306,24 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
   return model;
 }
 
+bool FlatBufferModel::CheckBufferOutsideModel(const tflite::Model* model) {
+  if (!model || !model->metadata()) return false;
+
+  for (int i = 0; i < model->metadata()->size(); ++i) {
+    auto metadata = model->metadata()->Get(i);
+    if (metadata->name()->str() == tflite_metadata_buffer_location) {
+      return true;
+    }
+  }
+  return false;
+}
+
 string FlatBufferModel::GetMinimumRuntime() const {
   if (!model_ || !model_->metadata()) return "";
 
   for (int i = 0; i < model_->metadata()->size(); ++i) {
     auto metadata = model_->metadata()->Get(i);
-    if (metadata->name()->str() == "min_runtime_version") {
+    if (metadata->name()->str() == tflite_metadata_min_runtime_version) {
       auto buf = metadata->buffer();
       auto* buffer = (*model_->buffers())[buf];
       auto* array = buffer->data();
@@ -352,7 +375,8 @@ std::map<std::string, std::string> FlatBufferModel::ReadAllMetadata(
 bool FlatBufferModel::CheckModelIdentifier() const {
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Model provided has model identifier '%c%c%c%c', should be '%s'\n",
         ident[0], ident[1], ident[2], ident[3], tflite::ModelIdentifier());
     return false;

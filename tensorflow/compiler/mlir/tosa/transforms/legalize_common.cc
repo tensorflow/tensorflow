@@ -23,12 +23,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
+#include <algorithm>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 #include <optional>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -133,7 +137,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // if input[0] has shape [A, B, C], input[1] to input[N-1] should also have
   // shape[A, B, C]
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
 
   // Check for ranked tensor type.
   if (!result_type) {
@@ -145,13 +149,13 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Valid axis in TOSA is [0, rank(input))
   // Plus rank(input) once if axis is negative.
   RankedTensorType input_type =
-      op->getOperand(0).getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op->getOperand(0).getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
   }
 
-  input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
+  input_type = dyn_cast<RankedTensorType>(inputs[0].getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input 0 type not ranked tensor");
     return std::nullopt;
@@ -168,7 +172,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   }
 
   for (int i = 1; i < inputs.size(); i++) {
-    input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
+    input_type = dyn_cast<RankedTensorType>(inputs[0].getType());
     if (!input_type) {
       (void)rewriter.notifyMatchFailure(
           op, llvm::formatv("input {} is not ranked)", i));
@@ -322,7 +326,7 @@ std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
                                                   Value input_value,
                                                   int32_t axis) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   auto input_shape = input_type.getShape();
@@ -372,7 +376,7 @@ std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
 
   // Step 2: slice [N, A, B, C] into N [A, B, C].
   RankedTensorType transposed_input_type =
-      transposed_input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(transposed_input_value.getType());
   if (!transposed_input_type) return std::nullopt;
 
   auto transposed_input_shape = transposed_input_type.getShape();
@@ -421,11 +425,11 @@ std::optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value condition_value,
                                      Value x_value, Value y_value) {
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   RankedTensorType condition_type =
-      condition_value.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType x_type = x_value.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType y_type = y_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(condition_value.getType());
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x_value.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y_value.getType());
 
   if (!x_type || !y_type || !condition_type) {
     (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
@@ -472,13 +476,13 @@ std::optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
 std::optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
                                         Operation* op, Value result,
                                         Value input) {
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type = dyn_cast<RankedTensorType>(result.getType());
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "result not ranked tensor type");
     return std::nullopt;
   }
 
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input not ranked tensor type");
     return std::nullopt;
@@ -500,9 +504,9 @@ std::optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
 std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
                                        Value output_val, Value input_lhs_val,
                                        Value input_rhs_val) {
-  ShapedType input_lhs_type = input_lhs_val.getType().dyn_cast<ShapedType>();
-  ShapedType input_rhs_type = input_rhs_val.getType().dyn_cast<ShapedType>();
-  ShapedType output_type = output_val.getType().dyn_cast<ShapedType>();
+  ShapedType input_lhs_type = dyn_cast<ShapedType>(input_lhs_val.getType());
+  ShapedType input_rhs_type = dyn_cast<ShapedType>(input_rhs_val.getType());
+  ShapedType output_type = dyn_cast<ShapedType>(output_val.getType());
   // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return std::nullopt;
 
@@ -566,19 +570,91 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
                                                 Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
-  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
+  ShapedType result_type = dyn_cast<ShapedType>(result.getType());
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "result not ranked tensor type");
     return std::nullopt;
   }
 
-  ShapedType x_type = x.getType().dyn_cast<ShapedType>();
-  ShapedType y_type = y.getType().dyn_cast<ShapedType>();
+  ShapedType x_type = dyn_cast<ShapedType>(x.getType());
+  ShapedType y_type = dyn_cast<ShapedType>(y.getType());
   if (!x_type || !y_type) {
     (void)rewriter.notifyMatchFailure(op, "inputs not ranked tensor type");
     return std::nullopt;
   }
 
+  bool x_is_qtype =
+      x_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool y_is_qtype =
+      y_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+  bool result_is_qtype =
+      result_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
+
+  if (x_is_qtype != result_is_qtype || y_is_qtype != result_is_qtype) {
+    (void)rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should all be in FP32, INT32 or quantized INT8");
+    return std::nullopt;
+  }
+
+  // If the output is I8 then we need to rescale to I32
+  // Then scale back to I8
+  if (result_is_qtype) {
+    auto x_qtype =
+        x_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto y_qtype =
+        y_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+    auto result_qtype =
+        result_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
+
+    uint32_t result_bits = result_qtype.getStorageTypeIntegralWidth();
+
+    if (result_bits == 8) {
+      ShapedType rescale_type = result_type.clone(rewriter.getI32Type());
+
+      // We need to make sure the inputs are rescaled correctly
+      // Following the behaviour defined here lite/kernels/squared_difference.cc
+      double in_x_scale = x_qtype.getScale();
+      double in_y_scale = y_qtype.getScale();
+      double result_scale = result_qtype.getScale();
+
+      double twice_max_input_scale = 2.0 * std::max(in_x_scale, in_y_scale);
+
+      const int32_t LEFT_SHIFT = 7;
+
+      double x_rescale_scale = in_x_scale / twice_max_input_scale;
+      double y_rescale_scale = in_y_scale / twice_max_input_scale;
+      double output_rescale_scale =
+          (twice_max_input_scale * twice_max_input_scale) /
+          ((static_cast<double>(1 << LEFT_SHIFT * 2)) * result_scale);
+
+      Value x_scaled = buildRescaleToInt32(
+          rewriter, op, x,
+          x_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
+          x_qtype.getZeroPoint());
+      Value y_scaled = buildRescaleToInt32(
+          rewriter, op, y,
+          y_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
+          y_qtype.getZeroPoint());
+
+      auto sub_op = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
+      auto mul_op = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), rescale_type, sub_op.getResult(),
+          sub_op.getResult(), 0);
+
+      // Convert the operator back to the original type
+      return buildRescaleFromInt32(rewriter, op, result_type, mul_op,
+                                   output_rescale_scale,
+                                   result_qtype.getZeroPoint());
+    }
+
+    (void)rewriter.notifyMatchFailure(
+        op, "Only FP32, INT32 or quantized INT8 is supported");
+    return std::nullopt;
+  }
+
+  // This will cover FP32/FP16/INT32 legalization
   auto sub_op =
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
@@ -591,13 +667,13 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 std::optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                     Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
-  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
+  ShapedType result_type = dyn_cast<ShapedType>(result.getType());
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "result not shaped tensor type");
     return std::nullopt;
   }
 
-  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
+  ShapedType input_type = dyn_cast<ShapedType>(input.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input not shaped tensor type");
     return std::nullopt;
@@ -619,7 +695,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
                                        int32_t axis) {
   // Check all inputs are RankedTensorType
   for (auto v : values) {
-    if (!v.getType().dyn_cast<RankedTensorType>()) {
+    if (!dyn_cast<RankedTensorType>(v.getType())) {
       (void)rewriter.notifyMatchFailure(op, "value type not ranked tensor");
       return std::nullopt;
     }
@@ -632,7 +708,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
   SmallVector<Value> values_rescaled;
 
   for (auto v : values) {
-    RankedTensorType operand_type = v.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType operand_type = dyn_cast<RankedTensorType>(v.getType());
     mlir::quant::UniformQuantizedType operand_quant_type =
         operand_type.getElementType()
             .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
@@ -740,13 +816,13 @@ std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   //
 
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   RankedTensorType block_shape_type =
-      block_shape_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(block_shape_value.getType());
   RankedTensorType paddings_type =
-      paddings_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(paddings_value.getType());
 
   // Not a ranked tensor output.
   if (!result_type) {
@@ -1009,13 +1085,13 @@ std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   // size=a4_size)
 
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   RankedTensorType block_shape_type =
-      block_shape_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(block_shape_value.getType());
   RankedTensorType crops_type =
-      crops_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(crops_value.getType());
 
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "result type not ranked tensor");
@@ -1214,7 +1290,7 @@ std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
                                          Value input_value, Value dim_value) {
   // Lowers to a reshape op with 1's inserted in the appropriate dimensions.
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!output_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
@@ -1222,7 +1298,7 @@ std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -1279,7 +1355,7 @@ std::optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
   // Lowers to a reshape op where dimensions in squeeze_dims with size=1
   // are removed.
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!output_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
@@ -1287,7 +1363,7 @@ std::optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -1350,7 +1426,7 @@ std::optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
   // a3 = ge(x, zero_bcast)
   // a4 = select(a3, x, a2)
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!output_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
@@ -1403,9 +1479,9 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   // For fp case, the normalization in the equation is required to prevent
   // float overflow in softmax's intermediate calculations.
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   RankedTensorType input_type =
-      logits_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(logits_value.getType());
 
   // Not a ranked tensor input/output
   if (!output_type || !input_type) {
@@ -1839,7 +1915,7 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   // op4 = mul(op1, op3)
   // op5 = log(op4)
 
-  TensorType output_type = result_value.getType().dyn_cast<TensorType>();
+  TensorType output_type = dyn_cast<TensorType>(result_value.getType());
   // Not a tensor output
   if (!output_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not tensor");
@@ -1847,7 +1923,7 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   }
 
   RankedTensorType input_type =
-      op->getOperand(0).getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(op->getOperand(0).getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -1902,7 +1978,7 @@ std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   // orig_shape[3]*b*b])
   // return a4
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
 
   // Not a ranked tensor output.
   if (!output_type) {
@@ -1911,7 +1987,7 @@ std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -1997,7 +2073,7 @@ std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   // return a4
 
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
 
   // Not a ranked tensor output
   if (!output_type) {
@@ -2006,7 +2082,7 @@ std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -2080,7 +2156,7 @@ std::optional<SmallVector<Value>> convertSplitOp(
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
@@ -2088,7 +2164,7 @@ std::optional<SmallVector<Value>> convertSplitOp(
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -2176,7 +2252,7 @@ std::optional<SmallVector<Value>> convertSplitVOp(
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
   RankedTensorType result_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "output type not ranked tensor");
@@ -2184,7 +2260,7 @@ std::optional<SmallVector<Value>> convertSplitVOp(
   }
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
     return std::nullopt;
@@ -2290,7 +2366,7 @@ std::optional<Value> convertStridedSliceOp(
 
   // Limitations:
   // * This implementation only supports ellipsis_mask=0 for now
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  auto input_type = dyn_cast<RankedTensorType>(input_value.getType());
   ShapedType result_type = result_value.getType().cast<ShapedType>();
 
   if (ellipsis_mask != 0) {
@@ -2527,7 +2603,7 @@ std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // return a3;
-  ShapedType output_type = result_value.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = dyn_cast<ShapedType>(result_value.getType());
   // Not a shaped tensor output
   if (!output_type) return std::nullopt;
 
@@ -2562,7 +2638,7 @@ std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
   // return a4;
 
   RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(result_value.getType());
   // Not a ranked tensor output
   if (!output_type) return std::nullopt;
 
@@ -2583,7 +2659,7 @@ std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
 std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
                                             Operation* op, Value input_value,
                                             StringAttr fused_activation_fn) {
-  ShapedType input_type = input_value.getType().dyn_cast<ShapedType>();
+  ShapedType input_type = dyn_cast<ShapedType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   bool input_is_qtype =
@@ -2752,7 +2828,7 @@ std::optional<Value> convertReduceOpCommon(
     bool is_quantized, double input_scale, int64_t input_zp,
     double output_scale, int64_t output_zp) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   ArrayRef<int64_t> input_shape = input_type.getShape();
@@ -2834,7 +2910,7 @@ std::optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceAllOp>(
@@ -2849,7 +2925,7 @@ std::optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceAnyOp>(
@@ -2864,7 +2940,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceMinOp>(
@@ -2879,7 +2955,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceMaxOp>(
@@ -2894,7 +2970,7 @@ std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
                                          Value input_value,
                                          ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   bool input_is_qtype =
@@ -2920,7 +2996,7 @@ std::optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   bool input_is_qtype =
@@ -2975,7 +3051,7 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
   // op2 = mul(op1, 1.0 / num_elements_on_reduced_axis)
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   bool input_is_qtype =
@@ -3056,7 +3132,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   const bool is_bilinear = mode == "BILINEAR";
   const bool is_nearest = mode == "NEAREST_NEIGHBOR";
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   if (input_type.getRank() != 4 || output_type.getRank() != 4) {
@@ -3289,7 +3365,7 @@ std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
                                        Value input_value, double scale,
                                        int64_t zeropoint) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   auto output_element_type = output_type.getElementType();
@@ -3327,7 +3403,7 @@ std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
                                          ArrayRef<float> zeropoint,
                                          int64_t dim) {
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   // input element type could only be quantized integer
@@ -3382,7 +3458,7 @@ std::optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   // op2 = dequantize(op1)
 
   RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   // quantized as INT<num_bits>, where num_bits can only be 8, 16
@@ -3442,7 +3518,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
                                             RankedTensorType output_type,
                                             Value input, Value pad,
                                             TFTFLMirrorPaddingType mode) {
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type isn't a ranked tensor");
     return std::nullopt;
@@ -3586,8 +3662,8 @@ std::optional<Value> convertTFConv2DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref) {
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
+  RankedTensorType filter_type = dyn_cast<RankedTensorType>(filter.getType());
   // Not a ranked tensor output
   if (!input_type) return std::nullopt;
   if (!filter_type) return std::nullopt;
@@ -3774,9 +3850,9 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value params_value,
                                      Value indices_value, int32_t batch_dims,
                                      int32_t axis) {
-  auto result_type = result_value.getType().dyn_cast<ShapedType>();
-  auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
-  auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = dyn_cast<ShapedType>(result_value.getType());
+  auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
+  auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
 
   if (!result_type || !params_type || !indices_type) return std::nullopt;
 
@@ -3862,7 +3938,7 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   // tf/tfl allow i64 indices, but tosa does not.
   if (indices_type.getElementType().isInteger(64)) {
     indices_type =
-        indices_type.clone(rewriter.getI32Type()).dyn_cast<RankedTensorType>();
+        dyn_cast<RankedTensorType>(indices_type.clone(rewriter.getI32Type()));
     indices_value = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
                                                    indices_type, indices_value)
                         .getResult();
@@ -4067,9 +4143,9 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
                                        Value indices_value)
 
 {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
-  auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = dyn_cast<RankedTensorType>(result_value.getType());
+  auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
+  auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
 
   if (!result_type || !params_type || !indices_type) return std::nullopt;
 
@@ -4244,10 +4320,10 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value indices_value,
                                      Value on_value, Value off_value,
                                      int32_t depth, int32_t axis) {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
-  auto on_value_type = on_value.getType().dyn_cast<RankedTensorType>();
-  auto off_value_type = off_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = dyn_cast<RankedTensorType>(result_value.getType());
+  auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
+  auto on_value_type = dyn_cast<RankedTensorType>(on_value.getType());
+  auto off_value_type = dyn_cast<RankedTensorType>(off_value.getType());
 
   if (!result_type || !indices_type || !on_value_type || !off_value_type)
     return std::nullopt;
@@ -4393,7 +4469,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
 // Lowers Sin operator to a sequence of TOSA ops.
 std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
                                   Value input, ShapedType output_type) {
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
   Location loc = op->getLoc();
 
   Type input_ety = input_type.getElementType();

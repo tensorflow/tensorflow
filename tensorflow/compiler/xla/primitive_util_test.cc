@@ -50,6 +50,10 @@ TEST(PrimitiveUtilTest, FloatTypes) {
   EXPECT_EQ(primitive_util::SignificandWidth(BF16), 8);
   EXPECT_EQ(primitive_util::ExponentWidth(F32), 8);
   EXPECT_EQ(primitive_util::ExponentWidth(BF16), 8);
+  EXPECT_EQ(primitive_util::UnderflowExponent(F32), -125);
+  EXPECT_EQ(primitive_util::UnderflowExponent(BF16), -125);
+  EXPECT_EQ(primitive_util::OverflowExponent(F32), 128);
+  EXPECT_EQ(primitive_util::OverflowExponent(BF16), 128);
 }
 
 TEST(PrimitiveUtilTest, CastPreservesValues) {
@@ -74,6 +78,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[PRED][F8E5M2] = true;
   expecteds[PRED][F8E4M3FN] = true;
   expecteds[PRED][F8E4M3B11FNUZ] = true;
+  expecteds[PRED][F8E5M2FNUZ] = true;
+  expecteds[PRED][F8E4M3FNUZ] = true;
   expecteds[S4][PRED] = false;
   expecteds[S4][S4] = true;
   expecteds[S4][S8] = true;
@@ -94,6 +100,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S4][F8E5M2] = true;
   expecteds[S4][F8E4M3FN] = true;
   expecteds[S4][F8E4M3B11FNUZ] = true;
+  expecteds[S4][F8E5M2FNUZ] = true;
+  expecteds[S4][F8E4M3FNUZ] = true;
   expecteds[S8][PRED] = false;
   expecteds[S8][S4] = false;
   expecteds[S8][S8] = true;
@@ -114,6 +122,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S8][F8E5M2] = false;
   expecteds[S8][F8E4M3FN] = false;
   expecteds[S8][F8E4M3B11FNUZ] = false;
+  expecteds[S8][F8E5M2FNUZ] = false;
+  expecteds[S8][F8E4M3FNUZ] = false;
   expecteds[S16][PRED] = false;
   expecteds[S16][S4] = false;
   expecteds[S16][S8] = false;
@@ -134,6 +144,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S16][F8E5M2] = false;
   expecteds[S16][F8E4M3FN] = false;
   expecteds[S16][F8E4M3B11FNUZ] = false;
+  expecteds[S16][F8E5M2FNUZ] = false;
+  expecteds[S16][F8E4M3FNUZ] = false;
   expecteds[S32][PRED] = false;
   expecteds[S32][S4] = false;
   expecteds[S32][S8] = false;
@@ -154,6 +166,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S32][F8E5M2] = false;
   expecteds[S32][F8E4M3FN] = false;
   expecteds[S32][F8E4M3B11FNUZ] = false;
+  expecteds[S32][F8E5M2FNUZ] = false;
+  expecteds[S32][F8E4M3FNUZ] = false;
   expecteds[S64][PRED] = false;
   expecteds[S64][S4] = false;
   expecteds[S64][S8] = false;
@@ -174,6 +188,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[S64][F8E5M2] = false;
   expecteds[S64][F8E4M3FN] = false;
   expecteds[S64][F8E4M3B11FNUZ] = false;
+  expecteds[S64][F8E5M2FNUZ] = false;
+  expecteds[S64][F8E4M3FNUZ] = false;
   expecteds[U4][PRED] = false;
   expecteds[U4][S4] = false;
   expecteds[U4][S8] = true;
@@ -196,6 +212,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U4][F8E5M2] = false;
   expecteds[U4][F8E4M3FN] = true;
   expecteds[U4][F8E4M3B11FNUZ] = true;
+  expecteds[U4][F8E5M2FNUZ] = false;
+  expecteds[U4][F8E4M3FNUZ] = true;
   expecteds[U8][PRED] = false;
   expecteds[U8][S4] = false;
   expecteds[U8][S8] = false;
@@ -218,6 +236,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U8][F8E5M2] = false;
   expecteds[U8][F8E4M3FN] = false;
   expecteds[U8][F8E4M3B11FNUZ] = false;
+  expecteds[U8][F8E5M2FNUZ] = false;
+  expecteds[U8][F8E4M3FNUZ] = false;
   expecteds[U16][PRED] = false;
   expecteds[U16][S4] = false;
   expecteds[U16][S8] = false;
@@ -238,6 +258,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U16][F8E5M2] = false;
   expecteds[U16][F8E4M3FN] = false;
   expecteds[U16][F8E4M3B11FNUZ] = false;
+  expecteds[U16][F8E5M2FNUZ] = false;
+  expecteds[U16][F8E4M3FNUZ] = false;
   expecteds[U32][PRED] = false;
   expecteds[U32][S4] = false;
   expecteds[U32][S8] = false;
@@ -258,6 +280,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U32][F8E5M2] = false;
   expecteds[U32][F8E4M3FN] = false;
   expecteds[U32][F8E4M3B11FNUZ] = false;
+  expecteds[U32][F8E5M2FNUZ] = false;
+  expecteds[U32][F8E4M3FNUZ] = false;
   expecteds[U64][PRED] = false;
   expecteds[U64][S4] = false;
   expecteds[U64][S8] = false;
@@ -278,6 +302,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[U64][F8E5M2] = false;
   expecteds[U64][F8E4M3FN] = false;
   expecteds[U64][F8E4M3B11FNUZ] = false;
+  expecteds[U64][F8E5M2FNUZ] = false;
+  expecteds[U64][F8E4M3FNUZ] = false;
   expecteds[F16][PRED] = false;
   expecteds[F16][S4] = false;
   expecteds[F16][S8] = false;
@@ -298,6 +324,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F16][F8E5M2] = false;
   expecteds[F16][F8E4M3FN] = false;
   expecteds[F16][F8E4M3B11FNUZ] = false;
+  expecteds[F16][F8E5M2FNUZ] = false;
+  expecteds[F16][F8E4M3FNUZ] = false;
   expecteds[F32][PRED] = false;
   expecteds[F32][S4] = false;
   expecteds[F32][S8] = false;
@@ -318,6 +346,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F32][F8E5M2] = false;
   expecteds[F32][F8E4M3FN] = false;
   expecteds[F32][F8E4M3B11FNUZ] = false;
+  expecteds[F32][F8E5M2FNUZ] = false;
+  expecteds[F32][F8E4M3FNUZ] = false;
   expecteds[F64][PRED] = false;
   expecteds[F64][S4] = false;
   expecteds[F64][S8] = false;
@@ -338,6 +368,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F64][F8E5M2] = false;
   expecteds[F64][F8E4M3FN] = false;
   expecteds[F64][F8E4M3B11FNUZ] = false;
+  expecteds[F64][F8E5M2FNUZ] = false;
+  expecteds[F64][F8E4M3FNUZ] = false;
   expecteds[C64][PRED] = false;
   expecteds[C64][S4] = false;
   expecteds[C64][S8] = false;
@@ -358,6 +390,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[C64][F8E5M2] = false;
   expecteds[C64][F8E4M3FN] = false;
   expecteds[C64][F8E4M3B11FNUZ] = false;
+  expecteds[C64][F8E5M2FNUZ] = false;
+  expecteds[C64][F8E4M3FNUZ] = false;
   expecteds[BF16][PRED] = false;
   expecteds[BF16][S4] = false;
   expecteds[BF16][S8] = false;
@@ -378,6 +412,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[BF16][F8E5M2] = false;
   expecteds[BF16][F8E4M3FN] = false;
   expecteds[BF16][F8E4M3B11FNUZ] = false;
+  expecteds[BF16][F8E5M2FNUZ] = false;
+  expecteds[BF16][F8E4M3FNUZ] = false;
   expecteds[C128][PRED] = false;
   expecteds[C128][S4] = false;
   expecteds[C128][S8] = false;
@@ -398,6 +434,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[C128][F8E5M2] = false;
   expecteds[C128][F8E4M3FN] = false;
   expecteds[C128][F8E4M3B11FNUZ] = false;
+  expecteds[C128][F8E5M2FNUZ] = false;
+  expecteds[C128][F8E4M3FNUZ] = false;
   expecteds[F8E5M2][PRED] = false;
   expecteds[F8E5M2][S4] = false;
   expecteds[F8E5M2][S8] = false;
@@ -418,6 +456,8 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F8E5M2][F8E5M2] = true;
   expecteds[F8E5M2][F8E4M3FN] = false;
   expecteds[F8E5M2][F8E4M3B11FNUZ] = false;
+  expecteds[F8E5M2][F8E5M2FNUZ] = false;
+  expecteds[F8E5M2][F8E4M3FNUZ] = false;
   expecteds[F8E4M3FN][PRED] = false;
   expecteds[F8E4M3FN][S4] = false;
   expecteds[F8E4M3FN][S8] = false;
@@ -458,6 +498,54 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
   expecteds[F8E4M3B11FNUZ][F8E5M2] = false;
   expecteds[F8E4M3B11FNUZ][F8E4M3FN] = false;
   expecteds[F8E4M3B11FNUZ][F8E4M3B11FNUZ] = true;
+  expecteds[F8E4M3B11FNUZ][F8E4M3FNUZ] = false;
+  expecteds[F8E4M3B11FNUZ][F8E5M2FNUZ] = false;
+  expecteds[F8E4M3FN][F8E5M2FNUZ] = false;
+  expecteds[F8E4M3FN][F8E4M3FNUZ] = false;
+  expecteds[F8E5M2FNUZ][PRED] = false;
+  expecteds[F8E5M2FNUZ][S4] = false;
+  expecteds[F8E5M2FNUZ][S8] = false;
+  expecteds[F8E5M2FNUZ][S16] = false;
+  expecteds[F8E5M2FNUZ][S32] = false;
+  expecteds[F8E5M2FNUZ][S64] = false;
+  expecteds[F8E5M2FNUZ][U4] = false;
+  expecteds[F8E5M2FNUZ][U8] = false;
+  expecteds[F8E5M2FNUZ][U16] = false;
+  expecteds[F8E5M2FNUZ][U32] = false;
+  expecteds[F8E5M2FNUZ][U64] = false;
+  expecteds[F8E5M2FNUZ][F16] = true;
+  expecteds[F8E5M2FNUZ][F32] = true;
+  expecteds[F8E5M2FNUZ][F64] = true;
+  expecteds[F8E5M2FNUZ][C64] = true;
+  expecteds[F8E5M2FNUZ][BF16] = true;
+  expecteds[F8E5M2FNUZ][C128] = true;
+  expecteds[F8E5M2FNUZ][F8E5M2] = false;
+  expecteds[F8E5M2FNUZ][F8E4M3FN] = false;
+  expecteds[F8E5M2FNUZ][F8E4M3B11FNUZ] = false;
+  expecteds[F8E5M2FNUZ][F8E5M2FNUZ] = true;
+  expecteds[F8E5M2FNUZ][F8E4M3FNUZ] = false;
+  expecteds[F8E4M3FNUZ][PRED] = false;
+  expecteds[F8E4M3FNUZ][S4] = false;
+  expecteds[F8E4M3FNUZ][S8] = false;
+  expecteds[F8E4M3FNUZ][S16] = false;
+  expecteds[F8E4M3FNUZ][S32] = false;
+  expecteds[F8E4M3FNUZ][S64] = false;
+  expecteds[F8E4M3FNUZ][U4] = false;
+  expecteds[F8E4M3FNUZ][U8] = false;
+  expecteds[F8E4M3FNUZ][U16] = false;
+  expecteds[F8E4M3FNUZ][U32] = false;
+  expecteds[F8E4M3FNUZ][U64] = false;
+  expecteds[F8E4M3FNUZ][F16] = true;
+  expecteds[F8E4M3FNUZ][F32] = true;
+  expecteds[F8E4M3FNUZ][F64] = true;
+  expecteds[F8E4M3FNUZ][C64] = true;
+  expecteds[F8E4M3FNUZ][BF16] = true;
+  expecteds[F8E4M3FNUZ][C128] = true;
+  expecteds[F8E4M3FNUZ][F8E5M2] = false;
+  expecteds[F8E4M3FNUZ][F8E4M3FN] = false;
+  expecteds[F8E4M3FNUZ][F8E4M3B11FNUZ] = false;
+  expecteds[F8E4M3FNUZ][F8E5M2FNUZ] = false;
+  expecteds[F8E4M3FNUZ][F8E4M3FNUZ] = true;
 
   for (int from_type_int = PrimitiveType_MIN;
        from_type_int < PrimitiveType_ARRAYSIZE; ++from_type_int) {

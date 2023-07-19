@@ -21,57 +21,18 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "tensorflow/compiler/xla/python/ifrt/mock.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
-
-class MockArray : public llvm::RTTIExtends<MockArray, Array> {
- public:
-  static tsl::RCReference<Array> Create() { return tsl::MakeRef<MockArray>(); }
-
-  MOCK_METHOD(Client*, client, (), (const, override));
-
-  MOCK_METHOD(DType, dtype, (), (const, override));
-  MOCK_METHOD(const Shape&, shape, (), (const, override));
-  MOCK_METHOD(const Sharding&, sharding, (), (const, override));
-  MOCK_METHOD(std::shared_ptr<const Sharding>, shared_ptr_sharding, (),
-              (const, override));
-
-  MOCK_METHOD(StatusOr<std::vector<tsl::RCReference<Array>>>,
-              DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
-              (override));
-
-  MOCK_METHOD(Future<Status>, CopyToHostBuffer,
-              (void* data,
-               std::optional<absl::Span<const int64_t>> byte_strides,
-               ArrayCopySemantics semantics),
-              (override));
-
-  MOCK_METHOD(StatusOr<tsl::RCReference<Array>>, Reshard,
-              (std::shared_ptr<const Sharding> new_sharding,
-               ArrayCopySemantics semantics),
-              (override));
-
-  MOCK_METHOD(Future<Status>, GetReadyFuture, (), (const, override));
-
-  MOCK_METHOD(Future<Status>, Delete, (), (override));
-
-  MOCK_METHOD(bool, IsDeleted, (), (const, override));
-
-  MOCK_METHOD(std::string, DebugString, (), (const, override));
-
-  static char ID;  // NOLINT
-};
-
-char MockArray::ID ABSL_ATTRIBUTE_UNUSED = 0;
 
 TEST(ArrayTest, MakeArrayPointerListTest) {
   const int kNumArrays = 3;
   std::vector<tsl::RCReference<Array>> arrays;
   arrays.reserve(kNumArrays);
   for (int i = 0; i < kNumArrays; ++i) {
-    arrays.push_back(MockArray::Create());
+    arrays.push_back(tsl::MakeRef<MockArray>());
   }
 
   std::vector<Array*> array_pointer_list = MakeArrayPointerList(arrays);

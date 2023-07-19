@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_helper.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"

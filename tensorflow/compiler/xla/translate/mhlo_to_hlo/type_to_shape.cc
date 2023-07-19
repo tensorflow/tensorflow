@@ -53,6 +53,10 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     return PrimitiveType::F8E4M3FN;
   } else if (type.isFloat8E4M3B11FNUZ()) {
     return PrimitiveType::F8E4M3B11FNUZ;
+  } else if (type.isFloat8E4M3FNUZ()) {
+    return PrimitiveType::F8E4M3FNUZ;
+  } else if (type.isFloat8E5M2FNUZ()) {
+    return PrimitiveType::F8E5M2FNUZ;
   } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
@@ -214,12 +218,12 @@ Shape TypeToShape(mlir::Type type) {
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
       // Uses an identity map for dim ordering as the default value.
-      auto dimOrder = sparse.getDimOrdering()
-                          ? sparse.getDimOrdering()
+      auto dimToLvl = sparse.getDimToLvl()
+                          ? sparse.getDimToLvl()
                           : mlir::AffineMap::getMultiDimIdentityMap(
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
-          dimOrder, llvm::ArrayRef<int64_t>(ordering));
+          dimToLvl, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
           primitive_type, shape, final_ordering, lvl_types, level_unique,
           level_ordered);

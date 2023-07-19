@@ -38,7 +38,8 @@ StatusOr<tsl::RCReference<Array>> MakeArray(Client* client) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
-  auto sharding = SingleDeviceSharding::Create(device);
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device);
 
   return client->MakeArrayFromHostBuffer(
       data.data(), dtype, shape,

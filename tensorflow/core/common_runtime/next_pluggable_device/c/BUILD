@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/compiler/xla/c:c_api_decl",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
     ],
 )

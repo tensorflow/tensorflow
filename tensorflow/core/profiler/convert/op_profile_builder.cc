@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
-#include "tensorflow/core/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -42,6 +42,7 @@ namespace {
 
 using op_profile::Metrics;
 using op_profile::Node;
+using tsl::profiler::IsFusion;
 
 // Fill symbol details into a node.
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
@@ -278,7 +279,7 @@ std::string OpProfileBuilder::GenerateProgramName(uint64_t program_id) const {
   DCHECK(program_name_map_ != nullptr);
   auto iter = program_name_map_->find(program_id);
   if (iter == program_name_map_->end()) return "main";
-  return HloModuleNameWithProgramId(iter->second, program_id);
+  return tsl::profiler::HloModuleNameWithProgramId(iter->second, program_id);
 }
 
 Node* OpProfileBuilder::AddOpNode(const OpMetrics& op_metrics,

@@ -20,10 +20,12 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/Passes.h"  // from @llvm-project
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"  // from @llvm-project
@@ -44,7 +46,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
@@ -86,13 +87,21 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
 
 void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
                              int32_t xla_cpu_sparse_cuda_threads) {
-  // Sparse GPU acceleration enables parallel loops.
+  // Sparse GPU acceleration for sparsified code.
+  // Setting 0 threads means no acceleration (default).
+  // Setting 1 thread means cuSPARSE libgen.
+  // Otherwise direct CUDA codegen.
   const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
   mlir::SparsificationOptions sparsification_options;
   sparsification_options.enableRuntimeLibrary = false;
+  sparsification_options.enableIndexReduction = true;
   if (gpu_codegen) {
-    sparsification_options.parallelizationStrategy =
-        mlir::SparseParallelizationStrategy::kDenseOuterLoop;
+    if (xla_cpu_sparse_cuda_threads == 1) {
+      sparsification_options.enableGPULibgen = true;
+    } else {
+      sparsification_options.parallelizationStrategy =
+          mlir::SparseParallelizationStrategy::kDenseOuterLoop;
+    }
   }
   // Sparsification set up.
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
@@ -112,7 +121,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
       mlir::bufferization::createFinalizingBufferizePass());
   // Sparse GPU acceleration lowers to GPU dialect.
   if (gpu_codegen) {
-    pm.addPass(mlir::createSparseGPUCodegenPass());
+    pm.addPass(mlir::createSparseGPUCodegenPass(xla_cpu_sparse_cuda_threads));
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(
@@ -167,11 +176,8 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  // Outlined ABI doesn't support XLA Runtime FFI.
-  if (!options.outline_with_xla_framework) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::cpu::createLegalizeLibraryOpsPass());
-  }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createLegalizeLibraryOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -278,9 +284,6 @@ static Status CreateHloXlaPipeline(
   };
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
       out_params_options));
-  if (options.outline_with_xla_framework) {
-    pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
-  }
 
   if (options.experimental_deallocation) {
     pm.addNestedPass<FuncOp>(

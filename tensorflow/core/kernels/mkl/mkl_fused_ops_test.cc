@@ -253,14 +253,17 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                            const int padding, int stride = 1) {
     DataType dtype = DataTypeToEnum<T>::v();
     int num_args = static_cast<int>(args.size());
+    int num_host_args = 0;
 
     NodeDefBuilder builder =
         NodeDefBuilder("fused_conv_op", "_MklNativeFusedConv2D")
             .Input(FakeInput(dtype))
             .Input(FakeInput(dtype))
             .Input(FakeInput(num_args, dtype))
+            .Input(FakeInput(num_host_args, DT_FLOAT))
             .Attr("T", dtype)
             .Attr("num_args", num_args)
+            .Attr("num_host_args", num_host_args)
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding",
                   padding == kInvalidPaddingValue ? "SAME" : "EXPLICIT")
@@ -1096,7 +1099,7 @@ class MklFusedMatMulCacheTest : public OpsTestBase {
     // Bias vector.
     AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
 
-    using KernelType = MklDnnMatMulOpBase<float, float>;
+    using KernelType = MklDnnMatMulOpBase<float, void, float>;
     // Before the first time kernel execution, weight should be empty
     EXPECT_TRUE(static_cast<KernelType*>(this->kernel_.get())
                     ->IsWeightCacheEmpty(this->context_.get()));
@@ -1258,7 +1261,6 @@ class BiasCacheTest : public OpsTestBase {
   }
 };
 
-#ifndef ENABLE_ONEDNN_V3
 TEST_F(BiasCacheTest, Conv2DBiasCacheTestOldAPI) {
   TestConv2DBiasCacheTest(true);
 }
@@ -1266,7 +1268,6 @@ TEST_F(BiasCacheTest, Conv2DBiasCacheTestOldAPI) {
 TEST_F(BiasCacheTest, Conv2DBiasCacheTestNewAPI) {
   TestConv2DBiasCacheTest(false);
 }
-#endif  // !ENABLE_ONEDNN_V3
 
 // Testing fusion of pad and fusedconv2d
 template <typename T>

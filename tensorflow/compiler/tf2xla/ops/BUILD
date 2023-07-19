@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -27,6 +28,13 @@ cc_library(
 tf_gen_op_wrapper_py(
     name = "gen_xla_ops",
     out = "gen_xla_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         ":xla_ops",
     ],

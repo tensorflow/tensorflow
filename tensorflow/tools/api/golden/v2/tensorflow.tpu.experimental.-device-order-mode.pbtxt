@@ -1,0 +1,16 @@
+path: "tensorflow.tpu.experimental.DeviceOrderMode"
+tf_class {
+  is_instance: "<enum \'DeviceOrderMode\'>"
+  member {
+    name: "AUTO"
+    mtype: "<enum \'DeviceOrderMode\'>"
+  }
+  member {
+    name: "MESH"
+    mtype: "<enum \'DeviceOrderMode\'>"
+  }
+  member {
+    name: "RING"
+    mtype: "<enum \'DeviceOrderMode\'>"
+  }
+}

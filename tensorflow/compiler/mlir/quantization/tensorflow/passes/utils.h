@@ -43,7 +43,7 @@ using OpSet = tensorflow::quantization::OpSet;
 bool HasStaticShape(Value value);
 
 // Returns true if the value has static shape at given dims.
-bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims);
+bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 
 // Returns true if the op has any quantized tensors as input or output.
 bool HasQuantizedTensors(Operation *op);
@@ -55,8 +55,8 @@ Type CloneTypeWithNewElementType(Type old_type, Type element_type);
 // Creates an array with integer/float type.
 template <typename T>
 Value CreateConstValue(OpBuilder &builder, Location loc,
-                       const llvm::SmallVector<int64_t> &shape,
-                       const llvm::SmallVector<T> &values) {
+                       const SmallVector<int64_t> &shape,
+                       const SmallVector<T> &values) {
   static_assert(std::is_integral_v<T> || std::is_same_v<T, float>);
   if (std::is_integral_v<T>) {
     auto shape_type =
@@ -74,7 +74,7 @@ Value CreateConstValue(OpBuilder &builder, Location loc,
 // Creates a 1D array with integer/float type.
 template <typename T>
 Value Create1DConstValue(OpBuilder &builder, Location loc,
-                         const llvm::SmallVector<T> &values) {
+                         const SmallVector<T> &values) {
   return CreateConstValue<T>(builder, loc,
                              {static_cast<int64_t>(values.size())}, values);
 }
@@ -129,18 +129,8 @@ bool AreSplatValuesEqual(Value x, Value y) {
 }
 
 // Clones an operation with new operands while keeping attributes.
-llvm::SmallVector<Value> CloneOpWithReplacedOperands(
-    OpBuilder &builder, Operation *op,
-    const llvm::SmallVector<Value> &new_operands);
-
-// TODO(b/241488936): Remove these functions after adding a new constant folding
-// pass to TensorFlow.
-// Checks if an Operation is foldable.
-LogicalResult IsOperationFoldable(Operation *op);
-
-// Applies constant folding to the operation if possible and return the folded
-// results.
-llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);
+SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder &builder, Operation *op, const SmallVector<Value> &new_operands);
 
 }  // namespace quant
 }  // namespace mlir

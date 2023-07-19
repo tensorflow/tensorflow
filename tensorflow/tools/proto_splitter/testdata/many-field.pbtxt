@@ -1,0 +1,31 @@
+field_one {
+  repeated_field {
+  }
+  repeated_field {
+    string_field: "inner_inner_string"
+    map_field_uint32 {
+      key: 324
+      value: "map_value_324"
+    }
+    map_field_uint32 {
+      key: 543
+      value: "map_value_543"
+    }
+  }
+}
+map_field_int64 {
+  key: -1345
+  value: "map_value_-1345"
+}
+nested_map_bool {
+  key: false
+  value {
+    string_field: "string_false"
+  }
+}
+nested_map_bool {
+  key: true
+  value {
+    string_field: "string_true"
+  }
+}

@@ -75,7 +75,8 @@ StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
       build_options.set_device_assignment(device_assignment);
     }
   }
-  return compiler->Compile(*module, std::move(compile_options));
+  return compiler->Compile(std::make_unique<XlaProgram>(*module),
+                           std::move(compile_options));
 }
 
 TEST(LoadedExecutableImplTest, CompileAndExecute) {
@@ -93,7 +94,8 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
-  auto sharding = SingleDeviceSharding::Create(device);
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(

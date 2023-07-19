@@ -86,6 +86,8 @@ class Tile {
   absl::InlinedVector<int64_t, 2> dimensions_;
 };
 
+using TileVector = absl::InlinedVector<Tile, 3>;
+
 // TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
 // matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
@@ -273,6 +275,10 @@ class Layout {
     minor_to_major_.clear();
     return *this;
   }
+  // Removes the given dimension from 'minor_to_major_', and adjusts the other
+  // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
+  // 'dim_unique_' in case it is a sparse layout.
+  Layout& DeleteDimension(int64_t dim_to_delete);
   absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
@@ -289,7 +295,7 @@ class Layout {
     return *this;
   }
   absl::Span<const Tile> tiles() const { return tiles_; }
-  absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
+  TileVector* mutable_tiles() { return &tiles_; }
 
   int64_t element_size_in_bits() const { return element_size_in_bits_; }
   Layout& set_element_size_in_bits(int64_t value) {
@@ -372,7 +378,7 @@ class Layout {
   DimensionVector minor_to_major_;
 
   // The tiles used in tiling-based layout.
-  absl::InlinedVector<Tile, 2> tiles_;
+  TileVector tiles_;
 
   // The primitive type to use for sparse array indices and pointers.  Each of
   // these must either be INVALID, or an unsigned integer type.

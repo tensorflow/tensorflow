@@ -50,7 +50,7 @@ std::vector<TraceEventFlow> SplitEventFlow(TraceEventFlow&& flow) {
   return flows;
 }
 
-void ExpandTraceSpan(const Timespan& span, Trace* trace) {
+void ExpandTraceSpan(const tsl::profiler::Timespan& span, Trace* trace) {
   if (!trace->has_min_timestamp_ps() ||
       span.begin_ps() < trace->min_timestamp_ps()) {
     trace->set_min_timestamp_ps(span.begin_ps());

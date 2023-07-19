@@ -62,7 +62,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
@@ -1239,12 +1238,20 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     This is a private method only to be used by Estimator. Other frameworks
     should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
-    tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
+    tpu_cluster_resolver_lib.initialize_tpu_system(self._tpu_cluster_resolver)
 
   def _create_variable(self, next_creator, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
+    # TODO(bfontain): Replace all uses of skip_mirrored_creator with
+    # a trivial custom_tpu_variable_creator.
     if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(**kwargs)
+
+    custom_tpu_variable_creator = kwargs.pop(
+        "custom_tpu_variable_creator", None
+    )
+    if custom_tpu_variable_creator is not None:
+      return custom_tpu_variable_creator(next_creator, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:

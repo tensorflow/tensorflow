@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1048,6 +1049,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->set_frontend_attributes(proto.frontend_attributes());
   }
 
+  if (proto.has_statistics_viz()) {
+    instruction->set_statistics_viz(proto.statistics_viz());
+  }
+
   return std::move(instruction);
 }
 
@@ -1760,6 +1765,7 @@ HloInstruction::CreateBroadcastSequence(
       broadcast->copy_sharding(operand);
     }
     broadcast->set_frontend_attributes(operand->frontend_attributes());
+    broadcast->set_statistics_viz(operand->statistics_viz());
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -1786,6 +1792,7 @@ HloInstruction::CreateBroadcastSequence(
     reshaped_operand->copy_sharding(operand);
   }
   reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
+  reshaped_operand->set_statistics_viz(operand->statistics_viz());
   // Broadcast 'reshape' up to the larger size.
   auto broadcast = HloInstruction::CreateBroadcast(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
@@ -1794,6 +1801,7 @@ HloInstruction::CreateBroadcastSequence(
     broadcast->copy_sharding(operand);
   }
   broadcast->set_frontend_attributes(operand->frontend_attributes());
+  broadcast->set_statistics_viz(operand->statistics_viz());
   return broadcast;
 }
 
@@ -1877,6 +1885,7 @@ void HloInstruction::SetupDerivedInstruction(
   }
   derived_instruction->set_metadata(metadata_);
   derived_instruction->set_frontend_attributes(frontend_attributes_);
+  derived_instruction->set_statistics_viz(statistics_viz_);
 }
 
 bool HloInstruction::IsRoot() const {
@@ -2843,10 +2852,17 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return OkStatus();
 }
 
-Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                          absl::string_view trigger) {
+  auto print_options = HloPrintOptions::ShortParsable()
+                           .set_print_operand_shape(true)
+                           .set_print_extra_attributes(false);
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
-      << shape() << " is not compatible with " << new_producer->shape();
+      << "The shape doesn't match when replacing '" << ToString(print_options)
+      << "' with '" << new_producer->ToString(print_options) << "'. " << shape()
+      << " is not compatible with " << new_producer->shape() << "\n '"
+      << trigger << "' triggered this wrong replacement.";
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 
@@ -3230,9 +3246,18 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    printer->Append(", backend_config=\"");
-    printer->Append(CEscape(backend_config_.GetRawString()));
-    printer->Append("\"");
+    absl::string_view config = backend_config_.GetRawString();
+    printer->Append(", backend_config=");
+    // In the common case that the backend-config is valid-ish JSON, the parser
+    // doesn't need it delimited by quotes, so we can print it without
+    // CEsape'ing.  This is much easier to read.
+    if (LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(CEscape(config));
+      printer->Append("\"");
+    }
   }
 }
 
@@ -3501,6 +3526,12 @@ void HloInstruction::PrintExtraAttributes(
       printer->Append("}");
     });
   }
+
+  if (!statistics_viz_.statistics().empty()) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "statistics=", StatisticsVizToString(statistics_viz_));
+    });
+  }
 }
 
 std::vector<std::string> HloInstruction::ExtraAttributesToString(
@@ -3567,6 +3598,8 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_frontend_attributes() = frontend_attributes_;
+
+  *proto.mutable_statistics_viz() = statistics_viz_;
 
   return proto;
 }
@@ -4251,6 +4284,28 @@ std::string FrontendAttributesToString(
                          absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
+std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {
+  // Statistics is either empty, or always starts with the index of the
+  // statistic that is rendered on the graph, followed by the statistics that
+  // are being tracked. The index is 0 based, starting from the first statistic
+  // being tracked. The index and statistics are within a comma-separated list
+  // of attribute=value pairs,
+  // e.g., statistics={visualizing_index=0, count_nan=100, count_inf=200}.
+
+  if (statistics_viz.statistics().empty()) return "{}";
+
+  std::vector<Statistic> all_statistics(statistics_viz.statistics().begin(),
+                                        statistics_viz.statistics().end());
+
+  const auto formatter = [](std::string* out, const Statistic& item) {
+    absl::StrAppend(out, item.stat_name(), "=", item.stat_val());
+  };
+  return absl::StrFormat("{%s,%s}",
+                         absl::StrCat("visualizing_index=",
+                                      statistics_viz.stat_index_to_visualize()),
+                         absl::StrJoin(all_statistics, ",", formatter));
+}
+
 std::string PaddingConfigToString(const PaddingConfig& padding) {
   bool has_interior_padding =
       absl::c_any_of(padding.dimensions(),
@@ -4591,6 +4646,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   }
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
+  }
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->mutable_precision_config();
   }
   LOG(FATAL) << "Unimplemented method.";
 }

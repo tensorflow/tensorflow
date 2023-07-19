@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "llvm/IR/IRBuilder.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,14 +49,21 @@ inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
+int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
-// this string. TritonAutotuner replaces it with TritonGemmKey proto.
-inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
+// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
+
+// SoftmaxRewriterTriton sets backend_config of Triton Softmax custom fusions to
+// this string.
+inline constexpr absl::string_view kTritonSoftmaxFusionKind =
+    "__triton_softmax";
+
+inline constexpr absl::string_view kUncompilableFusion =
+    "__uncompilable_fusion";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -148,11 +153,28 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations);
 
+// Returns the dynamic-update-slice instructions defining the results of a
+// fusion node. A dynamic slice update is said to be "defining" of a result if
+// that result is the output of a dynamic slice update, or if that result is the
+// output of a bitcast of a dynamic slice update---since such bitcast may be
+// handled as a no-op.
+std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const HloComputation* fusion);
+
+// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
+// A dynamic slice update is said to be "defining" of a result if that result is
+// the output of a dynamic slice update, or if that result is the output of a
+// bitcast of a dynamic slice update---since such bitcast may be handled as a
+// no-op.
+std::vector<mlir::mhlo::DynamicUpdateSliceOp>
+GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
+
 Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions);
+bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
+                         const ReductionDimensions& reduction_dimensions);
 
 // Description of how to emit a given transposition.
 //
@@ -205,22 +227,69 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 
+// Returns the hero reduction of the computation.
+// We always use the first reduce root that triggers unnested reduction emitter
+// as the hero reduction, since all the reductions are required to have the same
+// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots);
+
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
-                                          Vector3& permutation);
+struct TransposeDescription {
+  Vector3 dimensions;
+  Vector3 permutation;
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
-                                                 Vector3& permutation);
+  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+      : dimensions(dimensions), permutation(permutation) {}
 
-std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+  std::string ToString() const {
+    return absl::StrCat("dimensions=", VectorString(dimensions),
+                        ", permutation=", VectorString(permutation));
+  }
+
+  bool operator==(const TransposeDescription& other) const {
+    return dimensions == other.dimensions && permutation == other.permutation;
+  }
+
+  bool operator!=(const TransposeDescription& other) const {
+    return !(*this == other);
+  }
+};
+
+std::optional<TransposeDescription> FindTiledTranspose(
     const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindTiledLogicalTranspose(
+    const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindAnyTiledTranspose(
+    const HloInstruction& instr);
+
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);
+
+// Returns the llvm type for the indices used in the kernel that contains the
+// hlo instruction. Such indices include the index for the parallel loop and
+// the indices for the tensors accessed by the kernel. The return type is i32
+// iff the following conditions are met:
+//  . The launch_size of the kernel is within the range of i32.
+//  . The sizes of all the tensors accessed within the kernel are within the
+//    range of i32.
+// Otherwise, the return type is i64.
+llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
+                                  int64_t launch_size, llvm::IRBuilder<>* b);
+
+// The same as GetIndexTypeForKernel, but works with MLIR ops.
+llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
+                                  llvm::IRBuilder<>* b);
+
+// Returns a sanitized (doesn't need quoting) identifier name from a location.
+std::string GetIrNameFromLoc(mlir::Location loc);
 
 }  // namespace gpu
 }  // namespace xla

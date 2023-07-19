@@ -805,7 +805,7 @@ class IteratorContext {
 
   bool is_restoring() { return params_.is_restoring; }
 
-  const std::shared_ptr<model::Model>& model() { return params_.model; }
+  const std::shared_ptr<model::Model>& model() const { return params_.model; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -815,7 +815,7 @@ class IteratorContext {
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
-  std::vector<std::shared_ptr<SplitProvider>> split_providers() {
+  std::vector<std::shared_ptr<SplitProvider>> split_providers() const {
     return params_.split_providers;
   }
 

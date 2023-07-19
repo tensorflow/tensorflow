@@ -358,7 +358,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           "see if a warning log message was printed above.");
     }
 
-    std::vector<tensorflow::AutotuneResult> results;
+    std::vector<xla::AutotuneResult> results;
     if (algorithms.size() == 1) {
       auto profile_result = algorithms[0];
       results.emplace_back();

@@ -19,8 +19,8 @@ import datetime
 import sys
 
 from absl import logging
-
 import flatbuffers
+
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -173,7 +173,7 @@ def set_tensor_shapes(tensors, shapes):
   """Sets Tensor shape for each tensor if the shape is defined.
 
   Args:
-    tensors: TensorFlow ops.Tensor.
+    tensors: TensorFlow tensor.Tensor.
     shapes: Dict of strings representing input tensor names to list of
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
 

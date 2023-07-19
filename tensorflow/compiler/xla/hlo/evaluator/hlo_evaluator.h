@@ -73,12 +73,12 @@ constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
 // Tries to parse a while loop using a set of predefined patterns.
 // Returns the parsing result.
 std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
-    HloInstruction* while_op);
+    const HloInstruction* while_op);
 
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //
 // This class is not thread-safe.
-class HloEvaluator : public DfsHloVisitorWithDefault {
+class HloEvaluator : public ConstDfsHloVisitorWithDefault {
  public:
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
@@ -153,12 +153,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // evaluated, such as an Infeed or a Parameter instruction.
   // It makes best effort to partially evaluate a dependency if possible.
   StatusOr<Literal> Evaluate(
-      HloInstruction* instruction,
+      const HloInstruction* instruction,
       bool recursively_evaluate_nonconstant_operands = false);
 
   // Same as Evaluate, except returning false on error and accepts an output
   // pointer.
-  bool TryEvaluate(HloInstruction* instruction, Literal* result,
+  bool TryEvaluate(const HloInstruction* instruction, Literal* result,
                    bool recursively_evaluate_nonconstant_operands = false);
 
   // Evaluates a single HLO instruction, substituting the given literals for
@@ -207,16 +207,13 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Operand literals are provided in |operands| and implementations must
   // populate |output| before returning.
   using CustomCallHandler = std::function<StatusOr<Literal>(
-      HloInstruction* custom_call, absl::Span<const Literal*> operands)>;
+      const HloInstruction* custom_call, absl::Span<const Literal*> operands)>;
 
   // Sets a handler that is called during evaluation for custom-call ops.
   // If no handler is defined the default error behavior will occur. The handler
   // will be provided evaluated literals for all operands and is expected to
   // return an output literal of the appropriate shape.
-  void set_custom_call_handler(
-      std::function<StatusOr<Literal>(HloInstruction* custom_call,
-                                      absl::Span<const Literal*> operands)>
-          handler) {
+  void set_custom_call_handler(CustomCallHandler handler) {
     custom_call_handler_ = std::move(handler);
   }
 
@@ -246,10 +243,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // memory overhead in cases where we need only one tuple element by avoiding
   // the evaluation of a full tuple.
   Status EvaluateInternal(
-      HloInstruction* instruction, const ShapeIndex& shape_index = {},
+      const HloInstruction* instruction, const ShapeIndex& shape_index = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
-  Status EvaluateParameterFromCallerArgument(HloInstruction* parameter,
+  Status EvaluateParameterFromCallerArgument(const HloInstruction* parameter,
                                              const ShapeIndex& shape_index);
 
   // Helper method to extract a list of int64_t from evaluated instruction for
@@ -281,126 +278,86 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   // Wraps around instruction handling to infer types before dispatching to
   // the corresponding typed Visitor.
-  Status DefaultAction(HloInstruction* hlo) override {
+  Status DefaultAction(const HloInstruction* hlo) override {
     return hlo->Visit(typed_visitors_[hlo->shape().element_type()].get());
   }
 
-  Status Preprocess(HloInstruction* hlo) override;
-
-  Status Postprocess(HloInstruction* hlo) override;
+  Status Preprocess(const HloInstruction* hlo) override;
+  Status Postprocess(const HloInstruction* hlo) override;
 
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
-  Status HandleBitcast(HloInstruction* bitcast) override;
-
-  Status HandleBitcastConvert(HloInstruction* convert) override;
-
-  Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
-
-  Status HandleSetDimensionSize(HloInstruction* set_dimension_size) override;
-
-  Status HandleParameter(HloInstruction* parameter) override;
-
-  Status HandleInfeed(HloInstruction* infeed) override;
-
-  Status HandleConstant(HloInstruction* constant) override;
-
-  Status HandleConcatenate(HloInstruction* concatenate) override;
-
-  Status HandleReshape(HloInstruction* reshape) override;
-
-  Status HandleTranspose(HloInstruction* transpose) override;
-
-  Status HandleIsFinite(HloInstruction* is_finite) override;
-
-  Status HandleCompare(HloInstruction* compare) override;
-
-  Status HandleTuple(HloInstruction* tuple) override;
-
-  Status HandleFft(HloInstruction* fft) override;
-
-  Status HandleGather(HloInstruction* gather) override;
-
-  Status HandleScatter(HloInstruction* hlo) override;
-
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-
-  Status HandleAsyncStart(HloInstruction* async_start) override;
-
-  Status HandleAsyncUpdate(HloInstruction* async_update) override;
-
-  Status HandleAsyncDone(HloInstruction* async_done) override;
-
-  Status HandleCopy(HloInstruction* copy) override;
-
-  Status HandleCopyStart(HloInstruction* copy_start) override;
-
-  Status HandleCopyDone(HloInstruction* copy_done) override;
-
-  Status HandleConditional(HloInstruction* conditional) override;
-
-  Status HandleConvert(HloInstruction* convert) override;
-
-  Status HandleCall(HloInstruction* call) override;
-
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
-
-  Status HandleDynamicUpdateSlice(HloInstruction* dus) override;
-
-  Status HandleFusion(HloInstruction* fusion) override;
-
-  Status HandleWhile(HloInstruction* while_hlo) override;
-
-  Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-
-  Status HandleAfterAll(HloInstruction* after_all) override;
-
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
-
-  Status HandleReverse(HloInstruction* reverse) override;
-
-  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
-
-  Status HandleSlice(HloInstruction* slice) override;
-
-  Status HandleSort(HloInstruction* sort) override;
-
-  Status HandleStochasticConvert(HloInstruction* stochastic_convert) override;
-
-  Status HandleReal(HloInstruction* real) override;
-
-  Status HandleImag(HloInstruction* imag) override;
-
-  Status HandleComplex(HloInstruction* complex) override;
-
-  Status HandleReduce(HloInstruction* hlo) override;
-
-  Status HandleReduceWindow(HloInstruction* hlo) override;
-
-  Status HandleMap(HloInstruction* map) override;
-
-  Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleBitcast(const HloInstruction* bitcast) override;
+  Status HandleBitcastConvert(const HloInstruction* convert) override;
+  Status HandleGetDimensionSize(
+      const HloInstruction* get_dimension_size) override;
+  Status HandleSetDimensionSize(
+      const HloInstruction* set_dimension_size) override;
+  Status HandleParameter(const HloInstruction* parameter) override;
+  Status HandleInfeed(const HloInstruction* infeed) override;
+  Status HandleConstant(const HloInstruction* constant) override;
+  Status HandleConcatenate(const HloInstruction* concatenate) override;
+  Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleTranspose(const HloInstruction* transpose) override;
+  Status HandleIsFinite(const HloInstruction* is_finite) override;
+  Status HandleCompare(const HloInstruction* compare) override;
+  Status HandleTuple(const HloInstruction* tuple) override;
+  Status HandleFft(const HloInstruction* fft) override;
+  Status HandleGather(const HloInstruction* gather) override;
+  Status HandleScatter(const HloInstruction* hlo) override;
+  Status HandleGetTupleElement(
+      const HloInstruction* get_tuple_element) override;
+  Status HandleAsyncStart(const HloInstruction* async_start) override;
+  Status HandleAsyncUpdate(const HloInstruction* async_update) override;
+  Status HandleAsyncDone(const HloInstruction* async_done) override;
+  Status HandleCopy(const HloInstruction* copy) override;
+  Status HandleCopyStart(const HloInstruction* copy_start) override;
+  Status HandleCopyDone(const HloInstruction* copy_done) override;
+  Status HandleConditional(const HloInstruction* conditional) override;
+  Status HandleConvert(const HloInstruction* convert) override;
+  Status HandleCall(const HloInstruction* call) override;
+  Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
+  Status HandleDynamicUpdateSlice(const HloInstruction* dus) override;
+  Status HandleFusion(const HloInstruction* fusion) override;
+  Status HandleWhile(const HloInstruction* while_hlo) override;
+  Status HandleSelect(const HloInstruction* select) override;
+  Status HandleBroadcast(const HloInstruction* broadcast) override;
+  Status HandleAfterAll(const HloInstruction* after_all) override;
+  Status HandleAddDependency(const HloInstruction* add_dependency) override;
+  Status HandleReverse(const HloInstruction* reverse) override;
+  Status HandleSelectAndScatter(
+      const HloInstruction* select_and_scatter) override;
+  Status HandleSlice(const HloInstruction* slice) override;
+  Status HandleSort(const HloInstruction* sort) override;
+  Status HandleStochasticConvert(
+      const HloInstruction* stochastic_convert) override;
+  Status HandleReal(const HloInstruction* real) override;
+  Status HandleImag(const HloInstruction* imag) override;
+  Status HandleComplex(const HloInstruction* complex) override;
+  Status HandleReduce(const HloInstruction* hlo) override;
+  Status HandleReduceWindow(const HloInstruction* hlo) override;
+  Status HandleMap(const HloInstruction* map) override;
+  Status HandleCustomCall(const HloInstruction* custom_call) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion
   // HLO pass to the HLO optimization pass during compilation, which can then be
   // handled by the evaluator.
-  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
+  Status HandleBatchNormGrad(const HloInstruction* batch_norm_grad) override {
     return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
   }
   Status HandleBatchNormInference(
-      HloInstruction* batch_norm_inference) override {
+      const HloInstruction* batch_norm_inference) override {
     return Unimplemented(
         "BatchNormInference HLO is unsupported by the evaluator.");
   }
-  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
+  Status HandleBatchNormTraining(
+      const HloInstruction* batch_norm_training) override {
     return Unimplemented(
         "BatchNormTraining HLO is unsupported by the evaluator.");
   }
-  Status HandleOutfeed(HloInstruction* outfeed) override {
+  Status HandleOutfeed(const HloInstruction* outfeed) override {
     return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
   }
 
@@ -478,7 +435,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
  private:
   template <typename ReturnT, typename NativeT>
   static StatusOr<Literal> ElementWiseUnaryOpImpl(
-      HloInstruction* instruction,
+      const HloInstruction* instruction,
       const std::function<ReturnT(NativeT)>& unary_op,
       const Literal& operand_literal) {
     const Shape& shape = instruction->shape();
@@ -494,7 +451,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   }
 
   // Map from a primitive type to its associated (templated) DfsHloVisitor.
-  std::unique_ptr<DfsHloVisitor> typed_visitors_[PrimitiveType_ARRAYSIZE];
+  std::unique_ptr<ConstDfsHloVisitor> typed_visitors_[PrimitiveType_ARRAYSIZE];
 
   // Caches pointers to input literals, assuming they are in post-order.
   // Literals are not owned by this class, and they must outlive the lifetime of
@@ -515,9 +472,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   DynamicDimensionInference* dynamic_dimension_inference_ = nullptr;
 
   // Optional handler for custom_call ops.
-  std::function<StatusOr<Literal>(HloInstruction* custom_call,
-                                  absl::Span<const Literal*> operands)>
-      custom_call_handler_;
+  CustomCallHandler custom_call_handler_;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;

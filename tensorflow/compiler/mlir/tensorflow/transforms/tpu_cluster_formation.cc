@@ -234,13 +234,14 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
           Operation* previous_op = devices[device_local_name].op;
           has_local_device_name_collisions = true;
 
-          LOG(WARNING) << "Found two devices with same local name "
-                       << device_local_name
-                       << " but conflicting fullname: " << device1 << " and "
-                       << device2 << ".";
-          LOG(WARNING) << "Previous assignment came from op: "
-                       << tensorflow::OpAsString(*previous_op)
-                       << ". Current op is: " << tensorflow::OpAsString(op);
+          LOG_FIRST_N(WARNING, 1)
+              << "Found two devices with same local name " << device_local_name
+              << " but conflicting fullname: " << device1 << " and " << device2
+              << ".";
+          LOG_FIRST_N(WARNING, 1)
+              << "Previous assignment came from op: "
+              << tensorflow::OpAsString(*previous_op)
+              << ". Current op is: " << tensorflow::OpAsString(op);
         }
         // Always keep the longer name.
         if (devices[device_local_name].device.size() <

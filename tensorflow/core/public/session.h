@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PUBLIC_SESSION_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

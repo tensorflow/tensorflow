@@ -75,8 +75,8 @@ CpuExecutable::CpuExecutable(
         std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
   }
   if (has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(
-        module().unique_id(), shared_module(), buffer_assignment_);
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               buffer_assignment_);
   }
 
   // Resolve symbols in the constructor rather than at execution time to avoid
@@ -110,8 +110,8 @@ CpuExecutable::CpuExecutable(
         std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
   }
   if (has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(
-        module().unique_id(), shared_module(), buffer_assignment_);
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               buffer_assignment_);
   }
 }
 

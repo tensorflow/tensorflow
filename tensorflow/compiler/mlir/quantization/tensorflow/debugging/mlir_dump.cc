@@ -100,7 +100,13 @@ void EnableIrPrinting(llvm::raw_ostream &out_stream, mlir::PassManager &pm) {
   flag.useLocalScope().elideLargeElementsAttrs().enableDebugInfo();
 
   // IR printing requires multithreading disabled.
-  pm.getContext()->disableMultithreading();
+  // Even if multithreading is already disabled, if we are executing within a
+  // pass-manager,  disableMultithreading throws assertion fail. Below if
+  // statement ensures that disableMultithreading will not be executed if
+  // multithreading is already disabled.
+  if (pm.getContext()->isMultithreadingEnabled()) {
+    pm.getContext()->disableMultithreading();
+  }
 
   // The configuration uses the default parameter values for
   // `PassManager::enableIRPrinting`, except for the `printModuleScope`

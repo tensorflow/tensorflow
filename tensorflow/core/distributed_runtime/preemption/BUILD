@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs", "tf_gen_op_wrapper_cc", "tf_gen_op_wrapper_py", "tf_kernel_library")
 
 package(
@@ -65,5 +66,12 @@ cc_library(
 tf_gen_op_wrapper_py(
     name = "gen_check_preemption_op",
     out = "gen_check_preemption_op.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":check_preemption_op_op_lib"],
 )

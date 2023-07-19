@@ -19,6 +19,7 @@ limitations under the License.
 // Support for eager execution of TensorFlow kernels.
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 #include "tensorflow/c/eager/abstract_op_attrs.h"
@@ -96,7 +97,7 @@ class AttrBuilder : public AbstractOpAttrs {
   AttrBuilder()
       : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {}
 
-  ~AttrBuilder() override {}
+  ~AttrBuilder() override = default;
   explicit AttrBuilder(const char* op)
       : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {
     Reset(op);
@@ -107,7 +108,7 @@ class AttrBuilder : public AbstractOpAttrs {
     num_inputs_ = 0;
     encoded_attrs_.clear();
     node_def_finalized_ = false;
-    cached_cache_key_ = absl::nullopt;
+    cached_cache_key_ = std::nullopt;
     device_for_cached_cache_key_.clear();
   }
 
@@ -122,7 +123,7 @@ class AttrBuilder : public AbstractOpAttrs {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
     node_def_finalized_ = false;
-    cached_cache_key_ = absl::nullopt;
+    cached_cache_key_ = std::nullopt;
     return *this;
   }
 
@@ -130,7 +131,7 @@ class AttrBuilder : public AbstractOpAttrs {
 
   AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
     AddAttrIfNotPresent(attr_name, value);
-    cached_cache_key_ = absl::nullopt;
+    cached_cache_key_ = std::nullopt;
     return *this;
   }
 
@@ -150,7 +151,7 @@ class AttrBuilder : public AbstractOpAttrs {
     return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
   }
 
-  tensorflow::Fprint128 CacheKey(const StringPiece device);
+  tensorflow::Fprint128 CacheKey(StringPiece device);
 
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
   // well as any default attr-value pairs from the associated op_def, if there
@@ -183,7 +184,7 @@ class AttrBuilder : public AbstractOpAttrs {
       absl::InlinedVector<DataType, 4>* type_list) const override;
 
  private:
-  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
+  tensorflow::Fprint128 BuildCacheKeyForDevice(StringPiece device) const;
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
@@ -205,7 +206,7 @@ class AttrBuilder : public AbstractOpAttrs {
   bool node_def_initialized_;
   bool node_def_finalized_;
 
-  absl::optional<tensorflow::Fprint128> cached_cache_key_;
+  std::optional<tensorflow::Fprint128> cached_cache_key_;
   string device_for_cached_cache_key_;
 };
 

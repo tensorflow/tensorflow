@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -381,6 +382,22 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
       void RecordBufferDequeue(const std::vector<Tensor>& element) override {
         iterator_->RecordBufferDequeue(&ctx_, element);
+      }
+
+      double GetTargetProcessingTimeNsec() const override {
+        if (ctx_.model() == nullptr) {
+          LOG(WARNING) << "tf.data Model is null in DataServiceIteratorContext";
+          return 0.0;
+        }
+
+        double target_time_nsec = ctx_.model()->ComputeTargetTimeNsec();
+        if (target_time_nsec == 0.0) return 0.0;
+
+        model::ModelTiming model_timing(ctx_.model()->output());
+        const model::ModelTiming::NodeTiming* data_service_node_timing =
+            model_timing.GetTiming(iterator_->model_node().get());
+
+        return target_time_nsec / data_service_node_timing->pipeline_ratio;
       }
 
      private:

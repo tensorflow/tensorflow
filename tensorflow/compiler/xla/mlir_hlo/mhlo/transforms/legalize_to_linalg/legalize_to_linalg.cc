@@ -2346,7 +2346,8 @@ class RngBitGeneratorConverter
       return success();
     }
 
-    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::PHILOX) {
+    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::PHILOX ||
+        op.getRngAlgorithm() == mhlo::RngAlgorithm::DEFAULT) {
       Value random;
       if (generateLinalgPhilox(rewriter, loc, resultTy, state, random).failed())
         return failure();
@@ -2366,7 +2367,7 @@ struct SelectAndScatterNoOverlapConverter
   using OpConversionPattern<mhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SelectAndScatterOp op, OpAdaptor adaptor,
+      mhlo::SelectAndScatterOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     Location loc = op.getLoc();
     ImplicitLocOpBuilder b(loc, rewriter);

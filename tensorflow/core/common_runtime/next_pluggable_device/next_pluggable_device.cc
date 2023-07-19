@@ -26,12 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
-// TODO(b/263832956): remove this flag when next_pluggable_device is open
-// sourced.
-ABSL_FLAG(bool, next_pluggable_device_use_pjrt, true,
-          "Use PjRtClient for data transfer and compile on demand op in next "
-          "pluggable device.");
-
 ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
           "Use PjRtAllocator in next pluggable device.");
 
@@ -65,21 +59,14 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
     allocator_ = tfnpd_allocator_.get();
   }
 
-  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
-    // TODO(b/262472386) Support shape_determination_fns through
-    // TFNPD_XlaShapeToDeviceShapeRepresentation.
-    if (!options.shape_determination_fns.empty()) {
-      device_context_ = core::RefCountPtr<DeviceContext>(
-          new PjRtDeviceContext(options.shape_determination_fns[0]));
-    } else {
-      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
-          UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-      device_context_ = core::RefCountPtr<DeviceContext>(
-          new PjRtDeviceContext(shape_determination_fns));
-    }
-  } else {
+  if (!options.shape_determination_fns.empty()) {
     device_context_ = core::RefCountPtr<DeviceContext>(
-        new NextPluggableDeviceContext(device_ordinal_));
+        new PjRtDeviceContext(options.shape_determination_fns[0]));
+  } else {
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+    device_context_ = core::RefCountPtr<DeviceContext>(
+        new PjRtDeviceContext(shape_determination_fns));
   }
 
   // Must set accelerator_device_info, otherwise TF will treat this device as

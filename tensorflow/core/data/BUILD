@@ -168,6 +168,7 @@ tf_cc_test(
         ":dataset_test_base",
         ":dataset_utils",
         ":serialization_utils",
+        ":test_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -389,9 +390,10 @@ cc_library(
         ":dataset_utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -404,6 +406,7 @@ tf_cc_test(
         ":dataset_test_base",
         ":dataset_utils",
         ":serialization_utils",
+        ":test_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -551,6 +554,23 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/public:version",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 

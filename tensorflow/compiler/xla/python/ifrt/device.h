@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 
-#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/types.pb.h"
 
 namespace xla {
 namespace ifrt {
+
+class Client;
 
 // Short-term alias to reuse `xla::PjRtDevice` without a separate abstract type.
 using Device = ::xla::PjRtDevice;
@@ -40,7 +44,19 @@ class DeviceList {
   // better performance.
   using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
 
+  // Function that matches the semantics of `Client::LookupDevice()`.
+  using LookupDeviceFunc = absl::FunctionRef<StatusOr<Device*>(int)>;
+
   explicit DeviceList(Devices devices) : devices_(std::move(devices)) {}
+
+  // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
+  // `lookup_device`. Device ids in the proto must be consistent with the
+  // devices returned by `lookup_device`.
+  static StatusOr<DeviceList> FromProto(LookupDeviceFunc lookup_device,
+                                        const DeviceListProto& proto);
+
+  // Returns a `DeviceListProto` representation.
+  DeviceListProto ToProto() const;
 
   absl::Span<Device* const> devices() const { return devices_; }
 
@@ -60,6 +76,9 @@ class DeviceList {
  private:
   Devices devices_;
 };
+
+// Returns the id of each device in `device_list`.
+std::vector<int> GetDeviceIds(DeviceList device_list);
 
 }  // namespace ifrt
 }  // namespace xla
