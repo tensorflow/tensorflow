@@ -86,3 +86,18 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+cc_library(
+    name = "tiling_util",
+    srcs = ["tiling_util.cc"],
+    hdrs = ["tiling_util.h"],
+    visibility = ["//tensorflow/compiler/xla/service/gpu:__subpackages__"],
+    deps = [
+        "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
