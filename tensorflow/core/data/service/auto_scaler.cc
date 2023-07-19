@@ -244,5 +244,17 @@ tsl::Status MultipleIterationsAutoScaler::RemoveWorker(
   return status;
 }
 
+tsl::Status MultipleIterationsAutoScaler::RemoveConsumer(int64_t iteration_id,
+                                                         int64_t consumer_id)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::tf_shared_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat(
+        "Could not find AutoScaler for iteration_id ", iteration_id));
+
+  tsl::Status status = auto_scalers_[iteration_id]->RemoveConsumer(consumer_id);
+  return status;
+}
+
 }  // namespace data
 }  // namespace tensorflow

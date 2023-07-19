@@ -525,6 +525,45 @@ TEST(MultipleIterationsAutoScalerTest, RemoveWorkerAfterNewPTReported) {
   TF_ASSERT_OK(auto_scaler.RemoveWorker(0, "/worker/task/0:20000"));
 }
 
+TEST(MultipleIterationsAutoScalerTest, RemoveConsumerUnregisteredIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  EXPECT_THAT(auto_scaler.RemoveConsumer(0, 0),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(auto_scaler.RemoveConsumer(1, 0),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveConsumerSuccessful) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(0, 0));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(1, 0));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentConsumer) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  EXPECT_THAT(auto_scaler.RemoveConsumer(0, 0),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RemoveConsumerAfterNewTPTReported) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(20)));
+  TF_ASSERT_OK(auto_scaler.RemoveConsumer(0, 0));
+}
+
 }  // namespace
 
 }  // namespace data

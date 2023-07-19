@@ -147,6 +147,13 @@ class MultipleIterationsAutoScaler {
   tsl::Status RemoveWorker(int64_t iteration_id,
                            const std::string& worker_address)
       TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters the consumer identified by `consumer_id` for iteration with
+  // `iteration_id`, removing its reported target processing time from
+  // consideration of the current workload estimation. Returns an error if
+  // iteration with `iteration_id` was not previously registered, or the
+  // specified consumer does not exist.
+  tsl::Status RemoveConsumer(int64_t iteration_id, int64_t consumer_id)
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;
