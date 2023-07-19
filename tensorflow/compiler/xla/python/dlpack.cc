@@ -281,7 +281,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
         "BufferToDLPackManagedTensor is not implemented for tuple "
         "buffers.");
   }
-  if (pjrt_buffer->on_device_shape().is_dynamic()) {
+  if (pjrt_buffer->has_dynamic_dimensions()) {
     return Unimplemented("DynamicShape is not implemented in DLPack.");
   }
 
