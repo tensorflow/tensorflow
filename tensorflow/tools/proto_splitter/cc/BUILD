@@ -71,7 +71,10 @@ tf_cc_test(
     name = "composable_splitter_test",
     srcs = ["composable_splitter_test.cc"],
     data = [],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":composable_splitter",
         ":test_util",
@@ -127,7 +130,10 @@ tf_cc_test(
     data = [
         "//tensorflow/tools/proto_splitter/testdata:split-standard.cpb",
     ],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":test_util",
         ":util",
@@ -212,7 +218,10 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter/testdata:split-large-nodes.pb",
         "//tensorflow/tools/proto_splitter/testdata:split-lots-nodes.pb",
     ],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":graph_def_splitter",
         ":max_size",

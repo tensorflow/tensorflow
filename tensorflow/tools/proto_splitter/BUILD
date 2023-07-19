@@ -91,7 +91,10 @@ pytype_strict_library(
 py_strict_test(
     name = "split_test",
     srcs = ["split_test.py"],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":chunk_proto_py",
         ":split",
@@ -123,7 +126,10 @@ pytype_strict_library(
 py_strict_test(
     name = "split_graph_def_test",
     srcs = ["split_graph_def_test.py"],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":chunk_proto_py",
         ":constants",
@@ -210,7 +216,10 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter/testdata:split-standard.pbtxt",
         "//tensorflow/tools/proto_splitter/testdata:split-tree.pbtxt",
     ],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":chunk_proto_cc",
         ":merge",

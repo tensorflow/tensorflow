@@ -24,7 +24,10 @@ pytype_strict_library(
 py_strict_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
-    tags = ["no_windows"],  # b/291001524
+    tags = [
+        "no_mac",  # b/291933687
+        "no_windows",  # b/291001524
+    ],
     deps = [
         ":saved_model",
         ":test_util",
