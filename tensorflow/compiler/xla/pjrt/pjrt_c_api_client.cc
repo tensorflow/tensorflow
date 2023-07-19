@@ -1343,6 +1343,16 @@ const Layout& PjRtCApiBuffer::layout() const {
   return *layout_;
 }
 
+bool PjRtCApiBuffer::has_dynamic_dimensions() const {
+  PJRT_Buffer_DynamicDimensionIndices_Args args;
+  args.struct_size = PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  pjrt::LogFatalIfPjrtError(
+      pjrt_c_api()->PJRT_Buffer_DynamicDimensionIndices(&args), pjrt_c_api());
+  return args.num_dynamic_dims > 0;
+}
+
 StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
   PJRT_Buffer_UnpaddedDimensions_Args args;
   args.struct_size = PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE;

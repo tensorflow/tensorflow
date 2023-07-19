@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 10
+#define PJRT_API_MINOR 11
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1289,6 +1289,24 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
 typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
 
+struct PJRT_Buffer_DynamicDimensionIndices_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dynamic_dims`.
+  const size_t* dynamic_dim_indices;  // out
+  size_t num_dynamic_dims;            // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DynamicDimensionIndices_Args,
+                          num_dynamic_dims);
+
+// Returns the indices of dynamically-sized dimensions, or an empty list if all
+// dimensions are static. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args);
+
 struct PJRT_Buffer_GetMemoryLayout_Args {
   size_t struct_size;
   void* priv;
@@ -1751,6 +1769,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);

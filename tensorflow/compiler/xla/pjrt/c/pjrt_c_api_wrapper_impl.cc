@@ -1293,6 +1293,25 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DynamicDimensionIndices_Args",
+      PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE, args->struct_size));
+  absl::Span<const bool> is_dyn_dim =
+      args->buffer->buffer->is_dynamic_dimension();
+  std::vector<size_t>& dyn_dim_indices =
+      args->buffer->dynamic_dim_indices.emplace();
+  for (int i = 0; i < is_dyn_dim.size(); ++i) {
+    if (is_dyn_dim[i]) {
+      dyn_dim_indices.push_back(i);
+    }
+  }
+  args->dynamic_dim_indices = dyn_dim_indices.data();
+  args->num_dynamic_dims = dyn_dim_indices.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     PJRT_Buffer_GetMemoryLayout_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

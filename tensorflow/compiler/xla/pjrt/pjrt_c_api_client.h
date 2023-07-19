@@ -275,6 +275,14 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   const Shape& on_device_shape() const override;
 
+  bool has_dynamic_dimensions() const override;
+
+  absl::Span<const bool> is_dynamic_dimension() const override {
+    LOG(FATAL) << "PjRtCApiBuffer::is_dynamic_dimension() not implemented. "
+               << "Considering using has_dynamic_dimensions() or "
+                  "logical_dimensions() if applicable.";
+  }
+
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
   StatusOr<Shape> logical_on_device_shape() override;

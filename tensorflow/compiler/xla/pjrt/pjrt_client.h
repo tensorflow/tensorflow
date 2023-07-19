@@ -880,6 +880,16 @@ class PjRtBuffer {
 
   virtual const Shape& on_device_shape() const = 0;
 
+  virtual bool has_dynamic_dimensions() const {
+    return on_device_shape().is_dynamic();
+  }
+
+  // Each returned element is true if the corresponding dimensions is dynamic,
+  // false if static.
+  virtual absl::Span<const bool> is_dynamic_dimension() const {
+    return on_device_shape().dynamic_dimensions();
+  }
+
   // Same as dimensions() when the shape is static. When the shape is dynamic,
   // it gathers the metadata from the device and returns a static shape
   // representing the logical shape of the data. This approach is identical to
