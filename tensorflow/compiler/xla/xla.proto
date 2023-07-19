@@ -525,6 +525,7 @@ message DebugOptions {
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
   bool xla_gpu_enable_pipelined_all_reduce = 217;
   bool xla_gpu_enable_pipelined_all_gather = 227;
+  bool xla_gpu_enable_pipelined_reduce_scatter = 231;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -577,7 +578,7 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  // Next id: 231
+  // Next id: 232
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

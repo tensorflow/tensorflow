@@ -147,6 +147,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_highest_priority_async_stream(false);
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
+  opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -1080,6 +1081,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_gather),
       debug_options->xla_gpu_enable_pipelined_all_gather(),
       "Enable pipelinling of all-gather instructions."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_pipelined_reduce_scatter",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
+                debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
+                "Enable pipelinling of reduce-scatter instructions."));
   flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(

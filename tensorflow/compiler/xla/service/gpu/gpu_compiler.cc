@@ -625,6 +625,18 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*should_process=*/HloPredicateTrue};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
+    if (debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
+      CollectivePipeliner::Config config{
+          /*op=*/HloOpcode::kReduceScatter,
+          /*level_to_operate_on=*/0,
+          /*max_pipelining_per_loop=*/INT64_MAX,
+          /*last_run=*/true,
+          /*process_different_sized_ops=*/true,
+          /*pipelining_direction=*/
+          CollectivePipeliner::PipeliningDirection::kForward,
+          /*should_process=*/HloPredicateTrue};
+      collectives_pipeline.AddPass<CollectivePipeliner>(config);
+    }
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
