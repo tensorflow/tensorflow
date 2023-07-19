@@ -248,4 +248,55 @@ def AddConcurrentRegionsPass:
   let constructor = "createAddConcurrentRegionsPass()";
 }
 
+//===----------------------------------------------------------------------===//
+// Stream assignment.
+//===----------------------------------------------------------------------===//
+
+def StreamAssignmentPass:
+    Pass<"xla-gpu-stream-assignment", "mlir::func::FuncOp"> {
+  let summary = "Identify and mark concurrent regions in CUDA graph capture "
+                "functions";
+
+  let description = [{
+    Assign a stream to each kernel launch in the capture function. Streams are
+    assigned to exploit parallelism, so that we can build parallel GPU graphs
+    duing graph capture.
+
+    Example:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      // func1, func2, func3 can run in parallel
+      call @xla.gpu.launch.func1
+      call @xla.gpu.launch.func2
+      call @xla.gpu.launch.func3
+
+      // Depends on xla.gpu.launc.func1 and xla.gpu.launch.func2 to finish.
+      call @xla.gpu.launch.func
+      func.return
+    }
+    ```
+
+    becomes:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      // func1, func2, func3 can run in parallel
+      call @xla.gpu.launch.func1 {stream = 0 : i64}
+      call @xla.gpu.launch.func2 {stream = 1 : i64}
+      call @xla.gpu.launch.func3 {stream = 2 : i64}
+
+      // Add explicit synchronization to wait for stream 1 to finish executing
+      // func2. 
+      xla.stream.await {from = 0, to = 1}
+      call @xla.gpu.launch.func {stream = 0: i64}
+      func.return
+    }
+    ```
+
+  }];
+
+  let constructor = "createStreamAssignmentPass()";
+}
+
 #endif  // XLA_GPU_PASSES
