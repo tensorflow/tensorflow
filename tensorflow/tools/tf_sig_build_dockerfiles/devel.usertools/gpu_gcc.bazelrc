@@ -180,3 +180,8 @@ test:pycpp_large_filters --test_tag_filters=-no_oss,-oss_serial,-benchmark-test,
 test:pycpp_large_filters --build_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
 test:pycpp_large_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium,large
 test:pycpp_large --config=pycpp_large_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# For XLA (rocm)
+test:xla_cpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going
+test:xla_cpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm
+test:xla_cpp --config=xla_cpp_filters -- //xla/... //build_tools/..
