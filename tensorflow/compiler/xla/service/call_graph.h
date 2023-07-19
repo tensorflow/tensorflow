@@ -92,7 +92,7 @@ class CallSite {
 // A node in the call graph representing an HLO computation.
 class CallGraphNode {
  public:
-  CallGraphNode(HloComputation* computation);
+  explicit CallGraphNode(HloComputation* computation);
 
   // Returns the computation represented by this call graph node.
   HloComputation* computation() const { return computation_; }

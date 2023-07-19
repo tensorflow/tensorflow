@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -30,10 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
