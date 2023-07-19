@@ -141,7 +141,6 @@ cc_library(
 cc_library(
     name = "saved_model",
     hdrs = ["saved_model.h"],
-    tags = ["no_oss"],
     deps = [
         ":saved_model_lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -162,6 +161,7 @@ cc_library(
     ] + if_google([
         "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
     ]),
 )
 

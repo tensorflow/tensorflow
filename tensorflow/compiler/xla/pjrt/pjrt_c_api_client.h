@@ -268,6 +268,11 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const int64_t> dimensions() const override;
 
+  const Layout& layout() const override;
+
+  // PJRT C API doesn't support tuple buffers.
+  bool IsTuple() const override { return false; }
+
   const Shape& on_device_shape() const override;
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
@@ -349,6 +354,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // `readiness_promise` is destroyed before `readiness_event`, and the callback
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
+  // Set and cached the first time layout() is called.
+  mutable std::optional<xla::Layout> layout_;
+  // Used to synchronize concurrent setting of cached values.
+  mutable absl::Mutex mu_;
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {

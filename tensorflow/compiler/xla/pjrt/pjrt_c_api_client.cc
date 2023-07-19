@@ -25,7 +25,13 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
@@ -35,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -364,7 +371,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (device_layout != nullptr) {
     TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(device_layout));
+                        pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
     args.device_layout = &c_layout_data.c_layout;
   } else {
     args.device_layout = nullptr;
@@ -720,9 +727,42 @@ PjRtCApiExecutable::GetHloModules() const {
   RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_OptimizedProgram(&args), c_api);
 
   absl::string_view program_format(program.format, program.format_size);
-  if (program_format != ::pjrt::kHloWithConfigFormat) {
+  if (program_format != ::pjrt::kHloWithConfigFormat &&
+      program_format != ::pjrt::kMlirFormat) {
     return xla::InternalError(
-        "expected program format `hlo_with_config` but got %s", program_format);
+        "expected program format `hlo_with_config` or `mlir` but got %s",
+        program_format);
+  }
+
+  if (program_format == ::pjrt::kMlirFormat) {
+    xla::HloProto hlo_proto;
+    mlir::MLIRContext ctx;
+    mlir::DialectRegistry registry;
+    mlir::stablehlo::registerAllDialects(registry);
+    mlir::mhlo::registerAllMhloDialects(registry);
+    ctx.appendDialectRegistry(registry);
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(code, &ctx);
+    if (!module) return xla::InternalError("failed to parse source module");
+    mlir::PassManager pm(&ctx);
+    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+    if (mlir::failed(pm.run(module.get())))
+      return xla::InternalError("failed to convert to MHLO");
+    mlir::MlirToHloConversionOptions options;
+    // TODO(jieying): Tuple args should really come from GetCompileOptions (or
+    // equivalent) once implemented.
+    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
+        module.get(), &hlo_proto, /*use_tuple_args=*/false,
+        /*return_tuple=*/false, options));
+    xla::DebugOptions debug_options;
+    TF_ASSIGN_OR_RETURN(xla::HloModuleConfig module_config,
+                        xla::HloModule::CreateModuleConfigFromProto(
+                            hlo_proto.hlo_module(), debug_options));
+    std::vector<std::shared_ptr<HloModule>> out;
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> hlo_module,
+        HloModule::CreateFromProto(hlo_proto.hlo_module(), module_config));
+    out.push_back(std::move(hlo_module));
+    return out;
   }
 
   HloModuleProtoWithConfig proto;
@@ -1282,6 +1322,27 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
   return absl::Span<const int64_t>(args.dims, args.num_dims);
 }
 
+const Layout& PjRtCApiBuffer::layout() const {
+  {
+    absl::MutexLock lock(&mu_);
+    if (!layout_.has_value()) {
+      PJRT_Buffer_GetMemoryLayout_Args args;
+      args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
+      args.priv = nullptr;
+      args.buffer = buffer_.get();
+      pjrt::LogFatalIfPjrtError(
+          pjrt_c_api()->PJRT_Buffer_GetMemoryLayout(&args), pjrt_c_api());
+      CHECK_EQ(args.layout.type, PJRT_Buffer_MemoryLayout_Type_Tiled)
+          << "PjRtCApiBuffer only supports tiled device layouts";
+      absl::StatusOr<Layout> cpp_layout =
+          pjrt::ConvertToLayout(args.layout.tiled);
+      TF_CHECK_OK(cpp_layout.status());
+      layout_.emplace(*cpp_layout);
+    }
+  }
+  return *layout_;
+}
+
 StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
   PJRT_Buffer_UnpaddedDimensions_Args args;
   args.struct_size = PJRT_Buffer_UnpaddedDimensions_Args_STRUCT_SIZE;
@@ -1444,7 +1505,7 @@ PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   xla::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {
     c_layout_data =
-        pjrt::ConvertToBufferMemoryLayoutData(&literal->shape().layout());
+        pjrt::ConvertToBufferMemoryLayoutData(literal->shape().layout());
     if (!c_layout_data.ok()) {
       return PjRtFuture<Status>(c_layout_data.status());
     }

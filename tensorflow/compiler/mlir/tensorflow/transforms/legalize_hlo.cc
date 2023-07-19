@@ -3704,6 +3704,38 @@ class ConvertCustomCallWithApproxTopK
   mlir::ModuleOp* module_op_;
 };
 
+// Converts a MHLO::GetDimensionSizeOp to TF ops.
+class ConvertGetDimensionSizeOp
+    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value shape_op = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getOperand(),
+                                                  rewriter.getBoolAttr(true));
+    Value size =
+        BuildIntArrayConstOp(builder, rewriter, llvm::SmallVector<int64_t>({1}),
+                             rewriter.getI32Type());
+    Value begin = BuildIntArrayConstOp(
+        builder, rewriter,
+        llvm::SmallVector<int64_t>({static_cast<int64_t>(op.getDimension())}),
+        rewriter.getI64Type());
+    Value slice_op = rewriter.create<TF::SliceOp>(
+        op.getLoc(),
+        RankedTensorType::get({static_cast<int64_t>(1)},
+                              op.getType().getElementType()),
+        shape_op, begin, size);
+    Value squeeze_op = rewriter.create<TF::SqueezeOp>(
+        op.getLoc(), op.getType(), slice_op,
+        rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({0})));
+    rewriter.replaceOp(op, {squeeze_op});
+    return success();
+  }
+};
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3795,17 +3827,18 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns->add<
-      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
-      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
-      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp>(context);
+  patterns
+      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
+            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
+            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
+            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp>(context);
   populateWithGenerated(*patterns);
 }
 

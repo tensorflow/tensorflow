@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 9
+#define PJRT_API_MINOR 10
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1289,6 +1289,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
 typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
 
+struct PJRT_Buffer_GetMemoryLayout_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Layout data is owned by and has the lifetime of `buffer`.
+  PJRT_Buffer_MemoryLayout layout;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_GetMemoryLayout_Args, layout);
+
+// Returns the memory layout of the data in this buffer.
+typedef PJRT_Error* PJRT_Buffer_GetMemoryLayout(
+    PJRT_Buffer_GetMemoryLayout_Args* args);
+
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
 
@@ -1738,6 +1751,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);

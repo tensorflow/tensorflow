@@ -19,7 +19,7 @@ import typing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -767,7 +767,7 @@ def ngrams(data,
 
     # preserve the shape of the data if it is a tensor
     to_tensor = False
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       dense_shape = array_ops.concat([array_ops.shape(data)[:-1], [-1]], axis=0)
       to_tensor = True
 
@@ -918,7 +918,7 @@ def _ragged_tensor_to_string(string_tensor, summarize):
     pieces = map_fn_lib.map_fn(
         lambda s: _ragged_tensor_to_string(s, summarize),
         string_tensor,
-        fn_output_signature=tensor_spec.TensorSpec(None, dtypes.string))
+        fn_output_signature=tensor_lib.TensorSpec(None, dtypes.string))
   if summarize not in (-1, None):
     pieces = cond.cond(
         _nrows(string_tensor) <= 2 * summarize,

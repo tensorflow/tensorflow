@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -42,16 +43,23 @@ bool HasDefaultLayout(const Shape& shape) {
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
 }
 
-bool IsTritonSupportedInstruction(const HloInstruction* instr) {
+bool IsTritonSupportedInstruction(const HloInstruction* instr,
+                                  const GpuVersion& gpu_version) {
   // TODO(bchetioui): expand with non-trivial instructions.
   if (instr->IsElementwise()) {
+    if (instr->opcode() == HloOpcode::kConvert &&
+        (instr->operand(0)->shape().element_type() == BF16 ||
+         instr->shape().element_type() == BF16) &&
+        !std::get<se::CudaComputeCapability>(gpu_version)
+             .IsAtLeast(stream_executor::CudaComputeCapability::AMPERE)) {
+      return false;
+    }
     return IsTritonSupportedElementwise(instr->opcode(),
                                         instr->shape().element_type());
   }
 
   switch (instr->opcode()) {
     case HloOpcode::kBitcast:
-    case HloOpcode::kConvert:
     case HloOpcode::kParameter:
       return true;
     default:
@@ -64,12 +72,13 @@ bool IsTritonSupportedInstruction(const HloInstruction* instr) {
 // set to it. The definition of "trivial" operations is as given in
 // 'IsTriviallyFusible'.
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode);
+                 HloOpcode opcode, const GpuVersion& gpu_version);
 
-bool BitcastIsTilingNoop(HloInstruction* bitcast) {
+bool BitcastIsTilingNoop(HloInstruction* bitcast,
+                         const GpuVersion& gpu_version) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcast);
 
-  if (bitcast->shape().rank() == 0) {
+  if (ShapeUtil::IsEffectiveScalar(bitcast->shape())) {
     return true;
   }
 
@@ -88,7 +97,8 @@ bool BitcastIsTilingNoop(HloInstruction* bitcast) {
   };
 
   HloInstruction* reduce = nullptr;
-  TrivialEdge(&reduce, bitcast->mutable_operand(0), HloOpcode::kReduce);
+  TrivialEdge(&reduce, bitcast->mutable_operand(0), HloOpcode::kReduce,
+              gpu_version);
 
   return (HasDefaultLayout(bitcast->shape()) &&
           HasDefaultLayout(bitcast->operand(0)->shape()) &&
@@ -96,7 +106,8 @@ bool BitcastIsTilingNoop(HloInstruction* bitcast) {
            last_dimension(bitcast->operand(0)) == last_dimension(bitcast)));
 }
 
-bool IsTriviallyFusible(HloInstruction* instr, int num_allowed_users = 1) {
+bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
+                        int num_allowed_users = 1) {
   // Checks whether an op is trivially fusible. An op is said to be trivially
   // fusible if it does not increase the amount of memory read/written by the
   // resulting fusion, is compatible with any chosen tiling, and can be
@@ -107,21 +118,22 @@ bool IsTriviallyFusible(HloInstruction* instr, int num_allowed_users = 1) {
     return false;
   }
 
-  if (instr->opcode() == HloOpcode::kBitcast && BitcastIsTilingNoop(instr)) {
+  if (instr->opcode() == HloOpcode::kBitcast &&
+      BitcastIsTilingNoop(instr, gpu_version)) {
     return true;
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return IsTritonSupportedInstruction(instr);
+    return IsTritonSupportedInstruction(instr, gpu_version);
   }
 
   return false;
 }
 
 bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
-                 HloOpcode opcode) {
+                 HloOpcode opcode, const GpuVersion& gpu_version) {
   while (consumer->opcode() != opcode) {
-    if (IsTriviallyFusible(consumer)) {
+    if (IsTriviallyFusible(consumer, gpu_version)) {
       consumer = consumer->mutable_operand(0);
     } else {
       return false;
@@ -133,18 +145,20 @@ bool TrivialEdge(HloInstruction** producer, HloInstruction* consumer,
 }
 
 bool IsTriviallyConnectedProducerOf(HloInstruction* producer,
-                                    HloInstruction* consumer) {
+                                    HloInstruction* consumer,
+                                    const GpuVersion& gpu_version) {
   if (producer == consumer) {
     return true;
   }
 
   HloInstruction* found_producer = consumer;
-  while (TrivialEdge(&found_producer, consumer, producer->opcode())) {
+  while (
+      TrivialEdge(&found_producer, consumer, producer->opcode(), gpu_version)) {
     if (found_producer == producer) {
       return true;
     }
 
-    if (!IsTriviallyFusible(found_producer)) {
+    if (!IsTriviallyFusible(found_producer, gpu_version)) {
       return false;
     }
 
@@ -158,9 +172,10 @@ inline bool HasOneUse(const HloInstruction* instr) {
   return instr->user_count() == 1;
 }
 
-bool IsTritonSupportedComputation(const HloComputation* computation) {
+bool IsTritonSupportedComputation(const HloComputation* computation,
+                                  const GpuVersion& gpu_version) {
   for (const HloInstruction* instr : computation->instructions()) {
-    if (!IsTritonSupportedInstruction(instr)) {
+    if (!IsTritonSupportedInstruction(instr, gpu_version)) {
       return false;
     }
   }
@@ -168,7 +183,7 @@ bool IsTritonSupportedComputation(const HloComputation* computation) {
 }
 
 std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
-    HloInstruction* instr) {
+    HloInstruction* instr, const GpuVersion& gpu_version) {
   // Return the producer of the following pattern:
   //
   // producer
@@ -188,7 +203,8 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
   // array.
   std::optional<HloInstruction*> match_failure = std::nullopt;
 
-  if (!instr->IsElementwiseBinary() || !IsTritonSupportedInstruction(instr)) {
+  if (!instr->IsElementwiseBinary() ||
+      !IsTritonSupportedInstruction(instr, gpu_version)) {
     return match_failure;
   }
 
@@ -197,13 +213,13 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
   HloInstruction* reduce;
 
   if (!(TrivialEdge(&broadcast, instr->mutable_operand(1),
-                    HloOpcode::kBroadcast) &&
-        TrivialEdge(&reduce, broadcast->mutable_operand(0),
-                    HloOpcode::kReduce) &&
+                    HloOpcode::kBroadcast, gpu_version) &&
+        TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
+                    gpu_version) &&
         HasDefaultLayout(broadcast->shape()) &&
         HasDefaultLayout(reduce->shape()) && reduce->operand_count() == 2 &&
         reduce->operand(1)->opcode() == HloOpcode::kConstant &&
-        IsTritonSupportedComputation(reduce->to_apply()))) {
+        IsTritonSupportedComputation(reduce->to_apply(), gpu_version))) {
     return match_failure;
   }
 
@@ -226,12 +242,13 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
     return match_failure;
   }
 
-  while (IsTriviallyFusible(producer)) {
+  while (IsTriviallyFusible(producer, gpu_version)) {
     producer = producer->mutable_operand(0);
   }
 
   if (!HasDefaultLayout(producer->shape()) ||
-      !IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0)) ||
+      !IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
+                                      gpu_version) ||
       !(producer == instr->operand(0) ||
         instr->operand(0)->user_count() == 1)) {
     return match_failure;
@@ -247,10 +264,11 @@ std::optional<HloInstruction*> MatchesTritonCompatibleClosedReductionDiamond(
 //      that instruction is used more than once, and/or is not trivially
 //      fusible.
 HloInstruction* FindFirstNonFusibleDiamondProducer(
-    HloInstruction* diamond_producer) {
-  if (IsTriviallyFusible(diamond_producer, /*num_allowed_users=*/2)) {
+    HloInstruction* diamond_producer, const GpuVersion& gpu_version) {
+  if (IsTriviallyFusible(diamond_producer, gpu_version,
+                         /*num_allowed_users=*/2)) {
     diamond_producer = diamond_producer->mutable_operand(0);
-    while (IsTriviallyFusible(diamond_producer)) {
+    while (IsTriviallyFusible(diamond_producer, gpu_version)) {
       diamond_producer = diamond_producer->mutable_operand(0);
     }
   }
@@ -340,8 +358,8 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
         continue;
       }
 
-      if (auto producer =
-              MatchesTritonCompatibleClosedReductionDiamond(instr)) {
+      if (auto producer = MatchesTritonCompatibleClosedReductionDiamond(
+              instr, gpu_version_)) {
         matched_diamonds.push_back(DiamondDescriptor{instr, producer.value()});
       }
     }
@@ -364,9 +382,9 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
         return instr->operand(0)->shape().dimensions(operand_rank - 1);
       };
 
-  auto last_trivially_fusible_user = [](HloInstruction* instr) {
+  auto last_trivially_fusible_user = [&](HloInstruction* instr) {
     while (HasOneUse(instr) && !instr->IsRoot() &&
-           IsTriviallyFusible(instr->users().front())) {
+           IsTriviallyFusible(instr->users().front(), gpu_version_)) {
       instr = instr->users().front();
     }
 
@@ -375,7 +393,7 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
     // restriction.
     if (HasOneUse(instr) && !instr->IsRoot() &&
         IsTriviallyFusible(
-            instr->users().front(),
+            instr->users().front(), gpu_version_,
             /*num_allowed_users=*/instr->users().front()->user_count())) {
       instr = instr->users().front();
     }
@@ -399,8 +417,8 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
   // Crucially, this approach relies on a diamond root never being considered a
   // trivially fusible operation.
   std::vector<DiamondChainDescriptor> diamond_chains;
-  HloInstruction* current_fusion_producer =
-      FindFirstNonFusibleDiamondProducer(matched_diamonds.front().producer);
+  HloInstruction* current_fusion_producer = FindFirstNonFusibleDiamondProducer(
+      matched_diamonds.front().producer, gpu_version_);
   int current_reduce_dimension_size =
       reduction_dimension_size_from_diamond_root(matched_diamonds.front().root);
 
@@ -411,7 +429,7 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
         matched_diamonds[diamond_idx - 1].root;
 
     HloInstruction* first_non_fusible_diamond_producer =
-        FindFirstNonFusibleDiamondProducer(diamond_producer);
+        FindFirstNonFusibleDiamondProducer(diamond_producer, gpu_version_);
 
     int diamond_reduce_dimension_size =
         reduction_dimension_size_from_diamond_root(diamond_root);

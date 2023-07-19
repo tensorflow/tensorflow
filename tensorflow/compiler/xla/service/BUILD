@@ -500,9 +500,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "data_parallel_collective_optimizer",
-    srcs = ["data_parallel_collective_optimizer.cc"],
-    hdrs = ["data_parallel_collective_optimizer.h"],
+    name = "collective_pipeliner",
+    srcs = ["collective_pipeliner.cc"],
+    hdrs = ["collective_pipeliner.h"],
     deps = [
         ":constant_value",
         ":hlo_pass",
@@ -530,10 +530,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "data_parallel_collective_optimizer_test",
-    srcs = ["data_parallel_collective_optimizer_test.cc"],
+    name = "collective_pipeliner_test",
+    srcs = ["collective_pipeliner_test.cc"],
     deps = [
-        ":data_parallel_collective_optimizer",
+        ":collective_pipeliner",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -889,9 +889,11 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -910,10 +912,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
     ],
 )
 

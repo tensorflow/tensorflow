@@ -9,7 +9,15 @@ package(
 glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
-    driver = "//tensorflow/compiler/mlir:run_lit.sh",
+    # Custom driver is unsupported in OSS. Fails if one is provided.
+    # copybara:uncomment driver = "//tensorflow/compiler/mlir:run_lit.sh",
+    # copybara:comment_begin(JitRt/Auto fusion depreciated)
+    exclude = [
+        "auto-fusion.mlir",
+        "tf_to_corert_pipeline_cpurt.mlir",
+        "outline-cpurt-cluster.mlir",
+    ],
+    # copybara:comment_end
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
     size_override = {
         "fallback.mlir": "medium",

@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
@@ -412,24 +413,16 @@ Value EmitElementwise(mlir::ImplicitLocOpBuilder& b,
   }
 }
 
-Value EmitParameter(mlir::ImplicitLocOpBuilder& b,
-                    const HloInstruction& parameter, mlir::triton::FuncOp fn,
-                    Value load_offsets, Value load_mask) {
-  Value param = fn.getArgument(parameter.parameter_number());
-  mlir::ArrayRef<int64_t> tile_shape =
-      load_offsets.dyn_cast<TensorValue>().getType().getShape();
-  if (load_mask != nullptr) {
-    Value zeros_like = CreateConst(
-        b, TritonType(b, parameter.shape().element_type()), 0, tile_shape);
-    return b.create<mt::LoadOp>(
-        AddPtr(b, Splat(b, param, tile_shape), load_offsets), load_mask,
-        zeros_like, mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL,
-        /*isVolatile=*/false);
+Value EmitParameterLoad(mlir::ImplicitLocOpBuilder& b, Value tensor_pointer,
+                        mlir::ArrayRef<int32_t> boundary_checks) {
+  std::optional<mt::PaddingOption> padding;
+  if (!boundary_checks.empty()) {
+    padding = mt::PaddingOption::PAD_ZERO;
   }
-  return b.create<mt::LoadOp>(
-      AddPtr(b, Splat(b, param, tile_shape), load_offsets),
-      mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL,
-      /*isVolatile=*/false);
+  return b.create<mt::LoadOp>(tensor_pointer, boundary_checks, padding,
+                              mt::CacheModifier::NONE,
+                              mt::EvictionPolicy::NORMAL,
+                              /*isVolatile=*/false);
 }
 
 Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
@@ -457,16 +450,16 @@ Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
   return input;
 }
 
-Value EmitScope(mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
-                mlir::triton::FuncOp fn,
-                absl::Span<const HloInstruction* const> instructions,
-                absl::flat_hash_map<const HloInstruction*, Value>& values,
-                Value load_offsets, Value load_mask);
+StatusOr<Value> EmitScope(
+    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    absl::Span<const HloInstruction* const> instructions,
+    absl::flat_hash_map<const HloInstruction*, Value>& values,
+    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask);
 
-Value EmitReduce(mlir::ImplicitLocOpBuilder& b,
-                 const HloInstruction& hlo_reduce,
-                 absl::string_view libdevice_path, mlir::triton::FuncOp fn,
-                 Value input, Value tile_mask) {
+StatusOr<Value> EmitReduce(mlir::ImplicitLocOpBuilder& b,
+                           const HloInstruction& hlo_reduce,
+                           absl::string_view libdevice_path, Value input,
+                           Value tile_mask) {
   llvm::ArrayRef<int64_t> input_shape =
       input.cast<TensorValue>().getType().getShape();
 
@@ -490,12 +483,14 @@ Value EmitReduce(mlir::ImplicitLocOpBuilder& b,
   // reduction is computed correctly, since it is the neutral value with regards
   // to the reducer.
   Value neutral = EmitConstant(b, *hlo_reduce.operand(1));
-  Value masked_input =
-      b.create<ma::SelectOp>(tile_mask, input, Splat(b, neutral, input_shape));
+  if (tile_mask) {
+    input = b.create<ma::SelectOp>(tile_mask, input,
+                                   Splat(b, neutral, input_shape));
+  }
 
   // Triton actually only performs reductions on float32 inputs, and we must
   // thus upcast/downcast our input if its data type is different.
-  Value casted_input = Cast(b, masked_input, b.getF32Type());
+  Value casted_input = Cast(b, input, b.getF32Type());
 
   mt::ReduceOp reduction = b.create<mt::ReduceOp>(
       SmallVector<Value>({casted_input}), (int)input_shape.size() - 1);
@@ -525,8 +520,9 @@ Value EmitReduce(mlir::ImplicitLocOpBuilder& b,
     CHECK(!to_emit.empty());
 
     b.setInsertionPointToStart(reducer);
-    Value result =
-        EmitScope(b, libdevice_path, fn, to_emit, region_values, {}, {});
+    TF_ASSIGN_OR_RETURN(Value result,
+                        EmitScope(b, libdevice_path, to_emit, region_values,
+                                  /*tile_shape=*/{}, /*tile_mask=*/{}));
     b.create<mt::ReduceReturnOp>(SmallVector<Value>({result}));
     b.setInsertionPointAfter(reduction);
   }
@@ -537,24 +533,25 @@ Value EmitReduce(mlir::ImplicitLocOpBuilder& b,
 
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
-Value EmitScope(mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
-                mlir::triton::FuncOp fn,
-                absl::Span<const HloInstruction* const> instructions,
-                absl::flat_hash_map<const HloInstruction*, Value>& values,
-                Value load_offsets, Value load_mask) {
+StatusOr<Value> EmitScope(
+    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    absl::Span<const HloInstruction* const> instructions,
+    absl::flat_hash_map<const HloInstruction*, Value>& values,
+    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
     if (hlo->opcode() == HloOpcode::kParameter) {
-      result = EmitParameter(b, *hlo, fn, load_offsets, load_mask);
+      // Parameter loads are handled outside EmitScope.
+      TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
+      continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
       result = EmitConstant(b, *hlo);
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
-      mlir::ArrayRef<int64_t> tile_shape =
-          load_offsets.dyn_cast<TensorValue>().getType().getShape();
       result = EmitBroadcast(b, *hlo, values[hlo->operand(0)], tile_shape);
     } else if (hlo->opcode() == HloOpcode::kReduce) {
-      result = EmitReduce(b, *hlo, libdevice_path, fn, values[hlo->operand(0)],
-                          load_mask);
+      TF_ASSIGN_OR_RETURN(
+          result, EmitReduce(b, *hlo, libdevice_path, values[hlo->operand(0)],
+                             tile_mask));
     } else if (hlo->IsElementwise()) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
@@ -563,14 +560,14 @@ Value EmitScope(mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
       }
       result = EmitElementwise(b, libdevice_path, *hlo, operands);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
-      CHECK(hlo->IsRoot()) << hlo->ToString();
+      TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kReshape) {
       result = values[hlo->operand(0)];
     } else {
       LOG(FATAL) << hlo->ToString();
     }
-    CHECK(values.insert({hlo, result}).second) << hlo->ToString();
+    TF_RET_CHECK(values.insert({hlo, result}).second) << hlo->ToString();
     VLOG(8) << "Emitted " << hlo->ToString();
   }
   return values[instructions.back()];
@@ -582,6 +579,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   const int ccAsInt = cc.major * 10 + cc.minor;
   // Based on optimize_ttir() in
   // @triton//:python/triton/compiler/compiler.py
+  pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -713,14 +711,17 @@ StatusOr<LaunchDimensions> MatMulImpl(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
   mlir::ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
+  Type i64_ty = b.getI64Type();
   Type int_ty;
   if constexpr (std::is_same_v<IndexT, int64_t>) {
-    int_ty = b.getI64Type();
+    int_ty = i64_ty;
   } else {
-    int_ty = b.getI32Type();
+    int_ty = i32_ty;
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const DotFusionAnalysis analysis(dot_instr->parent(), config.split_k());
+  TF_ASSIGN_OR_RETURN(
+      const auto analysis,
+      DotFusionAnalysis::Execute(dot_instr->parent(), config.split_k()));
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
@@ -746,12 +747,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
   const bool have_batch = dims.lhs_batch_dimensions_size() - have_split_k;
   CHECK_EQ(dot_instr->operand(0)->shape().rank(),
            2 + have_split_k + have_batch);
-  const int64_t lhs_noncontracting_dim_idx =
+  const int lhs_noncontracting_dim_idx =
       GetNonContractingDims(dot_instr->operand(0)->shape(),
                             dims.lhs_batch_dimensions(),
                             dims.lhs_contracting_dimensions())
           .value()[0];
-  const int64_t rhs_noncontracting_dim_idx =
+  const int rhs_noncontracting_dim_idx =
       GetNonContractingDims(dot_instr->operand(1)->shape(),
                             dims.rhs_batch_dimensions(),
                             dims.rhs_contracting_dimensions())
@@ -786,8 +787,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
   bool lhs_nc_split = false;
   // Either batch size or upper part of the length of a split nc dimension.
   int batch_size = 1;
-  IndexT stride_lhs_m = 0;
-  IndexT stride_lhs_k = 0;
   IndexT stride_lhs_batch = 0;
   IndexT stride_rhs_batch = 0;
   if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).empty()) {
@@ -828,20 +827,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
                            dims.lhs_contracting_dimensions(0))
                  ->size(),
              1);
-    stride_lhs_m = lhs_nc_iter_spec->at(0).stride;
-    stride_lhs_k = analysis
-                       .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                                 dims.lhs_contracting_dimensions(0))
-                       ->at(0)
-                       .stride;
     // Just the fastest-varying part of it if the dimension is split.
     m = lhs_nc_iter_spec->at(0).count;
   }
 
   CHECK_GE(m, 1);
 
-  IndexT stride_rhs_k = 0;
-  IndexT stride_rhs_n = 0;
   if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).empty()) {
     const HloInstruction* rhs_param0 =
         *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin();
@@ -851,16 +842,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
                            rhs_noncontracting_dim_idx)
                  ->size(),
              1);
-    stride_rhs_k = analysis
-                       .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                                 dims.rhs_contracting_dimensions(0))
-                       ->at(0)
-                       .stride;
-    stride_rhs_n = analysis
-                       .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                                 rhs_noncontracting_dim_idx)
-                       ->at(0)
-                       .stride;
     if (have_batch) {
       const int64_t rhs_batch_dim_idx =
           *(dims.rhs_batch_dimensions().cend() - 1);
@@ -875,57 +856,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   constexpr int group_m = 8;
 
-  IndexT stride_out_m =
-      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx)
-          ->at(0)
-          .stride;
-  const int64_t n =
+  const int n =
       analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, rhs_nc_out_idx)
           ->at(0)
           .count;
   CHECK_GE(n, 1);
-  IndexT stride_out_n =
-      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, rhs_nc_out_idx)
-          ->at(0)
-          .stride;
-  IndexT stride_out_split_k = 0;
-  if (have_split_k) {
-    stride_out_split_k =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, split_k_out_idx)
-            ->at(0)
-            .stride;
-    CHECK_GE(stride_out_split_k, 1);
-  }
-  IndexT stride_out_batch = 0;
-  if (have_batch) {
-    stride_out_batch =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, batch_out_idx)
-            ->at(0)
-            .stride;
-    CHECK_GE(stride_out_batch, 1);
-  }
-  {
-    const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
-        DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx);
-    if (spec->size() > 1) {
-      CHECK_EQ(spec->size(), 2);
-      // Support one specific kind of output transpose that splits the dimension
-      // originating from the split LHS non-contracting one.
-      CHECK(!have_batch);
-      CHECK(lhs_nc_split);
-      CHECK_EQ(spec->at(1).count, batch_size);
-      stride_out_batch = spec->at(1).stride;
-    } else if (lhs_nc_split) {
-      // Dimension of the output produced by the non-contracting LHS one
-      // is physically contiguous though the producing LHS one is split.
-      // Because the major part of the split is implemented using the batch
-      // logic stride_out_batch is populated here as the stride of the minor
-      // part times its size.
-      stride_out_batch = stride_out_m * m;
-    }
-  }
 
   const int block_m = config.block_m();
   const int block_k = config.block_k();
@@ -992,125 +927,120 @@ StatusOr<LaunchDimensions> MatMulImpl(
     }
     return value;
   };
-  auto convert_range = [&](Value value) -> Value {
-    if constexpr (std::is_same_v<IndexT, int64_t>) {
-      auto type = mlir::RankedTensorType::get(
-          value.dyn_cast<TensorValue>().getType().getShape(), int_ty);
-      return b.create<ma::ExtSIOp>(type, value);
-    }
-    return value;
-  };
 
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
                                     b.create<ma::RemSIOp>(pid_nc, group_size));
-  auto pid_m_stride =
+  auto pid_m_offset =
       b.create<ma::MulIOp>(pid_m, CreateConst(b, i32_ty, block_m));
-  // TODO(b/270351731): Consider regenerating range_m to reduce register
-  // pressure if we figure out how to make this optimization survive CSE.
-  auto range_m =
-      b.create<ma::AddIOp>(Splat(b, pid_m_stride, block_m), Range(b, block_m));
 
   auto pid_n = b.create<ma::DivSIOp>(
       b.create<ma::RemSIOp>(pid_nc, CreateConst(b, i32_ty, width)), group_size);
-  auto pid_n_stride =
+  auto pid_n_offset =
       b.create<ma::MulIOp>(pid_n, CreateConst(b, i32_ty, block_n));
-  auto range_n =
-      b.create<ma::AddIOp>(Splat(b, pid_n_stride, block_n), Range(b, block_n));
 
-  auto range_k = b.create<ma::AddIOp>(
-      Splat(b, b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
-            block_k),
-      Range(b, block_k));
+  auto pid_k_offset =
+      b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k));
 
-  SmallVector<int64_t, 2> shape_m_1{block_m, 1};
-  auto range_lhs_m = convert_range(
-      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m, block_m)));
-  auto lhs_offsets_m =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_lhs_m, 1),
-                           CreateConst(b, int_ty, stride_lhs_m, shape_m_1));
-  SmallVector<int64_t, 2> shape_1_k{1, block_k};
-  auto lhs_offsets_k = b.create<ma::MulIOp>(
-      b.create<mt::ExpandDimsOp>(convert_range(range_k), 0),
-      CreateConst(b, int_ty, stride_lhs_k, shape_1_k));
-  SmallVector<int64_t, 2> shape_m_k{block_m, block_k};
-  auto lhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_lhs_batch));
-  auto lhs_offsets_init = b.create<ma::AddIOp>(
-      Broadcast(b, lhs_offsets_m.getResult().template cast<TensorValue>(),
-                shape_m_k),
-      Broadcast(b, lhs_offsets_k.getResult().template cast<TensorValue>(),
-                shape_m_k));
-  lhs_offsets_init = b.create<ma::AddIOp>(
-      lhs_offsets_init, Splat(b, lhs_offset_batch, shape_m_k));
+  ma::ConstantOp accumulator_init =
+      CreateConst(b, acc_ty, 0, {block_m, block_n});
 
-  SmallVector<int64_t, 2> shape_k_1{block_k, 1};
-  auto rhs_offsets_k = b.create<ma::MulIOp>(
-      b.create<mt::ExpandDimsOp>(convert_range(range_k), 1),
-      CreateConst(b, int_ty, stride_rhs_k, shape_k_1));
-  SmallVector<int64_t, 2> shape_1_n{1, block_n};
-  auto range_rhs_n = convert_range(
-      b.create<ma::RemSIOp>(range_n, CreateConst(b, i32_ty, n, block_n)));
-  auto rhs_offsets_n =
-      b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_rhs_n, 0),
-                           CreateConst(b, int_ty, stride_rhs_n, shape_1_n));
-  SmallVector<int64_t, 2> shape_k_n{block_k, block_n};
-  auto rhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_rhs_batch));
-  auto rhs_offsets_init = b.create<ma::AddIOp>(
-      Broadcast(b, rhs_offsets_k.getResult().template cast<TensorValue>(),
-                shape_k_n),
-      Broadcast(b, rhs_offsets_n.getResult().template cast<TensorValue>(),
-                shape_k_n));
-  rhs_offsets_init = b.create<ma::AddIOp>(
-      rhs_offsets_init, Splat(b, rhs_offset_batch, shape_k_n));
-  SmallVector<int64_t, 2> shape_m_n{block_m, block_n};
-  ma::ConstantOp accumulator_init = CreateConst(b, acc_ty, 0, shape_m_n);
+  // Numbers of dimensions of tensor pointers that need masking on loads or
+  // stores.
+  std::vector<int32_t> boundary_checks_lhs;
+  std::vector<int32_t> boundary_checks_rhs;
+  std::vector<int32_t> boundary_checks_out;
+  if (m % block_m != 0) {
+    boundary_checks_lhs.push_back(0);
+    boundary_checks_out.push_back(0);
+  }
+  if (k % (block_k * config.split_k()) != 0) {
+    boundary_checks_lhs.push_back(1);
+    boundary_checks_rhs.push_back(0);
+  }
+  if (n % block_n != 0) {
+    boundary_checks_rhs.push_back(1);
+    boundary_checks_out.push_back(1);
+  }
+
+  // Parameters are passed to the loop in non-trivial order, this map helps
+  // finding them.
+  absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                          mlir::ValueRange iterArgs) {
-    Value lhs_offsets = iterArgs[0];
-    Value rhs_offsets = iterArgs[1];
-    Value accumulator = iterArgs[2];
-    Value lhs_mask = nullptr;
-    Value rhs_mask = nullptr;
+                          mlir::ValueRange iter_args) {
+    SmallVector<Value> iter_args_next;
+    iter_args_next.reserve(iter_args.size());
+    absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
+    absl::flat_hash_map<const HloInstruction*, Value> values_rhs;
+    // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
+    for (int i = 0; i < iter_args.size() - 1; ++i) {
+      const bool is_lhs =
+          i < analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size();
+      const int increment_dim0 = block_k * config.split_k() * (is_lhs ? 0 : 1);
+      const int increment_dim1 = block_k * config.split_k() * (is_lhs ? 1 : 0);
+      absl::flat_hash_map<const HloInstruction*, Value>& values =
+          is_lhs ? values_lhs : values_rhs;
+      CHECK(values
+                .insert({iter_args_to_parameters[i],
+                         EmitParameterLoad(b, iter_args[i],
+                                           is_lhs ? boundary_checks_lhs
+                                                  : boundary_checks_rhs)})
+                .second);
+      iter_args_next.push_back(b.create<mt::AdvanceOp>(
+          iter_args[i].getType(), iter_args[i],
+          mlir::ValueRange{CreateConst(b, i32_ty, increment_dim0),
+                           CreateConst(b, i32_ty, increment_dim1)}));
+    }
+
     // TODO(b/269726484): Peel the loop instead of inserting a masked load in
     // every iteration, even the ones that do not need it.
     const bool need_masking = k % (block_k * config.split_k()) > 0;
+    Value lhs_mask;
+    Value rhs_mask;
     if (need_masking) {
       auto elements_in_tile =
           b.create<ma::SubIOp>(CreateConst(b, i32_ty, k), ki);
-      lhs_mask =
-          Broadcast(b,
-                    b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                         b.create<mt::ExpandDimsOp>(range_k, 0),
-                                         Splat(b, elements_in_tile, shape_1_k))
-                        .getResult()
-                        .template cast<TensorValue>(),
-                    shape_m_k);
-      rhs_mask =
-          Broadcast(b,
-                    b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                         b.create<mt::ExpandDimsOp>(range_k, 1),
-                                         Splat(b, elements_in_tile, shape_k_1))
-                        .getResult()
-                        .template cast<TensorValue>(),
-                    shape_k_n);
+      auto range_k = b.create<ma::AddIOp>(
+          Splat(b, b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
+                block_k),
+          Range(b, block_k));
+      lhs_mask = Broadcast(
+          b,
+          b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
+                               b.create<mt::ExpandDimsOp>(range_k, 0),
+                               Splat(b, elements_in_tile, {1, block_k}))
+              .getResult()
+              .template cast<TensorValue>(),
+          {block_m, block_k});
+      rhs_mask = Broadcast(
+          b,
+          b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
+                               b.create<mt::ExpandDimsOp>(range_k, 1),
+                               Splat(b, elements_in_tile, {block_k, 1}))
+              .getResult()
+              .template cast<TensorValue>(),
+          {block_k, block_n});
     }
 
-    // For now use one shape for LHS inputs and one for RHS.
-    absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
+    // Emit all operations of LHS and RHS scopes.
     Value dot_input_lhs =
-        EmitScope(b, libdevice_path, fn,
+        EmitScope(b, libdevice_path,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(0))),
-                  values_lhs, lhs_offsets, lhs_mask);
-    absl::flat_hash_map<const HloInstruction*, Value> values_rhs;
+                  values_lhs, {block_m, block_k}, lhs_mask)
+            .value();
     Value dot_input_rhs =
-        EmitScope(b, libdevice_path, fn,
+        EmitScope(b, libdevice_path,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(1))),
-                  values_rhs, rhs_offsets, rhs_mask);
+                  values_rhs, {block_k, block_n}, rhs_mask)
+            .value();
 
+    // Operation in the fusion before the dot can alter the elements of the
+    // tiles that were zero masked during loads. These have to be zeroed here
+    // again just before the dot so that they do not affect the output.
+    // Only the K dimension needs masking here because unnecessary elements in
+    // the other two get discarded by the masked store at the end.
     if (need_masking) {
       dot_input_lhs = b.create<ma::SelectOp>(lhs_mask, dot_input_lhs,
                                              ZerosLike(b, dot_input_lhs));
@@ -1118,22 +1048,89 @@ StatusOr<LaunchDimensions> MatMulImpl(
                                              ZerosLike(b, dot_input_rhs));
     }
 
-    auto accumulator_next = b.create<mt::DotOp>(
-        dot_input_lhs, dot_input_rhs, accumulator,
+    // Execute matrix multiplication of input tiles and pass the accumulator.
+    Value accumulator_next = b.create<mt::DotOp>(
+        dot_input_lhs, dot_input_rhs, iter_args.back(),
         /*allowTF32=*/tsl::tensor_float_32_execution_enabled());
+    iter_args_next.push_back(accumulator_next);
 
-    Value lhs_offsets_next = b.create<ma::AddIOp>(
-        lhs_offsets,
-        CreateConst(b, int_ty, block_k * config.split_k() * stride_lhs_k,
-                    shape_m_k));
-    Value rhs_offsets_next = b.create<ma::AddIOp>(
-        rhs_offsets,
-        CreateConst(b, int_ty, block_k * config.split_k() * stride_rhs_k,
-                    shape_k_n));
-
-    b.create<mlir::scf::YieldOp>(
-        mlir::ValueRange{lhs_offsets_next, rhs_offsets_next, accumulator_next});
+    b.create<mlir::scf::YieldOp>(iter_args_next);
   };
+
+  // Pointers to parameters of LHS scope, then RHS, then the accumulator
+  // that change with every loop iteration and are passed between them.
+  // LHS and RHS can use same HLO computation parameters, but because they use
+  // different pointers they have to be stored separately for each scope.
+  SmallVector<Value> iter_args;
+  iter_args.reserve(
+      analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size() +
+      analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).size() + 1);
+
+  Value lhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_lhs_batch));
+  for (const HloInstruction* parameter :
+       analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS)) {
+    Value base = fn.getArgument(parameter->parameter_number());
+    const int64_t stride_lhs_m =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::LHS, parameter,
+                      lhs_noncontracting_dim_idx)
+            ->at(0)
+            .stride;
+    const int64_t stride_lhs_k =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::LHS, parameter,
+                      dims.lhs_contracting_dimensions(0))
+            ->at(0)
+            .stride;
+    Value ptrs = b.create<mt::MakeTensorPtrOp>(
+        /*base=*/AddPtr(b, base, lhs_offset_batch),
+        /*shape=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
+        /*strides=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
+                         CreateConst(b, i64_ty, stride_lhs_k)},
+        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_k_offset},
+        /*tensorShape=*/std::vector<int32_t>{block_m, block_k},
+        /*order=*/std::vector<int32_t>{1, 0});
+    CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
+        << parameter->ToString();
+    iter_args.push_back(ptrs);
+  }
+
+  Value rhs_offset_batch = b.create<ma::MulIOp>(
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_rhs_batch));
+  for (const HloInstruction* parameter :
+       analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS)) {
+    Value base = fn.getArgument(parameter->parameter_number());
+    const IndexT stride_rhs_k =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::RHS, parameter,
+                      dims.rhs_contracting_dimensions(0))
+            ->at(0)
+            .stride;
+    const IndexT stride_rhs_n =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::RHS, parameter,
+                      rhs_noncontracting_dim_idx)
+            ->at(0)
+            .stride;
+    Value ptrs = b.create<mt::MakeTensorPtrOp>(
+        /*base=*/AddPtr(b, base, rhs_offset_batch),
+        /*shape=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
+        /*strides=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
+                         CreateConst(b, i64_ty, stride_rhs_n)},
+        /*offsets=*/mlir::ValueRange{pid_k_offset, pid_n_offset},
+        /*tensorShape=*/std::vector<int32_t>{block_k, block_n},
+        /*order=*/std::vector<int32_t>{1, 0});
+    CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
+        << parameter->ToString();
+    iter_args.push_back(ptrs);
+  }
+
+  iter_args.push_back(accumulator_init);
   Value acc_final =
       b.create<mlir::scf::ForOp>(
            /*lowerBound=*/b.create<ma::ConstantIntOp>(0, /*width=*/32),
@@ -1141,43 +1138,85 @@ StatusOr<LaunchDimensions> MatMulImpl(
            /*step=*/
            b.create<ma::ConstantIntOp>(block_k * config.split_k(),
                                        /*width=*/32),
-           /*iterArgs=*/
-           mlir::ValueRange{lhs_offsets_init, rhs_offsets_init,
-                            accumulator_init},
-           body_builder)
-          .getResult(2);
+           /*iterArgs=*/iter_args, body_builder)
+          .getResult(iter_args.size() - 1);
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   values_out[dot_instr] =
       Cast(b, acc_final, TritonType(b, dot_instr->shape().element_type()));
 
-  // Output tile offsets.
-  auto out_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_out_batch));
-  auto out_offsets_m = b.create<ma::MulIOp>(
-      b.create<mt::ExpandDimsOp>(convert_range(range_m), 1),
-      CreateConst(b, int_ty, stride_out_m, shape_m_1));
-
-  auto out_offsets_n = b.create<ma::MulIOp>(
-      b.create<mt::ExpandDimsOp>(convert_range(range_n), 0),
-      CreateConst(b, int_ty, stride_out_n, shape_1_n));
-  auto out_offsets = b.create<ma::AddIOp>(Splat(b, out_offset_batch, shape_m_1),
-                                          out_offsets_m);
-  out_offsets = b.create<ma::AddIOp>(
-      Broadcast(b, out_offsets.getResult().template cast<TensorValue>(),
-                shape_m_n),
-      Broadcast(b, out_offsets_n.getResult().template cast<TensorValue>(),
-                shape_m_n));
-
-  // Output tile mask: check that the indices are within [M, N].
-  auto rm_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                     b.create<mt::ExpandDimsOp>(range_m, 1),
-                                     CreateConst(b, i32_ty, m, shape_m_1));
-  auto rn_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
-                                     b.create<mt::ExpandDimsOp>(range_n, 0),
-                                     CreateConst(b, i32_ty, n, shape_1_n));
-  auto out_mask = b.create<ma::AndIOp>(
-      Broadcast(b, rm_cmp.getResult().template cast<TensorValue>(), shape_m_n),
-      Broadcast(b, rn_cmp.getResult().template cast<TensorValue>(), shape_m_n));
+  // Generate tensor pointer for a parameter load or output store within the
+  // dot's output scope.
+  auto output_scope_tensor_pointer = [&](const HloInstruction* hlo, Value base,
+                                         bool add_split_k_offset) {
+    const IndexT stride_m =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, lhs_nc_out_idx)
+            ->at(0)
+            .stride;
+    {
+      IndexT stride_batch = 0;
+      if (have_batch) {
+        stride_batch =
+            analysis
+                .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, batch_out_idx)
+                ->at(0)
+                .stride;
+        CHECK_GE(stride_batch, 1);
+      }
+      {
+        const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
+            DotFusionAnalysis::Scope::OUTPUT, hlo, lhs_nc_out_idx);
+        if (spec->size() > 1) {
+          CHECK_EQ(spec->size(), 2);
+          // Support one specific kind of output transpose that splits the
+          // dimension originating from the split LHS non-contracting one.
+          CHECK(!have_batch);
+          CHECK(lhs_nc_split);
+          CHECK_EQ(spec->at(1).count, batch_size);
+          stride_batch = spec->at(1).stride;
+        } else if (lhs_nc_split) {
+          // Dimension of the output produced by the non-contracting LHS one
+          // is physically contiguous though the producing LHS one is split.
+          // Because the major part of the split is implemented using the batch
+          // logic stride_out_batch is populated here as the stride of the minor
+          // part times its size.
+          stride_batch = stride_m * m;
+        }
+      }
+      Value offset_batch = b.create<ma::MulIOp>(
+          convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch));
+      base = AddPtr(b, base, offset_batch);
+    }
+    if (add_split_k_offset) {
+      IndexT stride_split_k = 0;
+      if (have_split_k) {
+        stride_split_k = analysis
+                             .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo,
+                                       split_k_out_idx)
+                             ->at(0)
+                             .stride;
+        CHECK_GE(stride_split_k, 1);
+      }
+      Value offset_split_k = b.create<ma::MulIOp>(
+          convert_scalar(pid_k), CreateConst(b, int_ty, stride_split_k));
+      base = AddPtr(b, base, offset_split_k);
+    }
+    const IndexT stride_n =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, rhs_nc_out_idx)
+            ->at(0)
+            .stride;
+    return b.create<mt::MakeTensorPtrOp>(
+        /*base=*/base,
+        /*shape=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
+        /*strides=*/
+        mlir::ValueRange{CreateConst(b, i64_ty, stride_m),
+                         CreateConst(b, i64_ty, stride_n)},
+        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_n_offset},
+        /*tensorShape=*/std::vector<int32_t>{block_m, block_n},
+        /*order=*/std::vector<int32_t>{1, 0});
+  };
 
   // Collect all instructions of the dot's output scope.
   absl::flat_hash_set<const HloInstruction*> to_order;
@@ -1207,23 +1246,34 @@ StatusOr<LaunchDimensions> MatMulImpl(
       to_emit.push_back(hlo);
     }
   }
+  // Emit the output scope.
   if (!to_emit.empty()) {
-    EmitScope(b, libdevice_path, fn, to_emit, values_out, out_offsets,
-              out_mask);
+    for (const HloInstruction* parameter :
+         analysis.ScopeParameters(DotFusionAnalysis::Scope::OUTPUT)) {
+      Value tensor_pointer = output_scope_tensor_pointer(
+          parameter, fn.getArgument(parameter->parameter_number()),
+          /*add_split_k_offset=*/false);
+      CHECK(values_out
+                .insert({parameter, EmitParameterLoad(b, tensor_pointer,
+                                                      boundary_checks_out)})
+                .second);
+    }
+    TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, to_emit, values_out,
+                                 {block_m, block_n}, /*tile_mask=*/{})
+                           .status());
   }
 
-  auto out_offset_split_k = b.create<ma::MulIOp>(
-      convert_scalar(pid_k), CreateConst(b, int_ty, stride_out_split_k));
-  out_offsets = b.create<ma::AddIOp>(out_offsets,
-                                     Splat(b, out_offset_split_k, shape_m_n));
+  // Emit tensor store operations for all outputs.
   for (int i = 0;
        i < fn.getNumArguments() - dot_instr->parent()->num_parameters(); ++i) {
-    Value out = fn.getArgument(i + dot_instr->parent()->num_parameters());
     const HloInstruction* producer =
         root->shape().IsTuple() ? root->operand(i) : root;
-    b.create<mt::StoreOp>(AddPtr(b, Splat(b, out, shape_m_n), out_offsets),
-                          values_out[producer], out_mask,
-                          mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
+    Value tensor_pointer = output_scope_tensor_pointer(
+        producer, fn.getArgument(i + dot_instr->parent()->num_parameters()),
+        /*add_split_k_offset=*/true);
+    b.create<mt::StoreOp>(tensor_pointer, values_out[producer],
+                          boundary_checks_out, mt::CacheModifier::NONE,
+                          mt::EvictionPolicy::NORMAL);
   }
   return launch_dimensions;
 }
@@ -1301,35 +1351,37 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   for (int minor_axis = 1; minor_axis < reduce_input_shape.rank(); ++minor_axis)
     num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
 
-  // softmax_kernel(input_ptr, output_ptr, num_rows, row_len, block_row) {
-  //   row_index = tl.program_id(0)
-  //   row_stride = row_len
-  //   offset = row_index * row_stride
   Value row_index = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X);
-  Value row_stride = b.create<ma::ConstantIntOp>(row_len, /*width=*/32);
-  Value offset = b.create<ma::MulIOp>(row_index, row_stride);
-
-  //   row_tile = tl.arange(0, block_row) + offset
-  Value splat_offsets = Splat(b, offset, block_row);
-  Value row_tile = b.create<ma::AddIOp>(splat_offsets, Range(b, block_row));
-
-  //   mask = row_tile < row_stride
-  Value splat_row_stride = Splat(b, row_stride, block_row);
-  Value mask = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, Range(b, block_row),
-                                    splat_row_stride);
+  Value row_stride = CreateConst(b, b.getI32Type(), row_len);
 
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
-  Value result =
-      EmitScope(b, libdevice_path, fn, computation->MakeInstructionPostOrder(),
-                values_out, row_tile, mask);
+  auto make_tensor_pointer = [&](Value base) {
+    Value offset = b.create<ma::MulIOp>(row_index, row_stride);
+    return b.create<mt::MakeTensorPtrOp>(
+        /*base=*/AddPtr(b, base, offset),
+        /*shape=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), row_len)},
+        /*strides=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), 1)},
+        /*offsets=*/mlir::ValueRange{CreateConst(b, b.getI32Type(), 0)},
+        /*tensorShape=*/std::vector<int32_t>{block_row},
+        /*order=*/std::vector<int32_t>{0});
+  };
 
-  //   tl.store(output_ptr + row_tile, result, mask=mask)
-  Value splat_output_ptr = Splat(b, fn.getArgument(1), block_row);
-  Value store_ptrs = AddPtr(b, splat_output_ptr, row_tile);
+  std::vector<int32_t> boundary_checks;
+  if (block_row != row_len) {
+    boundary_checks.push_back(0);
+  }
+  values_out[computation->parameter_instruction(0)] = EmitParameterLoad(
+      b, make_tensor_pointer(fn.getArgument(0)), boundary_checks);
+  Value mask = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, Range(b, block_row),
+                                    Splat(b, row_stride, block_row));
+  TF_ASSIGN_OR_RETURN(
+      Value result,
+      EmitScope(b, libdevice_path, computation->MakeInstructionPostOrder(),
+                values_out, {block_row}, mask));
 
-  b.create<mt::StoreOp>(store_ptrs, result, mask, mt::CacheModifier::NONE,
+  b.create<mt::StoreOp>(make_tensor_pointer(fn.getArgument(1)), result,
+                        std::vector<int32_t>{0}, mt::CacheModifier::NONE,
                         mt::EvictionPolicy::NORMAL);
-  // }
 
   const LaunchDimensions launch_dimensions{
       {num_rows, 1, 1}, {config.num_warps() * WarpSize(), 1, 1}};

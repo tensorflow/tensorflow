@@ -88,7 +88,9 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
     auto* b_named_sharding = xla::fast_cast<const NamedSharding>(b);
 
     return a_named_sharding->mesh().ptr() == b_named_sharding->mesh().ptr() &&
-           a_named_sharding->spec().equal(b_named_sharding->spec());
+           a_named_sharding->spec().equal(b_named_sharding->spec()) &&
+           a_named_sharding->memory_kind().equal(
+               b_named_sharding->memory_kind());
   }
 
   if (a_type.is(GSPMDSharding::type())) {
@@ -105,20 +107,23 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
         xla::fast_cast<const SingleDeviceSharding>(b);
 
     return a_single_device_sharding->device().ptr() ==
-           b_single_device_sharding->device().ptr();
+               b_single_device_sharding->device().ptr() &&
+           a_single_device_sharding->memory_kind().equal(
+               b_single_device_sharding->memory_kind());
   }
 
   return a.equal(b);
 }
 
 NamedSharding::NamedSharding(py::object mesh, py::object spec,
-                             py::object parsed_pspec)
+                             py::object memory_kind, py::object parsed_pspec)
     : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
         py::array devices = mesh.attr("devices");
         return devices.size();
       }()),
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
+      memory_kind_(std::move(memory_kind)),
       parsed_pspec_(std::move(parsed_pspec)) {
   py::cast(this).attr("_preprocess")();
 }
@@ -139,17 +144,23 @@ void RegisterSharding(py::module& m) {
 
   py::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
                                                    py::dynamic_attr())
-      .def(py::init<py::object, py::object, py::object>(), py::arg("mesh"),
-           py::arg("spec"), py::arg("_parsed_pspec") = py::none())
+      .def(py::init<py::object, py::object, py::object, py::object>(),
+           py::arg("mesh"), py::arg("spec"), py::kw_only(),
+           py::arg("memory_kind") = py::none(),
+           py::arg("_parsed_pspec") = py::none())
       .def_property_readonly("mesh", &NamedSharding::mesh)
       .def_property_readonly("spec", &NamedSharding::spec)
+      .def_property_readonly("memory_kind", &NamedSharding::memory_kind)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
                     &NamedSharding::set_parsed_pspec);
 
   py::class_<SingleDeviceSharding, XLACompatibleSharding>(
       m, "SingleDeviceSharding", py::dynamic_attr())
-      .def(py::init<py::object>(), py::arg("device"))
-      .def_property_readonly("_device", &SingleDeviceSharding::device);
+      .def(py::init<py::object, py::object>(), py::arg("device"), py::kw_only(),
+           py::arg("memory_kind") = py::none())
+      .def_property_readonly("_device", &SingleDeviceSharding::device)
+      .def_property_readonly("_memory_kind",
+                             &SingleDeviceSharding::memory_kind);
 
   py::class_<PmapSharding, XLACompatibleSharding>(m, "PmapSharding",
                                                   py::dynamic_attr())
@@ -160,16 +171,21 @@ void RegisterSharding(py::module& m) {
 
   py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
                                                    py::dynamic_attr())
-      .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
-           py::arg("op_sharding"))
-      .def(py::init<py::tuple, xla::OpSharding>(), py::arg("devices"),
-           py::arg("op_sharding"))
-      .def(py::init<py::list, xla::HloSharding>(), py::arg("devices"),
-           py::arg("op_sharding"))
-      .def(py::init<py::tuple, xla::HloSharding>(), py::arg("devices"),
-           py::arg("op_sharding"))
+      .def(py::init<py::list, xla::OpSharding, py::object>(),
+           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
+           py::arg("memory_kind") = py::none())
+      .def(py::init<py::tuple, xla::OpSharding, py::object>(),
+           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
+           py::arg("memory_kind") = py::none())
+      .def(py::init<py::list, xla::HloSharding, py::object>(),
+           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
+           py::arg("memory_kind") = py::none())
+      .def(py::init<py::tuple, xla::HloSharding, py::object>(),
+           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
+           py::arg("memory_kind") = py::none())
       .def_property_readonly("_devices", &GSPMDSharding::devices)
-      .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding);
+      .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding)
+      .def_property_readonly("_memory_kind", &GSPMDSharding::memory_kind);
 }
 
 }  // namespace jax

@@ -207,6 +207,7 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
         ],
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
@@ -953,6 +954,40 @@ def _tf_repositories():
         sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
         urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
         #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
+    )
+
+    # Riegeli is imported twice since there are two targets (third_party/riegeli and
+    # third_party/py/riegeli) that are used in TF.
+    tf_http_archive(
+        name = "riegeli",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    tf_http_archive(
+        name = "riegeli_py",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        patch_file = ["//third_party:riegeli_fix.patch"],
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "org_brotli",
+        sha256 = "84a9a68ada813a59db94d83ea10c54155f1d34399baf377842ff3ab9b3b3256e",
+        strip_prefix = "brotli-3914999fcc1fda92e750ef9190aa6db9bf7bdb07",
+        urls = tf_mirror_urls("https://github.com/google/brotli/archive/3914999fcc1fda92e750ef9190aa6db9bf7bdb07.zip"),  # 2022-11-17
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "net_zstd",
+        build_file = "//third_party:net_zstd.BUILD",
+        sha256 = "b6c537b53356a3af3ca3e621457751fa9a6ba96daf3aebb3526ae0f610863532",
+        strip_prefix = "zstd-1.4.5/lib",
+        urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.4.5.zip"),  # 2020-05-22
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

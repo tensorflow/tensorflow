@@ -3768,6 +3768,28 @@ func.func @convert_dot_quant_type(%arg0: tensor<1x256xf32>, %arg1: tensor<256x!q
   func.return %0 : tensor<1xf32>
 }
 
+// CHECK-LABEL: func @get_dimension_size(
+// CHECK-SAME:              %[[ARG_0:.*]]: tensor<4x256x?xf32>) -> tensor<i32> {
+// CHECK          %[[CST_0:.*]] = "tf.Const"() {value = dense<256> : tensor<i32>} : () -> tensor<i32>
+// CHECK          return %[[CST_0]] : tensor<i32>
+func.func @get_dimension_size(%arg0: tensor<4x256x?xf32>) -> tensor<i32> {
+  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<4x256x?xf32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @get_dimension_size_dynamic(
+// CHECK-SAME:              %[[ARG_0:.*]]: tensor<4x256x?xf32>) -> tensor<i32> {
+// CHECK          %[[VAL_0:.*]] = "tf.Shape"(%[[ARG_0]]) : (tensor<4x256x?xf32>) -> tensor<3xi32>
+// CHECK          %[[CST_0:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK          %[[CST_1:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK          %[[VAL_1:.*]] = "tf.Slice"(%[[VAL_0]], %[[CST_1]], %[[CST_0]]) : (tensor<3xi32>, tensor<1xi64>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK          %[[VAL_2:.*]] = "tf.Squeeze"(%[[VAL_1]]) {squeeze_dims = [0]} : (tensor<1xi32>) -> tensor<i32>
+// CHECK          return %[[VAL_2]] : tensor<i32>
+func.func @get_dimension_size_dynamic(%arg0: tensor<4x256x?xf32>) -> tensor<i32> {
+  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 2 : i64} : (tensor<4x256x?xf32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
 // CHECK-LABEL: func @convert_approx_top_k_custom_call(
 // CHECK-SAME:                                        %[[ARG_0:.*]]: tensor<1x4xf32>,
 // CHECK-SAME:                                        %[[ARG_1:.*]]: tensor<1x4xi32>,

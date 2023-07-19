@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
 
 #include <memory>
-#include <string>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -36,6 +36,14 @@ std::unique_ptr<Pass> createFuseConvolutionPass();
 
 // Creates a pass which applies various optimizations on MHLO IR.
 std::unique_ptr<Pass> createOptimizePass();
+
+// Creates a pass that finds quantization patterns and compose them to uniform
+// quantized types.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateComposeUniformQuantizedTypePass();
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
 }  // namespace odml
 }  // namespace mlir

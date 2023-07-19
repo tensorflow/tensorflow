@@ -104,11 +104,17 @@ class TensorIterationSpec {
 
 // Analysis of iteration of HLO shapes within a fusion around dot().
 class DotFusionAnalysis {
+  DotFusionAnalysis() {}
+
+  Status ExecuteImpl(const HloComputation* computation, int64_t split_k = 1);
+
  public:
-  // Execute analysis of dot fusion computation.
-  // split_k indicates whether this operation was converted to the split-K
+  // Execute the analysis of a dot fusion computation.
+  // `computation` is a computation of a dot fusion to analyze.
+  // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  explicit DotFusionAnalysis(const HloComputation*, int64_t split_k = 1);
+  static StatusOr<DotFusionAnalysis> Execute(const HloComputation* computation,
+                                             int64_t split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM fusion has 3 scopes

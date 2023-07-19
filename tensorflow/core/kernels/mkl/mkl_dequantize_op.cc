@@ -72,7 +72,12 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<float> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       memory::format_tag dst_layout_type;

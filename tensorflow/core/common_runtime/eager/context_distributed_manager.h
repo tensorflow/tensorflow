@@ -41,8 +41,12 @@ class EagerContextDistributedManager
   explicit EagerContextDistributedManager(EagerContext* context)
       : context_(context) {}
 
+  // When running in a distributed context, `init_timeout_in_ms` requests the
+  // amount of time to wait for remote workers to respond.
+
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
-                              int keep_alive_secs) override;
+                              int keep_alive_secs,
+                              int64_t init_timeout_in_ms) override;
 
   Status InitializeLocalOnlyContext(const ServerDef& server_def,
                                     int keep_alive_secs) override;

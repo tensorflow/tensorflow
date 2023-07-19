@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -66,14 +66,14 @@ TEST(SerializeBEFTest, HandlesCompleteProcess) {
                    std::string("serialized_bef.mlir.bef"));
 
   // Serialize BEF Buffer
-  ASSERT_OK(tensorflow::tfrt_stub::SerializeBEF(old_bef, filepath));
+  TF_ASSERT_OK(tensorflow::tfrt_stub::SerializeBEF(old_bef, filepath));
   // Check that Bef Buffer is not empty
   ASSERT_NE(old_bef.size(), 0);
 
   // Create new empty BEF buffer and deserialize to verify data
 
-  ASSERT_OK_AND_ASSIGN(const tfrt::BefBuffer bef,
-                       DeserializeBEFBuffer(filepath));
+  TF_ASSERT_OK_AND_ASSIGN(const tfrt::BefBuffer bef,
+                          DeserializeBEFBuffer(filepath));
 
   // Check for any data loss during deserialization process
   ASSERT_TRUE(old_bef.size() == bef.size());
@@ -83,8 +83,9 @@ TEST(SerializeBEFTest, HandlesCompleteProcess) {
       DefaultTfrtRuntime(/*num_threads=*/1);
   SavedModel::Options default_options =
       DefaultSavedModelOptions(default_runtime.get());
-  EXPECT_OK(tfrt::CreateBefFileFromBefBuffer(
-      *default_options.graph_execution_options.runtime, bef));
+  TF_EXPECT_OK(tfrt::CreateBefFileFromBefBuffer(
+                   *default_options.graph_execution_options.runtime, bef)
+                   .status());
 }
 }  // namespace
 }  // namespace tfrt_stub

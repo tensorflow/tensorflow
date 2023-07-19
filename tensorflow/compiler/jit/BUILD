@@ -683,6 +683,7 @@ tf_cc_test(
     srcs = [
         "device_compiler_disable_test.cc",
     ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compilation_profiler",
         ":device_compiler",
@@ -1677,6 +1678,7 @@ tf_cc_test(
 tf_cc_test(
     name = "device_executable_persistor_test",
     srcs = ["device_executable_persistor_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compiler_client",
         ":device_executable_persistor",

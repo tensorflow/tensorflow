@@ -392,9 +392,9 @@ Status CompileModuleToLlvmIrImpl(
       &results->output_shape, &results->entry_func_attrs));
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
-      &mlir_context, results->llvm_module.get());
+      hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
+      cuda_compute_capability, rocm_compute_capability, &mlir_context,
+      results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 

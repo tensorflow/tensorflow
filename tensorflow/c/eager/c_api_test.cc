@@ -1935,50 +1935,6 @@ TEST(CAPI, TestTFE_OpRecreation) {
   TFE_DeleteContext(ctx);
 }
 
-tensorflow::ServerDef ReplaceTaskInServerDef(
-    const tensorflow::ServerDef& server_def, int task_index) {
-  tensorflow::ServerDef server_def_copy = server_def;
-  tensorflow::ClusterDef* cluster_def = server_def_copy.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
-  const int port = tensorflow::testing::PickUnusedPortOrDie();
-  job_def->mutable_tasks()->at(task_index) =
-      tensorflow::strings::StrCat("localhost:", port);
-  return server_def_copy;
-}
-
-TFE_Context* CreateContext(const string& serialized_server_def,
-                           bool isolate_session_state) {
-  TF_Status* status = TF_NewStatus();
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  opts->session_options.options.config.set_isolate_session_state(
-      isolate_session_state);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(false));
-  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
-  TFE_Context* ctx = TFE_NewContext(opts, status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_ContextSetServerDef(ctx, 0, serialized_server_def.data(),
-                          serialized_server_def.size(), status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_DeleteContextOptions(opts);
-  TF_DeleteStatus(status);
-  return ctx;
-}
-
-std::vector<std::string> ListDeviceNames(TFE_Context* ctx) {
-  TF_Status* status = TF_NewStatus();
-  std::vector<std::string> device_names;
-  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
-  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  const int num_devices = TF_DeviceListCount(devices);
-  for (int i = 0; i < num_devices; ++i) {
-    device_names.emplace_back(TF_DeviceListName(devices, i, status));
-    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  }
-  TF_DeleteDeviceList(devices);
-  TF_DeleteStatus(status);
-  return device_names;
-}
-
 TEST(CAPI, ShareVariableAcrossContextsWorks) {
   // TODO(shreepadma): Add a test case with isolate_session_state set to true.
   tensorflow::ServerDef server_def_0 = GetServerDef(3);
@@ -2006,9 +1962,11 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
   ASSERT_TRUE(worker_server2->Start().ok());
 
   TFE_Context* ctx_0 = CreateContext(serialized_server_def_0,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
   TFE_Context* ctx_1 = CreateContext(serialized_server_def_1,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
 
   // Remote device on `worker1`.
   const char remote_device[] = "/job:localhost/replica:0/task:1/device:CPU:0";
@@ -2083,13 +2041,6 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
   worker_server2.release();
 }
 
-void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index,
-                            const string& host, int port) {
-  tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
-  job_def->mutable_tasks()->at(task_index) =
-      tensorflow::strings::StrCat(host, ":", port);
-}
-
 TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorks) {
   tensorflow::ServerDef server_def_0 = GetServerDef(3);
   server_def_0.mutable_default_session_config()->set_isolate_session_state(
@@ -2117,9 +2068,11 @@ TEST(CAPI, ShareVariableAcrossContextsAfterUpdateContextWorks) {
 
   // Create two contexts.
   TFE_Context* ctx_0 = CreateContext(serialized_server_def_0,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
   TFE_Context* ctx_1 = CreateContext(serialized_server_def_1,
-                                     /*isolate_session_state=*/false);
+                                     /*isolate_session_state=*/false,
+                                     /*init_timeout_in_ms=*/0);
 
   // Remote device on `worker2`.
   const char remote_device[] = "/job:localhost/replica:0/task:2/device:CPU:0";
@@ -2323,7 +2276,8 @@ TEST(CAPI, SingleHostServerDefWorks) {
   worker_1_server_def.set_job_name("client");
   TFE_Context* local_ctx =
       CreateContext(worker_1_server_def.SerializeAsString(),
-                    /*isolate_session_state=*/false);
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
 
   const char remote_device[] = "/job:worker/replica:0/task:1/device:CPU:0";
 
@@ -2353,7 +2307,8 @@ TEST(CAPI, SingleHostServerDefWorks) {
   cluster_server_def.set_job_name("client");
   TFE_Context* remote_ctx =
       CreateContext(cluster_server_def.SerializeAsString(),
-                    /*isolate_session_state=*/false);
+                    /*isolate_session_state=*/false,
+                    /*init_timeout_in_ms=*/0);
 
   // Read variable `var` using `remote_ctx`, created using `cluster_server_def`.
   {
