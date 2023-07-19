@@ -184,7 +184,23 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -594,5 +594,18 @@
+@@ -155,8 +155,14 @@
+ LogicalResult matchInts(Value value, SmallVector<APSInt>& result) {
+   DenseIntElementsAttr attr;
+   if (!matchPattern(value, m_Constant(&attr))) return failure();
++
+   // Signless types are treated as signed, per StableHLO convention.
+-  auto isUnsigned = attr.getType().getElementType().isUnsignedInteger();
++  // Unless the type is i1 (which models boolean type from the StableHLO spec),
++  // in which case it's considered to be unsigned.
++  auto elementType = attr.getType().getElementType();
++  auto isUnsigned = elementType.isUnsignedInteger() ||
++                    elementType.getIntOrFloatBitWidth() == 1;
++
+   for (auto element : attr.getValues<APInt>()) {
+     result.push_back(APSInt(element, /*isUnsigned=*/isUnsigned));
+   }
+@@ -594,5 +600,18 @@
    return UnrankedTensorType::get(components.getElementType());
  }
  
@@ -1046,7 +1062,36 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -595,12 +595,45 @@
+@@ -257,14 +257,26 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: func @eval_convert
+-func.func @eval_convert() -> tensor<i64> {
++// CHECK-LABEL: func @eval_convert_common_case
++func.func @eval_convert_common_case() -> tensor<i64> {
+   // CHECK-NOT: stablehlo.convert
+   // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<4> : tensor<i64>
+   // CHECK: return [[RESULT]]
+   %0 = stablehlo.constant dense<4> : tensor<i32>
+   %1 = stablehlo.convert %0 : (tensor<i32>) -> tensor<i64>
+   func.return %1 : tensor<i64>
++}
++
++// -----
++
++// CHECK-LABEL: func @eval_convert_i1
++func.func @eval_convert_i1() -> tensor<2xi64> {
++  // CHECK-NOT: stablehlo.convert
++  // CHECK: [[RESULT:%.*]] = stablehlo.constant dense<[1, 0]> : tensor<2xi64>
++  // CHECK: return [[RESULT]]
++  %0 = stablehlo.constant dense<[true, false]> : tensor<2xi1>
++  %1 = stablehlo.convert %0 : (tensor<2xi1>) -> tensor<2xi64>
++  return %1 : tensor<2xi64>
+ }
+ 
+ // -----
+@@ -595,12 +607,45 @@
  
  // -----
  
