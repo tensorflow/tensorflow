@@ -1230,9 +1230,6 @@ class ConvertDynamicUpdateSliceOp
     if (update_type == nullptr || start_indices_type == nullptr)
       return rewriter.notifyMatchFailure(
           op, "update and start_indices should have ShapedType");
-    if (!operand_type.hasStaticShape() || !update_type.hasStaticShape())
-      return rewriter.notifyMatchFailure(
-          op, "shape of operand and update should be static");
 
     Type idx_type = start_indices_type.getElementType();
     int64_t shape_dim = operand_type.getRank();

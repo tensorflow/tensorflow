@@ -3477,6 +3477,35 @@ func.func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tens
   func.return %0 : tensor<28x1x100xf32>
 }
 
+// CHECK-LABEL:   func @dynamic_update_slice_inputs_have_dynamic_dim(
+// CHECK-SAME:                                       %arg0: tensor<?x4xi32>,
+// CHECK-SAME:                                       %arg1: tensor<?x2xi32>,
+// CHECK-SAME:                                       %arg2: tensor<i32>,
+// CHECK-SAME:                                       %arg3: tensor<i32>) -> tensor<?x4xi32> {
+// CHECK:         %0 = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+// CHECK:         %1 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %0) : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<2xi32>) -> tensor<?x4xi32>
+// CHECK:         return %1 : tensor<?x4xi32>
+// CHECK:         }
+func.func @dynamic_update_slice_inputs_have_dynamic_dim(%arg0: tensor<?x4xi32>, %arg1: tensor<?x2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<?x4xi32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<i32>, tensor<i32>) -> tensor<?x4xi32>
+  func.return %0 : tensor<?x4xi32>
+}
+
+// CHECK-LABEL:   func @dynamic_update_slice_operand_has_dynamic_dim(
+// CHECK-SAME:                                       %arg0: tensor<1x?x256xf32>,
+// CHECK-SAME:                                       %arg1: tensor<1x1x256xf32>,
+// CHECK-SAME:                                       %arg2: tensor<i32>,
+// CHECK-SAME:                                       %arg3: tensor<i32>,
+// CHECK-SAME:                                       %arg4: tensor<i32>) -> tensor<1x?x256xf32> {
+// CHECK:         %0 = "tf.Pack"(%arg2, %arg3, %arg4) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK:         %1 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %0) : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<3xi32>) -> tensor<1x?x256xf32>
+// CHECK:         return %1 : tensor<1x?x256xf32>
+// CHECK:         }
+func.func @dynamic_update_slice_operand_has_dynamic_dim(%arg0: tensor<1x?x256xf32>, %arg1: tensor<1x1x256xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<1x?x256xf32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3, %arg4 : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<1x?x256xf32>
+  func.return %0 : tensor<1x?x256xf32>
+}
+
 // CHECK-LABEL:   func @convert_reduce_to_all(
 // CHECK-SAME:                                %[[ARG_0:.*]]: tensor<1x2x3x4x5xi1>,
 // CHECK-SAME:                                %[[ARG_1:.*]]: tensor<2xi64>) -> tensor<2x4x5xi1> {
