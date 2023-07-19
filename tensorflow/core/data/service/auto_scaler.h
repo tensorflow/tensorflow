@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -28,9 +29,9 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// Exports a metric (/tensorflow/data/service/optimal_number_of_workers) with
-// the current estimated optimal number of tf.data service workers, according to
-// the observed cluster workload.
+// Estimates the optimal number of tf.data service workers for an Iteration
+// based on the current workload.
+// Note: It is assumed that all reported times correspond to the same Iteration.
 //
 // Glossary:
 // * Consumer: A client that consumes elements from tf.data service.
@@ -66,14 +67,11 @@ namespace data {
 class AutoScaler {
  public:
   AutoScaler() = default;
-  // Updates the metric value with the current estimated optimal number of
-  // workers. Returns an error if there are no previously reported processing
-  // and target processing times.
-  tsl::Status UpdateOptimalNumberOfWorkersMetric();
   // Returns the estimated optimal number of workers according to the current
   // observed workload. If there are no previously reported processing and
   // target processing times, returns nullopt.
-  std::optional<int64_t> GetOptimalNumberOfWorkers() TF_LOCKS_EXCLUDED(mu_);
+  std::optional<int64_t> GetOptimalNumberOfWorkers() const
+      TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed processing time from the worker with
   // `worker_address`. Returns an error if `processing_time` is ZeroDuration or
   // negative.
@@ -103,6 +101,19 @@ class AutoScaler {
       TF_GUARDED_BY(mu_);
   // Map from consumer id to consumption rate.
   absl::flat_hash_map<int64_t, double> consumption_rates_ TF_GUARDED_BY(mu_);
+};
+
+// Exports a metric (/tensorflow/data/service/optimal_number_of_workers) with
+// the estimated optimal number of tf.data service workers, according to
+// the observed cluster workload.
+//
+// It estimates the number of workers as the maximum of the estimated optimal
+// number of workers for all Iterations running in the tf.data service cluster.
+//
+// MultipleIterationsAutoScaler is thread-safe.
+class MultipleIterationsAutoScaler {
+ public:
+  MultipleIterationsAutoScaler() = default;
 };
 
 }  // namespace data
