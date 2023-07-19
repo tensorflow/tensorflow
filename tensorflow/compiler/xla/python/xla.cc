@@ -27,6 +27,7 @@ limitations under the License.
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
@@ -225,6 +226,49 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return ValueOrThrow(LiteralToPython(std::move(literal)));
            })
+      .def(
+          "memory",
+          [](const ClientAndPtr<PjRtDevice>& device, std::string kind) {
+            std::string memories = absl::StrJoin(
+                device->memory_spaces(), ", ",
+                [](std::string* out, const auto& memory_space) {
+                  absl::StrAppend(out, memory_space->memory_space_kind());
+                });
+            PjRtMemorySpace* result_memory_space = nullptr;
+            auto device_kind = device->device_kind();
+            for (auto* memory_space : device->memory_spaces()) {
+              if (memory_space->memory_space_kind() == kind) {
+                if (result_memory_space != nullptr) {
+                  ThrowIfError(InvalidArgument(
+                      "Found more than one memories with kind %s addressable "
+                      "by device %s. Here are all the addressable memories for "
+                      "device %s: %s",
+                      kind, device_kind, device_kind, memories));
+                }
+                result_memory_space = memory_space;
+              }
+            }
+            if (result_memory_space == nullptr) {
+              ThrowIfError(InvalidArgument(
+                  "Could not find memory addressable by device %s. %s are "
+                  "all the memories device %s can address. Got memory kind: %s",
+                  device_kind, memories, device_kind, kind));
+            }
+            return WrapWithClient(device.client(), result_memory_space);
+          },
+          py::arg("kind"))
+      // Returns all the memories that a device can address.
+      .def("addressable_memories",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             std::vector<ClientAndPtr<PjRtMemorySpace>> memory_spaces;
+             auto span = device->memory_spaces();
+             memory_spaces.reserve(span.size());
+             for (auto* memory_space : span) {
+               memory_spaces.push_back(
+                   WrapWithClient(device.client(), memory_space));
+             }
+             return memory_spaces;
+           })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
              PythonDeprecationWarning(
@@ -309,6 +353,34 @@ PYBIND11_MODULE(xla_extension, m) {
   device.attr("__getattr__") =
       py::reinterpret_steal<py::object>(PyDescr_NewMethod(
           reinterpret_cast<PyTypeObject*>(device.ptr()), &get_attr_method));
+
+  py::class_<PjRtMemorySpace, ClientAndPtr<PjRtMemorySpace>> memory_space(
+      m, "Memory");
+  memory_space
+      .def_property_readonly(
+          "process_index",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->process_index();
+          })
+      .def_property_readonly(
+          "platform",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->platform_name();
+          })
+      .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
+      .def("__str__", &PjRtMemorySpace::DebugString)
+      .def("__repr__", &PjRtMemorySpace::ToString)
+      // Returns the devices this `Memory` is attached to.
+      .def("attached_devices",
+           [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+             std::vector<ClientAndPtr<PjRtDevice>> devices;
+             auto span = memory_space->devices();
+             devices.reserve(span.size());
+             for (PjRtDevice* device : span) {
+               devices.push_back(WrapWithClient(memory_space.client(), device));
+             }
+             return devices;
+           });
 
   // Local XLA client methods.
 
