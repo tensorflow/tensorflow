@@ -1478,6 +1478,19 @@ func.func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
   func.return %0 : tensor<2x2x6xf32>
 }
 
+// CHECK-LABEL:   func @dynamic_reshape(
+// CHECK-SAME:                         %arg0: tensor<1x1x1x?xf32>,
+// CHECK-SAME:                         %arg1: tensor<3xi32>,
+// CHECK-SAME:                         %arg2: tensor<1xi32>) -> tensor<?xf32> {
+// CHECK:           %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<1x1x1x?xf32>, tensor<3xi32>) -> tensor<1x1x?xf32>
+// CHECK:           %1 = "tf.Reshape"(%0, %arg2) : (tensor<1x1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+// CHECK:           return %1 : tensor<?xf32>
+func.func @dynamic_reshape(%arg0: tensor<1x1x1x?xf32>, %arg1: tensor<3xi32>, %arg2: tensor<1xi32>) -> tensor<?xf32> {
+  %0 = mhlo.dynamic_reshape %arg0, %arg1 : (tensor<1x1x1x?xf32>, tensor<3xi32>) -> tensor<1x1x?xf32>
+  %1 = mhlo.dynamic_reshape %0, %arg2 : (tensor<1x1x?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @round_nearest_even(
 // CHECK-SAME:                           %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         %[[VAL_1:.*]] = "tf.Round"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
