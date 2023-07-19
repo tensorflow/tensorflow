@@ -603,24 +603,26 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
     if (debug_options.xla_gpu_enable_pipelined_all_reduce()) {
       CollectivePipeliner::Config config{
+          /*op=*/HloOpcode::kAllReduce,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
-          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
+          /*should_process=*/HloPredicateTrue};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (debug_options.xla_gpu_enable_pipelined_all_gather()) {
       CollectivePipeliner::Config config{
+          /*op=*/HloOpcode::kAllGather,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
-          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>};
+          /*should_process=*/HloPredicateTrue};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
 
