@@ -511,6 +511,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:tf_stack",
     ],
 )
 

@@ -1093,11 +1093,13 @@ class SavingOptionsTest(test.TestCase):
     # Verify that there is a trace for DEBUG_INFO_OP just to ensure that
     # function debug info tracing is nominally functioning.
     found_op = False
-    for key in debug_info.traces.keys():
+    for key in debug_info.name_to_trace_id.keys():
       if key.startswith("DEBUG_INFO_OP@"):
         found_op = True
         break
-    self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
+    self.assertTrue(
+        found_op, "Did not find DEBUG_INFO_OP in trace: %s" % debug_info
+    )
 
   def test_save_debug_info_disabled(self):
     root = autotrackable.AutoTrackable()
