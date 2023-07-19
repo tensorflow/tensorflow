@@ -319,6 +319,18 @@ TEST(MultipleIterationsAutoScalerTest, RegisterExistingIteration) {
               StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
+TEST(MultipleIterationsAutoScalerTest, UnregisterExistingIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.UnregisterIteration(0));
+}
+
+TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  EXPECT_THAT(auto_scaler.UnregisterIteration(0),
+              StatusIs(absl::StatusCode::kNotFound));
+}
+
 }  // namespace
 
 }  // namespace data

@@ -119,6 +119,10 @@ class MultipleIterationsAutoScaler {
   // to be considered for the current workload estimation. Returns an error if
   // the specified iteration already exists.
   tsl::Status RegisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters iteration with `iteration_id`, removing its reported
+  // times from consideration of the current workload estimation.
+  // Returns an error if the specified iteration does not exist.
+  tsl::Status UnregisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;

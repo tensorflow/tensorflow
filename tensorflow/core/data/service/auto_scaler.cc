@@ -195,5 +195,15 @@ tsl::Status MultipleIterationsAutoScaler::RegisterIteration(
   return tsl::OkStatus();
 }
 
+tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
+    int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat("AutoScaler for iteration_id ",
+                                            iteration_id, " does not exist"));
+  auto_scalers_.erase(iteration_id);
+  return tsl::OkStatus();
+}
+
 }  // namespace data
 }  // namespace tensorflow
