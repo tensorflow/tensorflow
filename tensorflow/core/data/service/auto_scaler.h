@@ -123,6 +123,14 @@ class MultipleIterationsAutoScaler {
   // times from consideration of the current workload estimation.
   // Returns an error if the specified iteration does not exist.
   tsl::Status UnregisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
+  // Reports the latest observed processing time from the worker with
+  // `worker_address` for iteration with `iteration_id`. Returns an error if
+  // the specified iteration was not previously registered, or `processing_time`
+  // is ZeroDuration or negative.
+  tsl::Status ReportProcessingTime(int64_t iteration_id,
+                                   const std::string& worker_address,
+                                   absl::Duration processing_time)
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;
