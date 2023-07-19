@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -46,9 +44,6 @@ int main(int argc, char **argv) {
 
   mlir::registerTensorFlowPasses();
 
-  // Register passes for TF->JitRt compilation.
-  registerTfJitRtPasses();
-  registerTfJitRtTestPasses();
   mlir::gml_st::registerGmlStPasses();
 
   tensorflow::mlrt_compiler::RegisterMlrtPasses();
