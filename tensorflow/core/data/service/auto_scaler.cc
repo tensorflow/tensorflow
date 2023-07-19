@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -181,6 +182,16 @@ tsl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
 
   consumption_rates_.erase(consumer_id);
 
+  return tsl::OkStatus();
+}
+
+tsl::Status MultipleIterationsAutoScaler::RegisterIteration(
+    int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (auto_scalers_.contains(iteration_id))
+    return absl::AlreadyExistsError(absl::StrCat(
+        "AutoScaler for iteration_id ", iteration_id, " already exists"));
+  auto_scalers_[iteration_id] = std::make_unique<AutoScaler>();
   return tsl::OkStatus();
 }
 

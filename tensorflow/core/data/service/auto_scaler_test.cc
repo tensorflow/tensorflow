@@ -306,6 +306,19 @@ TEST(AutoScalerTest, RemoveConsumerAfterNewTPTReported) {
   TF_ASSERT_OK(auto_scaler.RemoveConsumer(0));
 }
 
+TEST(MultipleIterationsAutoScalerTest, RegisterNewIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+}
+
+TEST(MultipleIterationsAutoScalerTest, RegisterExistingIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  EXPECT_THAT(auto_scaler.RegisterIteration(0),
+              StatusIs(absl::StatusCode::kAlreadyExists));
+}
+
 }  // namespace
 
 }  // namespace data

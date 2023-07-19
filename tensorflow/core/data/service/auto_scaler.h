@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -114,6 +115,16 @@ class AutoScaler {
 class MultipleIterationsAutoScaler {
  public:
   MultipleIterationsAutoScaler() = default;
+  // Registers iteration with `iteration_id`, allowing its future reported times
+  // to be considered for the current workload estimation. Returns an error if
+  // the specified iteration already exists.
+  tsl::Status RegisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
+
+ private:
+  mutable tsl::mutex mu_;
+  // Map from iteration id to AutoScaler.
+  absl::flat_hash_map<int64_t, std::unique_ptr<AutoScaler>> auto_scalers_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data
