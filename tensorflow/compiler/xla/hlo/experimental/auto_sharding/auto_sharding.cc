@@ -1142,18 +1142,15 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                               resharding_costs, input_shardings}));
       }
       CHECK_EQ(strategies->leaf_vector.size(), 1);
-      {
-        // If there is only one option for resharding, and the cost
-        // computed for that option is kInfinityCost, set the cost to
-        // zero. This is okay because there is only one option anyway, and
-        // having the costs set to kInfinityCost is problematic for the
-        // solver.
-        for (auto& operand_resharding_costs :
-             strategies->leaf_vector[0].resharding_costs) {
-          if (operand_resharding_costs.size() == 1 &&
-              operand_resharding_costs[0] >= kInfinityCost) {
-            operand_resharding_costs[0] = 0;
-          }
+      // If there is only one option for resharding, and the cost computed for
+      // that option is kInfinityCost, set the cost to zero. This is okay
+      // because there is only one option anyway, and having the costs set to
+      // kInfinityCost is problematic for the solver.
+      for (auto& operand_resharding_costs :
+           strategies->leaf_vector[0].resharding_costs) {
+        if (operand_resharding_costs.size() == 1 &&
+            operand_resharding_costs[0] >= kInfinityCost) {
+          operand_resharding_costs[0] = 0;
         }
       }
     } else if (!strategies->following) {
