@@ -123,6 +123,11 @@ class MultipleIterationsAutoScaler {
   // times from consideration of the current workload estimation.
   // Returns an error if the specified iteration does not exist.
   tsl::Status UnregisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
+  // Returns the estimated optimal number of workers according to the current
+  // observed workload. If there are no previously reported processing and
+  // target processing times for at least one iteration, returns nullopt.
+  std::optional<int64_t> GetOptimalNumberOfWorkers() const
+      TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed processing time from the worker with
   // `worker_address` for iteration with `iteration_id`. Returns an error if
   // the specified iteration was not previously registered, or `processing_time`

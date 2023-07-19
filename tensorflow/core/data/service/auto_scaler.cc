@@ -205,6 +205,27 @@ tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
   return tsl::OkStatus();
 }
 
+std::optional<int64_t> MultipleIterationsAutoScaler::GetOptimalNumberOfWorkers()
+    const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t optimal_number_of_workers = 0;
+  {
+    tsl::tf_shared_lock l(mu_);
+    for (const auto& [iteration_id, auto_scaler] : auto_scalers_) {
+      std::optional<int64_t> current_optimal_number_of_workers =
+          auto_scaler->GetOptimalNumberOfWorkers();
+      if (!current_optimal_number_of_workers.has_value()) continue;
+
+      optimal_number_of_workers = std::max(
+          optimal_number_of_workers, current_optimal_number_of_workers.value());
+    }
+  }
+
+  if (optimal_number_of_workers == 0)
+    return std::nullopt;
+  else
+    return optimal_number_of_workers;
+}
+
 tsl::Status MultipleIterationsAutoScaler::ReportProcessingTime(
     int64_t iteration_id, const std::string& worker_address,
     absl::Duration processing_time) TF_LOCKS_EXCLUDED(mu_) {

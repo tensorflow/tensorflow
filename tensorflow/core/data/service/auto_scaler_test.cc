@@ -331,6 +331,102 @@ TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
               StatusIs(absl::StatusCode::kNotFound));
 }
 
+TEST(MultipleIterationsAutoScalerTest, GetOptimalNumberOfWorkersInitialState) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+  EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), std::nullopt);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     GetOptimalNumberOfWorkersNoRegisteredWorkers) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
+  EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), std::nullopt);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     GetOptimalNumberOfWorkersNoRegisteredConsumers) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), std::nullopt);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     GetOptimalNumberOfWorkersExpectedEstimate1) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  // Estimated number of workers for iteration 0 = 8
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Seconds(0.2)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Seconds(0.025)));
+
+  // Estimated number of workers for iteration 1 = 11
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Seconds(0.2)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/1:20000",
+                                                absl::Seconds(0.15)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Seconds(0.025)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 1, absl::Seconds(0.05)));
+
+  // max(8, 11) = 11 workers
+  EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), 11);
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     GetOptimalNumberOfWorkersExpectedEstimate2) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(2));
+
+  // Estimated number of workers for iteration 0 = 8
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Seconds(0.2)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Seconds(0.025)));
+
+  // Estimated number of workers for iteration 1 = 11
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+                                                absl::Seconds(0.2)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/1:20000",
+                                                absl::Seconds(0.15)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Seconds(0.025)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 1, absl::Seconds(0.05)));
+
+  // Estimated number of workers for iteration 2 = 20
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(2, "/worker/task/0:20000",
+                                                absl::Seconds(0.1)));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(2, "/worker/task/1:20000",
+                                                absl::Seconds(0.2)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(2, 0, absl::Seconds(0.01)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(2, 1, absl::Seconds(0.02)));
+
+  // max(8, 11, 20) = 20 workers
+  EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), 20);
+}
+
 TEST(MultipleIterationsAutoScalerTest,
      ReportProcessingTimeUnregisteredIteration) {
   MultipleIterationsAutoScaler auto_scaler;
