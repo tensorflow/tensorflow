@@ -131,6 +131,14 @@ class MultipleIterationsAutoScaler {
                                    const std::string& worker_address,
                                    absl::Duration processing_time)
       TF_LOCKS_EXCLUDED(mu_);
+  // Reports the latest observed target processing time from the consumer
+  // identified by `consumer_id` for iteration with `iteration_id`. Returns an
+  // error if the specified iteration was not previously registered, or
+  // `target_processing_time` is ZeroDuration or negative.
+  tsl::Status ReportTargetProcessingTime(int64_t iteration_id,
+                                         int64_t consumer_id,
+                                         absl::Duration target_processing_time)
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;

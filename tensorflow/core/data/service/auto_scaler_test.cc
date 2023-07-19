@@ -407,6 +407,85 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNegativeDuration) {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(MultipleIterationsAutoScalerTest,
+     ReportTargetProcessingTimeUnregisteredIteration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  EXPECT_THAT(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)),
+      StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeNewConsumer) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(10)));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     ReportTargetProcessingTimeExistingWorker) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(10)));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     ReportTargetProcessingTimeNewAndExisting) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 1, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(10)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 1, absl::Microseconds(10)));
+
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(20)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 1, absl::Microseconds(30)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(20)));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(1, 1, absl::Microseconds(30)));
+}
+
+TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+
+  tsl::Status result =
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::ZeroDuration());
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(MultipleIterationsAutoScalerTest,
+     ReportTargetProcessingTimeNegativeDuration) {
+  MultipleIterationsAutoScaler auto_scaler;
+  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+
+  tsl::Status result =
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(-10));
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 
 }  // namespace data
