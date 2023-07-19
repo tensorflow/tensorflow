@@ -138,6 +138,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitTritonFusion(mlir::Operation* op,
                           const AutotuneResult::TritonGemmKey& config);
   Status EmitFusedMHAThunk(mlir::Operation* op);
+  Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
