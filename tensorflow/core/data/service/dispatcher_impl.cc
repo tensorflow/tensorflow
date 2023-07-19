@@ -350,6 +350,20 @@ Status DataServiceDispatcherImpl::FindNewTasks(
   return OkStatus();
 }
 
+void DataServiceDispatcherImpl::ReportProcessingTimesFromActiveTasks(
+    const std::vector<ActiveTask>& active_tasks,
+    const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  for (const ActiveTask& active_task : active_tasks) {
+    const int64_t task_id = active_task.task_id();
+    const double processing_time_nsec = active_task.processing_time_nsec();
+    VLOG(3) << "Received processing time from task id " << task_id
+            << " in worker with address " << worker_address
+            << ". Time in nanoseconds: " << processing_time_nsec;
+
+    // TODO(armandouv): Report processing times to AutoScaler.
+  }
+}
+
 Status DataServiceDispatcherImpl::WorkerHeartbeat(
     const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
@@ -382,6 +396,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
   absl::flat_hash_set<int64_t> current_tasks;
   current_tasks.insert(request->current_tasks().cbegin(),
                        request->current_tasks().cend());
+  const std::vector<ActiveTask> active_tasks(request->active_tasks().begin(),
+                                             request->active_tasks().end());
+  ReportProcessingTimesFromActiveTasks(active_tasks, request->worker_address());
   TF_RETURN_IF_ERROR(
       FindTasksToDelete(current_tasks, assigned_tasks, response));
   TF_RETURN_IF_ERROR(

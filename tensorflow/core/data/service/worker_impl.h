@@ -143,6 +143,11 @@ class DataServiceWorkerImpl {
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat();
+  // Returns the active tasks of this worker.
+  std::vector<ActiveTask> GetActiveTasks() const TF_LOCKS_EXCLUDED(mu_);
+  // Returns the task IDs of `active_tasks`.
+  std::vector<int64_t> GetTaskIds(
+      const std::vector<ActiveTask>& active_tasks) const;
   // Builds a heartbeat request.
   WorkerHeartbeatRequest BuildWorkerHeartbeatRequest() const
       TF_LOCKS_EXCLUDED(mu_);

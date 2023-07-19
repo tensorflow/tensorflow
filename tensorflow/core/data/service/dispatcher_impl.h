@@ -246,6 +246,10 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+  // Reports the processing time of each active task to `auto_scaler_`.
+  void ReportProcessingTimesFromActiveTasks(
+      const std::vector<ActiveTask>& active_tasks,
+      const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
   Status AcquireIterationClientId(
