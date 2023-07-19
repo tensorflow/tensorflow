@@ -1625,6 +1625,7 @@ py_strict_library(
         ":optional_grad",
         ":random_grad",
         ":rnn_grad",
+        ":sdca_ops",
         ":tensor_array_ops",
         ":unconnected_gradients",
         ":while_loop",
@@ -1634,6 +1635,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
         "//tensorflow/python/ops/signal:fft_ops",
+        "//tensorflow/python/training:checkpoint_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

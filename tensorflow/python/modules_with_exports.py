@@ -136,6 +136,10 @@ from tensorflow.python.util.tf_export import tf_export
 # Summary
 from tensorflow.python.summary import summary
 
+# Training
+from tensorflow.python.training import training as train
+from tensorflow.python.training import quantize_training as _quantize_training
+
 # _internal APIs
 from tensorflow.python.distribute.combinations import generate
 from tensorflow.python.distribute.experimental.rpc.rpc_ops import *
