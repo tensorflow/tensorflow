@@ -2122,27 +2122,4 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
   }
   return size;
 }
-
-Shape ShapeUtil::GetUnshardedShape(const Shape& sharded_shape,
-                                   int64_t num_shards) {
-  if (ShapeUtil::IsScalar(sharded_shape)) {
-    return sharded_shape;
-  }
-
-  Shape unsharded_shape = sharded_shape;
-
-  ShapeUtil::ForEachMutableSubshape(
-      &unsharded_shape,
-      [sharded_shape, num_shards](Shape* subshape, const ShapeIndex& index) {
-        if (subshape->IsArray() && subshape->rank() >= 1 &&
-            !subshape->is_dynamic()) {
-          const Shape& sharded_subshape =
-              ShapeUtil::GetSubshape(sharded_shape, index);
-          subshape->set_dimensions(0,
-                                   sharded_subshape.dimensions(0) * num_shards);
-        }
-      });
-  return unsharded_shape;
-}
-
 }  // namespace xla
