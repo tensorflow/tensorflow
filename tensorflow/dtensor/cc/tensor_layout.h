@@ -50,7 +50,7 @@ bool IsDynamicSize(int64_t size);
 
 // Returns true if `shape` is a dynamic shape based on either MLIR and TF
 // standards.
-bool IsDynamicShape(const std::vector<int64_t>& shape);
+bool IsDynamicShape(absl::Span<const int64_t> shape);
 
 // The location of a device in a mesh.
 //

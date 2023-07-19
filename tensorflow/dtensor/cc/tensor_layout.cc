@@ -170,7 +170,7 @@ bool IsDynamicSize(int64_t size) {
   return mlir::ShapedType::isDynamic(size) || size == -1;
 }
 
-bool IsDynamicShape(const std::vector<int64_t>& shape) {
+bool IsDynamicShape(absl::Span<const int64_t> shape) {
   for (int64_t size : shape) {
     if (IsDynamicSize(size)) return true;
   }
@@ -1129,7 +1129,11 @@ std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
     absl::Span<const int64_t> local_shape,
     const std::vector<std::vector<int64_t>>* local_shapes) const {
   if (IsSingleDevice() || IsFullyReplicated()) {
-    return std::vector<int64_t>(local_shape.begin(), local_shape.end());
+    if (IsDynamicShape(local_shape) && local_shapes) {
+      return local_shapes->at(0);
+    } else {
+      return std::vector<int64_t>(local_shape.begin(), local_shape.end());
+    }
   }
 
   std::vector<int64_t> stride_for_dim;
