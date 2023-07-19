@@ -32,7 +32,7 @@ namespace xla {
 namespace gpu {
 
 struct FusionEmissionResult {
-  std::optional<std::unique_ptr<Thunk>> thunk;
+  std::vector<std::unique_ptr<Thunk>> thunks;
 };
 
 class FusionInterface {
@@ -64,12 +64,12 @@ class KernelFusionEmitterBase : public FusionInterface {
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 
  protected:
-  virtual Status EmitKernel(const KernelArguments& args,
-                            const LaunchDimensions& launch_dims,
-                            std::vector<llvm_ir::IrArray> ir_arrays,
-                            llvm::IRBuilder<>* builder) const {
-    return OkStatus();
-  }
+  virtual Status EmitKernel(const LaunchDimensions& launch_dims,
+                            std::vector<llvm_ir::IrArray> inputs,
+                            std::vector<llvm_ir::IrArray> outputs,
+                            llvm::IRBuilder<>* builder,
+                            int kernel_index) const = 0;
+  virtual int num_kernels() const { return 1; }
   const HloFusionInstruction& fusion() const { return fusion_; }
   mlir::lmhlo::FusionOp fusion_op() const { return fusion_op_; }
   IrEmitterContext& ir_emitter_context() const { return ir_emitter_context_; }

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -118,10 +119,14 @@ void AnnotateKernelLaunchDimensions(const LaunchDimensions& launch_dims,
   }
 }
 
-std::pair<llvm::Function*, std::vector<llvm_ir::IrArray>> BuildKernelPrototype(
-    IrEmitterContext& ir_emitter_context, const std::string& suggested_name,
-    absl::Span<const KernelArgument> arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* builder) {
+std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+           std::vector<llvm_ir::IrArray>>
+BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
+                     const std::string& suggested_name,
+                     absl::Span<const KernelArgument> arguments,
+                     size_t num_inputs,
+                     const LaunchDimensions& launch_dimensions,
+                     llvm::IRBuilder<>* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
   llvm::SmallVector<int> to_arg_no;
@@ -190,7 +195,7 @@ std::pair<llvm::Function*, std::vector<llvm_ir::IrArray>> BuildKernelPrototype(
     }
   }
 
-  std::vector<llvm_ir::IrArray> ir_arrays;
+  std::vector<llvm_ir::IrArray> inputs, outputs;
   for (size_t arg_no = 0; arg_no < arguments.size(); ++arg_no) {
     const KernelArgument& kernel_argument = arguments[arg_no];
     llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
@@ -205,10 +210,10 @@ std::pair<llvm::Function*, std::vector<llvm_ir::IrArray>> BuildKernelPrototype(
       ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
     }
 
-    ir_arrays.push_back(ir_array);
+    (arg_no < num_inputs ? inputs : outputs).push_back(ir_array);
   }
 
-  return {kernel, std::move(ir_arrays)};
+  return {kernel, std::move(inputs), std::move(outputs)};
 }
 
 }  // namespace
@@ -230,30 +235,33 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions());
   auto* fused_computation = fusion_.fused_instructions_computation();
 
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  auto [entry, cached] =
-      kernel_cache.Get(fused_computation, kernel_arguments.args(), "",
-                       [&]() -> KernelReuseCache::Entry {
-                         auto [kernel, arrays] = BuildKernelPrototype(
-                             ir_emitter_context_, suggested_kernel_name,
-                             kernel_arguments.args(), launch_dims, builder);
-                         ir_arrays = std::move(arrays);
-                         return {kernel->getName().str(), launch_dims};
-                       });
-
-  if (cached) {
-    VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-            << entry.kernel_name;
-  }
-
   FusionEmissionResult result;
-  TF_ASSIGN_OR_RETURN(
-      result.thunk,
-      BuildKernelThunkImpl(entry.kernel_name, kernel_arguments.args(),
-                           GetThunkInfo(fusion_op_), launch_dims));
-  if (!cached) {
-    TF_RETURN_IF_ERROR(EmitKernel(kernel_arguments, launch_dims,
-                                  std::move(ir_arrays), builder));
+  for (int i = 0; i < num_kernels(); ++i) {
+    std::vector<llvm_ir::IrArray> inputs, outputs;
+    auto [entry, cached] = kernel_cache.Get(
+        fused_computation, kernel_arguments.args(), absl::StrCat(i),
+        [&]() -> KernelReuseCache::Entry {
+          llvm::Function* kernel;
+          std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
+              ir_emitter_context_, suggested_kernel_name,
+              kernel_arguments.args(), fusion_op().getInputBuffers().size(),
+              launch_dims, builder);
+          return {kernel->getName().str(), launch_dims};
+        });
+
+    if (cached) {
+      VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
+              << entry.kernel_name;
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        result.thunks.emplace_back(),
+        BuildKernelThunkImpl(entry.kernel_name, kernel_arguments.args(),
+                             GetThunkInfo(fusion_op_), launch_dims));
+    if (!cached) {
+      TF_RETURN_IF_ERROR(EmitKernel(launch_dims, std::move(inputs),
+                                    std::move(outputs), builder, i));
+    }
   }
 
   return result;

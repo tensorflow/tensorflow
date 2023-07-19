@@ -1815,8 +1815,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   if (emitter != std::nullopt) {
     TF_ASSIGN_OR_RETURN(auto emission_result,
                         (*emitter)->Emit(kernel_reuse_cache_, &b_));
-    if (emission_result.thunk != std::nullopt) {
-      AddThunkToThunkSequence(std::move(*emission_result.thunk));
+    for (auto& thunk : emission_result.thunks) {
+      AddThunkToThunkSequence(std::move(thunk));
     }
     return OkStatus();
   }

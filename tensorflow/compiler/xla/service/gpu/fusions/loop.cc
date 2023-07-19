@@ -23,22 +23,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status LoopFusion::EmitKernel(const KernelArguments& args,
-                              const LaunchDimensions& launch_dims,
-                              std::vector<llvm_ir::IrArray> ir_arrays,
-                              llvm::IRBuilder<>* builder) const {
-  absl::Span<llvm_ir::IrArray> operand_arrays =
-      absl::MakeSpan(ir_arrays).subspan(0,
-                                        fusion_op().getInputBuffers().size());
-  absl::Span<llvm_ir::IrArray> output_element_arrays =
-      absl::MakeSpan(ir_arrays).subspan(fusion_op().getInputBuffers().size(),
-                                        fusion_op().getOutputBuffers().size());
-
+Status LoopFusion::EmitKernel(const LaunchDimensions& launch_dims,
+                              std::vector<llvm_ir::IrArray> inputs,
+                              std::vector<llvm_ir::IrArray> outputs,
+                              llvm::IRBuilder<>* builder,
+                              int kernel_index) const {
   FusedIrEmitter fused_emitter(elemental_emitter());
   for (int i = 0; i < fusion_op().getInputBuffers().size(); i++) {
     fused_emitter.BindGenerator(
         *fusion().fused_parameter(i), [&, i](llvm_ir::IrArray::Index index) {
-          return operand_arrays[i].EmitReadArrayElement(index, builder);
+          return inputs[i].EmitReadArrayElement(index, builder);
         });
   }
   TF_ASSIGN_OR_RETURN(
@@ -48,8 +42,7 @@ Status LoopFusion::EmitKernel(const KernelArguments& args,
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion_op(), launch_dims.launch_bound(), builder);
 
-  return ParallelLoopEmitter(element_generator, output_element_arrays,
-                             launch_dims, builder,
+  return ParallelLoopEmitter(element_generator, outputs, launch_dims, builder,
                              *analysis_.GetLoopFusionConfig())
       .EmitLoop(GetIrNameFromLoc(fusion_op()->getLoc()), index_type);
 }

@@ -39,10 +39,9 @@ StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions()
 }
 
 Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
-    const KernelArguments& args, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> ir_arrays, llvm::IRBuilder<>* builder) const {
-  auto output_begin = ir_arrays.begin() + (ir_arrays.size() - dus_ops_.size());
-
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
+    int kernel_index) const {
   // In case a dynamic slice update's output is bitcasted, we need to ensure we
   // write to the output array using the shape and layout of the dynamic slice
   // update. This cast is known to be safe to do iff, in the case the output of
@@ -50,20 +49,19 @@ Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
   // output, or has a single user and is part of the fusion's tuple output.
   // This condition should be enforced explicitly in the
   // 'CanEmitFusedDynamicUpdateSliceInPlaceForGpu' matcher.
-  for (auto [index, op] : llvm::enumerate(dus_ops_)) {
-    auto output = output_begin + index;
-    *output = output->CastToShape(op->shape(), builder);
+  for (auto [op, output] : llvm::zip(dus_ops_, outputs)) {
+    output = output.CastToShape(op->shape(), builder);
   }
 
   auto* fused_computation = fusion().fused_instructions_computation();
   FusedIrEmitter fused_emitter(elemental_emitter());
-  for (int i = 0; i < fused_computation->num_parameters(); i++) {
-    auto fused_operand = fused_computation->parameter_instruction(i);
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    auto fused_operand = fused_computation->parameter_instruction(index);
     fused_emitter.BindGenerator(
-        *fused_operand, [ir_arrays, builder, i,
+        *fused_operand, [input = input, builder,
                          fused_operand](const llvm_ir::IrArray::Index& index) {
-          return ir_arrays[i].EmitReadArrayElement(index, builder,
-                                                   fused_operand->name());
+          return input.EmitReadArrayElement(index, builder,
+                                            fused_operand->name());
         });
   }
 
@@ -71,9 +69,8 @@ Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
       dus_and_output_array;
   dus_and_output_array.reserve(dus_ops_.size());
 
-  for (int i = 0; i < dus_ops_.size(); i++) {
-    dus_and_output_array.push_back(std::make_pair(
-        dus_ops_[i], ir_arrays[ir_arrays.size() - dus_ops_.size() + i]));
+  for (auto [op, output] : llvm::zip(dus_ops_, outputs)) {
+    dus_and_output_array.push_back(std::make_pair(op, output));
   }
 
   return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(

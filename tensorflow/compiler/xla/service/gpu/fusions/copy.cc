@@ -27,13 +27,13 @@ StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
   auto dst_buffer = *GetAllocationSlice(dst_, context_.allocations());
   FusionEmissionResult result;
   if (src_buffer != dst_buffer) {
-    result.thunk = std::make_unique<DeviceToDeviceCopyThunk>(
+    result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
         KernelFusionEmitterBase::GetThunkInfo(fusion_op_),
         /*source_buffer=*/src_buffer,
         /*destination_buffer=*/dst_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src_)),
         /*source_value=*/src_,
-        /*destination_value=*/dst_);
+        /*destination_value=*/dst_));
   }
   return result;
 }

@@ -42,10 +42,11 @@ class LoopFusion : public KernelFusionEmitterBase {
   }
 
  protected:
-  Status EmitKernel(const KernelArguments& args,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> ir_arrays,
-                    llvm::IRBuilder<>* builder) const override;
+  Status EmitKernel(const LaunchDimensions& launch_dims,
+                    std::vector<llvm_ir::IrArray> inputs,
+                    std::vector<llvm_ir::IrArray> outputs,
+                    llvm::IRBuilder<>* builder,
+                    int kernel_index) const override;
 
  private:
   HloFusionAnalysis& analysis_;
