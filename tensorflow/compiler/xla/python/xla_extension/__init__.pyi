@@ -704,7 +704,9 @@ class PjitFunctionCache:
 def pjit(function_name: str, fun: Optional[Callable], cache_miss: Callable,
          static_argnums: Sequence[int], static_argnames: Sequence[str],
          donate_argnums: Sequence[int],
-         cache: Optional[PjitFunctionCache] = ...) -> PjitFunction: ...
+         pytree_registry: pytree.PyTreeRegistry,
+         cache: Optional[PjitFunctionCache] = ...,
+         ) -> PjitFunction: ...
 
 class HloPassInterface:
   @property
