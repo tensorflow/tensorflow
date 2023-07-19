@@ -483,8 +483,13 @@ def _postprocess_flat_outputs(outputs):
         ' or convertible to Tensors. Got error: "%s"' % str(e))
 
   # Separates the returned Operations and Tensors.
-  output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
-  output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
+  output_operations = []
+  output_tensors = []
+  for o in outputs:
+    if isinstance(o, ops.Operation):
+      output_operations.append(o)
+    else:
+      output_tensors.append(o)
 
   if outputs != output_tensors + output_operations:
     raise ValueError(
