@@ -125,13 +125,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) = 0;
 
-  // Emits a call in IR to the given nested computation with the given operands
-  // and output. If no IR function has been previously emitted for the
-  // computation, also emits such a function.
-  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
-                                     absl::Span<llvm::Value* const> operands,
-                                     llvm::Value* output);
-
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`
   // are the arguments of the nested computation. For example,

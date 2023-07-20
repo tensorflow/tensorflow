@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
-#include "llvm/IR/Function.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
 namespace xla {
 namespace gpu {
@@ -36,48 +40,12 @@ namespace gpu {
 //   - N pointers to the buffers of each of the N parameters to the computation,
 //   - a pointer to the output buffer of the computation, and
 //   - a pointer to the top-level temp buffer.
-//
-class IrEmitterNested : public IrEmitter {
- public:
-  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
-  // the containing IR function this emitter produces IR to. See
-  // IrEmitter::IrEmitter for the meanings of other arguments.
-  IrEmitterNested(const HloModuleConfig& hlo_module_config,
-                  const HloComputation& nested_computation,
-                  IrEmitterContext* ir_emitter_context);
-
-  IrEmitterNested(const IrEmitterNested&) = delete;
-  IrEmitterNested& operator=(const IrEmitterNested&) = delete;
-
-  // Overrides the default empty implementation. Binds the given instruction
-  // "parameter" with the parameter of the IR function.
-  Status HandleParameter(HloInstruction* parameter) override;
-
-  // Generate the code for the computation passed in the constructor, if it
-  // wasn't already generated previously.
-  // As well as generting the code for the function, emits code for global
-  // constants, and also populates related information to 'ir_emitter_context_'
-  // for large-constant initializations. Large constants don't get initializers
-  // in the generated code and so must be initialized by XLA. The value of these
-  // constants will be stored in 'content'. Constants with initializers in the
-  // generated code will have empty 'content'.
-  //
-  // The allocation index for these constants will always be -1 (i.e. doesn't
-  // correspond to any allocation)
-  StatusOr<llvm::Function*> CodegenNestedComputation();
-
- protected:
-  Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& body_emitter) override;
-
- private:
-  // Emits constants to generated LLVM IR, and also populates related
-  // information to 'ir_emitter_context_' for large-constant initializations.
-  Status EmitConstants(const HloComputation& computation);
-
-  const HloComputation& nested_computation_;
-};
+Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                             const HloModuleConfig& hlo_module_config,
+                             const HloComputation& nested_computation,
+                             IrEmitterContext& ir_emitter_context,
+                             absl::Span<llvm::Value* const> operands,
+                             llvm::Value* output);
 
 }  // namespace gpu
 }  // namespace xla

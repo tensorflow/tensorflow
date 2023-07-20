@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -96,7 +95,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -106,6 +104,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
@@ -125,7 +124,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
@@ -2285,9 +2283,9 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
         GetOrCreateSubComputationFromRegion(&select_and_scatter_op.getSelect(),
                                             /*is_fusion=*/false));
 
-    TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-        *select_computation, {selected_value_address, operand_address},
-        select_return_buffer));
+    TF_RETURN_IF_ERROR(CallNestedComputation(
+        &b_, hlo_module_config_, *select_computation, *ir_emitter_context_,
+        {selected_value_address, operand_address}, select_return_buffer));
     llvm::Value* result =
         Load(select_return_buffer->getAllocatedType(), select_return_buffer);
 
@@ -2620,9 +2618,10 @@ Status IrEmitterUnnested::EmitScatter(
           *desc.update_computation, output_address, input_address,
           desc.output.GetElementLlvmType());
     } else {
-      return EmitCallToNestedComputation(*desc.update_computation,
-                                         {output_address, input_address},
-                                         output_address);
+      return CallNestedComputation(
+          &b_, hlo_module_config_, *desc.update_computation,
+          *ir_emitter_context_, {output_address, input_address},
+          output_address);
     }
   };
 
@@ -2906,7 +2905,8 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                              : standard_num_iterations_in_sort_dim,
         kTileSize,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return EmitCallToNestedComputation(*comparator, operands, output);
+          return CallNestedComputation(&b_, hlo_module_config_, *comparator,
+                                       *ir_emitter_context_, operands, output);
         });
   };
   std::vector<int64_t> xor_masks;

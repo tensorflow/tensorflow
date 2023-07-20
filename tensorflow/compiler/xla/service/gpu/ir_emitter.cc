@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
-#include <iterator>
 #include <utility>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "absl/algorithm/container.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -36,26 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
-
-// Convenient function to cast the provided llvm::Value* using IRBuilder
-// to default address space. This is useful in particular for generating
-// IR for AMDGPU target, as its kernel variables are in address space 5
-// instead of the default address space.
-static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
-  llvm::Type* arg_type = arg->getType();
-  CHECK(arg_type->isPointerTy());
-  if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
-        llvm::cast<llvm::PointerType>(arg_type), 0);
-    llvm::Value* addrspacecast_arg =
-        b.CreateAddrSpaceCast(arg, generic_arg_type);
-    return addrspacecast_arg;
-  }
-  return arg;
-}
 
 namespace xla {
 
@@ -141,32 +121,6 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return OkStatus();
-}
-
-Status IrEmitter::EmitCallToNestedComputation(
-    const HloComputation& nested_computation,
-    absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-  TF_RET_CHECK(nested_computation.num_parameters() > 0);
-
-  TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
-                      IrEmitterNested(hlo_module_config_, nested_computation,
-                                      ir_emitter_context_)
-                          .CodegenNestedComputation());
-
-  // Operands are in default address space for non-AMDGPU target.
-  // However for AMDGPU target, addrspacecast alloca variables from
-  // addrspace 5 to addrspace 0 is needed.
-  std::vector<llvm::Value*> arguments;
-  absl::c_transform(
-      operands, std::back_inserter(arguments),
-      [this](llvm::Value* arg) { return AddrCastToDefault(arg, b_); });
-
-  llvm::Value* casted_output = AddrCastToDefault(output, b_);
-  arguments.push_back(casted_output);
-
-  Call(emitted_function, arguments);
-
   return OkStatus();
 }
 
@@ -402,9 +356,9 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
                         cas_old_output_address, "cas_old_output");
   Store(cas_old_output, cas_new_output_address);
   // Emits code to calculate new_output = operation(old_output, source);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      computation, {binop_output_address, source_address},
-      binop_output_address));
+  TF_RETURN_IF_ERROR(CallNestedComputation(
+      &b_, hlo_module_config_, computation, *ir_emitter_context_,
+      {binop_output_address, source_address}, binop_output_address));
 
   llvm::Value* cas_new_output = Load(cas_new_output_address->getAllocatedType(),
                                      cas_new_output_address, "cas_new_output");
@@ -565,8 +519,9 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
   }
-  return EmitCallToNestedComputation(*call->to_apply(), operand_addresses,
-                                     GetBasePointer(*call));
+  return CallNestedComputation(&b_, hlo_module_config_, *call->to_apply(),
+                               *ir_emitter_context_, operand_addresses,
+                               GetBasePointer(*call));
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction*) {
@@ -637,8 +592,9 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
 
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      computation, parameter_elements_addrs, return_buffer));
+  TF_RETURN_IF_ERROR(CallNestedComputation(
+      &b_, hlo_module_config_, computation, *ir_emitter_context_,
+      parameter_elements_addrs, return_buffer));
 
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
