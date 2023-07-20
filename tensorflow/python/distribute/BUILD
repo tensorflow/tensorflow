@@ -1302,6 +1302,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/214574707): times out
         "no_oss",  # TODO(b/284980046): Breaking nightlies, fails when unable to start GRPC server.
+        "noasan",  # TODO(b/290508632)
     ],
     deps = [
         ":combinations",
