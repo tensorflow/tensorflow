@@ -1888,12 +1888,20 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         TF_RETURN_IF_ERROR(HandleDot(strategies, leaf_strategies, strategy_map,
                                      ins, instruction_id, cluster_env,
                                      batch_dim_map, solver_option));
+        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, 0);
+        }
         break;
       }
       case HloOpcode::kConvolution: {
         TF_RETURN_IF_ERROR(HandleConv(strategies, leaf_strategies, strategy_map,
                                       ins, instruction_id, cluster_env,
                                       batch_dim_map, solver_option));
+        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, 0);
+        }
         break;
       }
       case HloOpcode::kRngGetAndUpdateState: {
@@ -3753,6 +3761,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.only_allow_divisible_input_output = true;
   solver_option.only_allow_divisible_intermediate = false;
   solver_option.nd_sharding_iteratively_strict_search_space = false;
+  solver_option.allow_replicated_strategy_for_dot_and_conv =
+      option_.allow_replicated_strategy_for_dot_and_conv;
 
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
