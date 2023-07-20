@@ -1001,6 +1001,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       sub_pipeline.AddPass<SimplifyFPConversions>();
     }
   };
+  // Triton compilation needs normalized operations on bf16 (i.e. converted to
+  // f32).
   add_float_normalization(pipeline);
 
   // By default use an externally provided thread pool.
@@ -1024,13 +1026,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       &pipeline, hlo_module, stream_exec, debug_options, options,
       gpu_target_config, autotune_results, thread_pool));
 
-  // The Triton autotuner can insert new reductions.
+  // The Triton autotuner can insert new bf16 reductions that need to be
+  // normalized again.
   add_float_normalization(pipeline);
-
-  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-    pipeline.AddPass<SimplifyFPConversions>();
-  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
