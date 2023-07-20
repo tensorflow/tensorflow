@@ -544,7 +544,7 @@ PYBIND11_MODULE(xla_extension, m) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
         if (absl::AsciiStrToLower(platform_name) == "tpu") {
           // TODO(b/261484192): handle device specific initialization.
-          tensorflow::tpu::FindAndLoadTpuLibrary().IgnoreError();
+          xla::ThrowIfError(tensorflow::tpu::FindAndLoadTpuLibrary());
         }
 #endif
 #endif  // XLA_PYTHON_ENABLE_TPU
