@@ -197,7 +197,7 @@ def OutlineCudaGraphsPass :
 //===----------------------------------------------------------------------===//
 
 def AddConcurrentRegionsPass:
-    Pass<"xla-gpu-add-concurrent-regions", "mlir::ModuleOp"> {
+    Pass<"xla-gpu-add-concurrent-regions", "mlir::func::FuncOp"> {
   let summary = "Identify and mark concurrent regions in CUDA graph capture "
                 "functions";
 
