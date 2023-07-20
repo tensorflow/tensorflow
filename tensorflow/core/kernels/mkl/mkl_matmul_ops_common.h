@@ -692,8 +692,6 @@ class MklDnnMatMulOpBase : public OpKernel {
 #endif  // !ENABLE_ONEDNN_V3
   }
 
-  engine cpu_engine_ = engine(engine::kind::cpu, 0);
-
   bool IsBiasCacheEmpty() TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
     tf_shared_lock lock(bias_cache_mutex_);
     return (cached_bias_data_pt_.NumElements() == 0);
@@ -706,8 +704,8 @@ class MklDnnMatMulOpBase : public OpKernel {
   }
 
   void CacheBias(OpKernelContext* ctx, const Tensor& temp_scaled_bias_tensor,
-                 float min_input, float max_input, float* saved_min_input,
-                 float* saved_max_input) {
+                 float min_input, float max_input)
+      TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
     mutex_lock lock(bias_cache_mutex_);
     if (cached_bias_data_pt_.NumElements() > 0) {
       return;
@@ -716,8 +714,8 @@ class MklDnnMatMulOpBase : public OpKernel {
                                            temp_scaled_bias_tensor.shape(),
                                            &cached_bias_data_pt_));
     tensor::DeepCopy(temp_scaled_bias_tensor, &cached_bias_data_pt_);
-    *saved_min_input = min_input;
-    *saved_max_input = max_input;
+    saved_min_input_ = min_input;
+    saved_max_input_ = max_input;
   }
 
   void GetCachedBias(float min_input, float max_input, void** bias_data)
@@ -731,6 +729,8 @@ class MklDnnMatMulOpBase : public OpKernel {
       *bias_data = nullptr;
     }
   }
+
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
  protected:
   // Tensor to save reordered weight
@@ -748,6 +748,8 @@ class MklDnnMatMulOpBase : public OpKernel {
   mutex bias_cache_mutex_;
   // Persistent tensor for cached bias.
   Tensor cached_bias_data_pt_ TF_GUARDED_BY(bias_cache_mutex_);
+  float saved_min_input_ = -std::numeric_limits<float>::infinity();
+  float saved_max_input_ = std::numeric_limits<float>::infinity();
 
   const int kInputIndexSrc = 0;
   const int kInputIndexWeight = 1;

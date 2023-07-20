@@ -729,7 +729,7 @@ class MklDnnQuantizedMatMulOp
         if (is_bias_cache_empty) {
           // Only try to cache the bias in the first iteration.
           this->CacheBias(context, *temp_scaled_bias_tensor, min_input,
-                          max_input, &saved_min_input_, &saved_max_input_);
+                          max_input);
         }
       }
     }
@@ -743,8 +743,8 @@ class MklDnnQuantizedMatMulOp
   bool IsCachedBiasValid(float current_min_input,
                          float current_max_input) override {
     if (this->is_bias_const_ && this->is_weight_const_ &&
-        std::abs(current_min_input - saved_min_input_) < 1e-5 &&
-        std::abs(current_max_input - saved_max_input_) < 1e-5) {
+        std::abs(current_min_input - this->saved_min_input_) < 1e-5 &&
+        std::abs(current_max_input - this->saved_max_input_) < 1e-5) {
       return true;
     }
     return false;
@@ -759,8 +759,6 @@ class MklDnnQuantizedMatMulOp
   float* comp_bias_ = nullptr;
 
   int mode_;
-  float saved_min_input_ = -std::numeric_limits<float>::infinity();
-  float saved_max_input_ = std::numeric_limits<float>::infinity();
 };
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
