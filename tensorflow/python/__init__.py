@@ -48,7 +48,6 @@ from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
-from tensorflow.python.util import compat
 
 # Sub-package for performing i/o directly instead of via ops in a graph.
 from tensorflow.python.lib.io import python_io
@@ -63,14 +62,6 @@ from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 
 from tensorflow.python.compat import v2_compat
-
-from tensorflow.python.util.all_util import make_all
-from tensorflow.python.util.tf_export import tf_export
-
-# Update dispatch decorator docstrings to contain lists of registered APIs.
-# (This should come after any imports that register APIs.)
-from tensorflow.python.util import dispatch
-dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

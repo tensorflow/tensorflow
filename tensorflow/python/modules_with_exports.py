@@ -131,14 +131,17 @@ nn.rnn_cell = rnn_cell
 # Function
 from tensorflow.core.function.trace_type import *
 
-from tensorflow.python.util.tf_export import tf_export
-
 # Summary
 from tensorflow.python.summary import summary
 
 # Training
 from tensorflow.python.training import training as train
 from tensorflow.python.training import quantize_training as _quantize_training
+
+# Util
+from tensorflow.python.util import compat
+from tensorflow.python.util import all_util
+from tensorflow.python.util.tf_export import tf_export
 
 # _internal APIs
 from tensorflow.python.distribute.combinations import generate
@@ -158,6 +161,11 @@ from tensorflow.python.distribute.parameter_server_strategy_v2 import *
 from tensorflow.python.distribute.coordinator.cluster_coordinator import *
 from tensorflow.python.distribute.failure_handling.failure_handling import *
 from tensorflow.python.distribute.failure_handling.preemption_watcher import *
+
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
 
 tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
 tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)

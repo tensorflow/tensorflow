@@ -89,10 +89,6 @@ py_library(
         "//tensorflow/python/platform:sysconfig",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:tpu_estimator",
-        "//tensorflow/python/util:all_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -416,6 +412,9 @@ py_library(
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
