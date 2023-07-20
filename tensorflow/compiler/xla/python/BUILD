@@ -189,6 +189,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
