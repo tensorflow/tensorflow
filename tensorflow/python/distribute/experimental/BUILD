@@ -8,7 +8,10 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/brain/distribute/python/benchmark:__subpackages__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],
 )
 
