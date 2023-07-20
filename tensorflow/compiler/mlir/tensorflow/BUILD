@@ -1746,6 +1746,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tf_mlir_translate_registration_test",
+    size = "small",
+    srcs = ["translate/tf_mlir_translate_registration_test.cc"],
+    deps = [
+        ":translate_registration",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
 cc_library(
     name = "export_utils",
     srcs = [
@@ -2201,6 +2215,17 @@ cc_library(
         ":tensorflow",
         ":translate_cl_options",
         ":translate_lib",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:compile_only_client",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
