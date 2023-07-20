@@ -133,21 +133,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloComputation& nested_computation, llvm::Value* output_address,
       llvm::Value* source_address, llvm::Type* element_type);
 
-  GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return [&](const HloComputation& computation,
-               absl::Span<llvm::Value* const> parameter_elements) {
-      return ComputeNestedElement(computation, parameter_elements);
-    };
-  }
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements);
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElementFromAddrs(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements_addrs);
-
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
 

@@ -42,10 +42,22 @@ namespace gpu {
 //   - a pointer to the top-level temp buffer.
 Status CallNestedComputation(llvm::IRBuilder<>* builder,
                              const HloModuleConfig& hlo_module_config,
-                             const HloComputation& nested_computation,
+                             const HloComputation& computation,
                              IrEmitterContext& ir_emitter_context,
                              absl::Span<llvm::Value* const> operands,
                              llvm::Value* output);
+
+// Like CallNestedComputation, but parameters and results are scalars.
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_scalars);
+
+// Like CallNestedComputationWithScalars, but parameters are scalar addresses.
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_elements_addrs);
 
 }  // namespace gpu
 }  // namespace xla

@@ -257,7 +257,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
 // Casts the provided llvm::Value* to the default address space. This is useful
 // in particular for generating IR for AMDGPU target, as its kernel variables
 // are in address space 5 instead of the default address space.
-static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
+llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
@@ -274,16 +274,16 @@ static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
 
 Status CallNestedComputation(llvm::IRBuilder<>* builder,
                              const HloModuleConfig& hlo_module_config,
-                             const HloComputation& nested_computation,
+                             const HloComputation& computation,
                              IrEmitterContext& ir_emitter_context,
                              absl::Span<llvm::Value* const> operands,
                              llvm::Value* output) {
-  TF_RET_CHECK(nested_computation.num_parameters() > 0);
+  TF_RET_CHECK(computation.num_parameters() > 0);
 
-  TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
-                      IrEmitterNested(hlo_module_config, nested_computation,
-                                      &ir_emitter_context)
-                          .CodegenNestedComputation());
+  TF_ASSIGN_OR_RETURN(
+      llvm::Function * emitted_function,
+      IrEmitterNested(hlo_module_config, computation, &ir_emitter_context)
+          .CodegenNestedComputation());
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
@@ -299,6 +299,58 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
   builder->CreateCall(emitted_function, arguments);
 
   return OkStatus();
+}
+
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_elements) {
+  std::vector<llvm::Value*> parameter_buffers;
+  for (llvm::Value* parameter_element : parameter_elements) {
+    parameter_buffers.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
+        parameter_element->getType(), "parameter_buffer", builder));
+    builder->CreateStore(parameter_element, parameter_buffers.back());
+  }
+
+  return CallNestedComputationWithScalarAddrs(builder, hlo_module_config,
+                                              computation, ir_emitter_context,
+                                              parameter_buffers);
+}
+
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_elements_addrs) {
+  const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Type* return_buffer_type = llvm_ir::ShapeToIrType(
+      return_shape, builder->GetInsertBlock()->getModule());
+  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      return_buffer_type, "return_buffer", builder);
+
+  std::vector<llvm::Value*> allocas_for_returned_scalars;
+  if (!return_shape.IsTuple()) {
+    allocas_for_returned_scalars.push_back(return_buffer);
+  } else {
+    allocas_for_returned_scalars =
+        llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, builder);
+    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
+                                 return_shape);
+
+    llvm_ir::EmitTuple(tuple_array, allocas_for_returned_scalars, builder);
+  }
+
+  TF_RETURN_IF_ERROR(CallNestedComputation(
+      builder, hlo_module_config, computation, ir_emitter_context,
+      parameter_elements_addrs, return_buffer));
+
+  std::vector<llvm::Value*> returned_scalars;
+  returned_scalars.reserve(allocas_for_returned_scalars.size());
+  for (llvm::Value* addr : allocas_for_returned_scalars) {
+    auto alloca = llvm::cast<llvm::AllocaInst>(addr);
+    returned_scalars.push_back(
+        builder->CreateLoad(alloca->getAllocatedType(), alloca));
+  }
+  return returned_scalars;
 }
 
 }  // namespace gpu

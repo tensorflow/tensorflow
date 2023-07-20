@@ -351,8 +351,7 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      elemental_emitter_(hlo_module_config_, module_, &b_,
-                         GetNestedComputer()) {}
+      elemental_emitter_(hlo_module_config_, *ir_emitter_context, &b_) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
@@ -3670,7 +3669,9 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     }
 
     StatusOr<std::vector<llvm::Value*>> returned_scalars =
-        ComputeNestedElementFromAddrs(*reducer, reduction_params);
+        CallNestedComputationWithScalarAddrs(&b_, hlo_module_config_, *reducer,
+                                             *ir_emitter_context_,
+                                             reduction_params);
     TF_CHECK_OK(returned_scalars.status());
 
     for (int i = 0; i < returned_scalars->size(); i++) {
@@ -4198,7 +4199,9 @@ void IrEmitterUnnested::GenerateElementForReducer(
   // those pointers, and we have returned values on the stack (as well
   // as pointers to them).
   StatusOr<std::vector<llvm::Value*>> returned_scalars =
-      ComputeNestedElementFromAddrs(*reducer, reduction_params);
+      CallNestedComputationWithScalarAddrs(&b_, hlo_module_config_, *reducer,
+                                           *ir_emitter_context_,
+                                           reduction_params);
   TF_CHECK_OK(returned_scalars.status());
 
   for (int i = 0; i < returned_scalars->size(); i++) {
