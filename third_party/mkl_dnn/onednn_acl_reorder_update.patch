@@ -2508,7 +2508,7 @@ index a6cefaa20e8..a708da808c0 100644
 +    auto scratchpad = scratchpad_registry().registrar();
 +    const auto compensation_reduce_size = wspace_per_thr_size * nthr_;
 +
-+    //every thread gets its own scratchpad space for each N
++    // Every thread gets its own scratchpad space for each N
 +    scratchpad.template book<int32_t>(memory_tracking::names::key_reorder_space,
 +            compensation_reduce_size);
 +}
