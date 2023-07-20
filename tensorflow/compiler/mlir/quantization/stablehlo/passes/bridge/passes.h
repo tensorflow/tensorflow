@@ -30,10 +30,6 @@ namespace stablehlo {
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
     bool legalize_chlo = true);
 
-#define GEN_PASS_REGISTRATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
-
 // Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
 // convert TF uniform quantized ops to the corresponding quantized MHLO ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -44,6 +40,10 @@ CreateConvertTFQuantOpsToMHLOPass();
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns);
 
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
+#define GEN_PASS_DECL_CONVERTTFQUANTOPSTOMHLO
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 }  // namespace stablehlo
 }  // namespace mlir
 
