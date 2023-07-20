@@ -578,7 +578,9 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  // Next id: 232
+  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+
+  // Next id: 233
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
