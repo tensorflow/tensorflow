@@ -3859,6 +3859,32 @@ func.func @dynamic_iota_f32_1d(%arg0: tensor<1xi32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @real_dynamic_slice_strides_equal_to_1_signed(
+// CHECK-SAME:              %arg0: tensor<1x?x4x256xf32>,
+// CHECK-SAME:              %arg1: tensor<4xi32>,
+// CHECK-SAME:              %arg2: tensor<4xi32>) -> tensor<1x?x4x128xf32> {
+// CHECK:         %cst = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK:         %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %cst) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+// CHECK:         return %0 : tensor<1x?x4x128xf32>
+func.func @real_dynamic_slice_strides_equal_to_1_signed(%arg0: tensor<1x?x4x256xf32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<1x?x4x128xf32> {
+%cst = mhlo.constant dense<1> : tensor<4xi32>
+%0 = mhlo.real_dynamic_slice %arg0, %arg1, %arg2, %cst : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+func.return %0 : tensor<1x?x4x128xf32>
+}
+
+// CHECK-LABEL: func @real_dynamic_slice_strides_not_equal_to_1(
+// CHECK-SAME:              %arg0: tensor<1x?x2x4xf32>,
+// CHECK-SAME:              %arg1: tensor<4xi32>,
+// CHECK-SAME:              %arg2: tensor<4xi32>) -> tensor<1x?x1x2xf32> {
+// CHECK          %cst = "tf.Const"() {value = dense<2> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK          %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %cst) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x?x2x4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x1x2xf32>
+// CHECK          return %0 : tensor<1x?x1x2xf32>
+func.func @real_dynamic_slice_strides_not_equal_to_1(%arg0: tensor<1x?x2x4xf32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<1x?x1x2xf32> {
+%cst = mhlo.constant dense<2> : tensor<4xi32>
+%0 = mhlo.real_dynamic_slice %arg0, %arg1, %arg2, %cst : (tensor<1x?x2x4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x1x2xf32>
+func.return %0 : tensor<1x?x1x2xf32>
+}
+
 // CHECK-LABEL: func @convert_approx_top_k_custom_call(
 // CHECK-SAME:                                        %[[ARG_0:.*]]: tensor<1x4xf32>,
 // CHECK-SAME:                                        %[[ARG_1:.*]]: tensor<1x4xi32>,

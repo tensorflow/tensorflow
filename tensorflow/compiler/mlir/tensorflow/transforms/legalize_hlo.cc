@@ -3733,6 +3733,37 @@ class ConvertGetDimensionSizeOp
   }
 };
 
+class ConvertRealDynamicSliceOp
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto start_indices_type = real_dynamic_slice_op.getStartIndices()
+                                  .getType()
+                                  .cast<RankedTensorType>();
+    auto end_indices_type = real_dynamic_slice_op.getLimitIndices()
+                                .getType()
+                                .cast<RankedTensorType>();
+
+    if (start_indices_type.getNumDynamicDims() != 0 ||
+        end_indices_type.getNumDynamicDims() != 0) {
+      return rewriter.notifyMatchFailure(
+          real_dynamic_slice_op,
+          "Start indices and limit indices must not have dynamic dimensions.");
+    }
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        real_dynamic_slice_op, real_dynamic_slice_op.getType(),
+        real_dynamic_slice_op.getOperand(),
+        real_dynamic_slice_op.getStartIndices(),
+        real_dynamic_slice_op.getLimitIndices(),
+        real_dynamic_slice_op.getStrides());
+    return success();
+  };
+};
+
 class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -3884,18 +3915,19 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns->add<
-      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
-      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
-      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp,
-      ConvertGetDimensionSizeOp, ConvertDynamicIotaOp>(context);
+  patterns
+      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
+            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
+            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
+            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
+            ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
   populateWithGenerated(*patterns);
 }
 
