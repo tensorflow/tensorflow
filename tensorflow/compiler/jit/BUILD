@@ -1565,6 +1565,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_tensor_buffer_util",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",

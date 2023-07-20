@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <functional>
 #include <utility>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
@@ -619,8 +620,8 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<tsl::Status()> callback = []() -> tsl::Status {
-    return ::tensorflow::OkStatus();
+  std::function<absl::Status()> callback = []() -> absl::Status {
+    return absl::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_TRUE(stream.ok());
