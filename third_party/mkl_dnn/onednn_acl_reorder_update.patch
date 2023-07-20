@@ -2859,7 +2859,7 @@ index a6cefaa20e8..a708da808c0 100644
          });
      }
 +
-+    //reduction of intermediate compensation results to the final output
++    // Reduction of intermediate compensation results to the final output
 +    if (req_compensation) {
 +        const int nthr = ndims - ndims_ker == 0 ? 1 : pd()->nthr_;
 +        reduce_compensation(
