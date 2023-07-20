@@ -329,7 +329,10 @@ py_strict_library(
     deps = [
         ":packed_distributed_variable",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/tpu:tpu_replication",
     ],
 )
@@ -689,6 +692,7 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",

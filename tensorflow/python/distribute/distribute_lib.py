@@ -765,6 +765,9 @@ class _CurrentDistributionContext(object):
     return self._context.strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if hasattr(self._context.strategy.extended, "_lazy_variable_tracker"):
+      self._context.strategy.extended._lazy_variable_tracker.initialize_all()
+
     if self._same_scope_again_count > 0:
       self._same_scope_again_count -= 1
       return
