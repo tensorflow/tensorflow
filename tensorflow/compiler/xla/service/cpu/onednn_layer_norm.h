@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_LAYERNORM_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_LAYERNORM_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 namespace xla {
 namespace cpu {
 
 extern "C" {
-extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void** args);
+extern void __xla_cpu_runtime_OneDnnLayerNorm(void* result, void** args);
 }  // extern "C"
 
 }  // namespace cpu
 }  // namespace xla
 
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_LAYERNORM_H_

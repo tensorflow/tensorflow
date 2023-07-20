@@ -196,6 +196,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "tensorflow/compiler/xla/service/cpu/onednn_rewriter.h"
+#include "tensorflow/compiler/xla/service/cpu/onednn_ops_rewriter.h"
 #endif
 
 namespace {
@@ -658,6 +659,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
     pipeline.AddPass<OneDnnRewriter>();
+    
+    // Placing OneDnnOpsRewriter here to match the flax patterns
+    // TODO: Decide where would be the appropriate place for this pass to make
+    // it more generic
+    pipeline.AddPass<OneDnnOpsRewriter>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 

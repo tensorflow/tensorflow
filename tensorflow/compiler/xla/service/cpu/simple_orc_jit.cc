@@ -59,6 +59,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "tensorflow/compiler/xla/service/cpu/onednn_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/onednn_layer_norm.h"
 #endif
 
 // Provided by compiler-rt and MLIR.
@@ -330,6 +331,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),

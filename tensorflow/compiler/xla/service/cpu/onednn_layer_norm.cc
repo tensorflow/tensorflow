@@ -15,34 +15,28 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
-#include "tensorflow/compiler/xla/service/cpu/onednn_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/onednn_layer_norm.h"
 
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
 #include <vector>
 
-#define EIGEN_USE_THREADS
-
-#include "dnnl.hpp"
 #include "absl/base/dynamic_annotations.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "dnnl.hpp"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/onednn_memory_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/tsl/util/onednn_threadpool.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace cpu {
-namespace {
-using dnnl::engine;
-using dnnl::matmul;
-using dnnl::memory;
-using dnnl::stream;
-}  // namespace
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
+using namespace dnnl;
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
     void* result, void** args) {
   // args[0]: ptr to nargs
   // args[1]: ptr to ExecutableRunOptions
@@ -58,40 +52,47 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   tsl::OneDnnThreadPool thread_pool(
       run_options->intra_op_thread_pool()->getPool(), false);
   engine cpu_engine(engine::kind::cpu, 0);
-  auto tp_stream =
-      stream(dnnl::threadpool_interop::make_stream(cpu_engine, &thread_pool));
-
+#ifndef ENABLE_ONEDNN_OPENMP
+  auto onednn_stream =
+      stream(threadpool_interop::make_stream(cpu_engine, &thread_pool));
+#else
+  auto onednn_stream = stream(cpu_engine);
+#endif  // ENABLE_ONEDNN_OPENMP
   std::string config_str(static_cast<const char*>(args[arg_indx++]));
-  OneDnnMatMulConfig matmul_config;
-  matmul_config.ParseFromString(config_str);
+  OneDnnLayerNormConfig ln_config;
+  ln_config.ParseFromString(config_str);
 
-  MemrefInfo lhs_minfo(args[arg_indx++]);
-  MemrefInfo rhs_minfo(args[arg_indx++]);
+  MemrefInfo layer_minfo(args[arg_indx++]);
+  MemrefInfo gamma_minfo(args[arg_indx++]);
+  MemrefInfo beta_minfo(args[arg_indx++]);
   MemrefInfo result_minfo(result);
 
-  // Currently, no fusion is supported.
-  XLA_LIGHTWEIGHT_CHECK(matmul_config.fused_ops().empty() &&
-                        num_args == arg_indx);
-
-  auto src_md = lhs_minfo.GetOneDnnMemDesc();
-  auto weights_md = rhs_minfo.GetOneDnnMemDesc();
+  auto src_md = layer_minfo.GetOneDnnMemDesc();
   auto dst_md = result_minfo.GetOneDnnMemDesc();
+  auto scaleshift_md = beta_minfo.GetOneDnnMemDesc();
 
-  auto src_mem = memory(src_md, cpu_engine, lhs_minfo.Data());
-  auto weights_mem = memory(weights_md, cpu_engine, rhs_minfo.Data());
+  auto src_mem = memory(src_md, cpu_engine, layer_minfo.Data());
   auto dst_mem = memory(dst_md, cpu_engine, result_minfo.Data());
+  auto scale_mem = memory(scaleshift_md, cpu_engine, gamma_minfo.Data());
+  auto shift_mem = memory(scaleshift_md, cpu_engine, beta_minfo.Data());
 
-  auto matmul_pd =
-      matmul::primitive_desc(cpu_engine, src_md, weights_md, dst_md);
+  // TODO(intel-tf): Move epsilon to OneDnnLayerNormConfig.
+  const float epsilon = 1.e-5f;
 
-  auto matmul_prim = matmul(matmul_pd);
+  auto lnorm_pd = 
+      layer_normalization_forward::primitive_desc(cpu_engine, 
+      prop_kind::forward_inference, src_md, dst_md, epsilon, 
+      normalization_flags::use_scale | normalization_flags::use_shift);
 
-  std::unordered_map<int, memory> matmul_args;
-  matmul_args.insert({DNNL_ARG_SRC, src_mem});
-  matmul_args.insert({DNNL_ARG_WEIGHTS, weights_mem});
-  matmul_args.insert({DNNL_ARG_DST, dst_mem});
+  auto lnorm_prim = layer_normalization_forward(lnorm_pd);
 
-  matmul_prim.execute(tp_stream, matmul_args);
+  std::unordered_map<int, memory> ln_args;
+  ln_args.insert({DNNL_ARG_SRC, src_mem});
+  ln_args.insert({DNNL_ARG_SCALE, scale_mem});
+  ln_args.insert({DNNL_ARG_SHIFT, shift_mem});
+  ln_args.insert({DNNL_ARG_DST, dst_mem});
+
+  lnorm_prim.execute(onednn_stream, ln_args);
 }
 
 }  // namespace cpu
