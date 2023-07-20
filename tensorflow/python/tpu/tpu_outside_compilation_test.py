@@ -54,12 +54,19 @@ from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 
 FLAGS = flags.FLAGS
+flags.DEFINE_bool(
+    "use_local_tpu",
+    False,
+    "use local TPUs on a TPU VM instead of connecting to a GCP TPU VM or node.",
+)
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
 flags.DEFINE_string("project", None, "Name of GCP project with TPU.")
 flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
 
 
 def get_tpu_cluster_resolver():
+  if FLAGS.use_local_tpu:
+    return tpu_cluster_resolver.TPUClusterResolver("local")
   resolver = tpu_cluster_resolver.TPUClusterResolver(
       tpu=FLAGS.tpu,
       zone=FLAGS.zone,
