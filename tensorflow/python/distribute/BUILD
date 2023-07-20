@@ -706,18 +706,19 @@ py_strict_library(
 distribute_py_strict_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
-    exec_properties = {"mem": "24g"},
+    env = {
+        # multi-process test uses too much memory otherwise. b/289970206
+        "CUDA_MODULE_LOADING": "LAZY",
+    },
     main = "random_generator_test.py",
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
         "no_oss",  # b/241013307
-        "notap",  # Flaky; TODO(b/289970206)
     ],
     tpu_tags = [
         "no_oss",
-        "no_gpu",  # b/276511061
     ],
     xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
