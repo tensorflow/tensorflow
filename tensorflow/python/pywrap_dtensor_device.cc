@@ -488,7 +488,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
 
   py::enum_<Layout::LayoutType>(m, "LayoutType")
       .value("STATIC", Layout::LayoutType::kStatic)
-      .value("RAGGED", Layout::LayoutType::kRagged)
+      .value("PARTED", Layout::LayoutType::kParted)
       .value("SINGLE_DEVICE", Layout::LayoutType::kSingleDevice);
 
   py::class_<Layout>(m, "Layout")
@@ -546,7 +546,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           },
           "Returns the LayoutProto protobuf message.")
       .def("to_string", &Layout::ToString)
-      .def("to_ragged", &Layout::ToRagged)
+      .def("to_parted", &Layout::ToParted)
       .def_property_readonly("type", &Layout::type)
       .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
       .def_property_readonly("rank", &Layout::rank)

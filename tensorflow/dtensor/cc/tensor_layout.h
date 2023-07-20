@@ -286,10 +286,10 @@ class Layout {
     kEmpty,
     kStatic,
     kSingleDevice,
-    kRagged,
+    kParted,
   };
 
-  static constexpr const char* kRaggedPrefix = "ragged:";
+  static constexpr const char* kPartedPrefix = "parted:";
   static constexpr const char* kStaticPrefix = "sharding_specs:";
   static constexpr const char* kSingleDevicePrefix = "maximal:";
 
@@ -376,9 +376,9 @@ class Layout {
   StatusOr<Layout> GetLayoutWithReducedDims(
       const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const;
 
-  // Converts the Layout to Ragged.
-  StatusOr<Layout> ToRagged() const {
-    return GetLayout(LayoutType::kRagged, sharding_specs_, mesh_);
+  // Converts the Layout to Parted.
+  StatusOr<Layout> ToParted() const {
+    return GetLayout(LayoutType::kParted, sharding_specs_, mesh_);
   }
 
   // Truncates a layout at the front or back, depending on the value of end.

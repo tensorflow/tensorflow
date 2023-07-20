@@ -88,7 +88,7 @@ tf_class {
     argspec: "args=[\'cls\', \'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "to_ragged"
+    name: "to_parted"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
