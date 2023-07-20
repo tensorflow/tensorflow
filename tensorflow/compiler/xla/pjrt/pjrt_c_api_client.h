@@ -564,6 +564,7 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
  public:
   CApiCopyToDeviceStream(PJRT_CopyToDeviceStream* c_stream,
                          const PJRT_Api* c_api);
+  ~CApiCopyToDeviceStream() override;
 
   PjRtFuture<Status> AddChunk(PjRtChunk chunk) override;
 

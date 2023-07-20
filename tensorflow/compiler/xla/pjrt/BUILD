@@ -772,7 +772,10 @@ cc_library(
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
     visibility = [":friends"],
-    deps = [":pjrt_client"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+    ],
 )
 
 xla_cc_test(

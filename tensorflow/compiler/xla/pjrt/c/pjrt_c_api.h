@@ -1046,6 +1046,8 @@ typedef PJRT_Error* (*PJRT_SendCallback)(PJRT_Chunk* chunk,
                                          PJRT_CallbackError* callback_error,
                                          size_t total_size_in_bytes, bool done,
                                          void* user_arg);
+// The callback takes the ownership of the stream object. The callback must call
+// `PJRT_CopyToDeviceStream_Destroy` when it is done with the stream.
 typedef void (*PJRT_RecvCallback)(PJRT_CopyToDeviceStream* stream,
                                   void* user_arg);
 
@@ -1530,6 +1532,17 @@ typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
 
 // ---------------------------- CopyToDeviceStream -----------------------------
 
+struct PJRT_CopyToDeviceStream_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_Destroy_Args, stream);
+
+// Frees `stream`. `stream` can be nullptr.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
+
 struct PJRT_CopyToDeviceStream_AddChunk_Args {
   size_t struct_size;
   void* priv;
@@ -1782,6 +1795,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);

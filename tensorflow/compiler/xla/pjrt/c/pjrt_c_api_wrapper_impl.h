@@ -244,6 +244,8 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
@@ -426,6 +428,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_ReadyEvent=*/pjrt::PJRT_Buffer_ReadyEvent,
       /*PJRT_Buffer_UnsafePointer=*/pjrt::PJRT_Buffer_UnsafePointer,
 
+      /*PJRT_CopyToDeviceStream_Destroy=*/
+      pjrt::PJRT_CopyToDeviceStream_Destroy,
       /*PJRT_CopyToDeviceStream_AddChunk=*/
       pjrt::PJRT_CopyToDeviceStream_AddChunk,
       /*PJRT_CopyToDeviceStream_TotalBytes=*/
