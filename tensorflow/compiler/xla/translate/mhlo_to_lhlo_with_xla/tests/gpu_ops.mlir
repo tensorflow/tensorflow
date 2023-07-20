@@ -10,8 +10,7 @@
 // CHECK: %{{.*}} = mhlo.copy %{{.*}}
 // CHECK-DAG: %[[VIEW1:.*]] = memref.view %[[ARG1]]{{.*}} : memref<8xi8> to memref<2x1xi32>
 // CHECK-DAG: %[[VIEW2:.*]] = memref.view %[[ARG2]]{{.*}} : memref<24xi8> to memref<2x1x3xi32>
-// CHECK-DAG: %[[VIEW31:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
-// CHECK:  "lmhlo.scatter"(%[[VIEW3]], %[[VIEW1]], %[[VIEW2]], %[[VIEW31]])
+// CHECK:  "lmhlo.scatter"(%[[VIEW3]], %[[VIEW1]], %[[VIEW2]], %[[VIEW3]])
 // CHECK:  mhlo.add
 // CHECK: indices_are_sorted = false
 // CHECK: update_window_dims = [1, 2]

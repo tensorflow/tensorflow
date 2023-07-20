@@ -64,13 +64,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 
-// "tensorflow/core/platform/platform.h" must be included first before using
-// PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
-    !defined(PLATFORM_FUCHSIA)
-#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
-
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #endif  // !IS_MOBILE_PLATFORM
@@ -117,18 +110,8 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
-    !defined(PLATFORM_FUCHSIA)
-    tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
-        opts->session_options.options,
-        static_cast<tensorflow::ContextDevicePlacementPolicy>(
-            opts->device_placement_policy),
-        opts->async);
-    return tensorflow::wrap(tfrt_context);
-#else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
@@ -183,6 +166,17 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
+  TFE_ContextSetServerDefWithTimeout(ctx, keep_alive_secs, proto, proto_len,
+                                     /*init_timeout_in_ms=*/0, status);
+}
+
+// Set server_def on the context, possibly updating it.
+// TODO(b/291142876) Simplify TFE_ContextSetServerDefWithTimeout and
+// TFE_ContextUpdateServerDefWithTimeout to be simple wrappers around the same
+// C++ function.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::errors::Unimplemented(
       "TFE_ContextSetServerDef not supported on mobile");
@@ -195,7 +189,8 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
   }
   status->status =
       tensorflow::unwrap(ctx)->GetDistributedManager()->SetOrUpdateServerDef(
-          server_def, /*reset_context=*/true, keep_alive_secs);
+          server_def, /*reset_context=*/true, keep_alive_secs,
+          init_timeout_in_ms);
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -204,9 +199,16 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
                                                       const void* proto,
                                                       size_t proto_len,
                                                       TF_Status* status) {
+  TFE_ContextUpdateServerDefWithTimeout(ctx, keep_alive_secs, proto, proto_len,
+                                        /*init_timeout_in_ms=*/0, status);
+}
+
+TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::errors::Unimplemented(
-      "TFE_ContextSetServerDef not supported on mobile");
+      "TFE_ContextUpdateServerDef not supported on mobile");
 #else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::ServerDef server_def;
   tensorflow::EagerContext* context =
@@ -222,7 +224,8 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
   }
   status->status =
       tensorflow::unwrap(ctx)->GetDistributedManager()->SetOrUpdateServerDef(
-          server_def, /*reset_context=*/false, keep_alive_secs);
+          server_def, /*reset_context=*/false, keep_alive_secs,
+          init_timeout_in_ms);
 #endif  // !IS_MOBILE_PLATFORM
 }
 

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 
+#include <map>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -25,14 +29,14 @@ namespace tfprof {
 class TFProfAdvisorTest : public ::testing::Test {
  protected:
   TFProfAdvisorTest() {
-    stats_.reset(new TFStats(std::unique_ptr<GraphDef>(new GraphDef()), nullptr,
-                             nullptr, nullptr));
+    stats_ = std::make_unique<TFStats>(std::make_unique<GraphDef>(), nullptr,
+                                       nullptr, nullptr);
 
     stats_->AddNodeForTest(
         0, CreateNode("n1", "Conv2D", {{"data_format", "NHWC"}}, 0, 10, 2));
     stats_->AddNodeForTest(0, CreateNode("n2", "Conv2D", {}, 0, 20, 2));
     stats_->BuildAllViews();
-    advisor_.reset(new Advisor(stats_.get()));
+    advisor_ = std::make_unique<Advisor>(stats_.get());
   }
 
   std::unique_ptr<TFGraphNode> CreateNode(const string& name,
@@ -40,7 +44,7 @@ class TFProfAdvisorTest : public ::testing::Test {
                                           std::map<string, string> attrs,
                                           int64_t step, int64_t start_miros,
                                           int64_t end_rel_micros) {
-    node_defs_.push_back(std::unique_ptr<NodeDef>(new NodeDef()));
+    node_defs_.push_back(std::make_unique<NodeDef>());
     NodeDef* def = node_defs_.back().get();
 
     def->set_name(name);

@@ -393,12 +393,12 @@ class OptimizationOptions(options_lib.OptionsBase):
       name="warm_start",
       ty=bool,
       docstring=(
-          "Whether to start background threads of asynchronous transformations"
-          " upon iterator creation (as opposed to upon first call to"
-          " `GetNext`). If None, defaults to False.  It should be noted that"
-          " this possibly improves the latency of the initial 'GetNext' call at"
-          " the expense of requiring more memory to hold prefetched elements"
-          " between the time of iterator construction and usage."
+          "Whether to start background threads of asynchronous transformations "
+          "upon iterator creation, as opposed to during the first call to "
+          "`next()`. Defaults to `False`. "
+          "This improves the latency of the initial 'next()' calls at "
+          "the expense of requiring more memory to hold prefetched elements "
+          "between the time of iterator construction and usage."
       ),
       default_factory=lambda: True if test_mode.TEST_MODE else False,
   )
@@ -469,7 +469,7 @@ class ThreadingOptions(options_lib.OptionsBase):
   """Represents options for dataset threading.
 
   You can set the threading options of a dataset through the
-  `experimental_threading` property of `tf.data.Options`; the property is
+  `threading` property of `tf.data.Options`; the property is
   an instance of `tf.data.ThreadingOptions`.
 
   ```python

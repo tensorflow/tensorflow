@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -130,12 +130,12 @@ std::string JsonEscape(absl::string_view raw);
 
 std::string ProtoString(const tsl::protobuf::Message& pb);
 
-template <typename RawData, typename IOBuffer>
-void WriteTpuData(const RawData& data, JsonSeparator<IOBuffer>* separator,
+template <typename RawDataType, typename IOBuffer>
+void WriteTpuData(const RawDataType& data, JsonSeparator<IOBuffer>* separator,
                   IOBuffer* output) {}
 
 // Writes JSON events from a TraceEvent.
-template <typename IOBuffer, typename RawData>
+template <typename IOBuffer, typename RawDataType>
 class JsonEventWriter {
  public:
   JsonEventWriter(const TraceEventsColorerInterface* colorer,
@@ -157,7 +157,7 @@ class JsonEventWriter {
         event.has_name_ref() ? trace_.name_table().at(event.name_ref())
                              : event.name();
     output_->Append(R"(,"name":)", JsonEscape(event_name));
-    Timespan span = EventSpan(event);
+    tsl::profiler::Timespan span = EventSpan(event);
     // "%.17g" is the default double format in proto2::util::JsonFormat.
     absl::Format(output_, R"(,"ts":%.17g)", PicosToMicros(span.begin_ps()));
     JsonEventCounter::EventType event_type = JsonEventCounter::kCounterEvent;
@@ -260,20 +260,20 @@ class JsonEventWriter {
       output_->Append(R"("group_id":)", event.group_id());
     }
     if (event.has_raw_data()) {
-      RawData data;
+      RawDataType data;
       data.ParseFromString(event.raw_data());
       switch (data.raw_data_case()) {
-        case RawData::RAW_DATA_NOT_SET:
+        case RawDataType::RAW_DATA_NOT_SET:
           break;
-        case RawData::kTpuData:
-          WriteTpuData(data.tpu_data(), &separator, output_);
+        case RawDataType::kTpuData:
+          WriteTpuData<RawDataType, IOBuffer>(data, &separator, output_);
           break;
-        case RawData::kDmaActivity:
+        case RawDataType::kDmaActivity:
           separator.Add();
           output_->Append(R"("DMA activity":)",
                           ProtoString(data.dma_activity()));
           break;
-        case RawData::kArgs:
+        case RawDataType::kArgs:
           for (const auto& arg : data.args().arg()) {
             switch (arg.value_case()) {
               case TraceEventArguments::Argument::kStrValue:
@@ -499,7 +499,8 @@ void WriteTraceFullTimespan(const Trace* trace, IOBuffer* output) {
                  R"(],)");
 }
 
-template <typename IOBuffer, typename TraceEventsContainer, typename RawData>
+template <typename IOBuffer, typename TraceEventsContainer,
+          typename RawDataType>
 void TraceEventsToJson(const JsonTraceOptions& options,
                        const TraceEventsContainer& events, IOBuffer* output) {
   // Set the displayTimeUnit to nanoseconds (default is milliseconds), so the UI
@@ -563,7 +564,8 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   colorer->SetUp(trace);
 
   // Write events.
-  JsonEventWriter<IOBuffer, RawData> writer(colorer, trace, references, output);
+  JsonEventWriter<IOBuffer, RawDataType> writer(colorer, trace, references,
+                                                output);
   events.ForAllEvents([&](const TraceEvent& event) {
     separator.Add();
     writer.WriteEvent(event);
@@ -582,7 +584,7 @@ class IOBufferAdapter {
 
   // Support IOBufferAdapter as a sink object for absl::Format.
   friend void AbslFormatFlush(IOBufferAdapter* buffer, absl::string_view s) {
-    buffer->output_->append(s);
+    absl::StrAppend(buffer->output_, s);
   }
 
  private:

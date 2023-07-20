@@ -72,7 +72,8 @@ static absl::StatusOr<JitExecutable> Compile(
   };
 
   opts.compiler.create_compilation_pipeline = [=](PassManager& passes) {
-    CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+    CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts,
+                                                  /*add_async_passes=*/true);
   };
 
   return JitExecutable::Instantiate(source, opts, exported);
@@ -879,7 +880,7 @@ TEST(CustomCallTest, ArgTypeCheck) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(),
             "run time error: custom call 'test.custom_call' failed: Failed to "
-            "decode all custom call operands");
+            "decode all custom call operands (bad operads at: 0)");
 }
 
 // Register custom call attribute decoding for `testlib.enum_type`.

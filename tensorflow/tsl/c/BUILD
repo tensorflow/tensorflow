@@ -110,18 +110,6 @@ tsl_gpu_library(
     ],
 )
 
-tsl_cc_test(
-    name = "tsl_status_helper_test",
-    srcs = ["tsl_status_helper_test.cc"],
-    deps = [
-        ":tsl_status_helper",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
 filegroup(
     name = "tsl_status_internal_headers",
     srcs = ["tsl_status_internal.h"],

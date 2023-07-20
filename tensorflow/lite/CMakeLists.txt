@@ -138,6 +138,10 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
     "${TF_SOURCE_DIR}/${RELATIVE_DIR}" ${SOURCES_VAR} ${ARGN}
   )
 endmacro()
+# Make sure all repos have licenses.
+set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK ON)
+# Additional library dependencies based upon enabled features.
+set(TFLITE_TARGET_DEPENDENCIES "")
 # Find TensorFlow Lite dependencies.
 find_package(absl REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -145,8 +149,12 @@ find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
 find_package(FlatBuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
-find_package(NEON_2_SSE REQUIRED)
+if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+  find_package(NEON_2_SSE REQUIRED)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES NEON_2_SSE::NEON_2_SSE)
+endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
+find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
@@ -178,8 +186,6 @@ endif()
 set(TFLITE_TARGET_PUBLIC_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_OPTIONS "")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
-# Additional library dependencies based upon enabled features.
-set(TFLITE_TARGET_DEPENDENCIES "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TFLite uses deprecated methods in neon2sse which generates a huge number of
   # warnings so surpress these until they're fixed.
@@ -224,6 +230,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND BUILD_SHARED_LIBS)
+  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*simple_memory_arena_debug_dump\\.cc$")
+endif()
 
 # This particular file is excluded because the more explicit approach to enable
 # XNNPACK delegate is preferred to the weak-symbol one.
@@ -328,6 +337,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate_options.cc
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/tflite_profile.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
@@ -356,6 +366,14 @@ if(TFLITE_ENABLE_GPU)
     enable_language(OBJCXX)
     list(APPEND TFLITE_DELEGATES_METAL_SRCS
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal_delegate.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer_convert.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/common.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.cc
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
@@ -363,8 +381,28 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
+      PRIVATE ${TENSORFLOW_SOURCE_DIR}
     )
-
+    #
+    # generate flatbuffers header for inference_context
+    #
+    if(FLATBUFFERS_FLATC_EXECUTABLE)
+      set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+    else()
+      set(FLATC flatc)
+    endif()
+    add_custom_command(
+        OUTPUT ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        COMMAND ${FLATC} --scoped-enums
+        -I ${TENSORFLOW_SOURCE_DIR}
+        -o ${TFLITE_SOURCE_DIR}/delegates/gpu/metal
+        -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
+    )
+    add_custom_target(
+        inference_context_cc_fbs
+        DEPENDS ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+    )
+    add_dependencies(metal_delegate inference_context_cc_fbs)
     #
     # supplementary libraries for libmetal_delegate
     #
@@ -372,11 +410,9 @@ if(TFLITE_ENABLE_GPU)
         buffer
         compute_task
         inference_context
-        linear_storage
         metal_arguments
         metal_device
         metal_spatial_tensor
-        texture2d
     )
    SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
 
@@ -499,6 +535,10 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
+populate_tflite_source_vars("kernels/internal/optimized/4bit"
+  TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS
+  FILTER "(.*neon.*|.*sse.*)\\.(cc|h)"
+)
 set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
@@ -543,6 +583,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_KERNEL_INTERNAL_OPT_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SRCS}
+  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SRCS}
@@ -569,7 +610,6 @@ target_include_directories(tensorflow-lite
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
-    NEON_2_SSE::NEON_2_SSE
     absl::flags
     absl::hash
     absl::status
@@ -579,6 +619,7 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
+    ml_dtypes
     ruy::ruy
     pthreadpool
     ${CMAKE_DL_LIBS}

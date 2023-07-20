@@ -32,8 +32,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -601,7 +601,7 @@ class Layer(base_layer.Layer):
       TypeError: If input_signature contains a non-TensorSpec object.
     """
     def check_type_return_shape(s):
-      if not isinstance(s, tensor_spec.TensorSpec):
+      if not isinstance(s, tensor.TensorSpec):
         raise TypeError('Only TensorSpec signature types are supported, '
                         'but saw signature entry: {}.'.format(s))
       return s.shape
@@ -614,7 +614,7 @@ class Layer(base_layer.Layer):
       # dtype.
       dtype = input_dtypes[0]
     return nest.map_structure(
-        lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
+        lambda s: tensor.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
   @generic_utils.default
@@ -1815,15 +1815,15 @@ class Layer(base_layer.Layer):
         dtypes.as_dtype(compute_dtype).is_floating):
       def f(x):
         """Cast a single Tensor or TensorSpec to the compute dtype."""
-        cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
+        cast_types = (tensor.Tensor, sparse_tensor.SparseTensor,
                       ragged_tensor.RaggedTensor)
         if (isinstance(x, cast_types) and x.dtype.is_floating and
             x.dtype.base_dtype.name != compute_dtype):
           return math_ops.cast(x, compute_dtype)
-        elif isinstance(x, tensor_spec.TensorSpec) and x.dtype.is_floating:
+        elif isinstance(x, tensor.TensorSpec) and x.dtype.is_floating:
           # Inputs may be TensorSpecs when this function is called from
           # model._set_inputs.
-          return tensor_spec.TensorSpec(x.shape, compute_dtype, x.name)
+          return tensor.TensorSpec(x.shape, compute_dtype, x.name)
         else:
           return x
       return nest.map_structure(f, inputs)

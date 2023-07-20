@@ -100,14 +100,52 @@ struct GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       std::optional<int64_t> algorithm, int64_t compute_precision);
 
-  // As above with additional `c_shape` parameter.
+  // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
+  // which are only necessarily for F8 gemms.
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
-      const Shape& output_shape, double alpha_real, double alpha_imag,
-      double beta, std::optional<int64_t> algorithm, int64_t compute_precision);
+      const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
+      double alpha_imag, double beta, std::optional<int64_t> algorithm,
+      int64_t compute_precision);
+
+  template <typename CublasLtMatmulMaybeF8Op,
+            typename = std::enable_if<
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
+  static StatusOr<GemmConfig> For(CublasLtMatmulMaybeF8Op op) {
+    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+
+    int64_t compute_precision = 0;  // Default
+    if (op.getPrecisionConfig().has_value()) {
+      auto precision_config = op.getPrecisionConfig();
+      for (auto attr : precision_config.value()) {
+        int64_t value = static_cast<int64_t>(
+            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+        if (value > compute_precision) {
+          compute_precision = value;
+        }
+      }
+    }
+
+    Shape bias_shape;
+    if (op.getBias() != nullptr) {
+      bias_shape = GetShape(op.getBias());
+    }
+    return GemmConfig::For(
+        GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+        dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+        dot_dims.getRhsBatchingDimensions(),
+        dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+        op.getBias() == nullptr ? nullptr : &bias_shape, GetShape(op.getD()),
+        op.getAlphaReal().convertToDouble(),
+        op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
+        op.getAlgorithm(), compute_precision);
+  }
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -137,7 +175,8 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 // If `algorithm` is provided, it overrides the one specified in `config`.
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, se::Stream* stream,
+               se::DeviceMemoryBase output_buffer, bool deterministic_ops,
+               se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
 
@@ -159,43 +198,6 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 class MatmulPlan {
  public:
-  template <typename CublasLtMatmulMaybeF8Op,
-            typename = std::enable_if<
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
-  static StatusOr<MatmulPlan> For(CublasLtMatmulMaybeF8Op op) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-    int64_t compute_precision = 0;  // Default
-    if (op.getPrecisionConfig().has_value()) {
-      auto precision_config = op.getPrecisionConfig();
-      for (auto attr : precision_config.value()) {
-        int64_t value = static_cast<int64_t>(
-            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-        if (value > compute_precision) {
-          compute_precision = value;
-        }
-      }
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig config,
-        GemmConfig::For(
-            GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-            dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-            dot_dims.getRhsBatchingDimensions(),
-            dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
-            GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
-            op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
-            op.getAlgorithm(), compute_precision));
-
-    TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
-                        AsBlasLtEpilogue(op.getEpilogue()));
-    return From(config, epilogue);
-  }
-
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
                                    se::cuda::BlasLt::Epilogue epilogue);
 

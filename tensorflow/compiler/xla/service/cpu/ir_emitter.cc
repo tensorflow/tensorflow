@@ -2669,7 +2669,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64_t byte_offset_into_target_region = 0;
 
   int64_t inner_dims_product =
-      std::accumulate(inner_dims.begin(), inner_dims.end(), 1l,
+      std::accumulate(inner_dims.begin(), inner_dims.end(), int64_t{1},
                       [&](int64_t product, int64_t inner_dim) {
                         return product * output_shape.dimensions(inner_dim);
                       });

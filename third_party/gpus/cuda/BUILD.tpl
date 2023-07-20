@@ -42,7 +42,6 @@ selects.config_setting_group(
 config_setting(
     name = "_opt",
     values = {"compilation_mode": "opt"},
-    visibility = ["//visibility:private"],
 )
 
 # Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'

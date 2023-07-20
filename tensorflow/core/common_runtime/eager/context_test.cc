@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/framework/function.h"
@@ -109,7 +114,7 @@ TEST_F(EagerContextTest, CompositeDevice) {
       "/job:localhost/replica:0/task:0/device:COMPOSITE:1", &device));
   EXPECT_EQ(device, composite_device_2);
 
-  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+  EXPECT_TRUE(absl::IsNotFound(context()->FindCompositeDeviceFromName(
       "/job:localhost/replica:0/task:0/device:COMPOSITE:2", &device)));
 }
 
@@ -241,7 +246,6 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
 
 TEST_F(EagerContextTest, FunctionErrorRecovery) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, /*async=*/true);
-  context()->SetReuseRendezvousForFunctions(true);
   const FunctionDef assert_and_identity = FDH::Define(
       // Name
       "AssertAndIdentity",
@@ -368,10 +372,7 @@ TEST_F(EagerContextTest, LocalRendezvousCreation) {
 }
 
 void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
-  context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
-  EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
-
-  auto rendezvous_creator = context->RendezvousFactory();
+  auto rendezvous_creator = context->RendezvousFactory(reuse_global_rendezvous);
   tsl::core::RefCountPtr<Rendezvous> rendezvous_1;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
@@ -395,7 +396,6 @@ TEST_F(EagerContextTest, GlobalRendezvousCreation) {
 
 TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
 
   TestGlobalRendezvous(context(), true);
 }

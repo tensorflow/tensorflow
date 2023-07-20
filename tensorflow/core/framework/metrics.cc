@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -186,6 +187,14 @@ auto* tf_data_service_data_transfer_protocol_used =
         "data transfer protocol.",
         "data_transfer_protocol");
 
+auto* tf_data_service_data_transfer_protocol_used_by_nature =
+    tsl::monitoring::Counter<2>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used_by_nature",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol and the nature ('default' or 'specified') "
+        "under which this protocol was chosen.",
+        "data_transfer_protocol", "nature");
+
 auto* tf_data_service_data_transfer_protocol_fallback =
     tsl::monitoring::Counter<3>::New(
         "/tensorflow/data/service/data_transfer_protocol_fallback",
@@ -199,6 +208,12 @@ auto* tf_data_service_data_transfer_protocol_error =
         "The number of times a tf.data service worker client got this type "
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_optimal_number_of_workers =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/optimal_number_of_workers",
+        "Estimated optimal number of tf.data service workers based on the "
+        "current workload.");
 
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -232,6 +247,11 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "The number of times each tf.data autotune "
         "algorithm stopping criterion is met.",
         "name");
+
+auto* tf_data_error = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/error",
+    "The number of times an error of this type occurred with this status code.",
+    "error_type", "status_code");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -290,6 +310,12 @@ auto* graph_optimization_cache_failure_count = tsl::monitoring::Counter<1>::New(
 auto* graph_optimization_cache_miss_count = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_optimization_cache_miss_count",
     "The number of times the cache for the graph optimization is missed.",
+    "source"  // graph optimization source
+);
+
+auto* graph_optimization_cache_load_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_load_count",
+    "The number of times loading an optimized function graph to RAM.",
     "source"  // graph optimization source
 );
 
@@ -449,8 +475,7 @@ void RecordTFDataServiceWorkerCreated() {
 }
 
 void RecordTFDataServiceJobsCreated(
-    const data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read) {
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read) {
   const std::string sharding_policy_str =
       data::ProcessingModeDef::ShardingPolicy_Name(
           processing_mode.sharding_policy());
@@ -463,8 +488,7 @@ void RecordTFDataServiceJobsCreated(
 
 void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
-    const data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read) {
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read) {
   const std::string deployment_mode_str =
       data::DeploymentMode_Name(deployment_mode);
   const std::string sharding_policy_str =
@@ -479,8 +503,10 @@ void RecordTFDataServiceClientIterators(
 }
 
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol) {
-  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+    const string& data_transfer_protocol, bool user_specified) {
+  std::string nature = user_specified ? "specified" : "default";
+  tf_data_service_data_transfer_protocol_used_by_nature
+      ->GetCell(data_transfer_protocol, nature)
       ->IncrementBy(1);
 }
 
@@ -515,12 +541,15 @@ void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
+  tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordTFDataAutoShard(const string& id,
-                           data::AutoShardPolicy policy,
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
@@ -540,6 +569,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 
 void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataError(const string& error_type, const string& status_code) {
+  tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {
@@ -631,7 +664,7 @@ uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
   return graph_optimization_saving_time_usecs->GetCell(mapped_source)->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheHitCount(
+void IncrementFunctionGraphOptimizationCacheHitCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   graph_optimization_cache_hit_count->GetCell(mapped_source)
@@ -658,17 +691,30 @@ int64_t GetFunctionGraphOptimizationCacheFailureCount(
       ->value();
 }
 
-void IncrementFunctinGraphOptimizationCacheMissCount(
+void IncrementFunctionGraphOptimizationCacheMissCount(
     const int count, GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   graph_optimization_cache_miss_count->GetCell(mapped_source)
       ->IncrementBy(count);
 }
 
-int64_t GetFunctinGraphOptimizationCacheMissCount(
+int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   return graph_optimization_cache_miss_count->GetCell(mapped_source)->value();
+}
+
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  graph_optimization_cache_load_count->GetCell(mapped_source)
+      ->IncrementBy(count);
+}
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_cache_load_count->GetCell(mapped_source)->value();
 }
 
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {

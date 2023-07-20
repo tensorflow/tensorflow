@@ -16,6 +16,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/infeed_ops.h"
 
 #include <algorithm>
+#include <deque>
+#include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -160,7 +164,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
 // `LinearizerBufferList` (aka `std::deque<LinearizerBuffer>`)
 // object, so the `Encode()` and `Decode()` methods are not implemented.
 struct LinearizedBuffersWrapper {
-  explicit LinearizedBuffersWrapper() {}
+  explicit LinearizedBuffersWrapper() = default;
   explicit LinearizedBuffersWrapper(LinearizerBufferList bufs,
                                     std::vector<tensorflow::Tensor> ts)
       : buffers(std::move(bufs)), tensors(std::move(ts)) {}
@@ -378,7 +382,7 @@ class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
  public:
   explicit StreamExecutorInfeedEnqueueOp(OpKernelConstruction* ctx)
       : TpuInfeedEnqueueOp(ctx,
-                           absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+                           std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorInfeedEnqueueOp(const StreamExecutorInfeedEnqueueOp&) = delete;
@@ -390,7 +394,7 @@ class StreamExecutorInfeedEnqueueTupleOp : public TpuInfeedEnqueueTupleOp {
  public:
   explicit StreamExecutorInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
       : TpuInfeedEnqueueTupleOp(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorInfeedEnqueueTupleOp(
@@ -405,7 +409,7 @@ class StreamExecutorInfeedEnqueuePrelinearizedBufferOp
   explicit StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
       OpKernelConstruction* ctx)
       : InfeedEnqueuePrelinearizedBufferOp(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.

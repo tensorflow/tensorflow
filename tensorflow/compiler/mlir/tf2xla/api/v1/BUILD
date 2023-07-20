@@ -45,8 +45,10 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+        "//tensorflow/tsl/platform:error_logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//mlir:IR",
@@ -71,7 +73,23 @@ tf_cc_test(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/tsl/lib/monitoring:test_utils",
         "//tensorflow/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "legalize_tf_quant_test",
+    srcs = ["legalize_tf_quant_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/288215766): Temporarily disable OSS.
+    ],
+    deps = [
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
     ],
 )
 

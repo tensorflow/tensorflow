@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -57,7 +57,7 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
 }
 
 void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
-    Timespan host_infeed_enqueue) {
+    tsl::profiler::Timespan host_infeed_enqueue) {
   if (!last_host_infeed_enqueue_.Empty()) {
     // Expect non-overlapping InfeedEnqueue timespans sorted by time.
     DCHECK_GE(host_infeed_enqueue.end_ps(),
@@ -84,8 +84,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
   if (op_metrics->category().empty())
-    op_metrics->set_category(category == kUnknownOp ? "unknown"
-                                                    : std::string(category));
+    op_metrics->set_category(category == tsl::profiler::kUnknownOp
+                                 ? "unknown"
+                                 : std::string(category));
   if (op_metrics->provenance().empty())
     op_metrics->set_provenance(std::string(provenance));
   op_metrics->set_num_cores(1);

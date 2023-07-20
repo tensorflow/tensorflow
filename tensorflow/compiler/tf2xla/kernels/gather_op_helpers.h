@@ -43,7 +43,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 // the input instead of context->input(0) in order to allow ResourceGather to
 // handle obtaining the data from the ResourceVariable.
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
-                                    const xla::XlaOp input,
+                                    xla::XlaOp input,
                                     const TensorShape& input_shape,
                                     int batch_dims, xla::XlaOp* gather_output);
 }  // namespace tensorflow

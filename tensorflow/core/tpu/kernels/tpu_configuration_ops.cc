@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_configuration_ops.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"

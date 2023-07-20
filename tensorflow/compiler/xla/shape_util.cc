@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -72,6 +72,9 @@ constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     sizeof(float) / 4,   // F8E4M3FN = 20
     sizeof(int8_t),      // S4 = 21
     sizeof(int8_t),      // U4 = 22
+    sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
+    sizeof(float) / 4,   // F8E4M3FNUZ = 24
+    sizeof(float) / 4,   // F8E5M2FNUZ = 25
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 
@@ -128,8 +131,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
-    PrimitiveType pointer_primitive_type, int64_t memory_space,
-    std::optional<Shape> physical_shape) {
+    PrimitiveType pointer_primitive_type, int64_t element_size_in_bits,
+    int64_t memory_space, std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -141,10 +144,15 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
+  if (element_size_in_bits ==
+      ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
+    // Only set element_size_in_bits if it's different from the default value.
+    element_size_in_bits = 0;
+  }
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape));
+      index_primitive_type, pointer_primitive_type, element_size_in_bits,
+      memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -336,12 +344,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t memory_space) {
+    int64_t element_size_in_bits, int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
       /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
-      /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, memory_space,
+      /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
+      memory_space,
       /*physical_shape=*/std::nullopt);
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
@@ -353,11 +362,12 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    int64_t element_size_in_bits, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
       dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
-      memory_space, std::move(physical_shape));
+      element_size_in_bits, memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
@@ -412,6 +422,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   if (shape.has_layout()) {
     new_shape.mutable_layout()->mutable_tiles()->assign(
         shape.layout().tiles().begin(), shape.layout().tiles().end());
+    new_shape.mutable_layout()->set_element_size_in_bits(
+        shape.layout().element_size_in_bits());
   }
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
@@ -503,20 +515,37 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+// Prepend new major-most dimension sized `bound` to the shape.
+Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
+  Shape new_shape(shape.element_type(), {}, {}, {});
+  new_shape.add_dimensions(bound);
+  for (const int64_t dim : shape.dimensions()) {
+    new_shape.add_dimensions(dim);
+  }
+  if (shape.has_layout()) {
+    for (const int64_t dim : shape.layout().minor_to_major()) {
+      new_shape.mutable_layout()->add_minor_to_major(dim + 1);
+    }
+    new_shape.mutable_layout()->add_minor_to_major(0);
+  }
+  return new_shape;
+}
+
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
   CHECK(LayoutUtil::IsDenseArray(*shape));
-
-  if (shape->has_layout()) {
-    // Bump up all values in the layout by one.
-    for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
-         dim_idx++) {
-      int layout_idx = shape->layout().minor_to_major(dim_idx);
-      shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
-    }
-    // Then we can safely add zero.
-    shape->mutable_layout()->add_minor_to_major(0);
-  }
   shape->add_dimensions(bound);
+  if (shape->has_layout()) {
+    // Append an empty field to the layout.
+    shape->mutable_layout()->add_minor_to_major(0);
+    // Shift by one position all values in the layout in the major direction.
+    for (int dim_idx = shape->layout().minor_to_major_size() - 2; dim_idx >= 0;
+         --dim_idx) {
+      int layout_idx = shape->layout().minor_to_major(dim_idx);
+      shape->mutable_layout()->set_minor_to_major(dim_idx + 1, layout_idx);
+    }
+    // Insert the newly added dimension at the minor-most position.
+    shape->mutable_layout()->set_minor_to_major(0, shape->rank() - 1);
+  }
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
@@ -564,36 +593,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::ElementIsSigned(const Shape& shape) {
-  switch (shape.element_type()) {
-    case S4:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case F8E5M2:
-    case F8E4M3FN:
-    case F16:
-    case BF16:
-    case F32:
-    case F64:
-      return true;
-
-    case PRED:
-    case U4:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-    case C64:
-    case C128:
-    case TUPLE:
-    case OPAQUE_TYPE:
-    case TOKEN:
-      return false;
-
-    default:
-      LOG(FATAL) << "Unhandled element type " << shape.element_type();
-  }
+  return primitive_util::IsSignedIntegralType(shape.element_type()) ||
+         primitive_util::IsFloatingPointType(shape.element_type());
 }
 
 /* static */ bool ShapeUtil::ElementIsComplex(const Shape& shape) {
@@ -869,6 +870,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
   allocated_element_count = ElementsIn(shape);
+
+  if (shape.has_layout() && shape.layout().element_size_in_bits() != 0) {
+    const int64_t num_bits =
+        allocated_element_count * shape.layout().element_size_in_bits();
+    return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
+  }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
 }
@@ -1484,6 +1491,81 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
   return transpose_perm;
 }
 
+namespace {
+
+static absl::InlinedVector<int64_t, 8> ReverseIota(int64_t n) {
+  absl::InlinedVector<int64_t, 8> ret(n);
+  absl::c_generate(ret, [n = ret.size()]() mutable { return --n; });
+  return ret;
+}
+
+}  // namespace
+
+bool ShapeUtil::BitcastDecompositionTrt::IsTranspose1Identity() const {
+  return absl::c_is_sorted(transpose1_dims);
+}
+
+bool ShapeUtil::BitcastDecompositionTrt::IsTranspose2Identity() const {
+  return absl::c_is_sorted(transpose2_dims);
+}
+
+/* static */ ShapeUtil::BitcastDecompositionTrt
+ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
+                                 const Shape& output_shape) {
+  CHECK(input_shape.has_layout()) << input_shape.ToString();
+  CHECK(output_shape.has_layout()) << output_shape.ToString();
+
+  BitcastDecompositionTrt decomposition;
+  decomposition.transpose1_shape =
+      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(input_shape);
+  decomposition.reshape_shape =
+      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(output_shape);
+  CHECK(ReshapeIsBitcast(decomposition.transpose1_shape,
+                         decomposition.reshape_shape,
+                         /*ignore_element_type=*/true));
+
+  // Let a * b denote Permute(a, perm=b).
+  //
+  // (input_dims * transpose1_dims) * R = input_dims * input_layout
+  // transpose1_dims * R = input_layout  | * R, knowing R * R = I
+  // transpose1_dims = input_layout * R
+  decomposition.transpose1_dims = ComposePermutations(
+      LayoutPerm(input_shape), ReverseIota(input_shape.rank()));
+  CHECK(TransposeIsBitcast(input_shape, decomposition.transpose1_shape,
+                           decomposition.transpose1_dims,
+                           /*ignore_element_type=*/false));
+
+  // (reshape_dims * transpose2_dims) * output_layout = reshape_dims * R
+  // transpose2_dims * output_layout = R  | * inv(output_layout)
+  // transpose2_dims = R * inv(output_layout)
+  decomposition.transpose2_dims =
+      ComposePermutations(ReverseIota(output_shape.rank()),
+                          InversePermutation(LayoutPerm(output_shape)));
+  CHECK(TransposeIsBitcast(decomposition.reshape_shape, output_shape,
+                           decomposition.transpose2_dims,
+                           /*ignore_element_type=*/false));
+
+  return decomposition;
+}
+
+/* static */ ShapeUtil::BitcastDecomposition ShapeUtil::DecomposeBitcast(
+    const Shape& input_shape, const Shape& output_shape) {
+  CHECK(input_shape.has_layout()) << input_shape.ToString();
+  CHECK(output_shape.has_layout()) << output_shape.ToString();
+
+  if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
+                                  /*ignore_element_type=*/true)) {
+    return BitcastDecompositionReshape{};
+  }
+
+  if (std::optional<std::vector<int64_t>> transpose_dims =
+          DeduceTransposeDimensionsForBitcast(input_shape, output_shape)) {
+    return BitcastDecompositionTranspose{transpose_dims.value()};
+  }
+
+  return DecomposeBitcastToTrt(input_shape, output_shape);
+}
+
 /* static */ std::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(input_shape.IsArray());
@@ -1649,9 +1731,8 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  CHECK(
-      ForEachIndexParallelWithStatus(shape, base, count, incr, visitor_function)
-          .ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, base, count, incr,
+                                             visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -1666,7 +1747,7 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
-  CHECK(ForEachIndexParallelWithStatus(shape, visitor_function).ok());
+  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, visitor_function));
 }
 
 /* static */ Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -1948,6 +2029,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
       subshape->mutable_layout()->clear_tiles();
       subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
       subshape->mutable_layout()->clear_physical_shape();
+      subshape->mutable_layout()->set_element_size_in_bits(0);
     }
   });
   return s;
@@ -1998,6 +2080,12 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];
     num_of_elements *= dim_size;
   }
+
+  if (shape.layout().element_size_in_bits() != 0) {
+    const int64_t num_bits =
+        num_of_elements * shape.layout().element_size_in_bits();
+    return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
+  }
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
@@ -2008,9 +2096,12 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  int64_t num_bits = size * primitive_util::BitWidth(shape.element_type());
 
-  return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
+  if (shape.layout().element_size_in_bits() != 0) {
+    const int64_t num_bits = size * shape.layout().element_size_in_bits();
+    return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
+  }
+  return size * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
 int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
@@ -2031,5 +2122,4 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
   }
   return size;
 }
-
 }  // namespace xla

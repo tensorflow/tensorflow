@@ -37,7 +37,7 @@ from tensorflow.python.ops import array_ops
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
         ] + strategy_combinations.strategies_minus_tpu,
-        mode=['eager', 'graph']))
+        mode=['eager']))
 class GatherTest(test.TestCase, parameterized.TestCase):
 
   def testOne(self, strategy):

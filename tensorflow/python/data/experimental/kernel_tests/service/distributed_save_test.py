@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
+from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -104,6 +105,21 @@ class DistributedSaveTest(
     self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testRepeatedDataset(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.repeat(3)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset,
+        self._test_dir,
+        cluster.dispatcher_address(),
+    ))
+    _wait_for_snapshot(self._test_dir)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    self.assertDatasetProduces(dataset, list(range(10)) * 3)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasets(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     datasets = [
@@ -119,7 +135,72 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testChooseFromRepeatedDatasets(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    datasets = [
+        dataset_ops.Dataset.from_tensors("a").repeat(5),
+        dataset_ops.Dataset.from_tensors("b").repeat(5),
+        dataset_ops.Dataset.from_tensors("c").repeat(5),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir, cluster.dispatcher_address()
+    ))
+    _wait_for_snapshot(self._test_dir)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3]),
+      )
+  )
+  def testWriteMultipleDatasets(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    dataset1 = dataset_ops.Dataset.range(100)
+    datasets = [
+        dataset_ops.Dataset.from_tensors("a").repeat(5),
+        dataset_ops.Dataset.from_tensors("b").repeat(5),
+        dataset_ops.Dataset.from_tensors("c").repeat(5),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset2 = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset
+    )
+
+    snapshot_path1 = os.path.join(self._test_dir, "snapshot1")
+    snapshot_path2 = os.path.join(self._test_dir, "snapshot2")
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset1, snapshot_path1, cluster.dispatcher_address()
+        )
+    )
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset2, snapshot_path2, cluster.dispatcher_address()
+        )
+    )
+    _wait_for_snapshot(snapshot_path1)
+    _wait_for_snapshot(snapshot_path2)
+
+    ignore_order = num_workers > 1
+    dataset1 = dataset_ops.Dataset.load(snapshot_path1)
+    self.assertDatasetProduces(
+        dataset1,
+        list(range(100)),
+        assert_items_equal=ignore_order,
+    )
+    self.assertDatasetProduces(
+        dataset2,
+        [b"a", b"b", b"c"] * 5,
+        assert_items_equal=ignore_order,
+    )
 
   @combinations.generate(test_base.default_test_combinations())
   def testLoadWithCustomReaderFunc(self):
@@ -160,12 +241,44 @@ class DistributedSaveTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3]),
-      )
-  )
-  def testDistributedLoad(self, num_workers):
+          combinations.combine(
+              num_workers=[1, 3],
+              sharding_policy=[
+                  data_service_ops.ShardingPolicy.OFF,
+                  data_service_ops.ShardingPolicy.DYNAMIC])))
+  def testDistributedLoad(self, num_workers, sharding_policy):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._test_dir, cluster.dispatcher_address()))
+    _wait_for_snapshot(self._test_dir)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    dataset = dataset.apply(
+        data_service_ops.distribute(
+            processing_mode=sharding_policy,
+            service=cluster.dispatcher_address()))
+
+    ignore_order = num_workers > 0
+    expected = list(range(10))
+    if sharding_policy == data_service_ops.ShardingPolicy.OFF:
+      expected *= num_workers
+    self.assertDatasetProduces(
+        dataset, expected, assert_items_equal=ignore_order
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testImbalancedZipAndRepeat(self):
+    smaller_num_elements = 200
+    larger_num_elements = 1000
+    repetitions = 3
+
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(smaller_num_elements)
+    dataset2 = dataset_ops.Dataset.range(larger_num_elements)
+    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+    dataset = dataset.repeat(repetitions)
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, self._test_dir, cluster.dispatcher_address()
@@ -174,15 +287,10 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    dataset = dataset.apply(
-        data_service_ops.distribute(
-            data_service_ops.ShardingPolicy.OFF,
-            cluster.dispatcher_address(),
-        )
+    expected = repetitions * (
+        list(zip(range(smaller_num_elements), range(smaller_num_elements)))
     )
-    ignore_order = num_workers > 0
-    self.assertDatasetProduces(
-        dataset, list(range(10)) * num_workers, assert_items_equal=ignore_order)
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotDoesNotExist(self):
@@ -202,7 +310,7 @@ class DistributedSaveTest(
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "already started or completed"):
+        errors.AlreadyExistsError, "already started or completed"):
       self.evaluate(
           distributed_save_op.distributed_save(
               dataset, self._test_dir, cluster.dispatcher_address()))
@@ -222,7 +330,7 @@ class DistributedSaveTest(
     _wait_for_error(self._test_dir)
 
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "the save job failed to write it."):
+        ValueError, "The save job failed to write it."):
       dataset = dataset_ops.Dataset.load(self._test_dir)
       self.getDatasetOutput(dataset)
 
@@ -245,6 +353,39 @@ class DistributedSaveTest(
       self.evaluate(distributed_save_op.distributed_save(
           dataset, self._test_dir, cluster.dispatcher_address()
       ))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBadElementSpec(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir,
+        cluster.dispatcher_address(),
+        compression="AUTO"))
+    _wait_for_snapshot(self._test_dir)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "User specified element_spec bad_element_spec, but the actual "
+        "element_spec is TensorSpec"):
+      _ = dataset_ops.Dataset.load(self._test_dir,
+                                   element_spec="bad_element_spec")
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBadCompression(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir,
+        cluster.dispatcher_address(),
+        compression="AUTO"))
+    _wait_for_snapshot(self._test_dir)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "User specified compression ZLIB, but the actual compression is "
+        "SNAPPY."):
+      _ = dataset_ops.Dataset.load(self._test_dir, compression="ZLIB")
 
 
 class LoadCheckpointTest(
@@ -277,12 +418,14 @@ class LoadCheckpointTest(
 
 
 def _wait_for_snapshot(snapshot_path):
-  while not os.path.exists(os.path.join(snapshot_path, "DONE")):
+  while not os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotDoneFilePath(snapshot_path)):
     time.sleep(0.1)
 
 
 def _wait_for_error(snapshot_path):
-  while not os.path.exists(os.path.join(snapshot_path, "ERROR")):
+  while not os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotErrorFilePath(snapshot_path)):
     time.sleep(0.1)
 
 

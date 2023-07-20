@@ -69,8 +69,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-using llvm::dyn_cast;
-using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;
@@ -557,7 +555,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
       auto op_name = GetTensorFlowOpName(inner_op.getName().getStringRef());
-      if (op_name.ok()) {
+      if (llvm::isa<FuncOp>(inner_op) && op_name.ok()) {
         // If it is TF Control dialect specific op, look up custom operation
         // in the module and first convert that, then add it to function
         // definition library

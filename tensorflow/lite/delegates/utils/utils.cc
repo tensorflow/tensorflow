@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite::delegates::utils {
@@ -32,17 +33,6 @@ TfLiteStatus ConvertToTfLiteStatus(absl::Status status) {
     return kTfLiteError;
   }
   return kTfLiteOk;
-}
-
-// This is the same as tflite::BuildTfLiteIntArray, but copied here to avoid
-// dependency on the non-stable TFLite target
-// //third_party/tensorflow/lite:util.
-std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)>
-BuildTfLiteIntArray(const std::vector<int>& data) {
-  std::unique_ptr<TfLiteIntArray, decltype(&TfLiteIntArrayFree)> result(
-      TfLiteIntArrayCreate(data.size()), &TfLiteIntArrayFree);
-  std::copy(data.begin(), data.end(), result->data);
-  return result;
 }
 
 }  // namespace tflite::delegates::utils

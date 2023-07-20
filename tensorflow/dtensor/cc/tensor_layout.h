@@ -48,6 +48,10 @@ namespace dtensor {
 // standards.
 bool IsDynamicSize(int64_t size);
 
+// Returns true if `shape` is a dynamic shape based on either MLIR and TF
+// standards.
+bool IsDynamicShape(absl::Span<const int64_t> shape);
+
 // The location of a device in a mesh.
 //
 // Each device has a unique location in the mesh, which is indicated by the
@@ -159,6 +163,8 @@ class Mesh {
   bool is_remote() const {
     return local_device_ids_.empty() && !global_device_ids_.empty();
   }
+
+  StatusOr<Mesh> host_mesh() const { return ToDeviceType("CPU"); }
 
   // Device information methods.
   std::string device_type() const;
@@ -276,6 +282,17 @@ std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
 
 class Layout {
  public:
+  enum class LayoutType {
+    kEmpty,
+    kStatic,
+    kSingleDevice,
+    kRagged,
+  };
+
+  static constexpr const char* kRaggedPrefix = "ragged:";
+  static constexpr const char* kStaticPrefix = "sharding_specs:";
+  static constexpr const char* kSingleDevicePrefix = "maximal:";
+
   static constexpr const char* kUnshardedDim = "unsharded";
   // This spec should only be used to express no preferred sharding in the
   // Layout propagation algorithm.
@@ -287,6 +304,9 @@ class Layout {
   // Used for the relayout operation, to allow relayout act as an identity on
   // the layout for the given dimension.
   static constexpr const char* kMatch = "match";
+
+  Layout() = default;
+  Layout(const Layout& other) = default;
 
   inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
@@ -309,6 +329,7 @@ class Layout {
   std::string ToString() const;
   StatusOr<LayoutProto> ToProto() const;
 
+  LayoutType type() const { return type_; }
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
   static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
@@ -319,6 +340,8 @@ class Layout {
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
+
+  // Deprecated: Replace calls with GetLayout that creates a new instance.
   void set_mesh(Mesh mesh) { mesh_ = mesh; }
 
   // Returns a layout for the transposed matrix for given layout. This assumes
@@ -331,17 +354,21 @@ class Layout {
   static bool IsShardedDimension(const absl::string_view name) {
     return !IsUnshardedDimension(name);
   }
-  static bool IsUnshardedSpec(const ShardingSpec& spec) {
-    return IsUnshardedDimension(spec.sharding_spec());
-  }
-  static bool IsShardedSpec(const ShardingSpec& spec) {
-    return !IsUnshardedDimension(spec.sharding_spec());
-  }
   static StatusOr<Layout> GetLayout(
-      const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh);
+      LayoutType type, const std::vector<std::string>& sharding_spec_strs,
+      const Mesh& mesh);
+
+  // Deprecated: Update all call sites to GetLayout(LayoutType::kStatic, ...);
   static StatusOr<Layout> GetLayout(
-      const std::vector<ShardingSpec>& sharding_specs, const Mesh& mesh);
-  static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh);
+      const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh) {
+    return GetLayout(LayoutType::kStatic, sharding_spec_strs, mesh);
+  }
+
+  // Deprecated: Update all call sites to GetLayout(LayoutType::kSingleDevice,
+  // {}, ...);
+  static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh) {
+    return GetLayout(LayoutType::kSingleDevice, {}, mesh);
+  }
 
   // Makes a new layout from this one dropping the given dimensions.
   // If keep_dims is true, the dimensions are replicated rather than
@@ -349,13 +376,22 @@ class Layout {
   StatusOr<Layout> GetLayoutWithReducedDims(
       const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const;
 
+  // Converts the Layout to Ragged.
+  StatusOr<Layout> ToRagged() const {
+    return GetLayout(LayoutType::kRagged, sharding_specs_, mesh_);
+  }
+
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  StatusOr<Layout> Truncate(int64 split_point, bool end = false) const;
+  Layout Truncate(int64 split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
+
+  // Minimally pads replicated axes on the left, or removes axes on the right,
+  // such that the result layout has the provided rank.
+  StatusOr<Layout> EnsureRank(int64_t rank) const;
 
   bool IsFullyReplicated() const;
   bool IsLastDimReplicated() const;
@@ -366,8 +402,11 @@ class Layout {
   bool IsEmpty() const;
 
   // Compute global shape using the layout and provided local_shape.
+  // Optionally take a second parameter `local_shapes` that represents the shape
+  // of all local tensors.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      absl::Span<const int64_t> local_shape) const;
+      absl::Span<const int64_t> local_shape,
+      const std::vector<std::vector<int64_t>>* local_shapes = nullptr) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;
@@ -375,14 +414,8 @@ class Layout {
       const PartialTensorShape& global_shape) const;
 
   int64 rank() const { return sharding_specs_.size(); }
-  size_t num_shards_for_dim(const ShardingSpec& dim) const;
   size_t num_shards_for_dim(int) const;
   std::vector<int32> num_shards() const;
-
-  const ShardingSpec& dim(int64 idx) const { return sharding_specs_[idx]; }
-  absl::Span<const ShardingSpec> sharding_specs() const {
-    return sharding_specs_;
-  }
 
   // Computes the corresponding shard vector to this layout.
   ShardVector GetShardVector() const;
@@ -410,7 +443,8 @@ class Layout {
   }
 
  private:
-  std::vector<ShardingSpec> sharding_specs_;
+  std::vector<std::string> sharding_specs_;
+  LayoutType type_;
   Mesh mesh_;
 };
 
@@ -419,6 +453,9 @@ class Layout {
 // dimension returns an error rather than a layout.
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
+
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
 
 }  // namespace dtensor
 }  // namespace tensorflow

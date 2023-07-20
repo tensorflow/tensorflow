@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/xrt_state.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -93,7 +94,7 @@ Status AllocateScopedShapedBuffer(
   // The ScopedShapedBuffer frees the buffers that have so far been allocated if
   // it goes out of scope. That's useful if we return early as the result of an
   // error allocating one of the later buffers.
-  *buffer = absl::make_unique<xla::ScopedShapedBuffer>(
+  *buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, on_device_shape, allocator, device_ordinal);
   for (auto& index_to_buffer : (*buffer)->buffers()) {
     const xla::Shape& subshape =
@@ -283,7 +284,7 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapOut(xla::Backend* backend,
     xla::Literal literal(on_host_shape());
     TF_RETURN_IF_ERROR(StoreToLiteral(backend, &literal));
     ReleaseBuffers();
-    literal_ = absl::make_unique<xla::Literal>(std::move(literal));
+    literal_ = std::make_unique<xla::Literal>(std::move(literal));
     return true;
   }
   return false;
@@ -477,7 +478,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
   // writes index tables will be happy lower down.
   xla::Shape spine_shape = elements.shape();
   xla::LayoutUtil::SetToDefaultLayout(&spine_shape);
-  auto new_tuple_buffers = absl::make_unique<xla::ScopedShapedBuffer>(
+  auto new_tuple_buffers = std::make_unique<xla::ScopedShapedBuffer>(
       spine_shape, spine_shape, allocator, device_ordinal);
   TF_RETURN_IF_ERROR(elements.ForEachElementWithStatus(
       [&](const xla::ShapeIndex& index, const ExpandedTupleInput& element) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
@@ -54,7 +55,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
           // 1. The remote tensor isn't ready.
           // 2. Lost connection to remote worker. In this case client will
           //    crash. We don't want to spam user with redundant warning logs.
-          if (!s.ok() && ready && !errors::IsUnavailable(s)) {
+          if (!s.ok() && ready && !absl::IsUnavailable(s)) {
             LOG_EVERY_N_SEC(WARNING, 60)
                 << "Ignoring an error encountered when deleting "
                    "remote tensors handles: "

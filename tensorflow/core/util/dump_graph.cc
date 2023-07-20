@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -94,7 +95,7 @@ GraphDumperConfig& GetGraphDumperConfig() {
 // WritableFile that simply prints to stderr.
 class StderrWritableFile : public WritableFile {
  public:
-  StderrWritableFile() {}
+  StderrWritableFile() = default;
 
   Status Append(StringPiece data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());

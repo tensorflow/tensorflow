@@ -15,9 +15,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <numeric>
-#include <string>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -26,14 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "ortools/linear_solver/linear_solver.h"
 
 namespace op = xla::testing::opcode_matchers;
-
-using MPConstraint = operations_research::MPConstraint;
-using MPSolver = operations_research::MPSolver;
-using MPSolverParameters = operations_research::MPSolverParameters;
-using MPVariable = operations_research::MPVariable;
 
 namespace xla {
 namespace spmd {
@@ -58,31 +50,6 @@ ENTRY %elementwise {
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
-}
-
-TEST(MIPSolverTest, TwoVariableToyExample) {
-  // SAT or SCIP
-  std::unique_ptr<MPSolver> solver(
-      std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
-  solver->MutableObjective()->SetMaximization();
-  ASSERT_TRUE(solver);
-  // Test with the following integer programming problem:
-  //   max  x + 2y
-  //   s.t. 6x + 2y <= 19
-  //        0 <= x <= 3
-  //        0 <= y <= 2
-  MPVariable* x = solver->MakeIntVar(0.0, 3.0, "x");
-  MPVariable* y = solver->MakeIntVar(0.0, 2.0, "y");
-  MPConstraint* constraint =
-      solver->MakeRowConstraint(-MPSolver::infinity(), 19.0);
-  constraint->SetCoefficient(x, 6.0);
-  constraint->SetCoefficient(y, 2.0);
-  solver->MutableObjective()->SetCoefficient(x, 1.0);
-  solver->MutableObjective()->SetCoefficient(y, 2.0);
-  MPSolver::ResultStatus solve_status = solver->Solve();
-  EXPECT_EQ(solve_status, MPSolver::OPTIMAL);
-  EXPECT_DOUBLE_EQ(x->solution_value(), 2.0);
-  EXPECT_DOUBLE_EQ(y->solution_value(), 2.0);
 }
 
 class AutoShardingTest : public HloTestBase {
@@ -342,6 +309,7 @@ ENTRY twomatmul {
                           ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
+  option.allow_replicated_strategy_for_dot_and_conv = false;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
@@ -368,6 +336,34 @@ ENTRY twomatmul {
   ASSERT_NE(dot5, nullptr);
   EXPECT_THAT(dot5,
               op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
+
+  // Test with replicated strategies on for dot
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
+  option.enable = true;
+  option.allow_replicated_strategy_for_dot_and_conv = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  param1 = FindInstruction(module.get(), "parameter.1");
+  ASSERT_NE(param1, nullptr);
+  EXPECT_THAT(param1, op::Sharding("{replicated}"));
+  param2 = FindInstruction(module.get(), "parameter.2");
+  ASSERT_NE(param2, nullptr);
+  EXPECT_THAT(param2, op::Sharding("{replicated}"));
+  param3 = FindInstruction(module.get(), "parameter.3");
+  ASSERT_NE(param3, nullptr);
+  EXPECT_THAT(param3,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"));
+  dot4 = FindInstruction(module.get(), "dot.4");
+  ASSERT_NE(dot4, nullptr);
+  EXPECT_THAT(dot4, op::Sharding("{replicated}"));
+  dot5 = FindInstruction(module.get(), "dot.5");
+  ASSERT_NE(dot5, nullptr);
+  EXPECT_THAT(dot5, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
 TEST_F(AutoShardingTest, ProcessCustomCallShardings) {
@@ -417,8 +413,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_FALSE(changed);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* ins : computation->instructions()) {
@@ -443,8 +439,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_TRUE(changed);
   // Dot does not have shardings anymore.
   auto* dot = FindInstruction(module.get(), "dot");
@@ -486,8 +482,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_TRUE(changed);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* ins : computation->instructions()) {

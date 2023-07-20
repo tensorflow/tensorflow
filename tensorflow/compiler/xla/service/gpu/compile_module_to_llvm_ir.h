@@ -51,22 +51,11 @@ struct CompileModuleResults {
   std::string module_name;
 };
 
-Status GetMlirAllocationInfo(
-    mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
-    absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape, EntryFunctionAttributes* entry_func_attrs);
-
 // Removes all globals from the given module that are both uninitialized and
 // have no uses within that module.
 void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
-
-StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
-    mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
-    std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump = nullptr);
 
 std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
                                                 const HloInstruction*,

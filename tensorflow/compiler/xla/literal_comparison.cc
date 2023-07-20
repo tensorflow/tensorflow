@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#include <limits>
+#include <type_traits>
+
+#include "tensorflow/compiler/xla/primitive_util.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -67,56 +72,19 @@ bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
 template <typename NativeT>
 bool CompareEqual(NativeT lhs, NativeT rhs,
                   absl::Span<const int64_t> multi_index) {
+  // Specializations for floating types that do bitwise comparisons when
+  // equality comparison is requested.
+  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
+                !std::numeric_limits<NativeT>::is_integer) {
+    using BitT = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
+    return CompareFloatsBitwiseEqual<NativeT, BitT>(lhs, rhs, multi_index);
+  }
+  if constexpr (is_complex_v<NativeT>) {
+    using ComponentT = typename NativeT::value_type;
+    return CompareEqual<ComponentT>(lhs.real(), rhs.real(), multi_index) &&
+           CompareEqual<ComponentT>(lhs.imag(), rhs.imag(), multi_index);
+  }
   return lhs == rhs;
-}
-
-// Specializations for floating types that do bitwise comparisons when equality
-// comparison is requested.
-template <>
-bool CompareEqual<tsl::float8_e5m2>(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
-                                    absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<tsl::float8_e5m2, uint8_t>(lhs, rhs,
-                                                              multi_index);
-}
-template <>
-bool CompareEqual<tsl::float8_e4m3fn>(tsl::float8_e4m3fn lhs,
-                                      tsl::float8_e4m3fn rhs,
-                                      absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
-                                                                multi_index);
-}
-template <>
-bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
-                            absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16_t>(lhs, rhs, multi_index);
-}
-template <>
-bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
-                               absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16_t>(lhs, rhs,
-                                                          multi_index);
-}
-template <>
-bool CompareEqual<float>(float lhs, float rhs,
-                         absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<float, uint32_t>(lhs, rhs, multi_index);
-}
-template <>
-bool CompareEqual<double>(double lhs, double rhs,
-                          absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<double, uint64_t>(lhs, rhs, multi_index);
-}
-template <>
-bool CompareEqual<complex64>(complex64 lhs, complex64 rhs,
-                             absl::Span<const int64_t> multi_index) {
-  return CompareEqual<float>(lhs.real(), rhs.real(), multi_index) &&
-         CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
-}
-template <>
-bool CompareEqual<complex128>(complex128 lhs, complex128 rhs,
-                              absl::Span<const int64_t> multi_index) {
-  return CompareEqual<double>(lhs.real(), rhs.real(), multi_index) &&
-         CompareEqual<double>(lhs.imag(), rhs.imag(), multi_index);
 }
 
 template <typename NativeT, typename UnsignedT>
@@ -137,77 +105,25 @@ Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
 template <typename NativeT>
 Status MakeErrorStatus(NativeT lhs, NativeT rhs,
                        absl::Span<const int64_t> multi_index) {
-  return InvalidArgument(
-      "first mismatch at array index %s:\n  expected value: %s\n  actual "
-      "value:   %s",
-      LiteralUtil::MultiIndexAsString(multi_index), StrCat(lhs), StrCat(rhs));
-}
-
-template <>
-Status MakeErrorStatus(s4 lhs, s4 rhs, absl::Span<const int64_t> multi_index) {
-  return InvalidArgument(
-      "first mismatch at array index %s:\n  expected value: %s\n  actual "
-      "value:   %s",
-      LiteralUtil::MultiIndexAsString(multi_index),
-      StrCat(static_cast<int8_t>(lhs)), StrCat(static_cast<int8_t>(rhs)));
-}
-
-template <>
-Status MakeErrorStatus(u4 lhs, u4 rhs, absl::Span<const int64_t> multi_index) {
-  return InvalidArgument(
-      "first mismatch at array index %s:\n  expected value: %s\n  actual "
-      "value:   %s",
-      LiteralUtil::MultiIndexAsString(multi_index),
-      StrCat(static_cast<uint8_t>(lhs)), StrCat(static_cast<uint8_t>(rhs)));
-}
-
-template <>
-Status MakeErrorStatus(tsl::float8_e5m2 lhs, tsl::float8_e5m2 rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<tsl::float8_e5m2, uint8_t>(lhs, rhs,
-                                                           multi_index);
-}
-template <>
-Status MakeErrorStatus(tsl::float8_e4m3fn lhs, tsl::float8_e4m3fn rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<tsl::float8_e4m3fn, uint8_t>(lhs, rhs,
-                                                             multi_index);
-}
-template <>
-Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<bfloat16, uint16_t>(lhs, rhs, multi_index);
-}
-template <>
-Status MakeErrorStatus(Eigen::half lhs, Eigen::half rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<Eigen::half, uint16_t>(lhs, rhs, multi_index);
-}
-template <>
-Status MakeErrorStatus(float lhs, float rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<float, uint32_t>(lhs, rhs, multi_index);
-}
-template <>
-Status MakeErrorStatus(double lhs, double rhs,
-                       absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<double, uint64_t>(lhs, rhs, multi_index);
-}
-template <>
-Status MakeErrorStatus(complex64 lhs, complex64 rhs,
-                       absl::Span<const int64_t> multi_index) {
-  if (!CompareEqual<float>(lhs.real(), rhs.real(), multi_index)) {
-    return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
+  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
+                std::numeric_limits<NativeT>::is_integer) {
+    return InvalidArgument(
+        "first mismatch at array index %s:\n  expected value: %s\n  actual "
+        "value:   %s",
+        LiteralUtil::MultiIndexAsString(multi_index), StrCat(lhs), StrCat(rhs));
   }
-  return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
-}
-template <>
-Status MakeErrorStatus(complex128 lhs, complex128 rhs,
-                       absl::Span<const int64_t> multi_index) {
-  if (!CompareEqual<double>(lhs.real(), rhs.real(), multi_index)) {
-    return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
+  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
+                !std::numeric_limits<NativeT>::is_integer) {
+    using BitT = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
+    return MakeBitwiseErrorStatus<NativeT, BitT>(lhs, rhs, multi_index);
   }
-  return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
+  if constexpr (is_complex_v<NativeT>) {
+    using ComponentT = typename NativeT::value_type;
+    if (!CompareEqual<ComponentT>(lhs.real(), rhs.real(), multi_index)) {
+      return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
+    }
+    return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
+  }
 }
 
 // A recursive function which iterates through every index of expected and
@@ -285,65 +201,27 @@ bool IsNan(NativeT value) {
 }
 
 // Converts the given floating-point value to a string.
-std::string FpValueToString(tsl::float8_e5m2 value) {
-  return absl::StrFormat("%5.3g", static_cast<double>(value));
+template <typename NativeT>
+std::string FpValueToString(NativeT value) {
+  if constexpr (std::numeric_limits<NativeT>::is_specialized &&
+                !std::numeric_limits<NativeT>::is_integer) {
+    constexpr int kPrecisionDigits = std::numeric_limits<NativeT>::max_digits10;
+    const int kExponentDigts =
+        std::ceil(std::log10(std::numeric_limits<NativeT>::max_exponent10));
+    constexpr int kExtraChars = 4;
+    const int kTotalChars = kPrecisionDigits * kExponentDigts + kExtraChars;
+    return absl::StrFormat("%*.*g", kTotalChars, kPrecisionDigits,
+                           static_cast<double>(value));
+  }
+  if constexpr (is_complex_v<NativeT>) {
+    return absl::StrCat(FpValueToString(value.real()), " + ",
+                        FpValueToString(value.imag()));
+  }
 }
 
-std::string FpValueToString(tsl::float8_e4m3fn value) {
-  return absl::StrFormat("%5.3g", static_cast<double>(value));
-}
-
-std::string FpValueToString(bfloat16 value) {
-  return absl::StrFormat("%10.4g", static_cast<double>(value));
-}
-
-std::string FpValueToString(half value) {
-  return absl::StrFormat("%11.5g", static_cast<double>(value));
-}
-
-std::string FpValueToString(float value) {
-  return absl::StrFormat("%15.9g", static_cast<double>(value));
-}
-
-std::string FpValueToString(double value) {
-  return absl::StrFormat("%24.17g", value);
-}
-
-std::string FpValueToString(complex64 value) {
-  return absl::StrCat(FpValueToString(value.real()), " + ",
-                      FpValueToString(value.imag()));
-}
-
-std::string FpValueToString(complex128 value) {
-  return absl::StrCat(FpValueToString(value.real()), " + ",
-                      FpValueToString(value.imag()));
-}
-
-// A wrapper of std::abs to include data types that are not supported by
-// std::abs, such as bfloat16 and half.
 template <typename NativeT>
 double FpAbsoluteValue(NativeT value) {
-  return std::abs(value);
-}
-
-template <>
-double FpAbsoluteValue(bfloat16 value) {
-  return FpAbsoluteValue<float>(static_cast<float>(value));
-}
-
-template <>
-double FpAbsoluteValue(half value) {
-  return FpAbsoluteValue<float>(static_cast<float>(value));
-}
-
-template <>
-double FpAbsoluteValue(tsl::float8_e5m2 value) {
-  return FpAbsoluteValue<float>(static_cast<float>(value));
-}
-
-template <>
-double FpAbsoluteValue(tsl::float8_e4m3fn value) {
-  return FpAbsoluteValue<float>(static_cast<float>(value));
+  return static_cast<double>(Eigen::numext::abs(value));
 }
 
 // Helper class for comparing floating-point literals within an error bound.
@@ -796,73 +674,23 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
     Literal* miscompared_ptr =
         (miscompare_callback == nullptr ? nullptr : &miscompared);
 
-    switch (expected.shape().element_type()) {
-      case PRED:
-        result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S4:
-        result = Equal<s4>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S8:
-        result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S16:
-        result = Equal<int16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S32:
-        result = Equal<int32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case S64:
-        result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U4:
-        result = Equal<u4>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U8:
-        result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U16:
-        result = Equal<uint16_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U32:
-        result = Equal<uint32_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case U64:
-        result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F8E5M2:
-        result = Equal<tsl::float8_e5m2>(expected, actual, index, 0,
-                                         miscompared_ptr);
-        break;
-      case F8E4M3FN:
-        result = Equal<tsl::float8_e4m3fn>(expected, actual, index, 0,
-                                           miscompared_ptr);
-        break;
-      case BF16:
-        result = Equal<bfloat16>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F16:
-        result = Equal<half>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F32:
-        result = Equal<float>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case F64:
-        result = Equal<double>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C64:
-        result = Equal<complex64>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case C128:
-        result = Equal<complex128>(expected, actual, index, 0, miscompared_ptr);
-        break;
-      case TOKEN:
-        // Tokens have no on-device representation and are trivially equal.
-        return OkStatus();
-      default:
-        LOG(FATAL) << "Unsupported primitive type: "
-                   << PrimitiveType_Name(expected.shape().element_type());
-    }
+    primitive_util::PrimitiveTypeSwitch<void>(
+        [&](auto primitive_type_constant) -> void {
+          if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+            using NativeT =
+                primitive_util::NativeTypeOf<primitive_type_constant>;
+            result =
+                Equal<NativeT>(expected, actual, index, 0, miscompared_ptr);
+            return;
+          }
+          if constexpr (primitive_type_constant == TOKEN) {
+            // Tokens have no on-device representation and are trivially equal.
+            return;
+          }
+          LOG(FATAL) << "Unsupported primitive type: "
+                     << PrimitiveType_Name(expected.shape().element_type());
+        },
+        expected.shape().element_type());
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),
@@ -924,52 +752,20 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
       ShapeUtil::ElementIsComplex(expected.shape())) {
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
-    switch (expected.shape().element_type()) {
-      case F8E5M2:
-        return NearComparator<tsl::float8_e5m2>::Compare(
-            expected, actual, shape_index, error, use_detailed_message,
-            miscompare_callback);
-        break;
-      case F8E4M3FN:
-        return NearComparator<tsl::float8_e4m3fn>::Compare(
-            expected, actual, shape_index, error, use_detailed_message,
-            miscompare_callback);
-        break;
-      case BF16:
-        return NearComparator<bfloat16>::Compare(expected, actual, shape_index,
-                                                 error, use_detailed_message,
-                                                 miscompare_callback);
-        break;
-      case F16:
-        return NearComparator<half>::Compare(expected, actual, shape_index,
-                                             error, use_detailed_message,
-                                             miscompare_callback);
-        break;
-      case F32:
-        return NearComparator<float>::Compare(expected, actual, shape_index,
-                                              error, use_detailed_message,
-                                              miscompare_callback);
-        break;
-      case F64:
-        return NearComparator<double>::Compare(expected, actual, shape_index,
-                                               error, use_detailed_message,
-                                               miscompare_callback);
-        break;
-      case C64:
-        return NearComparator<complex64>::Compare(expected, actual, shape_index,
-                                                  error, use_detailed_message,
-                                                  miscompare_callback);
-        break;
-      case C128:
-        return NearComparator<complex128>::Compare(
-            expected, actual, shape_index, error, use_detailed_message,
-            miscompare_callback);
-        break;
-      default:
-        LOG(FATAL) << "Unsupported primitive type in near comparator: "
-                   << PrimitiveType_Name(expected.shape().element_type())
-                   << ". Must be floating-point type.";
-    }
+    return primitive_util::PrimitiveTypeSwitch<Status>(
+        [&](auto primitive_type) -> Status {
+          if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
+                        primitive_util::IsComplexType(primitive_type)) {
+            using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+            return NearComparator<NativeT>::Compare(
+                expected, actual, shape_index, error, use_detailed_message,
+                miscompare_callback);
+          }
+          LOG(FATAL) << "Unsupported primitive type in near comparator: "
+                     << PrimitiveType_Name(expected.shape().element_type())
+                     << ". Must be floating-point type.";
+        },
+        expected.shape().element_type());
   }
 
   // Non-floating point, non-tuple literal.

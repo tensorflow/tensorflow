@@ -2327,18 +2327,17 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   std::shared_ptr<Node> node_4 = GetNode(4);
   std::shared_ptr<Node> node_5 = GetNode(5);
   std::shared_ptr<Node> node_6 = GetNode(6);
-  // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
+  // Set node 1 low watermark to 3 and high watermark to 3. Expect that it is
   // downsized to 2.
-  node_1->record_buffer_event(100, 1);
-  node_1->record_buffer_event(100, 1);
-  EXPECT_EQ(1, node_1->buffered_elements_low());
-  EXPECT_EQ(2, node_1->buffered_elements_high());
-  // Set node 3 low watermark to 1 and high watermark to 5. Expect that it is
-  // not changed.
-  node_3->record_buffer_event(100, 1);
-  node_3->record_buffer_event(400, 4);
+  node_1->record_buffer_event(100, 3);
+  EXPECT_EQ(3, node_1->buffered_elements_low());
+  EXPECT_EQ(3, node_1->buffered_elements_high());
+  // Set node 3 low watermark to 3 and high watermark to 5. Expect that it is
+  // downsized to 4.
+  node_3->record_buffer_event(100, 3);
+  node_3->record_buffer_event(400, 2);
   node_3->record_buffer_event(-100, -1);
-  EXPECT_EQ(1, node_3->buffered_elements_low());
+  EXPECT_EQ(3, node_3->buffered_elements_low());
   EXPECT_EQ(5, node_3->buffered_elements_high());
   // Set node 4 low watermark to 0 and high watermark to 5. Expect that it is
   // upsized to 10.
@@ -2367,12 +2366,12 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   model_->OptimizeBuffers(node_1->Snapshot(), 10000);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
-  EXPECT_EQ(5, node_3->parameter_value(kBufferSize));
+  EXPECT_EQ(4, node_3->parameter_value(kBufferSize));
   EXPECT_EQ(10, node_4->parameter_value(kBufferSize));
   EXPECT_EQ(8, node_5->parameter_value(kBufferSize));
   EXPECT_EQ(7, node_6->parameter_value(kBufferSize));
-  EXPECT_EQ(2, node_1->buffered_elements_low());
-  EXPECT_EQ(2, node_1->buffered_elements_high());
+  EXPECT_EQ(3, node_1->buffered_elements_low());
+  EXPECT_EQ(3, node_1->buffered_elements_high());
   EXPECT_EQ(4, node_3->buffered_elements_low());
   EXPECT_EQ(4, node_3->buffered_elements_high());
   EXPECT_EQ(4, node_4->buffered_elements_low());
@@ -3071,14 +3070,18 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 TEST_F(ModelTimingTest, ComputeTargetTime) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3087,14 +3090,18 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
   model_ = std::make_unique<Model>();
   model_->AddExperiment("stage_based_autotune_v2");
 
-  model_->RecordIteratorGapTime(5);
-  model_->RecordIteratorGapTime(5);
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
   model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(15);
-  model_->RecordIteratorGapTime(1000);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 9; ++i) {
+    model_->RecordIteratorGapTime(1000);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(5, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3102,16 +3109,14 @@ TEST_F(ModelTimingTest, ComputeTargetTime_Experiment) {
 TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
   model_ = std::make_unique<Model>();
 
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(10);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  model_->RecordIteratorGapTime(20);
-  // Gap times that are >= 10 seconds are always dropped.
-  model_->RecordIteratorGapTime(10000000);
+  for (int i = 0; i < 50; ++i) {
+    model_->RecordIteratorGapTime(10);
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
 
   EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
@@ -3129,6 +3134,219 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   }
 
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeEmptyModel) {
+  model::Model model;
+  EXPECT_EQ(model.ComputeSnapshotProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeNullSnapshot) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage1) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1200.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage2) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeMultipleStages) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 50000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 4
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 
 TEST_F(ModelTimingTest, SelfTime) {

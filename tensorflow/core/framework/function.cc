@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -25,15 +26,18 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -42,7 +46,9 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace tensorflow {
 
@@ -1220,14 +1226,14 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
-    : FunctionRecord(FunctionDef(fdef), stack_traces, finalized) {}
+    : FunctionRecord(FunctionDef(fdef), StackTracesMap(stack_traces),
+                     finalized) {}
 
 FunctionRecord::FunctionRecord(FunctionDef&& fdef,
-                               const StackTracesMap& stack_traces,
-                               bool finalized)
+                               StackTracesMap&& stack_traces, bool finalized)
     : finalized_(finalized),
       fdef_(std::move(fdef)),
-      stack_traces_(stack_traces),
+      stack_traces_(std::move(stack_traces)),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
       op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
@@ -1357,9 +1363,9 @@ Status FunctionLibraryDefinition::AddFunctionDef(
 }
 
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
-    FunctionDef&& fdef, const StackTracesMap& stack_traces, bool* added) {
+    FunctionDef&& fdef, StackTracesMap&& stack_traces, bool* added) {
   FunctionRecord* record =
-      new FunctionRecord(std::move(fdef), stack_traces, true);
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
   core::ScopedUnref scoped_unref(record);
   Status status = AddHelper(record, added);
   return status;
@@ -1507,12 +1513,14 @@ Status FunctionLibraryDefinition::AddLibrary(FunctionDefLibrary&& lib_def) {
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
-    const FunctionDefLibrary& lib_def, const StackTracesMap& stack_traces) {
-  return AddLibrary(FunctionDefLibrary(lib_def), stack_traces);
+    const FunctionDefLibrary& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  return AddLibrary(FunctionDefLibrary(lib_def), library_traces);
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
-    FunctionDefLibrary&& lib_def, const StackTracesMap& stack_traces) {
+    FunctionDefLibrary&& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   mutex_lock l(mu_);
@@ -1521,8 +1529,11 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (FunctionDef& fdef : *lib_def.mutable_function()) {
-    string name = fdef.signature().name();
-    s = AddFunctionDefHelper(std::move(fdef), stack_traces, &added);
+    std::string name = fdef.signature().name();
+    StackTracesMap stack_traces = library_traces.contains(name)
+                                      ? StackTracesMap(library_traces.at(name))
+                                      : StackTracesMap();
+    s = AddFunctionDefHelper(std::move(fdef), std::move(stack_traces), &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {
@@ -1556,8 +1567,8 @@ Status FunctionLibraryDefinition::ReplaceFunction(
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(
-      AddFunctionDefHelper(FunctionDef(fdef), stack_traces, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(
+      FunctionDef(fdef), StackTracesMap(stack_traces), &added));
   return OkStatus();
 }
 

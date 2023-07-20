@@ -273,6 +273,15 @@ Status Main(const MainFlags& flags) {
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
   codegen_opts.gen_program_shape = flags.gen_program_shape;
   codegen_opts.target_triple = flags.target_triple;
+  // Set the XLA Runtime bit if this is an HloLowering.
+  if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
+    for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
+      if (component == "HloLowering") {
+        codegen_opts.use_xla_runtime = true;
+      }
+    }
+  }
+
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }

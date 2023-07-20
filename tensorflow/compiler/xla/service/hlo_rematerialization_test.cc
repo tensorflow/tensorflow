@@ -23,11 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_rematerialization_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -45,17 +43,20 @@ class HloRematerializationTest : public RematerializationTestBase {
                                          HloModule* module,
                                          int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloMemoryScheduler scheduler(
-        [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-        ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
-    TF_EXPECT_OK(scheduler.Run(module).status());
-    HloRematerialization remat(
+    if (!module->has_schedule()) {
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
+          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      TF_EXPECT_OK(scheduler.Run(module).status());
+    }
+
+    HloRematerialization::Options options(
         ByteSizeOf, memory_limit_bytes,
-        /*sizes=*/nullptr,
-        HloRematerialization::RematerializationPass::kPreFusion,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1, nullptr,
         HloRematerialization::RematerializationMode::kRecomputeAndCompress,
         min_remat_size);
+    HloRematerialization::RematerializationSizes sizes;
+    HloRematerialization remat(options, sizes);
     return remat.Run(module);
   }
 };
@@ -605,14 +606,14 @@ class CompressingRematerializationTest : public RematerializationTestBase {
                                          HloModule* module,
                                          int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloRematerialization remat(
+    HloRematerialization::Options options(
         ShapeSizePadMinorTo64, memory_limit_bytes,
-        /*sizes=*/nullptr,
-        HloRematerialization::RematerializationPass::kPreFusion,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         ChooseCompactLayoutForShape,
         HloRematerialization::RematerializationMode::kCompressOnly,
         min_remat_size);
+    HloRematerialization::RematerializationSizes sizes;
+    HloRematerialization remat(options, sizes);
     return remat.Run(module);
   }
 };

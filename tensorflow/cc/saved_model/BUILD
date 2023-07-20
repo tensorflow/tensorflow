@@ -1,11 +1,14 @@
-# Description:
+#include "third_party/absl/strings/str_cat.h"
+#Description:
 # TensorFlow SavedModel.
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_google",
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
@@ -28,6 +31,8 @@ package(
 
 exports_files([
     "loader.h",
+    "testdata/chunked_saved_model/chunked_model/saved_model.cpb",
+    "testdata/chunked_saved_model/chunked_model/saved_model.pbtxt",
 ])
 
 cc_library(
@@ -63,7 +68,9 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
-    ] + if_not_mobile([
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter:merge",
+    ]) + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
@@ -87,9 +94,8 @@ tf_cc_test(
         ":tag_constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/platform:resource_loader",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -131,6 +137,8 @@ cc_library(
         ":fingerprinting",
         ":loader_util",
         ":reader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_not_mobile([
         ":metrics",
         ":util",
@@ -242,7 +250,7 @@ tf_cc_test(
 )
 
 # A subset of the TF2 saved models can be generated with this tool.
-py_binary(
+py_strict_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
     data = [
@@ -252,21 +260,50 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:io_ops",
+        "//tensorflow/python/ops:lookup_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:asset",
         "@absl_py//absl:app",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# py_strict_binary(
+#     name = "testdata/generate_chunked_models",
+#     srcs = ["testdata/generate_chunked_models.py"],
+#     python_version = "PY3",
+#     srcs_version = "PY3",
+#     deps = [
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/compat:v2_compat",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/lib/io:lib",
+#         "//tensorflow/python/module",
+#         "//tensorflow/python/saved_model:loader",
+#         "//tensorflow/python/saved_model:save",
+#         "//tensorflow/python/saved_model:save_options",
+#         "//tensorflow/python/util:compat",
+#         "//tensorflow/tools/proto_splitter:constants",
+#         "//tensorflow/tools/proto_splitter/python:saved_model",
+#         "@absl_py//absl:app",
+#         "@absl_py//absl/flags",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
@@ -284,6 +321,7 @@ filegroup(
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
         "testdata/OptimizerSlotVariableModule/**",
+        "testdata/chunked_saved_model/**",
     ]),
 )
 
@@ -369,7 +407,7 @@ tf_cc_test(
         ":metrics",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -414,11 +452,21 @@ cc_library(
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core/util/tensor_bundle:naming",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
-    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    ] + if_not_mobile([
+        "//tensorflow/core:lib",
+    ]) + if_android([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_google([
+        ":fingerprinting_utils",
+        "//tensorflow/tools/proto_splitter/cc:util",
+    ]),
     alwayslink = True,
 )
 
@@ -427,15 +475,115 @@ cc_library(
     hdrs = ["fingerprinting.h"],
     visibility = [
         "//learning/brain/contrib/hub/server/distro:__subpackages__",
+        "//learning/brain/contrib/tpu_modeling:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
     deps = if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status:statusor",
         "//tensorflow/core:protos_all_cc",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# cc_library(
+#     name = "fingerprinting_utils_impl",
+#     srcs = [
+#         "fingerprinting_utils.cc",
+#         "fingerprinting_utils.h",
+#     ],
+#     visibility = [
+#         "//tensorflow:__pkg__",
+#     ],
+#     deps = [
+#         ":constants",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#         "@com_google_absl//absl/strings",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core/graph/regularization:simple_delete",
+#         "//tensorflow/core/graph/regularization:util",
+#         "//tensorflow/core/util/tensor_bundle:naming",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tools/proto_splitter:merge",
+#         "//tensorflow/tools/proto_splitter/cc:util",
+#         "//tensorflow/tsl/platform:protobuf",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
+#     ],
+#     alwayslink = True,
+# )
+#
+# cc_library(
+#     name = "fingerprinting_utils",
+#     hdrs = ["fingerprinting_utils.h"],
+#     visibility = [
+#         "//tensorflow/cc/saved_model:__subpackages__",
+#     ],
+#     deps = if_static([
+#         ":fingerprinting_utils_impl",
+#         "@com_google_protobuf//:protobuf_headers",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#         "@com_google_absl//absl/strings",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tsl/platform:protobuf",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
+#         "//tensorflow/core:lib",
+#     ]),
+# )
+#
+# tf_cc_test(
+#     name = "fingerprinting_utils_test",
+#     srcs = ["fingerprinting_utils_test.cc"],
+#     data = [
+#         "//tensorflow/tools/proto_splitter/testdata:many-field.cpb",
+#         "//tensorflow/tools/proto_splitter/testdata:split-standard.cpb",
+#     ],
+#     deps = [
+#         ":fingerprinting_utils",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/strings",
+#         "//third_party/protobuf",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core/platform:errors",
+#         "//tensorflow/core/platform:path",
+#         "//tensorflow/core/platform:protobuf",
+#         "//tensorflow/core/platform:test",
+#         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
+#         "//tensorflow/tools/proto_splitter/cc:util",
+#         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+#         "@com_google_googletest//:gtest_main",
+#         "@riegeli//riegeli/bytes:file_reader",
+#         "@riegeli//riegeli/records:record_reader",
+#     ],
+# )
+#
+# tf_cc_test(
+#     name = "fingerprinting_chunked_test",
+#     size = "small",
+#     srcs = ["fingerprinting_chunked_test.cc"],
+#     data = [
+#         ":saved_model_fingerprinting_test_files",
+#         ":saved_model_test_files",
+#     ],
+#     deps = [
+#         ":fingerprinting",
+#         "@com_google_absl//absl/container:flat_hash_set",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core/platform:path",
+#         "@com_google_googletest//:gtest_main",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 tf_cc_test(
     name = "fingerprinting_test",

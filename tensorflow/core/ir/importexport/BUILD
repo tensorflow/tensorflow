@@ -6,12 +6,21 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":__subpackages__",
+        ":friends",
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core:dependency_allowlist",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "friends",
+    packages = [
+        "//waymo/ml/cn/...",
+        "//waymo/ml/compiler/mlir/...",
+    ],
 )
 
 cc_library(
@@ -230,6 +239,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/ir:test_utilities"],
     driver = "//tensorflow/core/ir:run_lit.sh",
     exclude = [],

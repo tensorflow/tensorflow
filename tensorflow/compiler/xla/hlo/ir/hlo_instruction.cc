@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,20 +47,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -370,6 +367,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto sort_operands = all_operands();
       instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
                                computations(0), proto.is_stable());
+      break;
+    }
+    case HloOpcode::kTopK: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "TopK instruction should have exactly 1 operand but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "TopK instruction should one called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction =
+          CreateTopK(shape, all_operands()[0], proto.k(), computations(0));
       break;
     }
     case HloOpcode::kTranspose:
@@ -1037,6 +1045,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->set_frontend_attributes(proto.frontend_attributes());
   }
 
+  if (proto.has_statistics_viz()) {
+    instruction->set_statistics_viz(proto.statistics_viz());
+  }
+
   return std::move(instruction);
 }
 
@@ -1054,6 +1066,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
     const Shape& shape, int64_t iota_dimension) {
   return std::make_unique<HloIotaInstruction>(shape, iota_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
+    const Shape& shape, HloInstruction* input, int64_t k,
+    HloComputation* compare) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, compare);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1743,6 +1761,7 @@ HloInstruction::CreateBroadcastSequence(
       broadcast->copy_sharding(operand);
     }
     broadcast->set_frontend_attributes(operand->frontend_attributes());
+    broadcast->set_statistics_viz(operand->statistics_viz());
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -1769,6 +1788,7 @@ HloInstruction::CreateBroadcastSequence(
     reshaped_operand->copy_sharding(operand);
   }
   reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
+  reshaped_operand->set_statistics_viz(operand->statistics_viz());
   // Broadcast 'reshape' up to the larger size.
   auto broadcast = HloInstruction::CreateBroadcast(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
@@ -1777,6 +1797,7 @@ HloInstruction::CreateBroadcastSequence(
     broadcast->copy_sharding(operand);
   }
   broadcast->set_frontend_attributes(operand->frontend_attributes());
+  broadcast->set_statistics_viz(operand->statistics_viz());
   return broadcast;
 }
 
@@ -1860,6 +1881,7 @@ void HloInstruction::SetupDerivedInstruction(
   }
   derived_instruction->set_metadata(metadata_);
   derived_instruction->set_frontend_attributes(frontend_attributes_);
+  derived_instruction->set_statistics_viz(statistics_viz_);
 }
 
 bool HloInstruction::IsRoot() const {
@@ -2102,6 +2124,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -2693,6 +2716,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2824,10 +2848,17 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return OkStatus();
 }
 
-Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
+                                          absl::string_view trigger) {
+  auto print_options = HloPrintOptions::ShortParsable()
+                           .set_print_operand_shape(true)
+                           .set_print_extra_attributes(false);
   TF_RET_CHECK(
       ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
-      << shape() << " is not compatible with " << new_producer->shape();
+      << "The shape doesn't match when replacing '" << ToString(print_options)
+      << "' with '" << new_producer->ToString(print_options) << "'. " << shape()
+      << " is not compatible with " << new_producer->shape() << "\n '"
+      << trigger << "' triggered this wrong replacement.";
   return ReplaceAllUsesWithDifferentShape(new_producer);
 }
 
@@ -2901,6 +2932,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
       return true;
     case HloOpcode::kCustomCall:
       // CustomCall can have a to_apply computation, but it is not required to
@@ -3210,9 +3242,18 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    printer->Append(", backend_config=\"");
-    printer->Append(CEscape(backend_config_.GetRawString()));
-    printer->Append("\"");
+    absl::string_view config = backend_config_.GetRawString();
+    printer->Append(", backend_config=");
+    // In the common case that the backend-config is valid-ish JSON, the parser
+    // doesn't need it delimited by quotes, so we can print it without
+    // CEsape'ing.  This is much easier to read.
+    if (LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(CEscape(config));
+      printer->Append("\"");
+    }
   }
 }
 
@@ -3342,7 +3383,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduceScatter ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
-               opcode() == HloOpcode::kSort) {
+               opcode() == HloOpcode::kTopK || opcode() == HloOpcode::kSort) {
       if (!called_computations().empty()) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("to_apply=");
@@ -3435,6 +3476,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
+      case HloOpcode::kTopK:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
             printer->Append("to_apply=\n");
@@ -3478,6 +3520,12 @@ void HloInstruction::PrintExtraAttributes(
                    PrintNameInternal(printer, pre->name(), options);
                  });
       printer->Append("}");
+    });
+  }
+
+  if (!statistics_viz_.statistics().empty()) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "statistics=", StatisticsVizToString(statistics_viz_));
     });
   }
 }
@@ -3546,6 +3594,8 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_frontend_attributes() = frontend_attributes_;
+
+  *proto.mutable_statistics_viz() = statistics_viz_;
 
   return proto;
 }
@@ -3838,6 +3888,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
+    case HloOpcode::kTopK:
+      return visitor->HandleTopK(this);
     case HloOpcode::kRecvDone:
       return visitor->HandleRecvDone(this);
     case HloOpcode::kSend:
@@ -4228,6 +4280,28 @@ std::string FrontendAttributesToString(
                          absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
+std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {
+  // Statistics is either empty, or always starts with the index of the
+  // statistic that is rendered on the graph, followed by the statistics that
+  // are being tracked. The index is 0 based, starting from the first statistic
+  // being tracked. The index and statistics are within a comma-separated list
+  // of attribute=value pairs,
+  // e.g., statistics={visualizing_index=0, count_nan=100, count_inf=200}.
+
+  if (statistics_viz.statistics().empty()) return "{}";
+
+  std::vector<Statistic> all_statistics(statistics_viz.statistics().begin(),
+                                        statistics_viz.statistics().end());
+
+  const auto formatter = [](std::string* out, const Statistic& item) {
+    absl::StrAppend(out, item.stat_name(), "=", item.stat_val());
+  };
+  return absl::StrFormat("{%s,%s}",
+                         absl::StrCat("visualizing_index=",
+                                      statistics_viz.stat_index_to_visualize()),
+                         absl::StrJoin(all_statistics, ",", formatter));
+}
+
 std::string PaddingConfigToString(const PaddingConfig& padding) {
   bool has_interior_padding =
       absl::c_any_of(padding.dimensions(),
@@ -4569,6 +4643,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
   }
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->mutable_precision_config();
+  }
   LOG(FATAL) << "Unimplemented method.";
 }
 
@@ -4745,13 +4822,13 @@ HloInstruction* HloInstruction::fused_expression_root() const {
   return Cast<HloFusionInstruction>(this)->fused_expression_root();
 }
 
-const tsl::gtl::iterator_range<UnwrappingIterator<
+tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
 }
 
-const tsl::gtl::iterator_range<
+tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloInstruction::fused_instructions() {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
@@ -4771,7 +4848,7 @@ const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 
-const bool HloInstruction::IsMultiOutputFusion() const {
+bool HloInstruction::IsMultiOutputFusion() const {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(this);
   return fusion != nullptr && fusion->IsMultiOutputFusion();
 }

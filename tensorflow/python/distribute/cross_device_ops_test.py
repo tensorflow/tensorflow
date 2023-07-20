@@ -42,6 +42,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import cond
@@ -204,7 +205,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     Returns:
       A list of `Tensor` or `IndexedSlices`.
     """
-    if isinstance(value, ops.Tensor):
+    if isinstance(value, tensor_lib.Tensor):
       return [value]
     elif isinstance(value, IndexedSlices):
       return [value]

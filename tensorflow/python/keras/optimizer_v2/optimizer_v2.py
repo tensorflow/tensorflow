@@ -30,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
@@ -684,7 +685,7 @@ class OptimizerV2(trackable.Trackable):
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
-      if isinstance(var, ops.Tensor):
+      if isinstance(var, tensor.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
@@ -787,7 +788,7 @@ class OptimizerV2(trackable.Trackable):
       prev_value = self._hyper[name]
       if (callable(prev_value)
           or isinstance(prev_value,
-                        (ops.Tensor, int, float,
+                        (tensor.Tensor, int, float,
                          learning_rate_schedule.LearningRateSchedule))
           or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
         self._hyper[name] = value
@@ -965,8 +966,8 @@ class OptimizerV2(trackable.Trackable):
     with self._distribution_strategy_scope():
       # Iterate hyper values deterministically.
       for name, value in sorted(self._hyper.items()):
-        if isinstance(value,
-                      (ops.Tensor, tf_variables.Variable)) or callable(value):
+        if isinstance(
+            value, (tensor.Tensor, tf_variables.Variable)) or callable(value):
           # The check for `callable` covers the usage when `value` is a
           # `LearningRateSchedule`, in which case it does not need to create a
           # variable.

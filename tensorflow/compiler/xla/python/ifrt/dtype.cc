@@ -26,6 +26,7 @@ namespace ifrt {
 
 std::optional<int> DType::byte_size() const {
   switch (kind_) {
+    case kPred:
     case kS8:
     case kU8:
       return 1;
@@ -53,7 +54,6 @@ std::optional<int> DType::byte_size() const {
 std::optional<int> DType::bit_size() const {
   switch (kind_) {
     case kPred:
-      return 1;
     case kS8:
     case kU8:
       return 8;

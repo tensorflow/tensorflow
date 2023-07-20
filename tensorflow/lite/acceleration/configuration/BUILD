@@ -16,7 +16,7 @@
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
@@ -224,60 +224,10 @@ cc_library_with_tflite(
     deps = ["@com_google_absl//absl/memory"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "nnapi_plugin",
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":nnapi_plugin_impl",
-    ],
-)
-
-cc_library(
-    name = "nnapi_plugin_impl",
-    srcs = ["nnapi_plugin.cc"],
-    hdrs = ["nnapi_plugin.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = nnapi_plugin_impl_visibility_allowlist() + [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
-    ],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/nnapi:nnapi_implementation_headers",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,  # For registration to always run.
-)
-
-cc_test(
-    name = "nnapi_plugin_test",
-    srcs = ["nnapi_plugin_test.cc"],
-    tags = [
-        "no_mac",
-        "no_windows",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":configuration_fbs",
-        ":nnapi_plugin",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/acceleration/configuration:nnapi_plugin_impl",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers",
-    ],
+    deps = ["//tensorflow/lite/core/acceleration/configuration:nnapi_plugin"],
 )
 
 cc_library(
@@ -288,7 +238,10 @@ cc_library(
         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
-        "//tensorflow:android": [
+        "//third_party/bazel_platforms/cpu:aarch64": [
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//third_party/bazel_platforms/cpu:armv7": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],

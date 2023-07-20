@@ -18,6 +18,7 @@ set -x
 source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS.sh
 
 ARM_SKIP_TESTS="${ARM_SKIP_TESTS} \
+-//tensorflow/compiler/mlir/lite/debug:debug_test \
 -//tensorflow/compiler/mlir/tfr/examples/mnist:mnist_ops_test \
 -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu \
 -//tensorflow/core/grappler/optimizers:remapper_test_cpu \

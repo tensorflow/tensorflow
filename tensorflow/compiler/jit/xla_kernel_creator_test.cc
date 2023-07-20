@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -136,7 +137,7 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
                                         input: 'b'
                                       )proto"),
                                       &kernel_);
-  EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
+  EXPECT_TRUE(absl::IsInternal(status)) << status;
 }
 
 TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
@@ -153,7 +154,7 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
                                         input: 'b'
                                       )proto"),
                                       &kernel_);
-  EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
+  EXPECT_TRUE(absl::IsInternal(status)) << status;
 }
 
 }  // namespace tensorflow

@@ -363,6 +363,21 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
   EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
             "pred[8,8,8]{0,2,1:T(8,128)}");
 
+  // PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(8);
+  tile->add_dimensions(128);
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:T(8,128)E(32)}");
+
+  // No tile. PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:E(32)}");
+
   // Tile with negative dimension size for combining dimensions.
   shape = ShapeUtil::MakeShapeWithDenseLayout(BF16, {2, 3, 1004}, {2, 1, 0});
   tile = shape.mutable_layout()->add_tiles();
@@ -541,6 +556,34 @@ TEST_F(LayoutUtilTest, StridesNotMajorToMinor) {
   std::vector<int64_t> byte_strides = {1880, 440, 44, 4};
   EXPECT_FALSE(LayoutUtil::ByteStridesIsMajorToMinor(
       byte_strides, {8, 9, 10, 11}, PrimitiveType::F32));
+}
+
+TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 2});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(0);
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  ShapeUtil::GetMutableSubshape(&shape, {0, 1})
+      ->mutable_layout()
+      ->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
 }
 }  // namespace
 }  // namespace xla

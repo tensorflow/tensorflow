@@ -29,6 +29,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -91,9 +93,9 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
                                platform, platform_device_id)
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
-    return errors::Unknown(
-        "Failed to query available memory for PluggableDevice ",
-        platform_device_id.value());
+    return absl::UnknownError(
+        absl::StrCat("Failed to query available memory for PluggableDevice ",
+                     platform_device_id.value()));
   }
 
   int64_t allocated_memory = 0;
@@ -101,7 +103,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
       device_options.per_process_gpu_memory_fraction();
   if (per_process_device_memory_fraction > 1.0 ||
       device_options.experimental().use_unified_memory()) {
-    return errors::Internal("Unified memory is not supported yet.");
+    return absl::InternalError("Unified memory is not supported yet.");
   }
 
   if (per_process_device_memory_fraction == 0) {
@@ -147,7 +149,8 @@ Status PluggableDeviceFactory::GetDeviceDetails(
 
   int device_count = platform->VisibleDeviceCount();
   if (device_index < 0 || device_index >= device_count) {
-    return errors::Internal("Invalid device index: ", device_index);
+    return absl::InternalError(
+        absl::StrCat("Invalid device index: ", device_index));
   }
 
   auto desc_status = platform->DescriptionForDevice(device_index);
@@ -246,13 +249,13 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
   Allocator* device_allocator = process_state->GetPluggableDeviceAllocator(
       options.config.gpu_options(), tf_device_id, memory_limit);
   if (device_allocator == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Failed to get memory allocator for TF PluggableDevice ",
-        tf_device_id.value(), " with", memory_limit, " bytes of memory. ");
+        tf_device_id.value(), " with", memory_limit, " bytes of memory. "));
   }
   const std::optional<AllocatorStats> stats = device_allocator->GetStats();
   if (!stats) {
-    return errors::Internal("No allocator statistics");
+    return absl::InternalError("No allocator statistics");
   }
   // 'memory_limit' is the required memory size, but if the allocator with
   // given 'tf_device_id' was created before, we'll use it instead of creating

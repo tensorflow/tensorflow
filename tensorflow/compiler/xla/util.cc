@@ -134,6 +134,10 @@ template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
   static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
                 "RoundTripNanPayload does not support E4M3");
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fnuz>::value,
+                "RoundTripNanPayload does not support E4M3FNUZ");
+  static_assert(!std::is_same<FloatT, tsl::float8_e5m2fnuz>::value,
+                "RoundTripNanPayload does not support E5M2FNUZ");
   const int kPayloadBits = NanPayloadBits<FloatT>();
   if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
@@ -160,7 +164,22 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value) {
   return result;
 }
 
+std::string RoundTripFpToString(tsl::float8_e4m3fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2fnuz value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
 std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }
@@ -427,6 +446,11 @@ std::string SanitizeFileName(std::string file_name) {
     }
   }
   return file_name;
+}
+
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
+  return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
+         seq.size() - 1;
 }
 
 // Utility function to split a double-precision float (F64) into a pair of F32s.

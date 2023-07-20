@@ -219,8 +219,13 @@ void GPUUtil::DeviceToDeviceCopy(
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
     void* dst_ptr = GetBase(output);
     DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-    auto recv_stream =
-        static_cast<const GPUDeviceContext*>(recv_dev_context)->stream();
+    // For GpuDevice, always gets receive stream from
+    // dst->tensorflow_accelerator_device_info()->default_context which is
+    // GPUDeviceContext.
+    stream_executor::Stream* recv_stream =
+        static_cast<const GPUDeviceContext*>(
+            dst->tensorflow_accelerator_device_info()->default_context)
+            ->stream();
     if (recv_stream == nullptr) {
       done(errors::Internal("No recv gpu stream is available."));
       return;

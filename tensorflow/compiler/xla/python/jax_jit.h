@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -220,6 +222,7 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            pybind11::handle kwnames,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
+                           xla::PyTreeRegistry* pytree_registry,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.

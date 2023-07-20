@@ -19,18 +19,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
-#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
@@ -39,9 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -320,6 +315,9 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
+  // Prepends a major dimension sized `bound` to the shape.
+  static Shape PrependMajorDimension(int64_t bound, Shape shape);
+
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
 
@@ -380,7 +378,8 @@ class ShapeUtil {
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0);
+      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
+      int64_t memory_space = 0);
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -393,7 +392,7 @@ class ShapeUtil {
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
-      int64_t memory_space = 0,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major
@@ -656,6 +655,51 @@ class ShapeUtil {
   static std::optional<std::vector<int64_t>>
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
+
+  // This means that the bitcast can be decomposed to a single reshape.
+  struct BitcastDecompositionReshape {};
+
+  // This means that the bitcast can be decomposed to a single transpose.
+  struct BitcastDecompositionTranspose {
+    std::vector<int64_t> transpose_dims;
+  };
+
+  // Every bitcast from A to B can be represented as a sequence of:
+  // 1) Transpose to a normalized layout of A
+  // 2) Reshape to a normalized layout of B
+  // 3) Transpose from (2) to B
+  //
+  // All members are always set, even if they correspond to an identity
+  // operation.
+  //
+  // Note: Some bitcasts can be converted to a single transpose or reshape,
+  // using other methods.
+  struct BitcastDecompositionTrt {
+    std::vector<int64_t> transpose1_dims;
+    // Has a normalized layout.
+    Shape transpose1_shape;
+    // Has a normalized layout.
+    Shape reshape_shape;
+    std::vector<int64_t> transpose2_dims;
+
+    bool IsTranspose1Identity() const;
+    bool IsTranspose2Identity() const;
+  };
+
+  // A variant type holding one of the possible bitcast decompositions.
+  using BitcastDecomposition =
+      std::variant<BitcastDecompositionReshape, BitcastDecompositionTranspose,
+                   BitcastDecompositionTrt>;
+
+  // Decomposes a bitcast to a sequence of transpose, reshape, transpose.
+  //
+  // See the comment on BitcastDecompositionTrt.
+  static BitcastDecompositionTrt DecomposeBitcastToTrt(
+      const Shape& input_shape, const Shape& output_shape);
+
+  // Decomposes a bitcast to one of the possible decompositions.
+  static BitcastDecomposition DecomposeBitcast(const Shape& input_shape,
+                                               const Shape& output_shape);
 
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns

@@ -22,19 +22,20 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
@@ -50,39 +51,37 @@ limitations under the License.
 #endif  // #if GOOGLE_CUDA
 
 namespace xla {
-
-#if GOOGLE_CUDA
-namespace runtime {
-namespace ffi {
-
-// Override weak symbol defined in the `xla/runtime/ffi.cc` with a strong one
-// that provides implementation for the XLA:GPU backend.
-XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
-                                const DiagnosticEngine* diagnostic) {
-  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
-  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
-  return reinterpret_cast<XLA_FFI_Stream*>(stream);
-}
-
-}  // namespace ffi
-}  // namespace runtime
-#endif  // GOOGLE_CUDA
-
 namespace gpu {
 
 using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
-using ::xla::runtime::success;
 using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
+using ::xla::runtime::CustomCall;
+using ::xla::runtime::DiagnosticEngine;
 using ::xla::runtime::ExportModules;
 using ::xla::runtime::ffi::ExportFfiModules;
 using ::xla::runtime::ffi::FfiStateVector;
+using ::xla::runtime::ffi::RegisterXlaFfiStreamProvider;
+
+#if GOOGLE_CUDA
+static XLA_FFI_Stream* GetXlaFfiGpuStream(const CustomCall::UserData* user_data,
+                                          const DiagnosticEngine* diagnostic) {
+  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
+  if (!run_opts) return nullptr;
+  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
+  return reinterpret_cast<XLA_FFI_Stream*>(stream);
+}
+#endif  // GOOGLE_CUDA
 
 void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
+#if GOOGLE_CUDA
+  RegisterXlaFfiStreamProvider(GetXlaFfiGpuStream);
+#endif  // GOOGLE_CUDA
+
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
   RegisterFftCustomCalls(registry);
@@ -100,6 +99,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
+  RegisterConcurrentRegionCustomCalls(registry);
   RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 
@@ -138,13 +138,22 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 
 //===----------------------------------------------------------------------===//
 
+// Executable can have only one "main" function and only graph capture function.
+static int64_t GetNumGraphs(const runtime::Executable& executable) {
+  return executable.num_functions() - 1;
+}
+
 GpuRuntimeExecutable::GpuRuntimeExecutable(
-    std::vector<int64_t> buffer_sizes,
+    std::string module_name, std::vector<int64_t> buffer_sizes,
     std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
     ModulesState modules_state, FfiModulesState ffi_modules_state)
-    : buffer_sizes_(std::move(buffer_sizes)),
+    : module_name_(std::move(module_name)),
+      buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
+#if GOOGLE_CUDA
+      graph_instances_(module_name_, GetNumGraphs(executable())),
+#endif  // GOOGLE_CUDA
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -152,12 +161,16 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 }
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
-    std::vector<int64_t> buffer_sizes,
+    std::string module_name, std::vector<int64_t> buffer_sizes,
     std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
     ModulesState modules_state, FfiModulesState ffi_modules_state)
-    : buffer_sizes_(std::move(buffer_sizes)),
+    : module_name_(std::move(module_name)),
+      buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
+#if GOOGLE_CUDA
+      graph_instances_(module_name_, GetNumGraphs(executable())),
+#endif  // GOOGL_CUDA
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -169,8 +182,9 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 //===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
-  // Options for the default XLA Runtim compilation pipeline.
+GpuRuntimeExecutable::Create(std::string module_name,
+                             std::unique_ptr<GpuRuntimeProgram> program) {
+  // Options for the default XLA Runtime compilation pipeline.
   runtime::CompilationPipelineOptions copts;
 
   // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -223,7 +237,7 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
                          ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
-      std::move(program->buffer_sizes),
+      std::move(module_name), std::move(program->buffer_sizes),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
       std::move(program->debug_options), std::move(*modules_state),
       std::move(*ffi_modules_state)));
@@ -234,7 +248,8 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 //===----------------------------------------------------------------------===//
 
 /*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
+GpuRuntimeExecutable::Create(std::string module_name,
+                             absl::Span<const int64_t> buffer_sizes,
                              Executable executable,
                              DebugOptions debug_options) {
   // Instantiate state for all registered runtime modules.
@@ -250,6 +265,7 @@ GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
                          ffi_modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
+      std::move(module_name),
       std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
       std::make_unique<Executable>(std::move(executable)),
       std::move(debug_options), std::move(*modules_state),
@@ -275,7 +291,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   assert(ptrs.empty() && "pointers storage must be empty");
   ptrs.resize_for_overwrite(num_allocations);
 
-  // Each buffer allocation pased as 1d memref to the compiled function:
+  // Each buffer allocation passed as 1d memref to the compiled function:
   //   {basePtr, dataPtr, offset, [sizes, ...], [strides, ...]}
   size_t num_args_ptrs = 1 + num_allocations * 5;
   call_frame.args.resize_for_overwrite(num_args_ptrs);
@@ -343,12 +359,16 @@ Status GpuRuntimeExecutable::Execute(
 
   // Get the async communications stream for async collectives.
   se::StreamExecutor* executor = run_options->stream()->parent();
-  int device_ordinal = executor->device_ordinal();
+  se::StreamPriority stream_priority = se::StreamPriority::Default;
+  if (debug_options_.xla_gpu_enable_highest_priority_async_stream()) {
+    stream_priority = se::StreamPriority::Highest;
+  }
+
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
-  // executable run, so that concurrent executions can run independenty using a
+  // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
@@ -366,12 +386,20 @@ Status GpuRuntimeExecutable::Execute(
       conv_runners_(executor)->snapshot();
 
 #if GOOGLE_CUDA
+  std::shared_ptr<StreamExecutorGraphInstances> executor_graphs =
+      graph_instances_(executor);
+
   StreamExecutorGraphInstances::Snapshot graph_instances =
-      graph_instances_(executor)->snapshot();
+      executor_graphs->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
-  CapturingCudaGraph capturing_cuda_graph(false);
 #endif  // GOOGLE_CUDA
+
+  // Kernels in concurrent regions should be launched on borrowed stream, so
+  // that the cuda graph won't record dependencies between kernels.
+  // This state stores if the kernel being run is in a concurrent region and
+  // the borrowed streams for executing kernels in concurrent regions.
+  ConcurrentRegionStatus concurrent_region_status(run_options);
 
   // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
@@ -382,18 +410,19 @@ Status GpuRuntimeExecutable::Execute(
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
-  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
-  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+  TF_ASSIGN_OR_RETURN(FfiStateVector ffi_state,
+                      ffi_modules_state_.state_vector());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances, &execution_count, &capturing_cuda_graph,
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
+      &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
@@ -404,13 +433,40 @@ Status GpuRuntimeExecutable::Execute(
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
 
+#if GOOGLE_CUDA
+  // Instantiate all CUDA graphs before executing the main function.
+  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0 &&
+      !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
+    // To instantiate all Gpu graphs we have to pass a valid device pointer
+    // because some device operations in XLA (e.g. memcpy) query device
+    // information from a pointer. We have to find the largest allocation
+    // available, to guarantee that all memref slices are within bounds,
+    // otherwise we might get crashes from a Gpu driver.
+    void* device_ptr = temp_buffer.opaque();
+    size_t device_ptr_size = temp_buffer.size();
+
+    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
+      auto mem = buffer_allocations.GetDeviceAddress(i);
+      if (mem.size() > device_ptr_size) {
+        device_ptr = mem.opaque();
+        device_ptr_size = mem.size();
+      }
+    }
+
+    if (auto instantiated = graph_instances_.InstantiateAllGraphs(
+            run_options, executable, user_data, device_ptr,
+            debug_options_.xla_gpu_cuda_graph_eviction_timeout_seconds());
+        !instantiated.ok()) {
+      return InternalError("Failed to instantiate CUDA graphs: %s",
+                           instantiated.message());
+    }
+  }
+#endif  // GOOGLE_CUDA
+
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic, true);
 
   // Prepare options for executing XLA Runtime program.
   runtime::Executable::ExecuteOpts opts;

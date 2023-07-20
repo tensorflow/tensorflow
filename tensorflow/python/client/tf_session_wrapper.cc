@@ -187,13 +187,14 @@ void MakeTfObjectType(PyObject** py_type) {
 
   type->tp_dealloc = [](PyObject* self) {
     VLOG(3) << "Destroy: " << T::kTypeName;
+    PyObject_GC_UnTrack(self);
     PyTypeObject* tp = Py_TYPE(self);
+    PyObject_ClearWeakRefs(self);
+
     T* o = reinterpret_cast<T*>(self);
-    if (o->weakrefs) {
-      PyObject_ClearWeakRefs(self);
-    }
     Py_CLEAR(o->dict);
     o->~T();
+
     tp->tp_free(self);
     Py_DECREF(tp);
   };
@@ -227,13 +228,7 @@ void MakeTfObjectType(PyObject** py_type) {
   type->tp_call = nullptr;
   type->tp_vectorcall_offset = 0;
 
-  type->tp_repr = [](PyObject* self) -> PyObject* {
-    T* o = reinterpret_cast<T*>(self);
-    return py::str(absl::StrCat(T::kTypeName, "<",
-                                reinterpret_cast<intptr_t>(o), ">"))
-        .release()
-        .ptr();
-  };
+  type->tp_repr = nullptr;
 
   if (PyType_Ready(type) != 0) {
     PyErr_Print();
@@ -281,7 +276,6 @@ T* AsPyTfObject(py::handle handle) {
   if (handle.get_type() == T::py_type) {
     return reinterpret_cast<T*>(handle.ptr());
   }
-
   if (PyType_IsSubtype(Py_TYPE(handle.ptr()),
                        reinterpret_cast<PyTypeObject*>(T::py_type))) {
     return reinterpret_cast<T*>(handle.ptr());
@@ -307,6 +301,13 @@ py::object AsPyObject(T* obj) {
 }
 
 // Reference counting helper for PyTfObjects.
+//
+// Similar to the pybind holder types, this manages the Python reference
+// counting while allowing access to the underlying PyTfObject type.
+//
+// As a special case to support Dismantle(), this allows setting our underlying
+// pointer to None when clearing the type. Direct access to attributes is not
+// allowed after this point.
 template <class T>
 class tf_handle {
  public:
@@ -337,19 +338,29 @@ class tf_handle {
     return *this;
   }
 
-  void Reset(PyObject* py_obj) {
-    T* obj = AsPyTfObject<T>(py_obj);
-    if (obj == obj_) {
+  void Destroy() {
+    Py_INCREF(Py_None);
+    Py_CLEAR(obj_);
+    obj_ = reinterpret_cast<T*>(Py_None);
+  }
+
+  void Reset(PyObject* obj) {
+    if (obj == reinterpret_cast<PyObject*>(obj_)) {
       return;
     }
     Py_INCREF(obj);
     Py_CLEAR(obj_);
-    obj_ = obj;
+    obj_ = AsPyTfObject<T>(obj);
   }
 
   void Clear() { Py_CLEAR(obj_); }
 
-  T* operator->() { return obj_; }
+  T* operator->() {
+    if (reinterpret_cast<PyObject*>(obj_) == Py_None) {
+      throw std::runtime_error("Tried to deference None as a TF type.");
+    }
+    return obj_;
+  }
   PyObject* ptr() const { return reinterpret_cast<PyObject*>(obj_); }
 
   py::handle borrow() { return py::reinterpret_borrow<py::object>(ptr()); }
@@ -438,7 +449,6 @@ struct PyGraph {
       Py_CLEAR(it->second.release().ptr());
     }
     ops_by_name.clear();
-    Py_CLEAR(dict);
   }
 
   int Visit(visitproc visit, void* arg) {
@@ -485,8 +495,24 @@ struct PyGraph {
   int version() const { return ops_by_id.size(); }
 
   py::bytes version_def() const {
-    tsl::mutex_lock l(graph->mu);
-    return py::bytes(graph->graph.versions().SerializeAsString());
+    // Potential deadlock:
+    //
+    // If different threads are building and executing the graph, there is a
+    // potential for a deadlock. This can happen if one thread holds the GIL and
+    // waits for the graph mutex, while another thread holds the graph mutex and
+    // waits for the GIL.
+    //
+    // To avoid this, the GIL must be released before acquiring the graph mutex.
+    // The graph mutex must then be held while getting the VersionDef. Finally,
+    // the GIL must be reacquired.
+    std::string versions;
+    {
+      py::gil_scoped_release release;
+      tsl::mutex_lock l(graph->mu);
+      versions = graph->graph.versions().SerializeAsString();
+    }
+    pybind11::gil_scoped_acquire acquire;
+    return py::bytes(versions);
   }
 
   tsl::StatusOr<py::bytes> _op_def_for_type(
@@ -549,7 +575,6 @@ struct PyOperation {
 
   void Clear() {
     Py_CLEAR(outputs.release().ptr());
-    Py_CLEAR(dict);
     graph.Clear();
   }
 
@@ -630,37 +655,51 @@ struct PyOperation {
 struct PyTensor {
   TFObject_HEAD(PyTensor);
 
-  py::object py_tf_output = py::none();
+  py::object tf_output = py::none();
+  py::object name = py::none();
+  py::object dtype = py::none();
+  py::object shape_val = py::none();
+  py::object uid = py::none();
 
   tf_handle<PyOperation> op;
   tf_handle<PyGraph> graph;
 
   int value_index = -1;
 
-  PyTensor(PyObject* args, PyObject* kwds) {}
-
-  // We'd normally initialize in the constructor, but TF Python does weird
-  // things with multiple-inheritance and overriding the base classes. We should
-  // try to clean this up but in the meantime, we defer to a separate method.
-  void init(py::handle py_op, int64_t index, py::handle dtype) {
-    value_index = index;
-    op = py_op.ptr();
+  PyTensor(PyObject* args, PyObject* kwds) {
+    PyObject *py_op, *py_index, *py_dtype, *py_uid;
+    if (!PyArg_ParseTuple(args, "OOOO", &py_op, &py_index, &py_dtype,
+                          &py_uid)) {
+      return;
+    }
+    dtype = py::reinterpret_borrow<py::object>(py_dtype);
+    value_index = py::cast<int>(py::handle(py_index));
+    op = py_op;
     graph = op->graph;
-    py_tf_output = py::cast(TF_Output{op->tf_op, value_index});
+    name = py::str(absl::StrCat(op->name(), ":", value_index));
+    tf_output = py::cast(TF_Output{op->tf_op, value_index});
+    uid = py::reinterpret_borrow<py::object>(py_uid);
   }
-
   ~PyTensor() { Clear(); }
+
   void Clear() {
-    Py_CLEAR(py_tf_output.release().ptr());
-    Py_CLEAR(dict);
+    Py_CLEAR(tf_output.release().ptr());
+    Py_CLEAR(name.release().ptr());
+    Py_CLEAR(dtype.release().ptr());
+    Py_CLEAR(shape_val.release().ptr());
+    Py_CLEAR(uid.release().ptr());
     op.Clear();
     graph.Clear();
   }
 
   int Visit(visitproc visit, void* arg) {
     Py_VISIT(op.ptr());
-    Py_VISIT(py_tf_output.ptr());
+    Py_VISIT(tf_output.ptr());
     Py_VISIT(graph.ptr());
+    Py_VISIT(name.ptr());
+    Py_VISIT(dtype.ptr());
+    Py_VISIT(shape_val.ptr());
+    Py_VISIT(uid.ptr());
     return 0;
   }
 
@@ -731,10 +770,9 @@ PyObject* PyTensor::py_type = nullptr;
 PyObject* PyGraph::py_type = nullptr;
 
 void PyOperation::Dismantle() {
-  for (py::handle h : outputs) {
-    AsPyTfObject<PyTensor>(h.ptr())->Clear();
-  }
-  Clear();
+  outputs = py::list();
+  PyDict_Clear(dict);
+  graph.Destroy();
 }
 
 tsl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
@@ -779,7 +817,9 @@ void PyGraph::Dismantle() {
   for (auto& op : op_list) {
     AsPyTfObject<PyOperation>(op.ptr())->Dismantle();
   }
-  Clear();
+  op_list = py::list();
+  ops_by_id.clear();
+  ops_by_name.clear();
 }
 
 int64_t PyGraph::add_op(py::object obj) {
@@ -941,11 +981,6 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     py::object c_tensor = py::reinterpret_borrow<py::object>(PyTensor::py_type);
     m.attr("PyTensor") = c_tensor;
     c_tensor.attr("__module__") = module_name;
-    c_tensor.attr("_init") =
-        method(c_tensor, [](py::handle handle, py::handle operation,
-                            int64_t index, py::handle dtype) {
-          return AsPyTfObject<PyTensor>(handle)->init(operation, index, dtype);
-        });
     c_tensor.attr("device") = property_readonly([](py::handle handle) {
       return AsPyTfObject<PyTensor>(handle)->op->device();
     });
@@ -958,6 +993,27 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     c_tensor.attr("_shape") = property_readonly([](py::handle handle) {
       return AsPyTfObject<PyTensor>(handle)->shape();
     });
+    c_tensor.attr("_dtype") = property_readonly([](py::handle handle) {
+      return AsPyTfObject<PyTensor>(handle)->dtype;
+    });
+    c_tensor.attr("_name") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->name; },
+        [](py::handle handle, py::object name) {
+          AsPyTfObject<PyTensor>(handle)->name = name;
+        });
+    c_tensor.attr("_shape_val") = property(
+        [](py::handle handle) {
+          auto py_tensor = AsPyTfObject<PyTensor>(handle);
+          return py_tensor->shape_val;
+        },
+        [](py::handle handle, py::object shape) {
+          AsPyTfObject<PyTensor>(handle)->shape_val = shape;
+        });
+    c_tensor.attr("_id") = property(
+        [](py::handle handle) { return AsPyTfObject<PyTensor>(handle)->uid; },
+        [](py::handle handle, py::object uid) {
+          AsPyTfObject<PyTensor>(handle)->uid = uid;
+        });
     c_tensor.attr("graph") =
         property_readonly([](py::handle handle) -> py::handle {
           auto& graph = AsPyTfObject<PyTensor>(handle)->graph;
@@ -967,7 +1023,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           return py::none();
         });
     c_tensor.attr("_as_tf_output") = method(c_tensor, [](py::handle handle) {
-      return AsPyTfObject<PyTensor>(handle)->py_tf_output;
+      return AsPyTfObject<PyTensor>(handle)->tf_output;
     });
     c_tensor.attr("_op") =
         property_readonly([](py::handle handle) -> py::handle {
@@ -1431,6 +1487,12 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def("TF_SetOpStackTrace",
+        [](TF_Operation* op,
+           std::shared_ptr<tensorflow::AbstractStackTrace> trace) {
+          op->node.SetStackTrace(trace);
+        });
+
   m.def("TF_OperationGetAttrInt",
         [](TF_Operation* oper, const char* attr_name) {
           tensorflow::Safe_TF_StatusPtr status =
@@ -1556,12 +1618,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // Note: users should prefer using tf.cast or equivalent, and only when
   // it's infeasible to set the type via OpDef's type constructor and
   // inference function.
-  m.def("SetFullType", [](PyGraph* graph, TF_Operation* op,
-                          const std::string& serialized_full_type) {
-    tensorflow::FullTypeDef proto;
-    proto.ParseFromString(serialized_full_type);
-    tensorflow::SetFullType(graph->tf_graph(), op, proto);
-  });
+  m.def("SetFullType",
+        [](PyGraph* graph, TF_Operation* op, const TF_Buffer* full_type_proto) {
+          tensorflow::SetFullType(graph->tf_graph(), op, full_type_proto);
+        });
 
   m.def(
       "TF_LoadLibrary",
@@ -1691,6 +1751,21 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
         return py_list;
       },
       py::return_value_policy::reference);
+
+  m.def("TF_GraphToGraphDefPybind", [](PyGraph* graph) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_Graph* tf_graph = graph->tf_graph();
+    auto def = new tensorflow::GraphDef();
+    {
+      tensorflow::mutex_lock l(tf_graph->mu);
+      tf_graph->graph.ToGraphDef(def);
+    }
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+    return def;
+  });
 
   m.def("TF_GraphToGraphDef", [](PyGraph* graph, TF_Buffer* output_graph_def) {
     tensorflow::Safe_TF_StatusPtr status =

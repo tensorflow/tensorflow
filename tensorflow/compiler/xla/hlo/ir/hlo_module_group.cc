@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 
+#include <memory>
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace xla {
 
 HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)

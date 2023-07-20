@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -98,7 +99,7 @@ def _is_tensor(x):
   Returns:
     `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
-  return isinstance(x, (ops.Tensor, variables.Variable))
+  return isinstance(x, (tensor_lib.Tensor, variables.Variable))
 
 
 def _ImageDimensions(image, rank):
@@ -2704,7 +2705,7 @@ def stateless_random_hue(image, max_delta, seed):
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
-      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+      dtype `int32` or `int64`.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.

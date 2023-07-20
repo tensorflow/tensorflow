@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -32,6 +33,8 @@ namespace gpu {
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
 #define GEN_PASS_DECL_OUTLINECUDAGRAPHSPASS
+#define GEN_PASS_DECL_ADDCONCURRENTREGIONSPASS
+#define GEN_PASS_DECL_STREAMASSIGNMENTPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
@@ -41,6 +44,8 @@ struct GpuPipelineOpts {
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
   int32_t cuda_graph_level = 0;
+  int32_t min_graph_size = 0;
+  bool enable_concurrent_region = false;
 };
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and
@@ -99,7 +104,21 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOutlineCudaGraphsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createOutlineCudaGraphsPass(int32_t cuda_graph_level);
+createOutlineCudaGraphsPass(int32_t cuda_graph_level, int32_t min_graph_size);
+
+//===----------------------------------------------------------------------===//
+// Passes for marking concurrent region in CUDA graph capture function.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddConcurrentRegionsPass();
+
+//===----------------------------------------------------------------------===//
+// Passes for assigning kernels to streams in CUDA graph capture function.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createStreamAssignmentPass();
 
 //===-----------------------------------------------------------------------===/
 

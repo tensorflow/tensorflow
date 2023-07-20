@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <numeric>
 #include <optional>
+#include <variant>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -971,6 +973,38 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }
 
+TEST(ShapeUtilTest, PrependMajorDimension) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
+  EXPECT_EQ(ShapeUtil::PrependMajorDimension(40, shape),
+            ShapeUtil::MakeShape(F32, {40, 10, 20, 30}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {1, 3, 2, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
+}
+
+TEST(ShapeUtilTest, AppendMinorDimension) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShape(F32, {10, 20, 30, 40}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40},
+                                                       {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  ShapeUtil::AppendMinorDimension(40, &shape);
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40},
+                                                       {3, 0, 2, 1}));
+}
+
 TEST(ShapeUtilTest, MoveDimToMajor) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
   Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
@@ -1121,7 +1155,9 @@ TEST(ShapeUtilTest, B_251055887) {
 
 TEST(ShapeUtilTest, Int4ShapeSize) {
   Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape), 64 * 128 / 2);
+  EXPECT_EQ(ShapeUtil::ArraySize(int4_shape), 64 * 128 / 2);
 
   // Ensure the size is correct with int4 tiling.
   Shape int4_shape2 = ShapeUtil::MakeShape(S4, {9216, 6144});
@@ -1131,7 +1167,161 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   layout->add_tiles();
   *layout->mutable_tiles(0) = Tile({8 * (32 / 4), 128});
   *layout->mutable_tiles(1) = Tile({32 / 4, 1});
+  layout->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
+  EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToReshape) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 16, 17, 3}, {3, 2, 1, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 51}, {1, 0});
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  EXPECT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
+      decomposition));
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToReshape2) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {17, 3, 1, 16}, {1, 0, 3, 2});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {51, 16}, {0, 1});
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  EXPECT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
+      decomposition));
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToTranspose) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 7, 6, 4}, {3, 2, 1, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 6, 4, 7}, {2, 1, 3, 0});
+  const std::vector<int64_t> kExpectedTransposeDims = {0, 2, 3, 1};
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
+      decomposition));
+  ShapeUtil::BitcastDecompositionTranspose decomposition_transpose =
+      std::get<ShapeUtil::BitcastDecompositionTranspose>(decomposition);
+  EXPECT_EQ(decomposition_transpose.transpose_dims, kExpectedTransposeDims);
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToReshapeAndTranspose) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 17, 3}, {2, 1, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {51, 16}, {0, 1});
+
+  const std::vector<int64_t> kExpectedTranspose1Dims = {0, 1, 2};
+  const Shape kExpectedTranspose1Shape = kInputShape;
+  const Shape kExpectedReshapeShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 51}, {1, 0});
+  const std::vector<int64_t> kExpectedTranspose2Dims = {1, 0};
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  ShapeUtil::BitcastDecompositionTrt decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+  EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
+  EXPECT_TRUE(decomposition_trt.IsTranspose1Identity());
+  EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
+  EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
+  EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
+  EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToReshapeAndTranspose2) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 17, 3, 7}, {3, 2, 1, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {7, 16, 51}, {0, 2, 1});
+
+  const std::vector<int64_t> kExpectedTranspose1Dims = {0, 1, 2, 3};
+  const Shape kExpectedTranspose1Shape = kInputShape;
+  const Shape kExpectedReshapeShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 51, 7}, {2, 1, 0});
+  const std::vector<int64_t> kExpectedTranspose2Dims = {2, 0, 1};
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  ShapeUtil::BitcastDecompositionTrt decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+  EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
+  EXPECT_TRUE(decomposition_trt.IsTranspose1Identity());
+  EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
+  EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
+  EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
+  EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToTransposeAndReshape) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 3, 17}, {1, 2, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {51, 16}, {1, 0});
+
+  const std::vector<int64_t> kExpectedTranspose1Dims = {0, 2, 1};
+  const Shape kExpectedTranspose1Shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 17, 3}, {2, 1, 0});
+  const Shape kExpectedReshapeShape = kOutputShape;
+  const std::vector<int64_t> kExpectedTranspose2Dims = {0, 1};
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  ShapeUtil::BitcastDecompositionTrt decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+  EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
+  EXPECT_FALSE(decomposition_trt.IsTranspose1Identity());
+  EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
+  EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
+  EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
+  EXPECT_TRUE(decomposition_trt.IsTranspose2Identity());
+}
+
+TEST(ShapeUtilTest, DecomposeBitcastToTrt) {
+  const Shape kInputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 3, 17}, {1, 2, 0});
+  const Shape kOutputShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 51}, {0, 1});
+
+  const std::vector<int64_t> kExpectedTranspose1Dims = {0, 2, 1};
+  const Shape kExpectedTranspose1Shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 17, 3}, {2, 1, 0});
+  const Shape kExpectedReshapeShape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {51, 16}, {1, 0});
+  const std::vector<int64_t> kExpectedTranspose2Dims = {1, 0};
+
+  ShapeUtil::BitcastDecomposition decomposition =
+      ShapeUtil::DecomposeBitcast(kInputShape, kOutputShape);
+
+  ASSERT_TRUE(std::holds_alternative<ShapeUtil::BitcastDecompositionTrt>(
+      decomposition));
+  ShapeUtil::BitcastDecompositionTrt decomposition_trt =
+      std::get<ShapeUtil::BitcastDecompositionTrt>(decomposition);
+  EXPECT_EQ(decomposition_trt.transpose1_dims, kExpectedTranspose1Dims);
+  EXPECT_FALSE(decomposition_trt.IsTranspose1Identity());
+  EXPECT_EQ(decomposition_trt.transpose1_shape, kExpectedTranspose1Shape);
+  EXPECT_EQ(decomposition_trt.reshape_shape, kExpectedReshapeShape);
+  EXPECT_EQ(decomposition_trt.transpose2_dims, kExpectedTranspose2Dims);
+  EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
 }
 
 TEST(Transpose021Test, NoTranspose) {

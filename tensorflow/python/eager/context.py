@@ -27,6 +27,7 @@ from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
@@ -46,6 +47,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tsl.protobuf import coordination_config_pb2
+
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -1389,6 +1391,26 @@ class Context:
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def get_graph_debug_info(self, name):
+    """Get GraphDebugInfo associated with a function from the context.
+
+    Args:
+      name: function signature name.
+
+    Returns:
+      The requested GraphDebugInfo.
+
+    Raises:
+      tf.errors.NotFoundError: if name is not the name of a registered function.
+    """
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_ContextGetGraphDebugInfo(self._handle, name, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+    graph_debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    graph_debug_info.ParseFromString(proto_data)
+
+    return graph_debug_info
 
   def is_custom_device(self, device_name):
     """Calls TFE_IsCustomDevice. See the non-member function."""

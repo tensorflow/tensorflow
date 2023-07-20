@@ -41,16 +41,21 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
     case DType::kInvalid:
     case DType::kPred:
+    case DType::kS4:
     case DType::kS8:
     case DType::kS16:
     case DType::kS32:
     case DType::kS64:
+    case DType::kU4:
     case DType::kU8:
     case DType::kU16:
     case DType::kU32:
     case DType::kU64:
     case DType::kF8E4M3FN:
+    case DType::kF8E4M3B11FNUZ:
+    case DType::kF8E4M3FNUZ:
     case DType::kF8E5M2:
+    case DType::kF8E5M2FNUZ:
     case DType::kF16:
     case DType::kF32:
     case DType::kBF16:
@@ -70,16 +75,21 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
+    case xla::PrimitiveType::S4:
     case xla::PrimitiveType::S8:
     case xla::PrimitiveType::S16:
     case xla::PrimitiveType::S32:
     case xla::PrimitiveType::S64:
+    case xla::PrimitiveType::U4:
     case xla::PrimitiveType::U8:
     case xla::PrimitiveType::U16:
     case xla::PrimitiveType::U32:
     case xla::PrimitiveType::U64:
     case xla::PrimitiveType::F8E4M3FN:
+    case xla::PrimitiveType::F8E4M3B11FNUZ:
+    case xla::PrimitiveType::F8E4M3FNUZ:
     case xla::PrimitiveType::F8E5M2:
+    case xla::PrimitiveType::F8E5M2FNUZ:
     case xla::PrimitiveType::F16:
     case xla::PrimitiveType::F32:
     case xla::PrimitiveType::BF16:
@@ -110,20 +120,39 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  TF_ASSIGN_OR_RETURN(auto dtype,
-                      ToDType(pjrt_buffer->on_device_shape().element_type()));
-  Shape shape(pjrt_buffer->on_device_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
+  Shape shape(pjrt_buffer->dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding),
                                  PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
+StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
+    ArrayCopySemantics semantics) {
+  return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
+}
+
+std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
+    ArrayCopySemantics semantics, int index) const {
+  switch (semantics) {
+    case ArrayCopySemantics::kAlwaysCopy:
+      // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
+      // API does not have efficient buffer cloning on the same device.
+      return pjrt_buffers_[index];
+    case ArrayCopySemantics::kReuseInput:
+      return pjrt_buffers_[index];
+    case ArrayCopySemantics::kDonateInput:
+      // TODO(hyeontaek): We may try std::move(pjrt_buffers_[i]), but this
+      // would be unsafe if there is a subsequent access to the buffer.
+      return pjrt_buffers_[index];
+  }
+}
+
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
-  TF_ASSIGN_OR_RETURN(
-      auto dtype, xla::ifrt::ToDType(
-                      pjrt_buffers.front()->on_device_shape().element_type()));
+  TF_ASSIGN_OR_RETURN(auto dtype,
+                      xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
   DeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
   std::vector<Shape> shapes;
@@ -131,15 +160,14 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
   for (const auto& pjrt_buffer : pjrt_buffers) {
     devices.push_back(pjrt_buffer->device());
-    shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
+    shapes.push_back(Shape(pjrt_buffer->dimensions()));
   }
-  return PjRtArray::Create(
-      client, dtype, std::move(shape),
-      ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(devices)),
-          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-              std::move(shapes))),
-      std::move(pjrt_buffers));
+  auto sharding =
+      ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),
+                                     /*shape=*/shape,
+                                     /*shard_shapes=*/shapes);
+  return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
+                           std::move(pjrt_buffers));
 }
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
@@ -160,21 +188,7 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   for (int i = 0; i < sharding_->devices().size(); ++i) {
     PjRtBuffers buffers;
     buffers.reserve(1);
-    switch (semantics) {
-      case ArrayCopySemantics::kAlwaysCopy:
-        // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
-        // API does not have efficient buffer cloning on the same device.
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-      case ArrayCopySemantics::kReuseInput:
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-      case ArrayCopySemantics::kDonateInput:
-        // TODO(hyeontaek): We may try std::move(pjrt_buffers_[i]), but this
-        // would be unsafe if there is a subsequent access to the buffer.
-        buffers.push_back(pjrt_buffers_[i]);
-        break;
-    }
+    buffers.push_back(GetPjRtBuffer(semantics, i));
     TF_ASSIGN_OR_RETURN(
         auto array, PjRtArray::Create(client_, dtype_,
                                       std::move(shape_and_shardings[i].first),

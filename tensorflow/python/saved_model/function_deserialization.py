@@ -20,15 +20,17 @@ import re
 
 from absl import logging
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -42,7 +44,8 @@ from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
+  return isinstance(
+      t, (tensor.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
 # TODO(b/205016027): Update this to just use ConcreteFunction.__call__ with the
@@ -70,11 +73,11 @@ def _call_concrete_function(function, inputs):
   flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
   for arg, expected in zip(flatten_inputs, flatten_expected):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
-      tensor_inputs.append(arg)
+      tensor_inputs.append(arg.handle)
   result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
@@ -87,7 +90,7 @@ def _try_convert_to_tensor_spec(arg, dtype_hint):
     # Note: try conversion in a FuncGraph to avoid polluting current context.
     with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
       result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
-      return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
+      return tensor.TensorSpec(shape=result.shape, dtype=result.dtype)
   except (TypeError, ValueError):
     return None
 
@@ -101,10 +104,10 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
     return False
 
   for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
-    if isinstance(expected, tensor_spec.TensorSpec):
+    if isinstance(expected, tensor.TensorSpec):
       if allow_conversion:
         arg = _try_convert_to_tensor_spec(arg, dtype_hint=expected.dtype)
-      if not _is_tensor(arg) and not isinstance(arg, tensor_spec.TensorSpec):
+      if not _is_tensor(arg) and not isinstance(arg, tensor.TensorSpec):
         return False
       if arg.dtype != expected.dtype:
         return False
@@ -157,10 +160,45 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_spec_lib.FunctionSpec.from_fullargspec_and_signature(
+  return function_type_utils.FunctionSpec.from_fullargspec_and_signature(
       fullargspec=fullargspec,
       input_signature=input_signature,
       jit_compile=jit_compile)
+
+
+# TODO(b/203440205): Set FunctionType with ConcreteFunction constructor.
+def set_preinitialized_function_spec(concrete_fn, spec):
+  """Set the FunctionType of the ConcreteFunction using FunctionSpec."""
+  if spec is None:
+    concrete_fn._function_type = None  # pylint: disable=protected-access
+    return
+
+  unconstrained_type = function_type_lib.FunctionType(
+      [
+          function_type_lib.Parameter(p.name, p.kind, p.optional, None)
+          for p in spec.function_type.parameters.values()
+      ]
+  )
+  arg_specs, kwarg_specs = concrete_fn.structured_input_signature
+
+  input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+      arg_specs,
+      {
+          function_type_lib.sanitize_arg_name(k): v
+          for k, v in kwarg_specs.items()
+      },
+      spec.default_values,
+      {},
+      unconstrained_type,
+  )
+
+  output_type = trace_type.from_value(concrete_fn.graph.structured_outputs)
+  # Captures are restored later so we will update it then.
+  function_type = function_type_lib.FunctionType(
+      input_function_type.parameters.values(),
+      return_annotation=output_type,
+  )
+  concrete_fn._function_type = function_type  # pylint: disable=protected-access
 
 
 # TODO(b/205016761): The fact that we can't derive ConcreteFunction calling
@@ -180,7 +218,7 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
   if saved_bare_concrete_function.HasField("function_spec"):
     function_spec = _deserialize_function_spec_as_nonmethod(
         saved_bare_concrete_function.function_spec)
-    concrete_function._set_function_spec(function_spec)
+    set_preinitialized_function_spec(concrete_function, function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
   return concrete_function
@@ -200,7 +238,8 @@ class RestoredFunction(def_function.Function):
         autograph=False,
         jit_compile=function_spec.jit_compile)
     self.concrete_functions = concrete_functions
-    self._function_spec = function_spec
+    self._function_type = function_spec.function_type
+    self._default_values = function_spec.default_values
 
     # Prevent RestoredFunction from spamming users with frequent tracing
     # warnings.
@@ -225,11 +264,6 @@ class RestoredFunction(def_function.Function):
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
-
-  def _compiler_with_scope(self, scope):
-    func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_spec = self._function_spec  # pylint: disable=protected-access
-    return func
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -310,7 +344,7 @@ def recreate_function(saved_function, concrete_functions):
     concrete_function_objects.append(concrete_functions[concrete_function_name])
 
   for cf in concrete_function_objects:
-    cf._set_function_spec(function_spec)  # pylint: disable=protected-access
+    set_preinitialized_function_spec(cf, function_spec)
 
   restored_function = RestoredFunction(restored_function_body,
                                        restored_function_body.__name__,
@@ -440,7 +474,13 @@ def load_function_def_library(library,
     # initialization at a later stage.
     if "_input_shapes" in fdef.attr:
       del fdef.attr["_input_shapes"]
-    func = function_lib.ConcreteFunction(func_graph, attrs=fdef.attr)
+    function_type = function_type_lib.from_structured_signature(
+        func_graph.structured_input_signature,
+        func_graph.structured_outputs,
+        func_graph.function_captures.capture_types,
+    )
+    func = function_lib.ConcreteFunction.from_func_graph(
+        func_graph, function_type, attrs=fdef.attr)
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

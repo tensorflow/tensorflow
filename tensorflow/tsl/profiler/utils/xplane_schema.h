@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/hash/hash.h"
@@ -43,6 +44,8 @@ TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
+// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
+TF_CONST_INIT extern const absl::string_view kTpuNonCorePlaneNamePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
@@ -69,10 +72,16 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 
 // GPU device vendors.
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
 TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
+
+// Max collectives to display per TPU.
+// Since in most cases there will be more than 9 collectives, the last line
+// contains all collectives that did not qualify to get their own line.
+static constexpr uint32_t kMaxCollectivesToDisplay = 9;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -231,6 +240,7 @@ enum StatType {
   kStepName,
   kTfOp,
   kHloOp,
+  kDeduplicatedName,
   kHloCategory,
   kHloModule,
   kProgramId,
@@ -241,6 +251,7 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
+  kMemoryAccessBreakdown,
   kSourceInfo,
   kModelName,
   kModelVersion,
@@ -273,7 +284,7 @@ enum StatType {
   kTheoreticalOccupancyPct,
   kOccupancyMinGridSize,
   kOccupancySuggestedBlockSize,
-  // Aggregrated Stats
+  // Aggregated Stats
   kSelfDurationPs,
   kMinDurationPs,
   kTotalProfileDurationPs,
@@ -288,7 +299,30 @@ enum StatType {
   kDuration,
   kBufferSize,
   kTransfers,
-  kLastStatType = kTransfers,
+  // Dcn message Stats
+  kDcnLabel,
+  kDcnSourceSliceId,
+  kDcnSourcePerSliceDeviceId,
+  kDcnDestinationSliceId,
+  kDcnDestinationPerSliceDeviceId,
+  kDcnChunk,
+  kDcnLoopIndex,
+  kModelInfo,
+  kLastStatType = kModelInfo,
+};
+
+static constexpr uint32_t kLineIdOffset = 10000;
+
+enum LineIdType {
+  kFirstLineIdType = kLineIdOffset,
+  kUnknownLineIdType = kFirstLineIdType,
+  // DCN Traffic
+  kDcnHostTraffic,
+  kDcnCollectiveTraffic,
+  // kDcnCollectiveTrafficMax reserves id's from kDcnCollectiveTraffic to
+  // (kDcnCollectiveTraffic + kMaxCollectivesToDisplay) for DcnCollective lines.
+  kDcnCollectiveTrafficMax = kDcnCollectiveTraffic + kMaxCollectivesToDisplay,
+  kLastLineIdType = kDcnCollectiveTrafficMax,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {
@@ -308,9 +342,9 @@ inline bool IsHostEventType(HostEventType event_type,
   return GetHostEventTypeStr(event_type) == event_name;
 }
 
-absl::optional<int64_t> FindHostEventType(absl::string_view event_name);
+std::optional<int64_t> FindHostEventType(absl::string_view event_name);
 
-absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name);
+std::optional<int64_t> FindTfOpEventType(absl::string_view event_name);
 
 absl::string_view GetStatTypeStr(StatType stat_type);
 
@@ -320,15 +354,13 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
-bool IsTensorCorePlaneName(absl::string_view plane_name);
-
-absl::optional<int64_t> FindStatType(absl::string_view stat_name);
+std::optional<int64_t> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
-bool IsInternalEvent(absl::optional<int64_t> event_type);
+bool IsInternalEvent(std::optional<int64_t> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
-bool IsInternalStat(absl::optional<int64_t> stat_type);
+bool IsInternalStat(std::optional<int64_t> stat_type);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as

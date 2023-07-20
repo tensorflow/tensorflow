@@ -55,14 +55,6 @@ class TpuExecutable : public xla::TpuExecutableInterface {
     LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";
   }
 
-  Shape HostShapeToDeviceShape(const Shape& host_shape) override {
-    LOG(FATAL) << "HostShapeToDeviceShape unimplemented";
-  }
-
-  int64_t ShapeSize(const Shape& shape) override {
-    LOG(FATAL) << "ShapeSize unimplemented";
-  }
-
   SE_Executable* se_executable_;
 };
 

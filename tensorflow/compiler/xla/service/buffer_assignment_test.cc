@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -35,10 +36,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -46,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -98,6 +102,16 @@ class BufferAssignmentTest : public HloTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
+  }
+
+  StatusOr<std::unique_ptr<BufferAssignment>> ConvertToProtoAndBack(
+      const BufferAssignment* buffers, const HloModule* module) {
+    // Dump proto for buffer assignments.
+    auto proto = buffers->ToProto();
+    // Recreate buffer assignment from proto.
+    return BufferAssignment::FromProto(
+        proto, module, backend().compiler()->BufferSizeBytesFunction(),
+        /*can_share_buffer=*/nullptr);
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
@@ -472,7 +486,10 @@ TEST_F(BufferAssignmentTest, Basic) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
+  auto buffers_orig = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -493,6 +510,66 @@ TEST_F(BufferAssignmentTest, Basic) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, BasicToFromProto) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  // Create HLO module.
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  // Run the buffer assignment.
+  auto buffers_orig = RunBufferAssignment(module.get());
+
+  // Dump the original buffer assignment into a proto and read it back.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers_from_proto,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
+
+  // Compare the two buffer assignments and ensure that they are identical.
+  const HloDataflowAnalysis& dataflow_orig = buffers_orig->dataflow_analysis();
+  const HloDataflowAnalysis& dataflow_proto =
+      buffers_from_proto->dataflow_analysis();
+
+  // Ensure that both buffer assignments have equal number of allocations.
+  EXPECT_EQ(buffers_orig->Allocations().size(),
+            buffers_from_proto->Allocations().size());
+
+  // Ensure that each logical buffer in each buffer assignment is assigned to
+  // the same allocation.
+  for (BufferValue::Id id = 0; id < dataflow_orig.values().size(); id++) {
+    auto& orig_value = dataflow_orig.values().at(id);
+    if (buffers_orig->HasAllocation(*orig_value)) {
+      // If there was an allocation for a logical buffer in the original
+      // assignment, then it should be there in the buffer assignment recreated
+      // from a proto dump as well.
+      auto& value_proto = dataflow_proto.GetUniqueValueAt(
+          orig_value->instruction(), orig_value->index());
+      EXPECT_TRUE(buffers_from_proto->HasAllocation(value_proto));
+      EXPECT_EQ(orig_value->color(), value_proto.color());
+      EXPECT_EQ(buffers_orig->GetAssignedAllocation(*orig_value).index(),
+                buffers_from_proto->GetAssignedAllocation(value_proto).index());
+    }
+  }
 }
 
 TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
@@ -517,7 +594,10 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
 
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
 
-  auto buffers = RunBufferAssignment(module.get());
+  auto buffers_orig = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
   BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
@@ -554,7 +634,10 @@ TEST_F(BufferAssignmentTest, AddCannotReuse) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
+  auto buffers_orig = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -740,7 +823,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {100}, {0}, /*tiles=*/{}, /*memory_space=*/1);
+      F32, {100}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*memory_space=*/1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -801,7 +885,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {10}, {0}, /*tiles=*/{}, /*memory_space=*/1);
+      F32, {10}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
 
@@ -865,8 +950,12 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
       ->size = 140;
 
-  auto buffers = RunBufferAssignmentWithPresetAssignments(
+  auto buffers_orig = RunBufferAssignmentWithPresetAssignments(
       module.get(), std::move(preset_assignments));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // All assigned buffers are aliased so they should have the same offset and
   // size.
@@ -908,7 +997,11 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
+  auto buffers_orig = RunBufferAssignment(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
   // Input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -1239,7 +1332,11 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module.get());
+  auto assignment_orig = RunBufferAssignment(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
   // The instructions should not share buffers.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -1276,7 +1373,11 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module.get());
+  auto assignment_orig = RunBufferAssignment(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
   // The instructions should not share buffers.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -1779,7 +1880,11 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module.get());
+  auto assignment_orig = RunBufferAssignment(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      ConvertToProtoAndBack(assignment_orig.get(), module.get()));
 
   // There should be no buffer reuse. The copy should not reuse the tuple
   // buffer.

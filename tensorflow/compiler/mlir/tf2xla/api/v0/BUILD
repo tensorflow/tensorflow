@@ -11,6 +11,7 @@ cc_library(
     srcs = ["compile_mlir_util.cc"],
     hdrs = ["compile_mlir_util.h"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -27,6 +28,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tf2xla/internal:mlir_pass_instrumentation",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",

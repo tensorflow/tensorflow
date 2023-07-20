@@ -42,7 +42,6 @@ string GetCuptiVersion() { return TF_CUPTI_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
-string GetCurandVersion() { return TF_CURAND_VERSION; }
 string GetCufftVersion() { return TF_CUFFT_VERSION; }
 string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
@@ -106,10 +105,6 @@ StatusOr<void*> GetCusolverDsoHandle() {
 
 StatusOr<void*> GetCusparseDsoHandle() {
   return GetDsoHandle("cusparse", GetCusparseVersion());
-}
-
-StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCurandVersion());
 }
 
 StatusOr<void*> GetCuptiDsoHandle() {
@@ -188,11 +183,6 @@ StatusOr<void*> GetCublasDsoHandle() {
 
 StatusOr<void*> GetCublasLtDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
-  return *result;
-}
-
-StatusOr<void*> GetCurandDsoHandle() {
-  static auto result = new auto(DsoLoader::GetCurandDsoHandle());
   return *result;
 }
 

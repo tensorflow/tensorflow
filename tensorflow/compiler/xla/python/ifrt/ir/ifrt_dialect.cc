@@ -22,11 +22,19 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/python/ifrt/ir/constants.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.h"
 
 // Generated definitions.
@@ -39,6 +47,14 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
+
+class IfrtAsmDialectInterface : public mlir::OpAsmDialectInterface {
+ public:
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  AliasResult getAlias(mlir::Attribute attr,
+                       llvm::raw_ostream& os) const override;
+};
 
 void IfrtDialect::initialize() {
   addTypes<
@@ -53,32 +69,94 @@ void IfrtDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.cc.inc"
       >();
+  addInterfaces<IfrtAsmDialectInterface>();
 }
 
-// static
-mlir::LogicalResult IfrtArrayType::verify(
-    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error,
-    mlir::RankedTensorType global, ShardingParam sharding,
-    llvm::ArrayRef<int64_t> devices) {
-  llvm::SmallSet<int64_t, 4> device_set;
-  for (auto device : devices) {
-    if (!device_set.insert(device).second) {
-      return emit_error() << "`devices` has duplicated id " << device;
+IfrtAsmDialectInterface::AliasResult IfrtAsmDialectInterface::getAlias(
+    mlir::Attribute attr, llvm::raw_ostream& os) const {
+  if (auto devices = llvm::dyn_cast<IfrtDevicesAttr>(attr);
+      devices != nullptr && devices.getIds().size() > 4) {
+    os << "devices";
+    return AliasResult::FinalAlias;
+  }
+  return AliasResult::NoAlias;
+}
+
+mlir::LogicalResult IfrtDialect::verifyOperationAttribute(
+    mlir::Operation* op, mlir::NamedAttribute attr) {
+  if (attr.getName() == kIfrtFunctionAttrName) {
+    if (!llvm::isa<mlir::func::FuncOp>(op)) {
+      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
+                               << "` attr but is not a function";
+    }
+    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
+                               << "` attr that is not a UnitAttr";
     }
   }
+  return mlir::success();
+}
 
-  if (mlir::failed(sharding.verify(emit_error))) {
+mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
+    mlir::Operation* op, unsigned regionIndex, unsigned argIndex,
+    mlir::NamedAttribute attr) {
+  if (attr.getName() == kIfrtDonatedArgAttrName) {
+    if (!llvm::isa<mlir::func::FuncOp>(op)) {
+      return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
+                               << "` arg attr but is not a function";
+    }
+    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+      return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
+                               << "` arg attr that is not a UnitAttr";
+    }
+    if (!op->hasAttr(kIfrtFunctionAttrName)) {
+      return op->emitOpError()
+             << "has `" << kIfrtDonatedArgAttrName << "` arg attr but not has `"
+             << kIfrtFunctionAttrName << "` attr";
+    }
+  }
+  return mlir::success();
+}
+
+llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
+  return getDevicesAttr().getIds();
+}
+
+mlir::LogicalResult IfrtArrayType::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::RankedTensorType shape, ShardingParam sharding,
+    IfrtDevicesAttr devices) {
+  if (mlir::failed(sharding.verify(emitError))) {
     return mlir::failure();
   }
 
-  int64_t devices_in_mesh = 1;
-  for (const int64_t axis_size : sharding.minor_to_major().axis_sizes) {
+  int devices_in_mesh = 1;
+  for (const int axis_size : sharding.minor_to_major().axis_sizes) {
     devices_in_mesh *= axis_size;
   }
-  if (devices_in_mesh != devices.size()) {
-    return emit_error() << "Requires the same amount of `devices` and from "
-                           "`sharding`. Actual: "
-                        << devices.size() << " vs " << devices_in_mesh;
+  if (llvm::ArrayRef<int> ids = devices.getIds();
+      devices_in_mesh != ids.size()) {
+    return emitError() << "Requires the same amount of `devices` and from "
+                          "`sharding`. Actual: "
+                       << ids.size() << " vs " << devices_in_mesh;
+  }
+
+  return mlir::success();
+}
+
+IfrtDevicesAttr::operator llvm::ArrayRef<int>() const { return getIds(); }
+
+mlir::LogicalResult IfrtDevicesAttr::verify(
+    llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    llvm::ArrayRef<int> ids) {
+  llvm::SmallSet<int, 4> device_set;
+  for (int id : ids) {
+    if (id < 0) {
+      return emitError() << "Device list has negative id " << id;
+    }
+    if (auto [unused_it, inserted] = device_set.insert(id); !inserted) {
+      return emitError() << "Device list has duplicate id " << id;
+    }
   }
 
   return mlir::success();

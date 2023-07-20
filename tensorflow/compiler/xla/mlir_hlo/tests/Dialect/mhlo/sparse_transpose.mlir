@@ -3,7 +3,7 @@
 // RUN:   --canonicalize | FileCheck %s
 
 #DCSR = #sparse_tensor.encoding<{
-  dimLevelType = [ "compressed", "compressed" ]
+  lvlTypes = [ "compressed", "compressed" ]
 }>
 
 //

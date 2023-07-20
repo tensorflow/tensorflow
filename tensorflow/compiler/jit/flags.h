@@ -108,7 +108,7 @@ struct MarkForCompilationPassFlags {
 // Flags associated with the XLA bridge's xla_device module.
 struct XlaDeviceFlags {
   // Switch the CPU device into "on-demand" mode, where instead of
-  // autoclustering ops are compiled one by one just-in-time.
+  // auto-clustering ops are compiled one by one just-in-time.
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
@@ -137,8 +137,10 @@ struct XlaOpsCommonFlags {
     }
 
     bool IsEnabledInXlaLaunchForDevice(const DeviceType& device_type) const {
-      return enabled_for_xla_launch_ &&
-             xla_launch_allowed_devices_.contains(device_type.type_string());
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
+      return enabled_for_all_ ||
+             (enabled_for_xla_launch_ &&
+              xla_launch_allowed_devices_.contains(device_type.type_string()));
     }
 
     // Allow using Device API (PjRt) for `device_type` in the XlaCompileOnDemand
@@ -152,10 +154,31 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileOnDemandForDevice(
         const DeviceType& device_type) const {
-      return enabled_for_compile_on_demand_ &&
-             xla_compile_on_demand_allowed_devices_.contains(
-                 device_type.type_string());
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
+      return enabled_for_all_ ||
+             (enabled_for_compile_on_demand_ &&
+              xla_compile_on_demand_allowed_devices_.contains(
+                  device_type.type_string()));
     }
+
+    // Allow using Device API (PjRt) for `device_type` in the XlaCompile and
+    // XlaRun ops. Please note that `enabled_for_compile_and_run_` needs to be
+    // true in addition to the `device_type` being allowed in order to use the
+    // Device API for single device compilation and execution in the XlaCompile
+    // and XlaRun ops.
+    void AllowForDeviceInXlaCompileAndRun(const DeviceType& device_type) {
+      xla_compile_and_run_allowed_devices_.insert(device_type.type_string());
+    }
+
+    bool IsEnabledInXlaCompileAndRunForDevice(
+        const DeviceType& device_type) const {
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
+      return enabled_for_all_ || (enabled_for_compile_and_run_ &&
+                                  xla_compile_and_run_allowed_devices_.contains(
+                                      device_type.type_string()));
+    }
+
+    bool IsEnabledForGpu() const { return enabled_for_gpu_; }
 
     // If true, uses Device API (PjRt) for single device compilation and
     // execution of functions marked for JIT compilation i.e. jit_compile=True.
@@ -166,6 +189,23 @@ struct XlaOpsCommonFlags {
     // one in "on-demand" mode. Defaults to false.
     bool enabled_for_compile_on_demand_;
 
+    // If true, uses Device API (PjRt) for compilation and execution when
+    // auto-clustering is enabled. Defaults to false.
+    bool enabled_for_compile_and_run_;
+
+    // If true, uses Device API (PjRt) for compilation and execution everywhere
+    // i.e. for functions marked for JIT compilation, for ops in "on-demand"
+    // mode and auto-clustering. Defaults to false.
+    //
+    // Note that this flag can be overridden by device flag like
+    // `enabled_for_gpu_` below.
+    bool enabled_for_all_;
+
+    // If true, enable Device API (PjRt) for TF GPU device. This is a helper
+    // flag so that individual tests can turn on PjRt for GPU specifically.
+    // Once the rollout to GPU is complete, this flag can be deprecated.
+    bool enabled_for_gpu_;
+
    private:
     // Devices for which using Device API (PjRt) is allowed in the XlaLaunch op.
     // This can only be modified programmatically.
@@ -173,7 +213,16 @@ struct XlaOpsCommonFlags {
     // Devices for which using Device API (PjRt) is allowed in the
     // XlaCompileOnDemand op. This can only be modified programmatically.
     absl::flat_hash_set<std::string> xla_compile_on_demand_allowed_devices_;
+    // Devices for which using Device API (PjRt) is allowed in the
+    // XlaCompile and XlaRun ops. This can only be modified programmatically.
+    absl::flat_hash_set<std::string> xla_compile_and_run_allowed_devices_;
   } tf_xla_use_device_api;
+};
+
+// Flags for the XlaCallModule kernel.
+struct XlaCallModuleFlags {
+  // Used by XlaCallModuleOp to specify safety checks to disable.
+  absl::flat_hash_set<std::string> disabled_checks;
 };
 
 // Flags for the build_xla_ops pass.
@@ -197,6 +246,10 @@ struct BuildXlaOpsPassFlags {
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;
+
+  // Disables full embedding pipelining when true. Instead, strict SparseCore
+  // TensorCore sequencing will be used.
+  bool tf_xla_disable_full_embedding_pipelining;
 };
 
 // Flags for common MLIR configurations.
@@ -235,6 +288,7 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 XlaOpsCommonFlags* GetXlaOpsCommonFlags();
+XlaCallModuleFlags* GetXlaCallModuleFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 

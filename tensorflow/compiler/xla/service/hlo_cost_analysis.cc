@@ -162,6 +162,9 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return 0;
+  }
   return options_.shape_size(shape);
 }
 
@@ -789,8 +792,8 @@ int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
             std::min<int64_t>(
                 input_limits[spatial_dimension] + undilated_index_base,
                 output_limits[spatial_dimension]) -
-                std::max<int64_t>(undilated_index_base, 0l),
-            0l);
+                std::max<int64_t>(undilated_index_base, int64_t{0}),
+            int64_t{0});
         continue;
       }
       // Loop over each point in the output.
@@ -1157,6 +1160,11 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // actual properties of the op depend on the backend implementation.
   int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
   current_properties_[kFlopsKey] = elements * Log2Ceiling<uint64_t>(elements);
+  return OkStatus();
+}
+
+Status HloCostAnalysis::HandleTopK(const HloInstruction* topk) {
+  // TODO(cheshire): Cost analysis for TopK.
   return OkStatus();
 }
 

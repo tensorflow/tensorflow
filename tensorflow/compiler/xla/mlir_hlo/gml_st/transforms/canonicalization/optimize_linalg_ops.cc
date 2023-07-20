@@ -25,14 +25,18 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/Transforms.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir::gml_st {
 namespace {
@@ -139,6 +143,49 @@ LogicalResult replaceBroadcastWithFill(linalg::BroadcastOp op,
   return success();
 }
 
+// Rewrite `tensor.extract_slice(op(arg1, ...))` into
+// `op(tensor.extract_slice(arg1, ...))`.
+LogicalResult rewriteExtractSliceOfTileableOp(Operation* op,
+                                              PatternRewriter& rewriter) {
+  auto tileableOp = dyn_cast<TilingInterface>(op);
+  if (!tileableOp) return failure();
+
+  // Support only ops with a single result for now.
+  if (op->getNumResults() != 1) return failure();
+  auto result = op->getResult(0);
+
+  // If the op has several uses, then it is not always beneficial to rewrite.
+  if (!result.hasOneUse()) return failure();
+  auto sliceOp = dyn_cast<tensor::ExtractSliceOp>(*result.getUsers().begin());
+  // Check if the defining op and the slice op are located in the same block.
+  // Cases when they are not are covered by fusion.
+  if (!sliceOp || sliceOp->getBlock() != op->getBlock()) return failure();
+
+  rewriter.setInsertionPointAfter(sliceOp);
+  FailureOr<TilingResult> tilingResult =
+      tensor::replaceExtractSliceWithTiledProducer(rewriter, sliceOp, result);
+
+  if (failed(tilingResult)) return failure();
+  rewriter.replaceOp(sliceOp, tilingResult->tiledValues);
+
+  return success();
+}
+
+LogicalResult rewriteExtractSliceOfReverseOp(thlo::ReverseOp reverseOp,
+                                             PatternRewriter& rewriter) {
+  return rewriteExtractSliceOfTileableOp(reverseOp, rewriter);
+}
+
+struct RewriteExtractSliceOfLinalgOpPattern
+    : public OpInterfaceRewritePattern<linalg::LinalgOp> {
+  using OpInterfaceRewritePattern<linalg::LinalgOp>::OpInterfaceRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::LinalgOp linalgOp,
+                                PatternRewriter& rewriter) const override {
+    return rewriteExtractSliceOfTileableOp(linalgOp, rewriter);
+  }
+};
+
 struct OptimizeLinalgOpsPass
     : public impl::OptimizeLinalgOpsPassBase<OptimizeLinalgOpsPass> {
   void runOnOperation() override {
@@ -147,13 +194,16 @@ struct OptimizeLinalgOpsPass
 
     // Populate patterns.
     RewritePatternSet patterns(ctx);
+    patterns.add<RewriteExtractSliceOfLinalgOpPattern>(ctx);
     patterns.add(foldConstantOperandsIntoMap);
     patterns.add(replaceBroadcastWithFill);
     patterns.add(replaceConstantMapWithFill);
+    patterns.add(rewriteExtractSliceOfReverseOp);
+    tensor::populateFoldTensorEmptyPatterns(patterns);
+    tensor::populateReassociativeReshapeFoldingPatterns(patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 

@@ -17,6 +17,8 @@ import inspect
 import numpy as np
 from typing import Any, Callable, List, Optional, Sequence, Iterable, Tuple
 
+from . import pytree
+
 _AvalDimSharding = Any
 _MeshDimAssignment = Any
 
@@ -75,7 +77,8 @@ class PmapFunction:
   def _cache_clear(self) -> None: ...
   def _debug_cache_keys(self) -> str: ...
 
-def pmap(__fun: Callable[..., Any],
-         __cache_miss: Callable[..., Any],
-         __static_argnums: Sequence[int],
-         __shard_arg_fallback: Callable[..., Any]) -> PmapFunction: ...
+def pmap(fun: Callable[..., Any],
+         cache_miss: Callable[..., Any],
+         static_argnums: Sequence[int],
+         shard_arg_fallback: Callable[..., Any],
+         pytree_registry: pytree.PyTreeRegistry) -> PmapFunction: ...

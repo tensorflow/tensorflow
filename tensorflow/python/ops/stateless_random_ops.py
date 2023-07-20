@@ -13,19 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 """Stateless random ops which take seed as a tensor input."""
-import enum
+
 import numpy as np
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import shape_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
@@ -49,146 +48,6 @@ ops.NotDifferentiable("StatelessRandomShuffle")
 ops.NotDifferentiable("RandomIndexShuffle")
 
 
-@tf_export("random.Algorithm", "random.experimental.Algorithm")
-class Algorithm(enum.Enum):
-  """A random-number-generation (RNG) algorithm.
-
-  Many random-number generators (e.g. the `alg` argument of
-  `tf.random.Generator` and `tf.random.stateless_uniform`) in TF allow
-  you to choose the algorithm used to generate the (pseudo-)random
-  numbers. You can set the algorithm to be one of the options below.
-
-  * `PHILOX`: The Philox algorithm introduced in the paper ["Parallel
-    Random Numbers: As Easy as 1, 2,
-    3"](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf).
-  * `THREEFRY`: The ThreeFry algorithm introduced in the paper
-    ["Parallel Random Numbers: As Easy as 1, 2,
-    3"](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf).
-  * `AUTO_SELECT`: Allow TF to automatically select the algorithm
-    depending on the accelerator device. Note that with this option,
-    running the same TF program on different devices may result in
-    different random numbers. Also note that TF may select an
-    algorithm that is different from `PHILOX` and `THREEFRY`.
-  """
-  # The numbers here must match framework/rng_alg.h
-  PHILOX = 1
-  THREEFRY = 2
-  AUTO_SELECT = 3
-
-
-def unsupported_alg_error_msg(alg):
-  """Produces the unsupported-algorithm error message."""
-  if isinstance(alg, int):
-    philox = Algorithm.PHILOX.value
-    threefry = Algorithm.THREEFRY.value
-    auto_select = Algorithm.AUTO_SELECT.value
-  elif isinstance(alg, str):
-    philox = "philox"
-    threefry = "threefry"
-    auto_select = "auto_select"
-  else:
-    philox = Algorithm.PHILOX
-    threefry = Algorithm.THREEFRY
-    auto_select = Algorithm.AUTO_SELECT
-  return (f"Argument `alg` got unsupported value {alg}. Supported values are "
-          f"{philox} for the Philox algorithm, "
-          f"{threefry} for the ThreeFry algorithm, and "
-          f"{auto_select} for auto-selection.")
-
-
-def convert_alg_to_int(alg):
-  """Converts algorithm to an integer.
-
-  Args:
-    alg: can be one of these types: integer, Algorithm, Tensor, string. Allowed
-      strings are "philox" and "threefry".
-
-  Returns:
-    An integer, unless the input is a Tensor in which case a Tensor is returned.
-  """
-  if isinstance(alg, int):
-    return alg
-  if isinstance(alg, Algorithm):
-    return alg.value
-  if isinstance(alg, ops.Tensor):
-    return alg
-  if isinstance(alg, str):
-    # canonicalized alg
-    canon_alg = alg.strip().lower().replace("-", "").replace("_", "")
-    if canon_alg == "philox":
-      return Algorithm.PHILOX.value
-    elif canon_alg == "threefry":
-      return Algorithm.THREEFRY.value
-    elif canon_alg == "autoselect":
-      return Algorithm.AUTO_SELECT.value
-    else:
-      raise ValueError(unsupported_alg_error_msg(alg))
-  else:
-    raise TypeError(
-        f"Can't convert argument `alg` (of value {alg} and type {type(alg)}) "
-        f"to int.")
-
-
-def _get_key_counter(seed, alg):
-  """Calculates the key and counter to pass to raw RNG ops.
-
-  This function calculates the key and counter that will be passed to
-  the raw RNG ops like `StatelessRandomUniformV2`. Depending on the
-  input `alg`, the key and counter may be scrambled or copied from
-  `seed`. If `alg` is `"auto_select"`, the key and counter will be
-  determined at runtime based on device type.
-
-  Args:
-    seed: An integer tensor of shape [2]. The seed to calculate the
-      key and counter from.
-    alg: The RNG algorithm. See `tf.random.stateless_uniform` for an
-      explanation.
-
-  Returns:
-    A pair (key, counter) suitable for V2 stateless RNG ops like
-    `StatelessRandomUniformV2`.
-  """
-  if alg == Algorithm.AUTO_SELECT.value:
-    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
-        seed)
-  elif alg == Algorithm.PHILOX.value:
-    key, counter = _philox_scramble_seed(seed)
-  elif alg == Algorithm.THREEFRY.value:
-    key = array_ops.reshape(
-        uint32s_to_uint64(math_ops.cast(seed, dtypes.uint32)), [1])
-    counter = array_ops.zeros([1], dtypes.uint64)
-  else:
-    raise ValueError(unsupported_alg_error_msg(alg))
-  return key, counter
-
-
-def _get_key_counter_alg(seed, alg):
-  if alg is None:
-    alg = Algorithm.AUTO_SELECT.value
-  alg = convert_alg_to_int(alg)
-  key, counter = _get_key_counter(seed, alg)
-  return key, counter, alg
-
-
-def _philox_scramble_seed(seed):
-  # the same scrambling procedure as core/kernels/stateless_random_ops.cc
-  key = constant_op.constant([0x02461e293ec8f720], dtypes.uint64)
-  counter = math_ops.cast(seed, dtypes.uint64)
-  mix = gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
-      [4], key=key, counter=counter, dtype=dtypes.uint32,
-      alg=Algorithm.PHILOX.value)
-  key = array_ops.reshape(uint32s_to_uint64(mix[:2]), [1])
-  counter = array_ops_stack.stack([0, uint32s_to_uint64(mix[2:])], axis=0)
-  return key, counter
-
-
-def uint32s_to_uint64(x):
-  return bitwise_ops.bitwise_or(
-      math_ops.cast(x[0], dtypes.uint64),
-      bitwise_ops.left_shift(math_ops.cast(x[1], dtypes.uint64),
-                             constant_op.constant(32, dtypes.uint64)))
-
-
 @tf_export("random.split", "random.experimental.stateless_split")
 @dispatch.add_dispatch_support
 def split(seed, num=2, alg="auto_select"):
@@ -208,8 +67,8 @@ def split(seed, num=2, alg="auto_select"):
   0.9002807 ], dtype=float32)>
 
   Args:
-    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or
-      `int64`). (When using XLA, only `int32` is allowed.)
+    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or `int64`).
+      (When using XLA, only `int32` is allowed.)
     num: optional, a positive integer or scalar tensor indicating the number of
       seeds to produce (default 2).
     alg: The RNG algorithm used to generate the random numbers. See
@@ -221,8 +80,14 @@ def split(seed, num=2, alg="auto_select"):
     will be determined by `tf.convert_to_tensor`).
   """
   seed = ops.convert_to_tensor(seed)
-  return stateless_random_uniform(shape=[num, 2], seed=seed, dtype=seed.dtype,
-                                  minval=None, maxval=None, alg=alg)
+  return stateless_random_uniform(
+      shape=[num, 2],
+      seed=seed,
+      dtype=seed.dtype,
+      minval=None,
+      maxval=None,
+      alg=alg,
+  )
 
 
 @tf_export("random.fold_in", "random.experimental.stateless_fold_in")
@@ -247,8 +112,8 @@ def fold_in(seed, data, alg="auto_select"):
   0.13253039], dtype=float32)>
 
   Args:
-    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or
-      `int64`). (When using XLA, only `int32` is allowed.)
+    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or `int64`).
+      (When using XLA, only `int32` is allowed.)
     data: an `int32` or `int64` scalar representing data to be folded in to the
       seed.
     alg: The RNG algorithm used to generate the random numbers. See
@@ -261,8 +126,9 @@ def fold_in(seed, data, alg="auto_select"):
     the dtype will be determined by `tf.convert_to_tensor`).
   """
   data = ops.convert_to_tensor(data)
-  seed1 = stateless_random_uniform(shape=[], seed=seed, dtype=data.dtype,
-                                   minval=None, maxval=None, alg=alg)
+  seed1 = stateless_random_uniform(
+      shape=[], seed=seed, dtype=data.dtype, minval=None, maxval=None, alg=alg
+  )
   return array_ops_stack.stack([seed1, data])
 
 
@@ -323,15 +189,15 @@ def index_shuffle(index, seed, max_index):
   tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
 
   Args:
-    index: An integer scalar tensor or vector with values in `[0,
-      max_index]`.  It can be seen as either a value `v` in the
-      sequence `S=[0, ..., max_index]` to be permutated, or as an
-      index of an element `e` in a shuffled vector.
-    seed: A tensor of shape [2] or [n, 2] with dtype `int32`,
-      `uint32`, `int64` or `uint64`.  The RNG seed. If the rank is
-      unknown during graph-building time it must be 1 at runtime.
-    max_index: A non-negative tensor with the same shape and dtype as
-      `index`.  The upper bound (inclusive).
+    index: An integer scalar tensor or vector with values in `[0, max_index]`.
+      It can be seen as either a value `v` in the sequence `S=[0, ...,
+      max_index]` to be permutated, or as an index of an element `e` in a
+      shuffled vector.
+    seed: A tensor of shape [2] or [n, 2] with dtype `int32`, `uint32`, `int64`
+      or `uint64`.  The RNG seed. If the rank is unknown during graph-building
+      time it must be 1 at runtime.
+    max_index: A non-negative tensor with the same shape and dtype as `index`.
+      The upper bound (inclusive).
 
   Returns:
     If all inputs were scalar (shape [2] for `seed`), the output will
@@ -353,7 +219,8 @@ def index_shuffle(index, seed, max_index):
     paddings = [[1, 0]] + (seed.shape.rank - 1) * [[0, 0]]
   seed = array_ops.pad(seed, paddings, constant_values=498247692)
   return gen_random_index_shuffle_ops.random_index_shuffle(
-      index, seed=seed, max_index=max_index, rounds=4)
+      index, seed=seed, max_index=max_index, rounds=4
+  )
 
 
 @tf_export("random.experimental.stateless_shuffle")
@@ -398,20 +265,23 @@ def stateless_shuffle(value, seed, alg="auto_select", name=None):
     dimension.
   """
   with ops.name_scope(name, "stateless_shuffle", [value, seed]) as name:
-    key, counter, alg = _get_key_counter_alg(seed, alg)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
     return gen_stateless_random_ops_v2.stateless_shuffle(
-        value, key=key, counter=counter, alg=alg)
+        value, key=key, counter=counter, alg=alg
+    )
 
 
 @tf_export("random.stateless_uniform")
 @dispatch.add_dispatch_support
-def stateless_random_uniform(shape,
-                             seed,
-                             minval=0,
-                             maxval=None,
-                             dtype=dtypes.float32,
-                             name=None,
-                             alg="auto_select"):
+def stateless_random_uniform(
+    shape,
+    seed,
+    minval=0,
+    maxval=None,
+    dtype=dtypes.float32,
+    name=None,
+    alg="auto_select",
+):
   """Outputs deterministic pseudorandom values from a uniform distribution.
 
   This is a stateless version of `tf.random.uniform`: if run twice with the
@@ -445,29 +315,28 @@ def stateless_random_uniform(shape,
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
-    minval: A Tensor or Python value of type `dtype`, broadcastable with
-      `shape` (for integer types, broadcasting is not supported, so it needs to
-      be a scalar). The lower bound on the range of random values to
-      generate. Pass `None` for full-range integers.  Defaults to 0.
-    maxval: A Tensor or Python value of type `dtype`, broadcastable with
-      `shape` (for integer types, broadcasting is not supported, so it needs to
-      be a scalar). The upper bound on the range of random values to generate.
+    minval: A Tensor or Python value of type `dtype`, broadcastable with `shape`
+      (for integer types, broadcasting is not supported, so it needs to be a
+      scalar). The lower bound on the range of random values to generate. Pass
+      `None` for full-range integers.  Defaults to 0.
+    maxval: A Tensor or Python value of type `dtype`, broadcastable with `shape`
+      (for integer types, broadcasting is not supported, so it needs to be a
+      scalar). The upper bound on the range of random values to generate.
       Defaults to 1 if `dtype` is floating point. Pass `None` for full-range
       integers.
     dtype: The type of the output: `float16`, `bfloat16`, `float32`, `float64`,
       `int32`, or `int64`. For unbounded uniform ints (`minval`, `maxval` both
       `None`), `uint32` and `uint64` may be used. Defaults to `float32`.
     name: A name for the operation (optional).
-    alg: The RNG algorithm used to generate the random numbers. Valid
-      choices are `"philox"` for [the Philox
+    alg: The RNG algorithm used to generate the random numbers. Valid choices
+      are `"philox"` for [the Philox
       algorithm](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf),
       `"threefry"` for [the ThreeFry
       algorithm](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf),
-      and `"auto_select"` (default) for the system to automatically
-      select an algorithm based the device type. Values of
-      `tf.random.Algorithm` can also be used. Note that with
-      `"auto_select"`, the outputs of this function may change when
-      it is running on a different device.
+      and `"auto_select"` (default) for the system to automatically select an
+      algorithm based the device type. Values of `tf.random.Algorithm` can also
+      be used. Note that with `"auto_select"`, the outputs of this function may
+      change when it is running on a different device.
 
   Returns:
     A tensor of the specified shape filled with random uniform values.
@@ -477,38 +346,49 @@ def stateless_random_uniform(shape,
       specified.
   """
   dtype = dtypes.as_dtype(dtype)
-  accepted_dtypes = (dtypes.float16, dtypes.bfloat16, dtypes.float32,
-                     dtypes.float64, dtypes.int32, dtypes.int64, dtypes.uint32,
-                     dtypes.uint64)
+  accepted_dtypes = (
+      dtypes.float16,
+      dtypes.bfloat16,
+      dtypes.float32,
+      dtypes.float64,
+      dtypes.int32,
+      dtypes.int64,
+      dtypes.uint32,
+      dtypes.uint64,
+  )
   if dtype not in accepted_dtypes:
     raise ValueError(
         f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
-        f"{accepted_dtypes}.")
+        f"{accepted_dtypes}."
+    )
   if dtype.is_integer:
     if (minval is None) != (maxval is None):
       raise ValueError(
           f"For integer `dtype` argument {dtype}, argument `minval` and "
           f"`maxval` must be both None or not None. Got `minval`={minval} and "
-          f"`maxval`={maxval}.")
+          f"`maxval`={maxval}."
+      )
     if minval is not None and dtype in (dtypes.uint32, dtypes.uint64):
       raise ValueError(
           f"Argument `dtype` got invalid value {dtype} when argument `minval` "
-          f"is not None. Please don't use unsigned integers in this case.")
+          "is not None. Please don't use unsigned integers in this case."
+      )
   elif maxval is None:
     maxval = 1
-  with ops.name_scope(name, "stateless_random_uniform",
-                      [shape, seed, minval, maxval]) as name:
+  with ops.name_scope(
+      name, "stateless_random_uniform", [shape, seed, minval, maxval]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     if dtype.is_integer and minval is None:
-      key, counter, alg = _get_key_counter_alg(seed, alg)
-      result = (
-          gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
-              shape, key=key, counter=counter, dtype=dtype, alg=alg, name=name))
+      key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
+      result = gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
+          shape, key=key, counter=counter, dtype=dtype, alg=alg, name=name
+      )
     else:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
       if dtype.is_integer:
-        key, counter, alg = _get_key_counter_alg(seed, alg)
+        key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
         result = gen_stateless_random_ops_v2.stateless_random_uniform_int_v2(
             shape,
             key=key,
@@ -516,11 +396,13 @@ def stateless_random_uniform(shape,
             minval=minval,
             maxval=maxval,
             alg=alg,
-            name=name)
+            name=name,
+        )
       else:
-        key, counter, alg = _get_key_counter_alg(seed, alg)
+        key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
         rnd = gen_stateless_random_ops_v2.stateless_random_uniform_v2(
-            shape, key=key, counter=counter, dtype=dtype, alg=alg)
+            shape, key=key, counter=counter, dtype=dtype, alg=alg
+        )
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     shape_util.maybe_set_static_shape(result, shape)
     return result
@@ -528,12 +410,9 @@ def stateless_random_uniform(shape,
 
 @tf_export("random.stateless_binomial")
 @dispatch.add_dispatch_support
-def stateless_random_binomial(shape,
-                              seed,
-                              counts,
-                              probs,
-                              output_dtype=dtypes.int32,
-                              name=None):
+def stateless_random_binomial(
+    shape, seed, counts, probs, output_dtype=dtypes.int32, name=None
+):
   """Outputs deterministic pseudorandom values from a binomial distribution.
 
   The generated values follow a binomial distribution with specified count and
@@ -581,29 +460,29 @@ def stateless_random_binomial(shape,
       values.  For each i, each samples[..., i] is an independent draw from
       the binomial distribution on counts[i] trials with probability of
       success probs[i].
-
   """
-  with ops.name_scope(name, "stateless_random_binomial",
-                      [shape, seed, counts, probs]) as name:
+  with ops.name_scope(
+      name, "stateless_random_binomial", [shape, seed, counts, probs]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     probs = ops.convert_to_tensor(
-        probs, dtype_hint=dtypes.float32, name="probs")
+        probs, dtype_hint=dtypes.float32, name="probs"
+    )
     counts = ops.convert_to_tensor(
-        counts, dtype_hint=probs.dtype, name="counts")
+        counts, dtype_hint=probs.dtype, name="counts"
+    )
     result = gen_stateless_random_ops.stateless_random_binomial(
-        shape=shape, seed=seed, counts=counts, probs=probs, dtype=output_dtype)
+        shape=shape, seed=seed, counts=counts, probs=probs, dtype=output_dtype
+    )
     shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
 @tf_export("random.stateless_gamma")
 @dispatch.add_dispatch_support
-def stateless_random_gamma(shape,
-                           seed,
-                           alpha,
-                           beta=None,
-                           dtype=dtypes.float32,
-                           name=None):
+def stateless_random_gamma(
+    shape, seed, alpha, beta=None, dtype=dtypes.float32, name=None
+):
   """Outputs deterministic pseudorandom values from a gamma distribution.
 
   The generated values follow a gamma distribution with specified concentration
@@ -677,34 +556,34 @@ def stateless_random_gamma(shape,
     samples: A Tensor of the specified shape filled with random gamma values.
       For each i, each `samples[..., i] is an independent draw from the gamma
       distribution with concentration alpha[i] and scale beta[i].
-
   """
-  with ops.name_scope(name, "stateless_random_gamma",
-                      [shape, seed, alpha, beta]) as name:
+  with ops.name_scope(
+      name, "stateless_random_gamma", [shape, seed, alpha, beta]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     alpha = ops.convert_to_tensor(alpha, dtype=dtype, name="alpha")
     beta = ops.convert_to_tensor(
-        beta if beta is not None else 1, name="beta", dtype=dtype)
+        beta if beta is not None else 1, name="beta", dtype=dtype
+    )
     broadcast_shape = array_ops.broadcast_dynamic_shape(
-        array_ops.shape(alpha), array_ops.shape(beta))
+        array_ops.shape(alpha), array_ops.shape(beta)
+    )
     alpha_broadcast = array_ops.broadcast_to(alpha, broadcast_shape)
     alg = "auto_select"
-    key, counter, alg = _get_key_counter_alg(seed, alg)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
-        shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
+        shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast
+    )
     result = math_ops.maximum(
-        np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta)
+        np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta
+    )
     shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
 @tf_export("random.stateless_poisson")
 @dispatch.add_dispatch_support
-def stateless_random_poisson(shape,
-                             seed,
-                             lam,
-                             dtype=dtypes.int32,
-                             name=None):
+def stateless_random_poisson(shape, seed, lam, dtype=dtypes.int32, name=None):
   """Outputs deterministic pseudorandom values from a Poisson distribution.
 
   The generated values follow a Poisson distribution with specified rate
@@ -750,26 +629,29 @@ def stateless_random_poisson(shape,
     samples: A Tensor of the specified shape filled with random Poisson values.
       For each i, each `samples[..., i]` is an independent draw from the Poisson
       distribution with rate `lam[i]`.
-
   """
-  with ops.name_scope(name, "stateless_random_poisson",
-                      [shape, seed, lam]) as name:
+  with ops.name_scope(
+      name, "stateless_random_poisson", [shape, seed, lam]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     result = gen_stateless_random_ops.stateless_random_poisson(
-        shape, seed=seed, lam=lam, dtype=dtype)
+        shape, seed=seed, lam=lam, dtype=dtype
+    )
     shape_util.maybe_set_static_shape(result, shape)
     return result
 
 
 @tf_export("random.stateless_normal")
 @dispatch.add_dispatch_support
-def stateless_random_normal(shape,
-                            seed,
-                            mean=0.0,
-                            stddev=1.0,
-                            dtype=dtypes.float32,
-                            name=None,
-                            alg="auto_select"):
+def stateless_random_normal(
+    shape,
+    seed,
+    mean=0.0,
+    stddev=1.0,
+    dtype=dtypes.float32,
+    name=None,
+    alg="auto_select",
+):
   """Outputs deterministic pseudorandom values from a normal distribution.
 
   This is a stateless version of `tf.random.normal`: if run twice with the
@@ -795,14 +677,16 @@ def stateless_random_normal(shape,
   Returns:
     A tensor of the specified shape filled with random normal values.
   """
-  with ops.name_scope(name, "stateless_random_normal",
-                      [shape, seed, mean, stddev]) as name:
+  with ops.name_scope(
+      name, "stateless_random_normal", [shape, seed, mean, stddev]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    key, counter, alg = _get_key_counter_alg(seed, alg)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
-        shape, key=key, counter=counter, dtype=dtype, alg=alg)
+        shape, key=key, counter=counter, dtype=dtype, alg=alg
+    )
     result = math_ops.add(rnd * stddev, mean, name=name)
     shape_util.maybe_set_static_shape(result, shape)
     return result
@@ -810,13 +694,15 @@ def stateless_random_normal(shape,
 
 @tf_export("random.stateless_truncated_normal")
 @dispatch.add_dispatch_support
-def stateless_truncated_normal(shape,
-                               seed,
-                               mean=0.0,
-                               stddev=1.0,
-                               dtype=dtypes.float32,
-                               name=None,
-                               alg="auto_select"):
+def stateless_truncated_normal(
+    shape,
+    seed,
+    mean=0.0,
+    stddev=1.0,
+    dtype=dtypes.float32,
+    name=None,
+    alg="auto_select",
+):
   """Outputs deterministic pseudorandom values, truncated normally distributed.
 
   This is a stateless version of `tf.random.truncated_normal`: if run twice with
@@ -845,14 +731,16 @@ def stateless_truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with ops.name_scope(name, "stateless_truncated_normal",
-                      [shape, seed, mean, stddev]) as name:
+  with ops.name_scope(
+      name, "stateless_truncated_normal", [shape, seed, mean, stddev]
+  ) as name:
     shape = shape_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    key, counter, alg = _get_key_counter_alg(seed, alg)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, alg)
     rnd = gen_stateless_random_ops_v2.stateless_truncated_normal_v2(
-        shape, key=key, counter=counter, dtype=dtype, alg=alg)
+        shape, key=key, counter=counter, dtype=dtype, alg=alg
+    )
     result = math_ops.add(rnd * stddev, mean, name=name)
     shape_util.maybe_set_static_shape(result, shape)
     return result
@@ -861,12 +749,11 @@ def stateless_truncated_normal(shape,
 @tf_export(v1=["random.stateless_multinomial"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
-    date=None, instructions="Use `tf.random.stateless_categorical` instead.")
-def stateless_multinomial(logits,
-                          num_samples,
-                          seed,
-                          output_dtype=dtypes.int64,
-                          name=None):
+    date=None, instructions="Use `tf.random.stateless_categorical` instead."
+)
+def stateless_multinomial(
+    logits, num_samples, seed, output_dtype=dtypes.int64, name=None
+):
   """Draws deterministic pseudorandom samples from a multinomial distribution.
 
   This is a stateless version of `tf.random.categorical`: if run twice with the
@@ -885,8 +772,8 @@ def stateless_multinomial(logits,
   ```
 
   Args:
-    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
-      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i,
+      :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
@@ -898,17 +785,16 @@ def stateless_multinomial(logits,
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "stateless_multinomial", [logits, seed]):
-    return stateless_multinomial_categorical_impl(logits, num_samples,
-                                                  output_dtype, seed)
+    return stateless_multinomial_categorical_impl(
+        logits, num_samples, output_dtype, seed
+    )
 
 
 @tf_export("random.stateless_categorical")
 @dispatch.add_dispatch_support
-def stateless_categorical(logits,
-                          num_samples,
-                          seed,
-                          dtype=dtypes.int64,
-                          name=None):
+def stateless_categorical(
+    logits, num_samples, seed, dtype=dtypes.int64, name=None
+):
   """Draws deterministic pseudorandom samples from a categorical distribution.
 
   This is a stateless version of `tf.categorical`: if run twice with the
@@ -928,8 +814,8 @@ def stateless_categorical(logits,
   ```
 
   Args:
-    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
-      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i,
+      :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
       dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
@@ -941,8 +827,9 @@ def stateless_categorical(logits,
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "stateless_categorical", [logits, seed]):
-    return stateless_multinomial_categorical_impl(logits, num_samples, dtype,
-                                                  seed)
+    return stateless_multinomial_categorical_impl(
+        logits, num_samples, dtype, seed
+    )
 
 
 def stateless_multinomial_categorical_impl(logits, num_samples, dtype, seed):
@@ -953,20 +840,18 @@ def stateless_multinomial_categorical_impl(logits, num_samples, dtype, seed):
   if dtype not in accepted_dtypes:
     raise ValueError(
         f"Argument `dtype` got invalid value {dtype}. Accepted dtypes are "
-        f"{accepted_dtypes}.")
+        f"{accepted_dtypes}."
+    )
   return gen_stateless_random_ops.stateless_multinomial(
-      logits, num_samples, seed, output_dtype=dtype)
+      logits, num_samples, seed, output_dtype=dtype
+  )
 
 
 @dispatch.add_dispatch_support
 @tf_export("random.stateless_parameterized_truncated_normal")
-def stateless_parameterized_truncated_normal(shape,
-                                             seed,
-                                             means=0.0,
-                                             stddevs=1.0,
-                                             minvals=-2.0,
-                                             maxvals=2.0,
-                                             name=None):
+def stateless_parameterized_truncated_normal(
+    shape, seed, means=0.0, stddevs=1.0, minvals=-2.0, maxvals=2.0, name=None
+):
   """Outputs random values from a truncated normal distribution.
 
   The generated values follow a normal distribution with specified mean and
@@ -1014,15 +899,23 @@ def stateless_parameterized_truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with ops.name_scope(name, "stateless_parameterized_truncated_normal",
-                      [shape, means, stddevs, minvals, maxvals]) as name:
+  with ops.name_scope(
+      name,
+      "stateless_parameterized_truncated_normal",
+      [shape, means, stddevs, minvals, maxvals],
+  ) as name:
     shape_tensor = shape_util.shape_tensor(shape)
     means_tensor = ops.convert_to_tensor(means, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, name="stddevs")
     minvals_tensor = ops.convert_to_tensor(minvals, name="minvals")
     maxvals_tensor = ops.convert_to_tensor(maxvals, name="maxvals")
     rnd = gen_stateless_random_ops.stateless_parameterized_truncated_normal(
-        shape_tensor, seed, means_tensor, stddevs_tensor, minvals_tensor,
-        maxvals_tensor)
+        shape_tensor,
+        seed,
+        means_tensor,
+        stddevs_tensor,
+        minvals_tensor,
+        maxvals_tensor,
+    )
     shape_util.maybe_set_static_shape(rnd, shape)
     return rnd

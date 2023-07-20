@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
@@ -50,13 +51,16 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 }  // namespace
 
 constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
+constexpr DataType ToDataType<tsl::float8_e4m3fnuz>::value;
 constexpr DataType ToDataType<tsl::float8_e5m2>::value;
+constexpr DataType ToDataType<tsl::float8_e5m2fnuz>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
 constexpr DataType ToDataType<Eigen::bfloat16>::value;
 constexpr DataType ToDataType<int8_t>::value;
 constexpr DataType ToDataType<int32_t>::value;
+constexpr DataType ToDataType<int64_t>::value;
 constexpr DataType ToDataType<std::complex<float>>::value;
 constexpr DataType ToDataType<std::complex<double>>::value;
 
@@ -118,12 +122,6 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
   return result;
 }
 
-bool DnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
-}
-
 tsl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
@@ -135,6 +133,7 @@ tsl::Status DnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
+    const NumericOptions& /*numeric_options*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return tsl::errors::Unimplemented("GetConvolveRunners not implemented.");
 }
@@ -160,7 +159,7 @@ tsl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode,
+    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   return tsl::errors::Unimplemented("GetFusedConvolveRunners not implemented.");
 }
@@ -170,7 +169,7 @@ tsl::Status DnnSupport::GetFusedMatmulRunners(
     dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
     int64_t ldb, int64_t ldc, dnn::ActivationMode activation_mode,
-    bool use_fallback,
+    bool use_fallback, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   return tsl::errors::Unimplemented("GetFusedMatmulRunners not implemented.");
@@ -201,8 +200,9 @@ DnnSupport::FusedMHASoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "FusedMHASoftmaxRunnerFromDesc not implemented.");
 }
 
@@ -215,9 +215,10 @@ DnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& mask_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "FusedMHAScaleMaskSoftmaxRunnerFromDesc not implemented.");
 }
 
@@ -230,10 +231,11 @@ DnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& mask_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc not implemented.");
 }
 
@@ -246,10 +248,50 @@ DnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-  return tsl::errors::Unimplemented(
+  return absl::UnimplementedError(
       "FusedMHAScaleBiasSoftmaxRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+DnnSupport::FusedMHASoftmaxBackwardRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+    const MatmulTensorDescriptor& d_output_descriptor,
+    const TensorDescriptor& d_bmm1_lhs_descriptor,
+    const TensorDescriptor& d_bmm1_rhs_descriptor,
+    const TensorDescriptor& d_bmm2_rhs_descriptor,
+    const TensorDescriptor& d_s_descriptor,
+    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return absl::UnimplementedError(
+      "FusedMHASoftmaxBackwardRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+DnnSupport::FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+    const MatmulTensorDescriptor& d_output_descriptor,
+    const TensorDescriptor& d_bmm1_lhs_descriptor,
+    const TensorDescriptor& d_bmm1_rhs_descriptor,
+    const TensorDescriptor& d_bmm2_rhs_descriptor,
+    const TensorDescriptor& d_s_descriptor,
+    const TensorDescriptor& mask_descriptor,
+    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return absl::UnimplementedError(
+      "FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
@@ -270,16 +312,32 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
+tsl::Status DnnSupport::DoPoolForward(
+    DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const NumericOptions& numeric_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    ScratchAllocator* workspace_allocator) {
+  // Ignore numeric options. Subclasses can override this method to use it.
+  return DoPoolForward(element_type, stream, pooling_dimensions,
+                       input_dimensions, input_data, output_dimensions,
+                       output_data, workspace_allocator);
 }
 
-bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
+tsl::Status DnnSupport::DoPoolBackward(
+    DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const NumericOptions& numeric_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
+    ScratchAllocator* workspace_allocator) {
+  // Ignore numeric options. Subclasses can override this method to use it.
+  return DoPoolBackward(element_type, stream, pooling_dimensions,
+                        input_dimensions, input_data, output_dimensions,
+                        output_data, input_diff_data, output_diff_data,
+                        workspace_allocator);
 }
 
 std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
@@ -313,6 +371,8 @@ std::string ActivationModeString(ActivationMode mode) {
       return "bandpass";
     case ActivationMode::kElu:
       return "elu";
+    case ActivationMode::kLeakyRelu:
+      return "leakyrelu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
   }

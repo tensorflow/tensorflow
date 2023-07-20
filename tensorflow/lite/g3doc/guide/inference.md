@@ -616,16 +616,15 @@ running inference in different languages.
 All the examples assume that the input shape is defined as `[1/None, 10]`, and
 need to be resized to `[3, 10]`.
 
-<section class="tabs">
-
-###### C++ {.new-tab}
+C++ example:
 
 ```c++
 // Resize input tensors before allocate tensors
 interpreter->ResizeInputTensor(/*tensor_index=*/0, std::vector<int>{3,10});
 interpreter->AllocateTensors();
 ```
-###### Python {.new-tab}
+
+Python example:
 
 ```python
 # Load the TFLite model in TFLite Interpreter

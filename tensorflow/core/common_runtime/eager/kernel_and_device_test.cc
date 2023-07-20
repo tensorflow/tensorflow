@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -138,8 +140,8 @@ void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   TF_CHECK_OK(k.Init({}, ndef, nullptr));
   const EagerKernelArgs args(std::move(inputs));
   for (auto s : state) {
-    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt,
-                      absl::nullopt, nullptr));
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, std::nullopt,
+                      std::nullopt, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

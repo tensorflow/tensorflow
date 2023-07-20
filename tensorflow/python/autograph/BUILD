@@ -13,12 +13,11 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python/autograph/converters:__init__",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/lang:special_functions",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:__init__",
         "//tensorflow/python/autograph/pyct/common_transformers",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/autograph/utils:ag_logging",

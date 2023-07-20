@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -128,6 +129,10 @@ class HloModule {
 
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
+
+  // Move computations from the input module to this one, while ensuring that
+  // the names of instructions within the computations are unchanged.
+  void MoveComputationsFrom(HloModule* module);
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
@@ -589,6 +594,26 @@ class HloModule {
   std::string GetFingerprint128(const HloPrintOptions& options =
                                     HloPrintOptions::ModuleFingerprint()) const;
 
+  // Describes a stack frame.
+  struct StackFrame {
+    std::string_view file_name;
+    std::string_view function_name;
+    int line = 0;
+    int column = 0;
+
+    // 1-based index of the parent frame.
+    // 0 value indicates that the current frame is the root.
+    int parent_frame_id = 0;
+
+    bool empty() const {
+      return line == 0 && column == 0 && file_name.empty() &&
+             function_name.empty();
+    }
+  };
+
+  // Getter for the specific stack frame. Argument is a 1-based index.
+  StackFrame get_stack_frame(int id) const;
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -674,6 +699,9 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_ =
       std::make_unique<CompilationEnvironments>();
+
+  // Stack frame indexes flat representation.
+  std::optional<StackFrameIndexProto> stack_frame_index_;
 };
 
 }  // namespace xla

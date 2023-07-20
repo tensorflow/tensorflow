@@ -7,7 +7,11 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
+    # TODO(b/286919981). Remove nomsan once we pass through MSAN_OPTIONS env var
+    # to the test.
+    default_tags = ["nomsan"],
     driver = "//tensorflow/compiler/xla:run_lit.sh",
     test_file_exts = ["mlir"],
 )

@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -260,7 +261,13 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
 
     # Tape tests that can be run on every operator below.
     with backprop.GradientTape() as tape:
-      _assert_not_none(tape.gradient(operator.to_dense(), operator.variables))
+      grad = tape.gradient(operator.to_dense(), operator.variables)
+      _assert_not_none(grad)
+
+    with backprop.GradientTape() as tape:
+      var_grad = tape.gradient(operator, operator.variables)
+      _assert_not_none(var_grad)
+      nest.assert_same_structure(var_grad, grad)
 
     with backprop.GradientTape() as tape:
       _assert_not_none(
@@ -892,6 +899,42 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 
   return test_saved_model
 
+
+def _test_composite_tensor_gradient(use_placeholder, shapes_info, dtype):
+  def test_composite_tensor_gradient(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, _ = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      x = self.make_x(operator, adjoint=False)
+      y = operator.matmul(x)
+
+      op_g, = gradients_impl.gradients(
+          y,
+          operator,
+          grad_ys=array_ops.ones_like(y))  # Complex dtypes need grad_ys.
+
+      def _unflatten_and_matmul(components):
+        unflat_op = nest.pack_sequence_as(
+            operator, components, expand_composites=True)
+        return unflat_op.matmul(x)
+
+      flat_op = nest.flatten(operator, expand_composites=True)
+      y_ = _unflatten_and_matmul(flat_op)
+      flat_g = gradients_impl.gradients(
+          y_,
+          flat_op,
+          grad_ys=array_ops.ones_like(y_))
+
+      if all(g is None for g in flat_g):
+        self.assertIsNone(op_g)
+      else:
+        self.assertIsInstance(op_g, operator.__class__)
+        for g, ug in zip(nest.flatten(op_g, expand_composites=True),
+                         nest.flatten(flat_g, expand_composites=True)):
+          self.assertAllClose(g, ug)
+  return test_composite_tensor_gradient
+
 # pylint:enable=missing-docstring
 
 
@@ -904,6 +947,7 @@ def add_tests(test_cls):
       "cholesky": _test_cholesky,
       "cond": _test_cond,
       "composite_tensor": _test_composite_tensor,
+      "composite_tensor_gradient": _test_composite_tensor_gradient,
       "det": _test_det,
       "diag_part": _test_diag_part,
       "eigvalsh": _test_eigvalsh,

@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -28,7 +32,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
-using ::testing::StartsWith;
 
 TEST(UtilsTest, ConvertTfDTypeToTfrtDType) {
 #define DTYPE(TFRT_DTYPE, TF_DTYPE)                          \
@@ -52,21 +55,6 @@ TEST(UtilsTest, CreateDummyTfDevices) {
   EXPECT_THAT(dummy_tf_devices[0]->attributes().physical_device_desc(),
               HasSubstr("device: TFRT TPU SYSTEM device"));
   EXPECT_EQ(dummy_tf_devices[1]->name(), device_name[1]);
-}
-
-TEST(UtilsTest, AddDummyTfrtDevices) {
-  std::unique_ptr<HostContext> host_ctx = CreateHostContext();
-  const std::vector<std::string> device_name{"/device:tpu:0"};
-  AddDummyTfrtDevices(device_name, host_ctx.get());
-
-  RCReference<Device> device0 =
-      host_ctx->GetDeviceManager()->GetDeviceRef<Device>(device_name[0]);
-  ASSERT_TRUE(device0);
-  EXPECT_EQ(device0->name(), device_name[0]);
-
-  RCReference<Device> device1 =
-      host_ctx->GetDeviceManager()->GetDeviceRef<Device>("no-such-device");
-  EXPECT_FALSE(device1);
 }
 
 TEST(UtilsTest, ReturnIfErrorInImport) {

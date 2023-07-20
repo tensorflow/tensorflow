@@ -170,9 +170,30 @@ class Loader(object):
 
     # Metagraph has a mapping from FunctionDef name to aliases
     self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
-    # Create a mapping from alias to Function, which can be used with
-    # SaveOptions
     self.function_aliases = {}
+    if self._save_options.experimental_load_function_aliases:
+      # Create a mapping from aliases to polymorphic restored functions or lists
+      # of concrete functions. This mapping can later be used with SaveOptions
+      # when re-saving the loaded object to a SavedModel. We start with a
+      # mapping from aliases to lists of concrete functions. Later in
+      # _recreate_function, on a entry by entry basis, we replace lists with
+      # polymorphic restored functions if the concrete function associated with
+      # a restored function is identical to a list of concrete functions in an
+      # entry.
+      concrete_func_list_by_alias = collections.defaultdict(list)
+      for concrete_func_name, alias in self._concrete_function_aliases.items():
+        if concrete_func_name not in self._concrete_functions:
+          logging.warn(
+              (
+                  "ConcreteFunction `%s` is listed in function alias but it"
+                  " is not found."
+              ),
+              concrete_func_name,
+          )
+          continue
+        concrete_function = self._concrete_functions[concrete_func_name]
+        concrete_func_list_by_alias[alias].append(concrete_function)
+      self.function_aliases = dict(concrete_func_list_by_alias)
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -688,16 +709,37 @@ class Loader(object):
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
 
+    # If the list of concrete functions associated with this polymorphic
+    # restored function is identical to a list of concrete functions found in
+    # the function alias mapping, we replace the latter with this restored
+    # function. Also see comments in the __init__ method.
     if self._save_options.experimental_load_function_aliases:
-      for name in proto.concrete_functions:
-        if name in self._concrete_function_aliases:
-          alias = self._concrete_function_aliases[name]
+      if proto.concrete_functions and all(
+          name in self._concrete_function_aliases
+          for name in proto.concrete_functions
+      ):
+        alias = self._concrete_function_aliases[
+            next(iter(proto.concrete_functions))
+        ]
+        aliased = self.function_aliases.get(alias)
+        assert isinstance(aliased, list)
+        # Note that we cannot compare f.name below with proto.concrete_functions
+        # because the former is new name for the restored ConcreteFunction
+        # object while the latter is the old name in the original proto.
+        if set(f.name for f in aliased) == set(
+            f.name for f in fn._list_all_concrete_functions()  # pylint: disable=protected-access
+        ):
           self.function_aliases[alias] = fn
-          # We only need to save the mapping from alias to a tf.Function
-          # once even though it can appear multiple times in
-          # self._concrete_function_aliases due to one-to-many mapping from
-          # tf.Function to concrete functions.
-          break
+        else:
+          logging.warn(
+              (
+                  "Not aliasing '%s' to polymorphic restored function because"
+                  " of mismatched concrete functions: %s vs %s"
+              ),
+              alias,
+              set(f.name for f in aliased),
+              set(f.name for f in fn._list_all_concrete_functions()),  # pylint: disable=protected-access
+          )
 
     return fn, setattr
 
@@ -962,6 +1004,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   saved_model_proto, debug_info = (
       loader_impl.parse_saved_model_with_debug_info(export_dir))
 
+  loader = None
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
@@ -999,12 +1042,23 @@ def load_partial(export_dir, filters, tags=None, options=None):
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
     metrics.IncrementRead(write_version="2")
+
+    if options.experimental_load_function_aliases:
+      if hasattr(root, "function_aliases"):
+        raise ValueError(
+            "Could not load with experimental_load_function_aliases option"
+            " because the top-level object already has an attributed with name"
+            " 'function_aliases'"
+        )
+      root.function_aliases = loader.function_aliases
   else:
     if filters:
       raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
                        " version) cannot be loaded with node filters.")
     with ops.init_scope():
-      root = load_v1_in_v2.load(export_dir, tags)
+      root = load_v1_in_v2.load(
+          export_dir, tags, options.experimental_skip_checkpoint
+      )
       root.graph_debug_info = debug_info
   # For privacy concerns, please see the note in
   #  tensorflow/cc/saved_model/metrics.h
@@ -1028,16 +1082,44 @@ def load_partial(export_dir, filters, tags=None, options=None):
     singleprint = fingerprint.singleprint()
   metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
 
-  if options.experimental_load_function_aliases:
-    if hasattr(root, "function_aliases"):
-      raise ValueError(
-          "Could not load with experimental_load_function_aliases option"
-          " because the top-level object already has an attributed with name"
-          " 'function_aliases'"
-      )
-    root.function_aliases = loader.function_aliases
-
-  if filters:
+  if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}
   else:
     return {"root": root}
+
+
+def is_tf2_saved_model(export_dir):
+  """Identifies if an exported SavedModel is a TF2 SavedModel.
+
+  There are differences in SavedModel semantics between TF1 and TF2 that are
+  documented here:
+  https://www.tensorflow.org/guide/migrate/saved_model#savedmodel. This helper
+  util function serves to distinguish the TF1 vs TF2 semantics used when
+  exporting SavedModels.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+
+  Returns:
+    True if TF2 SavedModel semantics are used, False if TF1 SavedModel semantics
+    are used.
+  """
+  # Try reading the fingerprint first before parsing the SavedModel proto
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+    if fingerprint.saved_object_graph_hash != 0:
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+  except Exception:  # pylint: disable=broad-exception-caught
+    logging.info(
+        "Failed to read fingerprint from SavedModel. Parsing MetaGraph ..."
+    )
+    saved_model_proto = loader_impl.parse_saved_model(export_dir)
+    if len(
+        saved_model_proto.meta_graphs
+    ) == 1 and saved_model_proto.meta_graphs[0].HasField("object_graph_def"):
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+
+  logging.info("SavedModel at %s is a TF1 SavedModel", export_dir)
+  return False

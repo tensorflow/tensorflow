@@ -191,19 +191,17 @@ BroadcastToSPMDExpander::ComputeLayoutBackward(
   const int input_shape_rank = input_shape.size();
   const int broadcasted_dimensions = output_shape_rank - input_shape_rank;
 
-  LayoutProto layout_proto;
-  TF_ASSIGN_OR_RETURN(*layout_proto.mutable_mesh_config(), mesh.ToProto());
+  std::vector<std::string> sharding_specs;
   for (int i = 0; i < input_shape_rank; ++i) {
     if (input_shape[i] == 1) {
-      layout_proto.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
+      sharding_specs.push_back(Layout::kUnshardedDim);
     } else {
-      layout_proto.add_sharding_specs()->set_sharding_spec(
+      sharding_specs.push_back(
           output_layout.sharding_spec(i + broadcasted_dimensions));
     }
   }
   TF_ASSIGN_OR_RETURN(Layout inferred_operand_layout,
-                      Layout::FromProto(layout_proto));
+                      Layout::GetLayout(sharding_specs, mesh));
   // `shape` input of BroadcastTo is always set as replicated.
   return llvm::DenseMap<int, Layout>(
       {{0, inferred_operand_layout},

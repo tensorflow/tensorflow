@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -52,6 +53,7 @@ Status ConvertFunctionToBef(
 // needed. The nested functions will also be exported.
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::ModelRuntimeContext& model_context,
                           tfrt_stub::FallbackState* fallback_state = nullptr);
 
 Status ConvertTfMlirToRuntimeExecutable(
@@ -59,6 +61,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
+    tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state = nullptr);
 
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(

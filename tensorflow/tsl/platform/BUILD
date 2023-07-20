@@ -4,15 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_cc_test",
-    "cuda_library",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "rocm_copts",
-)
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -23,6 +14,7 @@ load(
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
+    "tf_error_logging_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
@@ -101,6 +93,26 @@ cc_library(
         ":byte_order",
         ":stringpiece",
         ":types",
+    ],
+)
+
+cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -311,21 +323,19 @@ cc_library(
 
 cc_library(
     name = "statusor",
-    srcs = [
-        "statusor.cc",
-        "statusor_internals.h",
-    ],
     hdrs = ["statusor.h"],
     deps = [
         ":errors",
         ":logging",
         ":macros",
+        ":platform",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + tf_platform_deps("statusor"),
 )
 
 cc_library(
@@ -337,11 +347,16 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
+    deps = [
+        ":logging",
         ":macros",
+        ":net",
+        ":path",
         ":platform",
+        ":types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -423,6 +438,7 @@ filegroup(
         "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -507,6 +523,7 @@ filegroup(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -552,9 +569,7 @@ filegroup(
         "stacktrace.h",
         "status.cc",
         "status.h",
-        "statusor.cc",
         "statusor.h",
-        "statusor_internals.h",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",
@@ -646,11 +661,13 @@ exports_files(
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.cc",
         "file_system.h",
         "file_system_helper.cc",
@@ -716,6 +733,7 @@ filegroup(
         "setround.h",
         "snappy.h",
         "status.h",
+        "statusor.h",
         "tracing.h",
         "unbounded_work_queue.h",
     ],
@@ -1039,33 +1057,14 @@ cc_library(
     hdrs = ["float8.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//third_party/eigen3",
-        "@com_google_absl//absl/numeric:bits",
+        "@ml_dtypes//:float8",
     ],
-)
-
-cuda_library(
-    name = "float8_test_lib",
-    testonly = 1,
-    srcs = ["float8_test.cu.cc"],
-    copts = rocm_copts(),
-    deps = [
-        ":float8",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-cuda_cc_test(
-    name = "float8_test",
-    deps = [":float8_test_lib"],
 )
 
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
+        "@local_config_cuda//cuda:cudart_static",
     ],
 )
 
@@ -1099,6 +1098,16 @@ cc_library(
         "//visibility:public",
     ],
     deps = tf_logging_deps(),
+)
+
+cc_library(
+    name = "error_logging",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["error_logging.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = tf_error_logging_deps(),
 )
 
 cc_library(
@@ -1370,6 +1379,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/base:config",
     ],
 )
 
@@ -1510,6 +1520,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

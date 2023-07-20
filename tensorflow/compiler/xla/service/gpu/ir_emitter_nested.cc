@@ -12,34 +12,70 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
-#include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+class IrEmitterNested : public IrEmitter {
+ public:
+  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
+  // the containing IR function this emitter produces IR to. See
+  // IrEmitter::IrEmitter for the meanings of other arguments.
+  IrEmitterNested(const HloModuleConfig& hlo_module_config,
+                  const HloComputation& nested_computation,
+                  IrEmitterContext* ir_emitter_context);
+
+  IrEmitterNested(const IrEmitterNested&) = delete;
+  IrEmitterNested& operator=(const IrEmitterNested&) = delete;
+
+  // Overrides the default empty implementation. Binds the given instruction
+  // "parameter" with the parameter of the IR function.
+  Status HandleParameter(HloInstruction* parameter) override;
+
+  // Generate the code for the computation passed in the constructor, if it
+  // wasn't already generated previously.
+  // As well as generting the code for the function, emits code for global
+  // constants, and also populates related information to 'ir_emitter_context_'
+  // for large-constant initializations. Large constants don't get initializers
+  // in the generated code and so must be initialized by XLA. The value of these
+  // constants will be stored in 'content'. Constants with initializers in the
+  // generated code will have empty 'content'.
+  //
+  // The allocation index for these constants will always be -1 (i.e. doesn't
+  // correspond to any allocation)
+  StatusOr<llvm::Function*> CodegenNestedComputation();
+
+ protected:
+  Status EmitTargetElementLoop(
+      const HloInstruction& hlo,
+      const llvm_ir::ElementGenerator& element_generator) override;
+
+ private:
+  // Emits constants to generated LLVM IR, and also populates related
+  // information to 'ir_emitter_context_' for large-constant initializations.
+  Status EmitConstants(const HloComputation& computation);
+
+  const HloComputation& nested_computation_;
+};
 
 IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
                                  const HloComputation& nested_computation,
@@ -47,19 +83,17 @@ IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true),
       nested_computation_(nested_computation) {}
 
-StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
-    const HloModuleConfig& hlo_module_config,
-    const HloComputation& nested_computation,
-    IrEmitterContext* ir_emitter_context) {
-  std::unique_ptr<IrEmitterNested> emitter(new IrEmitterNested(
-      hlo_module_config, nested_computation, ir_emitter_context));
-  TF_RETURN_IF_ERROR(emitter->EmitConstants(nested_computation));
-  return emitter;
-}
-
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
-Status IrEmitterNested::CodegenNestedComputation() {
+StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
+  std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
+      nested_computation_.name(), "_",
+      absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_))));
+  auto* function =
+      ir_emitter_context_->llvm_module()->getFunction(function_name);
+  if (function) return function;
+
+  TF_RETURN_IF_ERROR(EmitConstants(nested_computation_));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -90,13 +124,11 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(b_.getVoidTy(), argument_types, false);
-  llvm::Function* function = llvm::Function::Create(
+  function = llvm::Function::Create(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
-      ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeFunctionName(std::string(
-              nested_computation_.name()))),  // The name of the function.
-      ir_emitter_context_->llvm_module());    // The parent LLVM module.
+      function_name,
+      ir_emitter_context_->llvm_module());  // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
@@ -169,8 +201,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
     }
   }
   b_.SetInsertPoint(ret_instr);
-  emitted_function_ = function;
-  return OkStatus();
+  return function;
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
@@ -199,7 +230,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     if (instr->opcode() != HloOpcode::kConstant) {
       continue;
     }
-    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
+    const Literal& literal = instr->literal();
 
     // These globals will be looked up by name by GpuExecutable so we need to
     // give them an external linkage.  Not all of their uses are visible in
@@ -221,6 +252,105 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
         llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
   }
   return OkStatus();
+}
+
+// Casts the provided llvm::Value* to the default address space. This is useful
+// in particular for generating IR for AMDGPU target, as its kernel variables
+// are in address space 5 instead of the default address space.
+llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
+  llvm::Type* arg_type = arg->getType();
+  CHECK(arg_type->isPointerTy());
+  if (arg_type->getPointerAddressSpace() != 0) {
+    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
+        llvm::cast<llvm::PointerType>(arg_type), 0);
+    llvm::Value* addrspacecast_arg =
+        b.CreateAddrSpaceCast(arg, generic_arg_type);
+    return addrspacecast_arg;
+  }
+  return arg;
+}
+
+}  // namespace
+
+Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                             const HloModuleConfig& hlo_module_config,
+                             const HloComputation& computation,
+                             IrEmitterContext& ir_emitter_context,
+                             absl::Span<llvm::Value* const> operands,
+                             llvm::Value* output) {
+  TF_RET_CHECK(computation.num_parameters() > 0);
+
+  TF_ASSIGN_OR_RETURN(
+      llvm::Function * emitted_function,
+      IrEmitterNested(hlo_module_config, computation, &ir_emitter_context)
+          .CodegenNestedComputation());
+
+  // Operands are in default address space for non-AMDGPU target.
+  // However for AMDGPU target, addrspacecast alloca variables from
+  // addrspace 5 to addrspace 0 is needed.
+  std::vector<llvm::Value*> arguments;
+  absl::c_transform(
+      operands, std::back_inserter(arguments),
+      [builder](llvm::Value* arg) { return AddrCastToDefault(arg, *builder); });
+
+  llvm::Value* casted_output = AddrCastToDefault(output, *builder);
+  arguments.push_back(casted_output);
+
+  builder->CreateCall(emitted_function, arguments);
+
+  return OkStatus();
+}
+
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_elements) {
+  std::vector<llvm::Value*> parameter_buffers;
+  for (llvm::Value* parameter_element : parameter_elements) {
+    parameter_buffers.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
+        parameter_element->getType(), "parameter_buffer", builder));
+    builder->CreateStore(parameter_element, parameter_buffers.back());
+  }
+
+  return CallNestedComputationWithScalarAddrs(builder, hlo_module_config,
+                                              computation, ir_emitter_context,
+                                              parameter_buffers);
+}
+
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
+    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    absl::Span<llvm::Value* const> parameter_elements_addrs) {
+  const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Type* return_buffer_type = llvm_ir::ShapeToIrType(
+      return_shape, builder->GetInsertBlock()->getModule());
+  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      return_buffer_type, "return_buffer", builder);
+
+  std::vector<llvm::Value*> allocas_for_returned_scalars;
+  if (!return_shape.IsTuple()) {
+    allocas_for_returned_scalars.push_back(return_buffer);
+  } else {
+    allocas_for_returned_scalars =
+        llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, builder);
+    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
+                                 return_shape);
+
+    llvm_ir::EmitTuple(tuple_array, allocas_for_returned_scalars, builder);
+  }
+
+  TF_RETURN_IF_ERROR(CallNestedComputation(
+      builder, hlo_module_config, computation, ir_emitter_context,
+      parameter_elements_addrs, return_buffer));
+
+  std::vector<llvm::Value*> returned_scalars;
+  returned_scalars.reserve(allocas_for_returned_scalars.size());
+  for (llvm::Value* addr : allocas_for_returned_scalars) {
+    auto alloca = llvm::cast<llvm::AllocaInst>(addr);
+    returned_scalars.push_back(
+        builder->CreateLoad(alloca->getAllocatedType(), alloca));
+  }
+  return returned_scalars;
 }
 
 }  // namespace gpu

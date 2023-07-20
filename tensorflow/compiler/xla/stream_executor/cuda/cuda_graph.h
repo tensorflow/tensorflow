@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 
+#include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
@@ -38,6 +38,18 @@ class CudaGraphSupport {
   struct DestroyGraphExec {
     void operator()(cudaGraphExec_t);
   };
+
+  static size_t NotifyGraphExecCreated();
+  static size_t NotifyGraphExecDestroyed();
+
+  static size_t allocated_cuda_graph_execs();
+  static size_t alive_cuda_graph_execs();
+
+ private:
+  // Global counters for the total number of allocated and alive CUDA graph
+  // execs to track the resource usage at run time.
+  static std::atomic<size_t> allocated_cuda_graph_execs_;
+  static std::atomic<size_t> alive_cuda_graph_execs_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -55,11 +67,16 @@ class OwnedCudaGraph
 class OwnedCudaGraphExec
     : public std::unique_ptr<std::remove_pointer_t<cudaGraphExec_t>,
                              CudaGraphSupport::DestroyGraphExec> {
-  // Bring std::unique_ptr constructors in scope.
-  using std::unique_ptr<std::remove_pointer_t<cudaGraphExec_t>,
-                        CudaGraphSupport::DestroyGraphExec>::unique_ptr;
+  using Base = std::unique_ptr<std::remove_pointer_t<cudaGraphExec_t>,
+                               CudaGraphSupport::DestroyGraphExec>;
 
  public:
+  OwnedCudaGraphExec(uint64_t id, cudaGraphExec_t exec) : Base(exec), id_(id) {}
+  ~OwnedCudaGraphExec();
+
+  OwnedCudaGraphExec(OwnedCudaGraphExec&&) = default;
+  OwnedCudaGraphExec& operator=(OwnedCudaGraphExec&&) = default;
+
   // Updates executable graph instance with a newly captured graph. Returns an
   // error if the new graph is not compatible (see `cudaGraphExecUpdate`).
   tsl::Status Update(OwnedCudaGraph graph);
@@ -67,7 +84,10 @@ class OwnedCudaGraphExec
   // Launches captured graph on a given stream.
   tsl::Status Launch(stream_executor::Stream* stream);
 
+  uint64_t id() const { return id_; }
+
  private:
+  uint64_t id_;
   uint64_t num_updates_ = 0;
   uint64_t num_launches_ = 0;
 };
@@ -84,6 +104,9 @@ tsl::StatusOr<OwnedCudaGraph> CaptureCudaGraph(
 
 // Instantiates a captured cuda graph instance into a cuda graph executable.
 tsl::StatusOr<OwnedCudaGraphExec> InstantiateCudaGraph(OwnedCudaGraph graph);
+
+// Returns true if the stream is in graph capture mode
+tsl::StatusOr<bool> IsStreamCapturing(stream_executor ::Stream* stream);
 
 }  // namespace gpu
 }  // namespace stream_executor

@@ -328,6 +328,7 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -392,6 +393,8 @@ cc_library(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -421,6 +424,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
 )

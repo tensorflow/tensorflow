@@ -59,6 +59,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllToAll);
     CASE(kNcclAllToAllStart);
     CASE(kNcclAllToAllDone);
+    CASE(kNcclSend);
+    CASE(kNcclRecv);
     CASE(kFft);
     CASE(kFor);
     CASE(kGemm);
@@ -72,6 +74,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kSequential);
     CASE(kTriangularSolve);
     CASE(kWhile);
+    CASE(kFusedMHA);
   }
 }
 

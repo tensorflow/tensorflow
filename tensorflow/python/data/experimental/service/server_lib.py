@@ -53,6 +53,7 @@ class DispatcherConfig(
             "job_gc_check_interval_ms",
             "job_gc_timeout_ms",
             "worker_timeout_ms",
+            "worker_max_concurrent_snapshots",
         ],
     )
 ):
@@ -90,6 +91,8 @@ class DispatcherConfig(
     worker_timeout_ms: How long to wait for a worker to heartbeat before
       considering it missing. If not set, the runtime will select a reasonable
       default.
+    worker_max_concurrent_snapshots: The maximum number of snapshots a worker
+      can concurrently process.
   """
 
   def __new__(
@@ -102,6 +105,7 @@ class DispatcherConfig(
       job_gc_check_interval_ms=None,
       job_gc_timeout_ms=None,
       worker_timeout_ms=None,
+      worker_max_concurrent_snapshots=0,
   ):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
@@ -118,6 +122,7 @@ class DispatcherConfig(
         job_gc_check_interval_ms,
         job_gc_timeout_ms,
         worker_timeout_ms,
+        worker_max_concurrent_snapshots,
     )
 
 
@@ -193,6 +198,7 @@ class DispatchServer:
           job_gc_check_interval_ms=config.job_gc_check_interval_ms,
           job_gc_timeout_ms=config.job_gc_timeout_ms,
           worker_timeout_ms=config.worker_timeout_ms,
+          worker_max_concurrent_snapshots=config.worker_max_concurrent_snapshots
       )
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())

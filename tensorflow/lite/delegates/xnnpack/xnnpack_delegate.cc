@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-
 #include <algorithm>
 #include <array>
 #include <cinttypes>
@@ -726,6 +725,7 @@ class Subgraph {
       switch (registration->builtin_code) {
         case kTfLiteBuiltinMean:
         case kTfLiteBuiltinPad:
+        case kTfLiteBuiltinSum:
         case kTfLiteBuiltinReshape:
         case kTfLiteBuiltinResizeBilinear:
         case kTfLiteBuiltinStridedSlice:
@@ -2237,7 +2237,7 @@ class Subgraph {
     // (subgraph is non-null), logging context is the same as context, and error
     // messages are passed to TFLite. When we detect supported operations
     // (subgraph is null), logging context is null, and error messages are
-    // supressed.
+    // suppressed.
 #ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
     TfLiteContext* logging_context = context;
 #else
@@ -2360,6 +2360,14 @@ class Subgraph {
         return VisitMaxPool2DNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
                                   pool_params, xnnpack_tensors);
+      }
+
+      case kTfLiteBuiltinSum: {
+        const TfLiteReducerParams* reducer_params =
+            static_cast<const TfLiteReducerParams*>(node->builtin_data);
+        return VisitSumNode(subgraph, delegate, logging_context, node_index,
+                            node, context->tensors, reducer_params,
+                            xnnpack_tensors);
       }
       case kTfLiteBuiltinMaximum:
         return VisitMaximumNode(subgraph, delegate, logging_context, node_index,
@@ -3740,6 +3748,116 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            EnumNameBuiltinOperator(BuiltinOperator_MAX_POOL_2D),
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitSumNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const TfLiteReducerParams* reducer_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 2, 1, BuiltinOperator_SUM, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                           node->inputs->data[0],
+                                           BuiltinOperator_SUM, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& axes_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, axes_tensor,
+                                          kTfLiteInt32, node->inputs->data[1],
+                                          node_index));
+    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
+        logging_context, axes_tensor, node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, axes_tensor, node->inputs->data[1],
+        BuiltinOperator_SUM, node_index));
+
+    const int32_t* axes_data =
+        reinterpret_cast<const int32_t*>(axes_tensor.data.data);
+    const int num_reduction_axes = NumElements(&axes_tensor);
+    switch (num_reduction_axes) {
+      case 1:
+        if (axes_data[0] != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported SUM reduction along non-spatial "
+              "axis %d in node %d",
+              axes_data[0], node_index);
+          return kTfLiteError;
+        }
+        break;
+      case 2:
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported SUM reduction along non-spatial "
+              "axes %d and %d in node %d",
+              std::min(axes_data[0], axes_data[1]),
+              std::max(axes_data[0], axes_data[1]), node_index);
+          return kTfLiteError;
+        }
+        break;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "unsupported SUM reduction along %d axes in node %d",
+            SizeOfDimension(&axes_tensor, 0), node_index);
+        return kTfLiteError;
+    }
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+    int expected_output_dims = 4;
+    if (!reducer_params->keep_dims) {
+      expected_output_dims -= num_reduction_axes;
+    }
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(
+        logging_context, output_tensor, expected_output_dims,
+        node->outputs->data[0], BuiltinOperator_SUM, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    uint32_t flags = 0;
+    const float output_min = -std::numeric_limits<float>::infinity();
+    const float output_max = +std::numeric_limits<float>::infinity();
+
+    if (subgraph != nullptr) {
+      xnn_status status = xnn_status_success;
+      switch (num_reduction_axes) {
+        case 1:
+          status = xnn_define_global_sum_pooling_1d(
+              subgraph, output_min, output_max,
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+          break;
+        case 2:
+          status = xnn_define_global_sum_pooling_2d(
+              subgraph, output_min, output_max,
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+          break;
+        default:
+          status = xnn_status_unsupported_parameter;
+          break;
+      }
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SUM),
                            node_index);
         return kTfLiteError;
       }
@@ -5459,11 +5577,15 @@ class Subgraph {
                                  begins[i], input_shape->data[i], node_index);
       }
 
+      int actual_end_data = end_data[i];
+      if (params->offset) {
+        actual_end_data += begin_data[i];
+      }
       // If end is negative, we count from the back, -1 is the last element.
-      if (end_data[i] < 0) {
-        ends[i] = end_data[i] + input_shape->data[i];
+      if (actual_end_data < 0) {
+        ends[i] = actual_end_data + input_shape->data[i];
       } else {
-        ends[i] = end_data[i];
+        ends[i] = actual_end_data;
       }
 
       if ((params->end_mask & (1 << i)) != 0) {
@@ -5788,7 +5910,7 @@ class Subgraph {
   // Mapping from TFLite Tensor IDs (same as XNNPACK Value IDs) for
   // input/output tensors in the delegated subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
-  // Memory location to use for 0-size extenal tensors, as TFLite init their
+  // Memory location to use for 0-size external tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
   // Persistent tensors need to be set up in all cases (even without external

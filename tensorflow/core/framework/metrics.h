@@ -134,9 +134,10 @@ void RecordTFDataServiceClientIterators(
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records that a tf.data service worker client has been created that will use
-// `data_transfer_protocol` to get data from the worker server.
+// `data_transfer_protocol` to get data from the worker server and whether or
+// not the user explicitly specified the protocol.
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol);
+    const string& data_transfer_protocol, bool user_specified);
 
 // Records that a tf.data service worker client fell back to gRPC rather than
 // use `data_transfer_protocol` because of an error of type `code` with message
@@ -160,6 +161,9 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
 // Records distributed tf.data snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
+
+// Records the current estimated optimal number of tf.data service workers.
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -186,6 +190,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // Records the number of times each tf.data autotuning algorithm stopping
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
+
+// Records the number of times an error of this type occurred with this status
+// code.
+void RecordTFDataError(const string& error_type, const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
@@ -236,7 +244,7 @@ uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
     GraphOptimizationSource source);
 
 // Increments the hit count for the graph optimization cache.
-void IncrementFunctinGraphOptimizationCacheHitCount(
+void IncrementFunctionGraphOptimizationCacheHitCount(
     int count, GraphOptimizationSource source);
 
 // Gets the hit count for the graph optimization cache.
@@ -252,11 +260,18 @@ int64_t GetFunctionGraphOptimizationCacheFailureCount(
     GraphOptimizationSource source);
 
 // Increments the miss count for the graph optimization cache.
-void IncrementFunctinGraphOptimizationCacheMissCount(
+void IncrementFunctionGraphOptimizationCacheMissCount(
     int count, GraphOptimizationSource source);
 
 // Gets the miss count for the graph optimization cache.
-int64_t GetFunctinGraphOptimizationCacheMissCount(
+int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source);
+
+// Increments the number of restoring function graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source);
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the

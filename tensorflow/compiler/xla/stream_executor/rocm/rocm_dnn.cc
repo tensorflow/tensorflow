@@ -1819,10 +1819,14 @@ miopenDataType_t ToMIOpenDataType(
     dnn::DataType data_type,
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
+    case dnn::DataType::kBF16:
+      return miopenBFloat16;
     case dnn::DataType::kFloat:
       return miopenFloat;
     case dnn::DataType::kHalf:
       return miopenHalf;
+    case dnn::DataType::kInt8:
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
     case dnn::DataType::kDouble:
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
@@ -2314,8 +2318,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (reserve_space_size_in_bytes > 0) {
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
-      if (!allocated.ok() ||
-          (reserve_space = allocated.value()) == nullptr) {
+      if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }
@@ -2566,8 +2569,8 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
-    int* ctc_loss_algo_id) {
+    const NumericOptions& numeric_options, ScratchAllocator* scratch_allocator,
+    DeviceMemory<uint8>* scratch_memory, int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2688,8 +2691,8 @@ MIOpenSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
@@ -3106,22 +3109,9 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = profile_result != nullptr;
-
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      if (!timer->Init()) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to init timer");
-      }
-      // The start and stop of the timer should be as close to the MIOpen call
-      // as possible. It is still possible for other threads to issue workload
-      // on to this stream. So it could take multiple profiling measurements.
-      if (!timer->Start(AsGpuStream(stream))) {
-        timer->Destroy();
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3189,17 +3179,15 @@ class RocmConvRunner : public dnn::ConvRunner {
     }
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        timer->Destroy();
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
+        profile_result->set_elapsed_time_in_ms(
+            absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
         profile_result->set_algorithm(algotype);
-        profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
         profile_result->set_scratch_size(scratch_memory.size());
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -3244,21 +3232,6 @@ tsl::Status MIOpenSupport::DoConvolve(
                    filter_data, output_data);
 }
 
-bool MIOpenSupport::GetConvolveAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoWinograd, false),
-      // clang-format on
-  });
-  return true;
-}
-
 tsl::Status MIOpenSupport::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -3267,7 +3240,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator,
+    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
   if (input_type != output_type) {
     return tsl::errors::Unimplemented(
@@ -3721,34 +3694,6 @@ bool MIOpenSupport::GetRnnAlgorithms(
   return true;
 }
 
-bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
-      // clang-format on
-  });
-  return true;
-}
-
-bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoDirect, false),
-      // clang-format on
-  });
-  return true;
-}
-
 bool MIOpenSupport::DoBatchNormalizationForward(
     Stream* stream, const DeviceMemory<Eigen::half>& x,
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
@@ -3986,8 +3931,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
+                            input_data, k, output_data, m, NumericOptions{})
              .ok()) {
       return false;
     }
@@ -4070,7 +4014,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, NumericOptions{});
   }
 
   return stream->ok();
@@ -4709,13 +4653,16 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
     if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
     }
 
     miopenStatus_t status = miopenStatusSuccess;
@@ -4739,12 +4686,15 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(*elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -4807,13 +4757,16 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
     if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
     }
 
     miopenStatus_t status = miopenStatusSuccess;
@@ -4834,12 +4787,15 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(*elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -4918,13 +4874,16 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
     if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
     }
 
     miopenStatus_t status = miopenStatusSuccess;
@@ -4946,12 +4905,15 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(*elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -5034,13 +4996,16 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
   bool retval = false;
 
   if (fusion_plan.CompilationSucceeded()) {
+    std::optional<GpuTimer> timer;
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
     if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
+      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+      if (!timer_or_status.ok()) {
+        LOG(ERROR) << "Failed to create timer";
+        return false;
+      }
+      timer.emplace(std::move(*timer_or_status));
     }
 
     miopenStatus_t status = miopenStatusSuccess;
@@ -5064,12 +5029,15 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+        if (!elapsed.ok()) {
+          LOG(ERROR) << "Failed to get elapsed duration";
+          return false;
+        }
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(*elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {

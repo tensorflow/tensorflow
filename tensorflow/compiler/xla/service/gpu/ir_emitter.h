@@ -16,13 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_H_
 
-#include <functional>
-#include <map>
-#include <memory>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -30,19 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
-#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -134,13 +125,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) = 0;
 
-  // Emits a call in IR to the given nested computation with the given operands
-  // and output. If no IR function has been previously emitted for the
-  // computation, also emits such a function.
-  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
-                                     absl::Span<llvm::Value* const> operands,
-                                     llvm::Value* output);
-
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`
   // are the arguments of the nested computation. For example,
@@ -148,21 +132,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status EmitAtomicOperationForNestedComputation(
       const HloComputation& nested_computation, llvm::Value* output_address,
       llvm::Value* source_address, llvm::Type* element_type);
-
-  GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return [&](const HloComputation& computation,
-               absl::Span<llvm::Value* const> parameter_elements) {
-      return ComputeNestedElement(computation, parameter_elements);
-    };
-  }
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements);
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElementFromAddrs(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements_addrs);
 
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
@@ -225,11 +194,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // A convenience method to determine the proper sync scope for an atomic op.
   llvm::SyncScope::ID DetermineSyncScope() const;
-
-  // Map nested computations to emitted IR functions. This serves as a cache so
-  // that IrEmitter does not emit multiple functions for the same
-  // HloComputation.
-  std::map<const HloComputation*, llvm::Function*> computation_to_ir_function_;
 };
 
 }  // namespace gpu

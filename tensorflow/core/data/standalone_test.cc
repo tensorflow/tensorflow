@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
@@ -286,6 +287,11 @@ TEST(Scalar, Standalone) {
     std::unique_ptr<Iterator> iterator;
     s = dataset->MakeIterator(&iterator);
     TF_EXPECT_OK(s);
+
+    std::optional<double> processing_time_nsec =
+        iterator->GetProcessingTimeNsec();
+    EXPECT_EQ(processing_time_nsec, std::nullopt);
+
     bool end_of_input = false;
     for (int num_outputs = 0; !end_of_input; ++num_outputs) {
       std::vector<tensorflow::Tensor> outputs;
@@ -298,6 +304,12 @@ TEST(Scalar, Standalone) {
         EXPECT_EQ(test_case.expected_outputs.size(), num_outputs);
       }
     }
+
+    // Wait for an optimization round in the pipeline model.
+    absl::SleepFor(absl::Seconds(1));
+    processing_time_nsec = iterator->GetProcessingTimeNsec();
+    EXPECT_NE(processing_time_nsec, std::nullopt);
+    EXPECT_LT(0, processing_time_nsec.value());
   }
 }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -156,6 +157,7 @@ static void ConfigureMlirContext(MLIRContext* context,
     // Call user-provided callback to register all required dialects.
     DialectRegistry dialects;
     opts.register_dialects(dialects);
+    mlir::func::registerAllExtensions(*dialects);
     context->appendDialectRegistry(*dialects);
     context->loadAllAvailableDialects();
   }
@@ -221,6 +223,21 @@ absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
   return absl::OkStatus();
 }
 
+absl::Status ExportMainWithOrdinal0(mlir::ModuleOp module,
+                                    mlir::MLIRContext& mlir_context) {
+  SymbolTable sym_table(module);
+
+  // Add `rt.export` operations for all explicitly exported functions.
+  if (auto func = sym_table.lookup<FunctionOpInterface>("main")) {
+    OpBuilder(func).create<ExportOp>(func.getLoc(), func, 0);
+  }
+  mlir::PassManager pm(&mlir_context);
+  pm.addPass(CreateOrdinalAssignmentPass());
+  if (failed(pm.run(module)))
+    return absl::InternalError("failed to run ordinal assignment pass");
+  return absl::OkStatus();
+}
+
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
 JitCompiler::Instantiate(JitCompiler::Options opts,
                          std::string_view mlir_module,
@@ -265,6 +282,9 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
     llvm::ModuleAnalysisManager mam;
 
     llvm::PipelineTuningOptions tuningOptions;
+    // LLVM's loop unrolling isn't well tuned for the loops we emit. Turn it off
+    // as it consumes compile time with little benefit.
+    tuningOptions.LoopUnrolling = false;
     // Vectorization happens at the MLIR level.
     tuningOptions.LoopVectorization = false;
     llvm::PassBuilder pb(targetMachine, tuningOptions);

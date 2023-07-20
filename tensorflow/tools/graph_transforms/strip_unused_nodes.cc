@@ -130,6 +130,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
   MapNamesToNodes(input_graph_def, &node_lookup);
 
   std::vector<string> current_inputs;
+  current_inputs.reserve(context.output_names.size());
   for (const string& output_name : context.output_names) {
     current_inputs.push_back(NodeNameFromInput(output_name));
   }

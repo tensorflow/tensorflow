@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_XLA_SPMD_LAYOUT_TO_XLA_SHARDING_H_
 #define TENSORFLOW_DTENSOR_CC_XLA_SPMD_LAYOUT_TO_XLA_SHARDING_H_
 
+#include <cstdint>
+#include <vector>
+
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -27,6 +30,24 @@ namespace dtensor {
 // Mhlo sharding string attribute, used for setting hlo sharding on ops, inputs,
 // and outputs of a function for XLA SPMD.
 constexpr char kXlaShardingAttr[] = "mhlo.sharding";
+
+// Represents a permutation of DTensor Layout mesh dimensions from major to
+// minor.
+//
+// Sizes of `permutation` and `sizes` must be equal.
+struct MeshMajorToMinor {
+  // A permutation of range [0...n].
+  std::vector<int64_t> permutation;
+  // The size of mesh dimensions before the permutation.
+  std::vector<int64_t> sizes;
+
+  // Produces a flat list of device ids according to the permutation.
+  std::vector<int64_t> ToDeviceList();
+};
+
+// Get the mesh dimensions from major to minor.
+StatusOr<MeshMajorToMinor> ConvertMeshMajorToMinor(const Layout& layout,
+                                                   const Mesh& mesh);
 
 // Returns an ::xla::OpSharding protobuf from `layout`.
 StatusOr<::xla::OpSharding> ConvertLayoutToXlaOpSharding(const Layout& layout);

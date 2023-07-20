@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 
 from tensorflow.python.ops import array_ops
@@ -94,7 +95,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
   def __init__(self, var, slice_spec, name):
     self._var_device = var.device
     self._var_shape = var.shape
-    if isinstance(var, ops.Tensor):
+    if isinstance(var, tensor_lib.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
     elif resource_variable_ops.is_resource_variable(var):
@@ -145,7 +146,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
 
 
 def _tensor_comes_from_variable(v):
-  return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
+  return isinstance(v, tensor_lib.Tensor) and v.op.type in _VARIABLE_OPS
 
 
 def saveable_objects_for_op(op, name):
@@ -589,7 +590,7 @@ class TrackableSaveable(saveable_object.SaveableObject):
     if not ops.executing_eagerly_outside_functions() and any([
         spec._tensor.op.type in _REF_VARIABLE_OPS
         for spec in self.specs
-        if isinstance(spec._tensor, ops.Tensor)]):
+        if isinstance(spec._tensor, tensor_lib.Tensor)]):
       return restore_fn(restored_tensor_dict)
     # pylint: enable=protected-access
 
@@ -658,7 +659,8 @@ def trackable_has_serialize_to_tensor(obj):
       # In some cases (e.g. restored objects), the object may have
       # `_serialize_to_tensors` even if the class does not.
       return True
-  except AttributeError:  # Data structure proxy wrappers don't have __dict__.
+  except (AttributeError, TypeError):
+    # Data structure proxy wrappers don't have __dict__.
     pass
 
   # Use MRO so that if a parent class has `_serialize_to_tensors`, but the

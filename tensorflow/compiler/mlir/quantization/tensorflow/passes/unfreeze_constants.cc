@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
@@ -31,13 +32,11 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
-#include "tensorflow/tsl/platform/str_util.h"
 
 namespace mlir {
 namespace quant {
@@ -205,8 +204,7 @@ std::string GetConstOpName(TF::ConstOp const_op) {
       !name.empty()) {
     // Replace any occurrences of ";" to "_". ";" is an illegal character to be
     // used as a `shared_name`.
-    return tsl::str_util::StringReplace(name, /*oldsub=*/";", /*newsub=*/"_",
-                                        /*replace_all=*/true);
+    return absl::StrReplaceAll(name, /*replacements=*/{{";", "_"}});
   }
 
   return std::string(kDefaultConstName);

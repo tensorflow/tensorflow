@@ -20,10 +20,8 @@ limitations under the License.
 
 namespace xla {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::FromAbslStatus;
 using tsl::OkStatus;
 using tsl::Status;  // TENSORFLOW_STATUS_OK
-using tsl::ToAbslStatus;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace xla
 

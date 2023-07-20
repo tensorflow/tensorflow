@@ -11,6 +11,7 @@ package_group(
         "//learning/brain/experimental/tfrt/...",
         "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
+        "//learning/infra/mira/distributed/...",
     ]),
 )
 
@@ -26,11 +27,9 @@ package(
 tf_cc_binary(
     name = "tf_bef_executor",
     testonly = True,
-    tags = ["no_oss"],
     deps = [
         ":bef_executor_lib",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_kernels_alwayslink",
@@ -46,7 +45,7 @@ tf_cc_binary(
         # copybara:uncomment "@tf_runtime//backends/cpu:image_alwayslink",
         # copybara:uncomment "@tf_runtime//backends/cpu:proto_alwayslink",
         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-        "@tf_runtime//backends/jitrt:jitrt_corert_kernels_alwayslink",
+        # copybara:uncomment "@tf_runtime//backends/jitrt:jitrt_corert_kernels_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -85,10 +84,8 @@ cc_library(
     srcs = [
         "tf_bef_executor_main.cc",
     ],
-    tags = ["no_oss"],
     visibility = [
         ":internal",
-        "//tensorflow/core/tfrt/eager:__subpackages__",
     ],
     deps = if_google([
         "//tensorflow/core/runtime_fallback/test:test_tf_opkernels_alwayslink",

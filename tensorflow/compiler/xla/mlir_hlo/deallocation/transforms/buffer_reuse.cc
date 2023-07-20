@@ -370,10 +370,11 @@ bool reuseBuffers(Block& block, BufferReuseMode mode) {
 }
 
 void promoteToStack(memref::DeallocOp dealloc) {
-  auto* alloc = dealloc.getMemref().getDefiningOp();
+  auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
   auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>());
+      alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>(),
+      alloc.getAlignmentAttr());
   for (auto* user : alloc->getUsers()) {
     if (auto ownership = llvm::dyn_cast<OwnOp>(user)) {
       b.setInsertionPoint(ownership);

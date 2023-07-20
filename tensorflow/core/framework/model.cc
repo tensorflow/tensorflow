@@ -55,6 +55,9 @@ constexpr double kTargetTimeSigmas = 1.0;
 // downsizing a buffer.
 constexpr double kBufferUpsizeMultiplier = 2.0;
 constexpr double kBufferDownsizeMultipliter = 0.9;
+// Threshold of low buffer watermark before a buffer is a candidate for
+// upsizing.
+constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
@@ -202,13 +205,13 @@ std::string RemoveArrayIndices(absl::string_view s) {
   absl::string_view::size_type pos;
   std::string res;
   do {
-    pos = s.find("[", start_pos);
+    pos = s.find('[', start_pos);
     if (pos == absl::string_view::npos) {
       break;
     }
     res.append(s.data() + start_pos, pos - start_pos + 1);
     start_pos = pos + 1;
-    pos = s.find("]", start_pos);
+    pos = s.find(']', start_pos);
     if (pos == absl::string_view::npos) {
       break;
     }
@@ -361,7 +364,7 @@ Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
     const std::shared_ptr<Node> node = to_serialize.front();
     to_serialize.pop_front();
     TF_RETURN_IF_ERROR(node->ToProto(&(nodes[node->id()])));
-    for (auto input : node->inputs()) {
+    for (const auto& input : node->inputs()) {
       to_serialize.push_back(input);
     }
   }
@@ -1429,9 +1432,9 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
-double Node::ComputeWaitTime(const double& producer_time,
-                             const double& consumer_time,
-                             const double& buffer_size,
+double Node::ComputeWaitTime(const double producer_time,
+                             const double consumer_time,
+                             const double buffer_size,
                              double* producer_time_derivative,
                              double* consumer_time_derivative,
                              double* buffer_size_derivative) {
@@ -1898,7 +1901,7 @@ void Node::CollectBufferParametersToUpsize(
           (parameter->state == nullptr || !parameter->state->tunable)) {
         continue;
       }
-      if (buffered_elements_low_ <= 0 &&
+      if (buffered_elements_low_ <= kBufferLowWatermarkThreshold &&
           buffered_elements_high_ >= parameter->value) {
         parameter->value = parameter->state->value;
         node_parameters[this] = parameter.get();
@@ -2004,7 +2007,12 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->processing_time_.store(processing_time_);
     {
       mutex_lock l2(cloned_current->mu_);
-      cloned_current->parameters_ = parameters_;
+      cloned_current->parameters_ =
+          absl::flat_hash_map<string, std::shared_ptr<Parameter>>();
+      for (const auto& [parameter_name, parameter_ptr] : parameters_) {
+        cloned_current->parameters_[parameter_name] =
+            std::make_shared<Parameter>(parameter_ptr);
+      }
       cloned_current->previous_processing_time_ = previous_processing_time_;
       cloned_current->processing_time_ema_ = processing_time_ema_;
     }
@@ -2243,7 +2251,7 @@ void Model::FlushMetrics() {
     auto node = queue.front();
     queue.pop_front();
     node->FlushMetrics();
-    for (auto input : node->inputs()) {
+    for (const auto& input : node->inputs()) {
       queue.push_back(input);
     }
   }
@@ -2314,11 +2322,6 @@ Model::ModelParameters Model::CollectTunableParameters(
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
-  // TODO(wilsin): If this turns out to be the cause of fleetwide degradation in
-  // the experiment, remove the downsize code.
-  if (experiments_.contains("autotune_buffer_optimization")) {
-    return false;
-  }
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   nodes.push_back(snapshot);
@@ -2590,7 +2593,7 @@ void Model::RecordIteratorGapTime(uint64_t duration_usec) {
 
 double Model::ComputeTargetTimeNsec() {
   tf_shared_lock l(gap_mu_);
-  if (gap_times_usec_.empty()) {
+  if (gap_times_usec_.size() < kGapTimeWindow) {
     return 0.0;
   }
   double target_time_sigmas = 0.0;
@@ -2601,6 +2604,25 @@ double Model::ComputeTargetTimeNsec() {
                               kOutlierSigmas, target_time_sigmas)
              .GetTargetTimeUsec() *
          1.0e3;
+}
+
+double Model::ComputeSnapshotProcessingTimeNsec() const {
+  std::unique_ptr<ModelTiming> model_timing = nullptr;
+  {
+    tf_shared_lock l(mu_);
+    if (snapshot_ == nullptr) {
+      return 0.0;
+    }
+    model_timing = std::make_unique<ModelTiming>(snapshot_);
+  }
+
+  ModelTimingPriorityQueue priority_queue(*model_timing);
+  StatusOr<std::pair<double, Node*>> critical_root_status =
+      priority_queue.PopSlowestStageRoot();
+  if (!critical_root_status.ok()) {
+    return 0.0;
+  }
+  return critical_root_status->first;
 }
 
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
@@ -2629,7 +2651,7 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
     interleave_many_nodes.push_back(snapshot);
   }
   Node::ModelParameters tunable_parameters;
-  for (auto node : interleave_many_nodes) {
+  for (const auto& node : interleave_many_nodes) {
     if (!IsAsyncInterleaveManyNode(node)) {
       continue;
     }
@@ -2700,7 +2722,7 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     all_nodes.push_back(snapshot);
   }
   Node::ModelParameters tunable_parameters;
-  for (auto node : all_nodes) {
+  for (const auto& node : all_nodes) {
     if (IsAsyncInterleaveManyNode(node)) {
       continue;
     }
@@ -3230,7 +3252,7 @@ double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
   for (const auto& node : reverse_bfs_nodes) {
-    ComputeNodeTotalTime(*(node.get()));
+    ComputeNodeTotalTime(*(node));
   }
 }
 

@@ -183,6 +183,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
   Status HandleSort(HloInstruction* hlo) override;
+  Status HandleTopK(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -230,6 +231,11 @@ class ShapeVerifier : public DfsHloVisitor {
   Status FinishVisit(HloInstruction*) override { return OkStatus(); }
 
  protected:
+  // Helpers that switch on layout_sensitive_.
+  bool ShapesSame(const Shape& a, const Shape& b,
+                  bool minor_to_major_only = false,
+                  bool ignore_memory_space = false, bool ignore_tiles = false);
+
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
   Status CheckShape(const HloInstruction* instruction,
@@ -240,6 +246,10 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckShape(const HloInstruction* instruction,
                     const StatusOr<Shape>& inferred_shape_status);
 
+  static Status CheckParameterCount(const HloInstruction* calling_instruction,
+                                    const HloComputation* computation,
+                                    int expected);
+
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   Status CheckUnaryShape(const HloInstruction* instruction);
   Status CheckBinaryShape(const HloInstruction* instruction);
@@ -247,23 +257,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
-  // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false,
-                  bool ignore_memory_space = false) {
-    if (!opts_.layout_sensitive) {
-      return ShapeUtil::Compatible(a, b);
-    }
-    Shape::Equal equal;
-    if (ignore_memory_space) {
-      equal.IgnoreMemorySpaceInLayout();
-    }
-    if (minor_to_major_only) {
-      equal.MinorToMajorOnlyInLayout();
-    }
-    return equal(a, b);
-  }
-
   bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
                                      bool minor_to_major_only = false) {
     if (!opts_.layout_sensitive) {
@@ -299,6 +292,11 @@ class ShapeVerifier : public DfsHloVisitor {
                                   int64_t operand_number,
                                   const HloComputation* computation,
                                   int64_t parameter_number);
+
+  // Checks that the shape of async op operands and results match the called
+  // computation parameters and root.
+  Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
+                                       const Shape& async_shape);
 
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
@@ -408,6 +406,7 @@ class MetadataTracker : public DfsHloVisitorWithDefault {
   int64_t has_op_type_count_ = 0;
   int64_t has_op_name_count_ = 0;
   int64_t has_source_file_count_ = 0;
+  int64_t has_dummy_source_file_count_ = 0;
   int64_t has_source_line_count_ = 0;
   int64_t has_creation_pass_id_count_ = 0;
   int64_t has_logical_creation_pass_id_count_ = 0;

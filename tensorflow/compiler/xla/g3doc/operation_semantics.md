@@ -44,6 +44,7 @@ channel_id)` </b>
 | `operand`        | `XlaOp`              | Array to concatenate across |
 :                  :                      : replicas.                   :
 | `all_gather_dim` | `int64`              | Concatenation dimension.    |
+| `shard_count`    | `int64`              | Size of each replica group. |
 | `replica_groups` | vector of vectors of | Groups between which the    |
 :                  : `int64`              : concatenation is performed. :
 | `channel_id`     | optional `int64`     | Optional channel ID for     |
@@ -2949,6 +2950,36 @@ there are elements which are considered to be equal by the comparator, the
 relative order of the equal values is preserved. Two elements `e1` and `e2` are
 equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
 default, `is_stable` is set to false.
+
+## Top-K
+
+See also the `jax.lax.top_k` operation.
+
+<b>`TopK(operand)`</b>
+
+Arguments    | Type             | Semantics
+------------ | ---------------- | ---------------------------------------------
+`operand`    | `XlaOp`          | N-dimensional array
+`k`          | `int64`          | Integer specifying the number of top entries.
+`comparator` | `XlaComputation` | The comparator computation to use.
+
+Returns top `k` values and their indices as a tuple, along the last dimension of
+the operand using the given `comparator` (for usual topk behavior, it should be
+strict-greater-than operation).
+
+For example, given strict `>` operator, `k=1` and the following operand of shape
+`f32[2,3]`:
+
+```
+[[0.1, 0.3, 0.1], [0.7, 0.2, -0.1]]
+```
+
+The TopK application returns the following tuple of shape `(f32[2,1],
+s32[2,1])`:
+
+```
+([[0.3], [0.7]], [[1], [0]])
+```
 
 ## Transpose
 

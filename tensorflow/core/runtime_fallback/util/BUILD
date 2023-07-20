@@ -11,7 +11,6 @@ package_group(
     packages = [
         "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
         "//tensorflow/core/runtime_fallback/...",
-        "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tfrt/utils/...",
     ],
 )
@@ -82,7 +81,6 @@ cc_library(
     hdrs = ["fallback_test_util.h"],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
@@ -129,7 +127,6 @@ tf_cuda_library(
     # Only build this library with --config=cuda.
     tags = [
         "manual",
-        "no_oss",
         "requires_cuda",
     ],
     deps = [

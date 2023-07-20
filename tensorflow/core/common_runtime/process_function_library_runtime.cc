@@ -105,8 +105,9 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
-      flr_map_(new std::unordered_map<Device*,
-                                      std::unique_ptr<FunctionLibraryRuntime>>),
+      flr_map_(
+          new std::unordered_map<Device*,
+                                 core::RefCountPtr<FunctionLibraryRuntime>>),
       next_handle_(0),
       session_metadata_(session_metadata),
       rendezvous_factory_(std::move(rendezvous_factory)),
@@ -567,7 +568,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           : lib_def_->FindOptimizedFunctionGraph(function_name);
   if (optimized_graph_proto != nullptr) {
     LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+    metrics::UpdateFunctionGraphOptimizationSavingTime(
+        optimized_graph_proto->optimization_time_usecs(),
+        metrics::GraphOptimizationSource::kAot);
+    metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+        1, metrics::GraphOptimizationSource::kAot);
   }
+
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraphOrReadFromFileCache(

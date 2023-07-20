@@ -29,8 +29,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -169,7 +171,7 @@ class TFRTOpKernelContext {
 class TFRTOpKernel {
  public:
   explicit TFRTOpKernel(TFRTOpKernelConstruction* context) {}
-  virtual ~TFRTOpKernel() {}
+  virtual ~TFRTOpKernel() = default;
   virtual void Compute(TFRTOpKernelContext* context) = 0;
 };
 

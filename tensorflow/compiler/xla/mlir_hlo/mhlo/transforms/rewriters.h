@@ -49,6 +49,10 @@ void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
 void populateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
                                               RewritePatternSet *patterns);
 
+// Rewrite patterns for torch index select to equivalent gather legalization.
+void populateTorchIndexSelectToGatherPatterns(mlir::MLIRContext *context,
+                                              RewritePatternSet *patterns);
+
 void populateMhloToStdPatterns(RewritePatternSet *patterns, MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering all mhlo ops to their

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -41,6 +42,43 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
 }
+
+namespace {
+mlir::ArrayAttr ConvertDynamicParameterBindings(
+    const DynamicParameterBinding dpb, mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute, 4> bindings;
+  (void)dpb.ForEachBinding(
+      [&](const DynamicParameterBinding::DynamicParameter& source,
+          const DynamicParameterBinding::DynamicDimension& target) {
+        llvm::SmallVector<int64_t, 4> dpis;
+        for (auto dpi : source.parameter_index) dpis.push_back(dpi);
+        llvm::SmallVector<int64_t, 4> tpis;
+        for (auto tpi : target.parameter_index) tpis.push_back(tpi);
+        bindings.push_back(mlir::mhlo::DynamicParameterBindingAttr::get(
+            builder->getContext(), source.parameter_num, dpis,
+            target.parameter_num, tpis, target.dimension));
+        return OkStatus();
+      });
+  return mlir::ArrayAttr::get(builder->getContext(), bindings);
+}
+
+mlir::ArrayAttr ConvertCrossProgramPrefetches(
+    const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
+    mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute, 4> shapes;
+  for (auto [parameter, index, alt_memory_offset] : prefetches) {
+    llvm::SmallVector<int64_t, 4> dims;
+    for (auto dim : index) dims.push_back(dim);
+    std::optional<int64_t> offset =
+        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
+                          : std::nullopt;
+    shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
+        builder->getContext(), parameter, dims, offset));
+  }
+
+  return mlir::ArrayAttr::get(builder->getContext(), shapes);
+}
+}  // namespace
 
 Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
@@ -60,15 +98,13 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   if (hlo_module.has_spmd_output_sharding()) {
     module->setAttr(
         "mhlo.spmd_output_sharding",
-        builder_.getStringAttr(
-            hlo_module.spmd_output_sharding().ToProto().SerializeAsString()));
+        ConvertSharding(hlo_module.spmd_output_sharding(), &builder_));
   }
 
   if (hlo_module.has_spmd_parameters_shardings()) {
     llvm::SmallVector<mlir::Attribute> parameter_shardings;
     for (const auto& sharding : hlo_module.spmd_parameters_shardings()) {
-      parameter_shardings.push_back(
-          builder_.getStringAttr(sharding.ToProto().SerializeAsString()));
+      parameter_shardings.push_back(ConvertSharding(sharding, &builder_));
     }
     module->setAttr("mhlo.spmd_parameters_shardings",
                     builder_.getArrayAttr(parameter_shardings));

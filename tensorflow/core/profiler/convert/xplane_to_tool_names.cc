@@ -34,7 +34,7 @@ StatusOr<std::string> GetAvailableToolNames(
   std::vector<std::string> tools;
   if (session_snapshot.XSpaceSize() != 0) {
     tools.reserve(11);
-    tools.push_back("trace_viewer");
+    tools.push_back("trace_viewer@");
     tools.push_back("overview_page");
     tools.push_back("input_pipeline_analyzer");
     tools.push_back("tensorflow_stats");

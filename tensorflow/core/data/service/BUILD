@@ -6,13 +6,16 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_cloud", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
 
-package_group(name = "data_transfer_visibility")
+package_group(
+    name = "data_transfer_visibility",
+    packages = ["//learning/brain/google/data/service/data_transfer_protocols/..."],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -328,7 +331,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "dispatcher_cc_grpc_proto",
     srcs = [":dispatcher_proto"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
@@ -376,6 +379,7 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
@@ -414,6 +418,7 @@ cc_library(
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:auto_scaler",
         "//tensorflow/core/data/service/snapshot:file_utils",
         "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/core/data/service/snapshot:snapshot_manager",
@@ -592,6 +597,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -621,6 +627,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -797,6 +804,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -975,7 +983,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "worker_cc_grpc_proto",
     srcs = [":worker_proto"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
@@ -1106,4 +1114,33 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + tf_protos_profiler_service(),
+)
+
+cc_library(
+    name = "auto_scaler",
+    srcs = ["auto_scaler.cc"],
+    hdrs = ["auto_scaler.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "auto_scaler_test",
+    srcs = ["auto_scaler_test.cc"],
+    deps = [
+        ":auto_scaler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_absl//absl/time",
+    ],
 )

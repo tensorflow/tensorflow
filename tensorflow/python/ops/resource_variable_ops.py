@@ -43,7 +43,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_module
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -76,7 +75,7 @@ get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 def get_eager_safe_handle_data(handle):
   """Get the data handle from the Tensor `handle`."""
-  assert isinstance(handle, ops.Tensor)
+  assert isinstance(handle, tensor_module.Tensor)
 
   if isinstance(handle, ops.EagerTensor):
     return handle._handle_data  # pylint: disable=protected-access
@@ -268,7 +267,7 @@ class EagerResourceDeleter:
   __slots__ = ["_handle", "_handle_device", "_context"]
 
   def __init__(self, handle, handle_device):
-    if not isinstance(handle, ops.Tensor):
+    if not isinstance(handle, tensor_module.Tensor):
       raise ValueError(
           (f"Passed handle={handle} to EagerResourceDeleter. Was expecting "
            f"the handle to be a `tf.Tensor`."))
@@ -332,6 +331,46 @@ def variable_accessed(variable):
     ops.get_default_graph().watch_variable(variable)
   if variable.trainable:
     tape.variable_accessed(variable)
+
+
+def default_variable_creator_v2(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
+  dtype = kwargs.get("dtype", None)
+  import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
+  distribute_strategy = kwargs.get("distribute_strategy", None)
+  synchronization = kwargs.get("synchronization", None)
+  aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
+  experimental_enable_variable_lifting = kwargs.get(
+      "experimental_enable_variable_lifting", None)
+
+  return ResourceVariable(
+      initial_value=initial_value,
+      trainable=trainable,
+      validate_shape=validate_shape,
+      caching_device=caching_device,
+      name=name,
+      dtype=dtype,
+      constraint=constraint,
+      variable_def=variable_def,
+      import_scope=import_scope,
+      distribute_strategy=distribute_strategy,
+      synchronization=synchronization,
+      aggregation=aggregation,
+      shape=shape,
+      experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+      )
+
+
+variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 class BaseResourceVariable(variables.Variable, core.Tensor):
@@ -1893,7 +1932,7 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
                        "`variable_def`. You provided neither.")
     init_from_fn = callable(initial_value)
 
-    if isinstance(initial_value, ops.Tensor) and hasattr(
+    if isinstance(initial_value, tensor_module.Tensor) and hasattr(
         initial_value, "graph") and initial_value.graph.building_function:
       raise ValueError(f"Argument `initial_value` ({initial_value}) could not "
                        "be lifted out of a `tf.function`. "
@@ -2500,7 +2539,7 @@ class PList(StructurePattern):
     return isinstance(other, PList) and self.components == other.components
 
 
-class VariableSpec(tensor_spec.DenseSpec):
+class VariableSpec(tensor_module.DenseSpec):
   """Describes a tf.Variable.
 
   A `VariableSpec` provides metadata describing the `tf.Variable` objects
@@ -2586,7 +2625,8 @@ class VariableSpec(tensor_spec.DenseSpec):
       raise ValueError(f"Components of a ResourceVariable must only contain "
                        f"its resource handle, got f{components} instead.")
     handle = components[0]
-    if not isinstance(handle, ops.Tensor) or handle.dtype != dtypes.resource:
+    if not isinstance(
+        handle, tensor_module.Tensor) or handle.dtype != dtypes.resource:
       raise ValueError(f"The handle of a ResourceVariable must be a resource "
                        f"tensor, got {handle} instead.")
     return ResourceVariable(trainable=self.trainable,
@@ -2596,7 +2636,15 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   @property
   def _component_specs(self):
-    return [tensor_spec.TensorSpec([], dtypes.resource)]
+    return [
+        tensor_module.TensorSpec(
+            [],
+            dtypes.DType(
+                dtypes.resource._type_enum,  # pylint: disable=protected-access
+                dtypes.HandleData(alias_id=self.alias_id),
+            ),
+        )
+    ]
 
   def _serialize(self):
     return self.shape, self.dtype, self.trainable, self.alias_id
@@ -2648,7 +2696,7 @@ class VariableSpec(tensor_spec.DenseSpec):
       # exists in the PlaceholderContext
       variable = placeholder_context.get_placeholder(self.alias_id)
     else:
-      spec = tensor_spec.TensorSpec([], dtypes.resource)
+      spec = tensor_module.TensorSpec([], dtypes.resource)
       spec_context = trace_type.InternalPlaceholderContext(
           context_graph.outer_graph)
       spec_context.update_naming_scope(name)
@@ -2668,7 +2716,12 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   def _to_tensors(self, value):
     assert isinstance(value, BaseResourceVariable)
+    variable_accessed(value)
     return [value.handle]
+
+  def _cast(self, value, _):
+    assert isinstance(value, BaseResourceVariable)
+    return value
 
   def _get_structure(self):
     # shape, dtype, trainable, and alias_id are all leaves.

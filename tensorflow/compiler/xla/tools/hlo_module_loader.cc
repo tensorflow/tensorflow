@@ -68,7 +68,8 @@ std::string StripLogHeaders(const std::string& hlo_string) {
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const std::string& data, const std::string& format,
     hlo_module_loader_details::Config ovr_config,
-    const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
+    const std::function<void(HloModuleConfig*)>& config_modifier_hook,
+    BufferAssignmentProto* buffer_assignment_proto) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
   if (format == "hlo" || format == "txt") {
@@ -88,6 +89,14 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
           !proto.mutable_hlo()->ParseFromString(data) &&
           !proto.mutable_hlo()->mutable_hlo_module()->ParseFromString(data)) {
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
+      }
+      if (buffer_assignment_proto != nullptr) {
+        if (proto.hlo().has_buffer_assignment()) {
+          *buffer_assignment_proto = proto.hlo().buffer_assignment();
+        } else {
+          return InvalidArgument(
+              "Expected buffer assignment in HLO protobuf binary.");
+        }
       }
     } else if (format == "pbtxt") {
       if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
@@ -119,13 +128,15 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::string& path, hlo_module_loader_details::Config ovr_config,
     std::string format,
-    const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
+    const std::function<void(HloModuleConfig*)>& config_modifier_hook,
+    BufferAssignmentProto* buffer_assignment_proto) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
-  return LoadModuleFromData(data, format, ovr_config, config_modifier_hook);
+  return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
+                            buffer_assignment_proto);
 }
 
 StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(

@@ -46,6 +46,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util as util
@@ -53,6 +54,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.training import server_lib
@@ -564,7 +566,7 @@ class MirroredStrategyVariableCreatorStackTest(
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
-        v = variable_scope.variable(1.0)
+        v = variable_v1.VariableV1(1.0)
 
         # This will pause the current thread, and execute the other thread.
         distribute_lib.get_replica_context().merge_call(lambda _: _)
@@ -765,25 +767,25 @@ class MirroredStrategyNameScopeTest(test.TestCase):
         self.assertEqual("foo/" + name + ":0", v0.name)
         self.assertEqual("replica_1/foo/" + name + ":0", v1.name)
 
-  # variable_scope.variable() respects name scopes when creating
+  # variable_v1.VariableV1() respects name scopes when creating
   # variables. On the other hand variable_scope.get_variable() ignores name
   # scopes but respects variable scope when creating variables. We test both
   # methods of creating variables to make sure that we have the same
   # variable names in both cases.
   def testNameScopeWithVariable(self, distribution):
     def in_cross_replica(_):
-      c = variable_scope.variable(1.0, name="c")
+      c = variable_v1.VariableV1(1.0, name="c")
       return c
 
     def model_fn():
-      b = variable_scope.variable(1.0, name="b")
+      b = variable_v1.VariableV1(1.0, name="b")
       with ops.name_scope("foo"):
         c = distribute_lib.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     with context.graph_mode(), distribution.scope():
       with ops.name_scope("main"):
-        a = variable_scope.variable(1.0, name="a")
+        a = variable_v1.VariableV1(1.0, name="a")
         result = distribution.extended.call_for_each_replica(model_fn)
       result_b = result[0]
       result_c = result[1]
@@ -876,7 +878,7 @@ class MirroredThreeDeviceDistributionTest(
 
   def testThreeDevices(self, distribution):
     def model_fn():
-      v = variable_scope.variable(1.0, name="foo")
+      v = variable_v1.VariableV1(1.0, name="foo")
       distribute_lib.get_replica_context().merge_call(lambda _: _)
       return v
 
@@ -899,7 +901,7 @@ class MirroredVariableUpdateTest(test.TestCase):
   def testAssignMirroredVarReplicaContextWithoutAggregationType(self,
                                                                 distribution):
     def var_fn():
-      v = variable_scope.variable(1.0, name="foo")
+      v = variable_v1.VariableV1(1.0, name="foo")
       return v
 
     with distribution.scope():
@@ -918,7 +920,7 @@ class MirroredVariableUpdateTest(test.TestCase):
     # Test that we don't reduce a non-per-replica value with the "sum"
     # aggregation type.
     def var_fn():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           1.0, name="foo", aggregation=variable_scope.VariableAggregation.SUM)
       return v
 
@@ -944,7 +946,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarCrossDeviceContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(1.0, name="foo")
+      return variable_v1.VariableV1(1.0, name="foo")
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
@@ -956,7 +958,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -977,7 +979,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignMirroredVarReplicaContextWithSingleValue(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -995,7 +997,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignAddMirroredVarCrossDeviceContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(1.0, name="foo")
+      return variable_v1.VariableV1(1.0, name="foo")
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
@@ -1037,7 +1039,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -1058,7 +1060,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignAddMirroredVarReplicaContextWithSingleValue(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           1.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -1076,7 +1078,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignSubMirroredVarCrossDeviceContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(5.0, name="foo")
+      return variable_v1.VariableV1(5.0, name="foo")
 
     with distribution.scope():
       mirrored_var = distribution.extended.call_for_each_replica(var_fn)
@@ -1100,7 +1102,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           5.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -1121,7 +1123,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   def testAssignSubMirroredVarReplicaContextWithSingleValue(self, distribution):
     def var_fn():
-      return variable_scope.variable(
+      return variable_v1.VariableV1(
           5.0, name="foo", aggregation=variable_scope.VariableAggregation.MEAN)
 
     with distribution.scope():
@@ -1151,7 +1153,7 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
     # upon construction instead of once the initialization op is run.
     with context.graph_mode():
       def var_fn():
-        v = variable_scope.variable(1.0, name="foo")
+        v = variable_v1.VariableV1(1.0, name="foo")
         return v
 
       with distribution.scope():
@@ -1166,7 +1168,7 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
     # upon construction instead of once the initialization op is run.
     with context.graph_mode():
       def model_fn():
-        v_sum = variable_scope.variable(
+        v_sum = variable_v1.VariableV1(
             1.0,
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             aggregation=variable_scope.VariableAggregation.SUM)
@@ -1192,7 +1194,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
   def testAssignReplicaLocalVarSumAggregation(self, distribution):
     def model_fn():
-      v_sum = variable_scope.variable(
+      v_sum = variable_v1.VariableV1(
           1.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.SUM)
@@ -1219,7 +1221,7 @@ class SyncOnReadVariableAssignTest(test.TestCase):
 
   def testAssignReplicaLocalVarMeanAggregation(self, distribution):
     def model_fn():
-      v_sum = variable_scope.variable(
+      v_sum = variable_v1.VariableV1(
           1.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.MEAN)
@@ -1246,9 +1248,9 @@ class MockModel(object):
 
   def __init__(self, two_variables=False):
     self.variables = []
-    self.variables.append(variable_scope.variable(1.25, name="dummy_var1"))
+    self.variables.append(variable_v1.VariableV1(1.25, name="dummy_var1"))
     if two_variables:
-      self.variables.append(variable_scope.variable(2.0, name="dummy_var2"))
+      self.variables.append(variable_v1.VariableV1(2.0, name="dummy_var2"))
 
   def __call__(self, factor=2):
     x = factor * self.variables[0]
@@ -1483,8 +1485,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBackwardFunctionDevicePlacement(self, distribution):
     with distribution.scope():
-      w = variable_scope.variable([1.5], name="w")
-      b = variable_scope.variable([0.5], name="b")
+      w = variable_v1.VariableV1([1.5], name="w")
+      b = variable_v1.VariableV1([0.5], name="b")
 
     @def_function.function
     def forward(x, w, b):
@@ -1547,14 +1549,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
 def _replica_id():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if not isinstance(replica_id, ops.Tensor):
+  if not isinstance(replica_id, tensor_lib.Tensor):
     replica_id = constant_op.constant(replica_id)
   return array_ops.identity(replica_id)
 
 
 def _replica_id_as_int():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if isinstance(replica_id, ops.Tensor):
+  if isinstance(replica_id, tensor_lib.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id
 

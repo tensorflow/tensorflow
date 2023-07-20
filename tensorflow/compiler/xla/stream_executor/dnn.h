@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -987,14 +988,16 @@ using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 using FusedMHASoftmaxSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                       DeviceMemoryBase /* BMM1_inputB_data */,
                                       DeviceMemoryBase /* BMM2_inputA_data */,
-                                      DeviceMemoryBase /* output_data */);
+                                      DeviceMemoryBase /* output_data */,
+                                      DeviceMemoryBase /* activation_data */);
 using FusedMHASoftmaxRunner = OpRunner<FusedMHASoftmaxSignature>;
 
 using FusedMHAMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* mask_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHAMaskRunner = OpRunner<FusedMHAMaskSignature>;
 
 using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
@@ -1002,15 +1005,42 @@ using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                        DeviceMemoryBase /* mask_data */,
                                        DeviceMemoryBase /* bias_data */,
                                        DeviceMemoryBase /* BMM2_inputA_data */,
-                                       DeviceMemoryBase /* output_data */);
+                                       DeviceMemoryBase /* output_data */,
+                                       DeviceMemoryBase /* activation_data */);
 using FusedMHABiasMaskRunner = OpRunner<FusedMHABiasMaskSignature>;
 
 using FusedMHABiasSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* bias_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHABiasRunner = OpRunner<FusedMHABiasSignature>;
+
+using FusedMHASoftmaxBackwardSignature =
+    void(DeviceMemoryBase /* BMM1_GRAD_GEMM1_inputA_data */,
+         DeviceMemoryBase /* BMM1_GRAD_GEMM2_inputB_data */,
+         DeviceMemoryBase /* BMM2_GRAD_GEMM1_inputA_data */,
+         DeviceMemoryBase /* BMM2_GRAD_GEMM2_inputB_data */,
+         DeviceMemoryBase /* d_output_data */,
+         DeviceMemoryBase /* d_BMM1_inputA_data */,
+         DeviceMemoryBase /* d_BMM1_inputB_data */,
+         DeviceMemoryBase /* d_BMM2_inputB_data */,
+         DeviceMemoryBase /* d_S_data */, DeviceMemoryBase /* d_bias_data */);
+using FusedMHASoftmaxBackwardRunner =
+    OpRunner<FusedMHASoftmaxBackwardSignature>;
+
+using FusedMHAMaskBackwardSignature = void(
+    DeviceMemoryBase /* BMM1_GRAD_GEMM1_inputA_data */,
+    DeviceMemoryBase /* BMM1_GRAD_GEMM2_inputB_data */,
+    DeviceMemoryBase /* BMM2_GRAD_GEMM1_inputA_data */,
+    DeviceMemoryBase /* BMM2_GRAD_GEMM2_inputB_data */,
+    DeviceMemoryBase /* d_output_data */,
+    DeviceMemoryBase /* d_BMM1_inputA_data */,
+    DeviceMemoryBase /* d_BMM1_inputB_data */,
+    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
+    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */);
+using FusedMHAMaskBackwardRunner = OpRunner<FusedMHAMaskBackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -1574,12 +1604,6 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  // cc_major and cc_minor are the compute capabilities of the device.
-  virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
   virtual tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -1590,6 +1614,7 @@ class DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -1612,6 +1637,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   virtual tsl::Status GetFusedMatmulRunners(
@@ -1620,6 +1646,7 @@ class DnnSupport {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
@@ -1645,6 +1672,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
@@ -1656,6 +1684,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
@@ -1668,6 +1697,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
@@ -1681,7 +1711,42 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+
+  virtual tsl::StatusOr<
+      std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+  FusedMHASoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& d_output_descriptor,
+      const TensorDescriptor& d_bmm1_lhs_descriptor,
+      const TensorDescriptor& d_bmm1_rhs_descriptor,
+      const TensorDescriptor& d_bmm2_rhs_descriptor,
+      const TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& d_output_descriptor,
+      const TensorDescriptor& d_bmm1_lhs_descriptor,
+      const TensorDescriptor& d_bmm1_rhs_descriptor,
+      const TensorDescriptor& d_bmm2_rhs_descriptor,
+      const TensorDescriptor& d_s_descriptor,
+      const TensorDescriptor& mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual bool GetMIOpenConvolveAlgorithms(
@@ -1741,18 +1806,6 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data) = 0;
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // data.
-  virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // filters.
-  virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions
@@ -1879,6 +1932,14 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator) = 0;
 
+  virtual tsl::Status DoPoolForward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const NumericOptions& numeric_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator);
+
   // Performs differentiation of the pooling operation.
   virtual tsl::Status DoPoolBackward(
       DataType element_type, Stream* stream,
@@ -1888,6 +1949,15 @@ class DnnSupport {
       DeviceMemoryBase output_data, DeviceMemoryBase input_diff_data,
       DeviceMemoryBase output_diff_data,
       ScratchAllocator* workspace_allocator) = 0;
+
+  virtual tsl::Status DoPoolBackward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const NumericOptions& numeric_options,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, DeviceMemoryBase input_diff_data,
+      DeviceMemoryBase output_diff_data, ScratchAllocator* workspace_allocator);
 
   // Applies local response normalization to the values from input_data and
   // writes the result to output_data.
@@ -2289,8 +2359,9 @@ class DnnSupport {
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
-                      float dropout, uint64_t seed,
-                      ScratchAllocator* state_allocator, bool use_padded_io) {
+                      const NumericOptions& numeric_options, float dropout,
+                      uint64_t seed, ScratchAllocator* state_allocator,
+                      bool use_padded_io) {
     return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnDescriptor is unimplemented");
   }
@@ -2559,12 +2630,13 @@ class DnnSupport {
                                 absl::Span<const int> labels_data,
                                 absl::Span<const int> labels_lengths_data,
                                 absl::Span<const int> input_lengths_data,
+                                const NumericOptions& numeric_options,
                                 ScratchAllocator* workspace_allocator,
                                 DeviceMemory<uint8_t>* scratch_memory,
                                 int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(
         stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
-        labels_data, labels_lengths_data, input_lengths_data,
+        labels_data, labels_lengths_data, input_lengths_data, numeric_options,
         workspace_allocator, scratch_memory, ctc_loss_algo_id);
   }
 
@@ -2885,6 +2957,7 @@ class DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
     *scratch_memory = {};

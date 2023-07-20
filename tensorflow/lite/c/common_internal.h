@@ -39,14 +39,16 @@ typedef struct TfLiteRegistrationExternal {
   // Initializes the op from serialized data.
   void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                 size_t length);
+
+  // Deallocates the op.
   // The pointer `buffer` is the data previously returned by an init invocation.
   void (*free)(TfLiteOpaqueContext* context, void* buffer);
 
   // Called when the inputs that this node depends on have been resized.
   TfLiteStatus (*prepare)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
-  // Called when the node is executed. (should read node->inputs and output to
-  // node->outputs).
+  // Called when the node is executed. (Should read node inputs and write to
+  // node outputs).
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
   // Retrieves the async kernel. The functor is nullptr if the node / backend
@@ -75,6 +77,10 @@ typedef struct TfLiteRegistrationExternal {
   // regular TfLiteRegistration.  In such a case the 'node_index' field should
   // store the index of that corresponding node (and registration).
   int node_index;
+
+  // Indicates if an operator's output can safely overwrite its input.
+  // See the comments in `TfLiteInPlaceOp`.
+  uint64_t inplace_operator;
 } TfLiteRegistrationExternal;
 
 // Returns true iff it's safe to dereference
@@ -97,7 +103,7 @@ inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
   //
   // TODO(b/245730811): Consider signalling to clients if the delegate is not
   // initialized cleanly.
-  return delegate->Prepare == nullptr &&
+  return delegate != nullptr && delegate->Prepare == nullptr &&
          delegate->opaque_delegate_builder != nullptr;
 }
 

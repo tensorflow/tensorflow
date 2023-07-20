@@ -26,12 +26,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+using GetCanonicalAsyncOpFunc =
+    std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
 
 class HloGraphNode;
 class ModulePressureState;
@@ -92,6 +104,7 @@ struct SchedulerConfig {
   bool aggressive_scheduling_policies = false;
   bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
+  bool resource_sharing = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -108,7 +121,16 @@ class LatencyEstimator {
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 
-  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+  bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
+  explicit LatencyEstimator(
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : get_canonical_async_op_(func) {}
+
+ private:
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -128,6 +150,12 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kMediumCost = 1000.0;
   static constexpr TimeCost kHighCost = 5000.0;
+
+ protected:
+  // These values are empirically derived to obtain an overlap of one output
+  // fusion/convolution with 1 async op or 5 loop fusions with an async op.
+  static constexpr TimeCost kLowLatency = 1.0;
+  static constexpr TimeCost kHighLatency = 5000.0;
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -188,13 +216,33 @@ class AsyncTracker {
   // Default resources have a hazard type of kUnshareable.
   virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
-  explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
+  // Returns the list of the released shareable resources filtered from the
+  // given resources vector.
+  virtual absl::InlinedVector<int64_t, 1>
+  GetReleasedShareableResourcesFromVector(
+      const ResourcesVector& resources) const;
+
+  // Returns the list of the occupied shareable resources filtered from the
+  // given resources vector.
+  virtual absl::InlinedVector<int64_t, 1>
+  GetOccupiedShareableResourcesFromVector(
+      const ResourcesVector& resources) const;
+
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+
+  explicit AsyncTracker(
+      const SchedulerConfig& config,
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : config_(config), get_canonical_async_op_(func) {}
 
  private:
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloComputation*,
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Base class for the core scheduling algorithm.
@@ -246,7 +294,9 @@ class HloGraphNode {
   TimeCost GetCost() const { return cost_; }
   void SetCost(TimeCost cost) { cost_ = cost; }
   TimeCost GetAsyncDepth() const { return async_depth_; }
+  TimeCost GetDepth() const { return depth_; }
   void SetAsyncDepth(TimeCost async_depth) { async_depth_ = async_depth; }
+  void SetDepth(TimeCost depth) { depth_ = depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   ResourcesVector GetResources() const { return resources_; }
@@ -259,6 +309,9 @@ class HloGraphNode {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease;
     });
+  }
+  bool DoesOccupyShareableResource(int64_t resource) const {
+    return absl::c_linear_search(occupied_shareable_resources_, resource);
   }
   bool DoesReleaseResource(ResourceType res) const {
     return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
@@ -283,6 +336,17 @@ class HloGraphNode {
     }
     return std::nullopt;
   }
+  std::vector<int64_t> GetShareableResourcesOnEdge(const HloEdge& edge) const {
+    HloGraphNode node = edge.Target();
+    std::vector<int64_t> resources;
+    absl::c_for_each(released_shareable_resources_,
+                     [&node, &resources](const int64_t resource) {
+                       if (node.DoesOccupyShareableResource(resource)) {
+                         resources.push_back(resource);
+                       }
+                     });
+    return resources;
+  }
   absl::Span<HloEdge> GetPredecessors() {
     return absl::MakeSpan(predecessors_);
   }
@@ -304,6 +368,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Outdegree: ", outdegree_, "\n");
     absl::StrAppend(&result, "Cost: ", cost_, "\n");
     absl::StrAppend(&result, "Async Depth: ", async_depth_, "\n");
+    absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
@@ -348,12 +413,18 @@ class HloGraphNode {
   TimeCost cost_ = 0.0;
   // Depth in latency terms of a node based on Async operation cost on the path.
   TimeCost async_depth_ = 0.0;
+  // Depth in latency terms of node based on distance to the entry nodes.
+  TimeCost depth_ = 0.0;
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
   // Whether this node has been scheduled or not yet.
   bool scheduled_ = false;
+  // Shareable resources released by this node.
+  absl::InlinedVector<int64_t, 1> released_shareable_resources_;
+  // Shareable resources occupied by this node.
+  absl::InlinedVector<int64_t, 1> occupied_shareable_resources_;
 };
 
 // Schedule graph that can be used to drive scheduling
@@ -379,7 +450,7 @@ class HloScheduleGraph {
 
   void InitializeGraphAnalysis(const AsyncTracker* async_tracker);
 
-  // List of instructions in the original scheduled order. (Before scheduling).
+  // l of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
     return absl::MakeConstSpan(original_order_);
   }
@@ -665,6 +736,11 @@ class DefaultSchedulerCore : public SchedulerCore {
     // Vector containing a list of nodes that aren't ready to schedule yet in
     // order of time when they are going to become ready.
     std::vector<const HloGraphNode*> next_ready_stack;
+    // List of the graph edges currently occupying the key shareable resource
+    // with projected finish times.
+    absl::flat_hash_map<
+        int64_t, std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>>
+        shareable_resource_occupiers;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     SchedulingState(const HloInstructionSequence* instr_sequence,
@@ -700,6 +776,12 @@ class DefaultSchedulerCore : public SchedulerCore {
   Status InitializeScheduler(const HloModule* module) override;
   StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
+  static bool AddOccupierToResource(
+      HloGraphNode::TimeCost current_time, HloEdge& new_edge,
+      std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
+  static bool DeleteOccupierFromResource(
+      HloGraphNode::TimeCost current_time, HloEdge& edge,
+      std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
@@ -738,6 +820,8 @@ class LatencyHidingScheduler : public HloModulePass {
     double all_gather_wasted_cycles = 0;
     double all_reduce_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
+    double all_to_all_wasted_cycles = 0;
+    double reduce_scatter_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;
     double total_cycles = 0;
@@ -781,14 +865,6 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
-
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
-                    // or kReduceScatter
-};
-
-CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 
