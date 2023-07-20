@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_client.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -123,10 +125,14 @@ class GrpcDataTransferClient : public DataTransferClient {
       });
     }
     GetElementResponse resp;
+    int64_t start_time_us = env_->NowMicros();
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    int64_t end_time_us = env_->NowMicros();
     if (!s.ok()) {
       return grpc_util::WrapError("Failed to get element", s);
     }
+    metrics::RecordTFDataServiceGetElementDuration(kGrpcTransferProtocol,
+                                                   end_time_us - start_time_us);
     result.end_of_sequence = resp.end_of_sequence();
     result.skip = resp.skip_task();
     switch (resp.element_case()) {
@@ -202,7 +208,13 @@ class LocalDataTransferClient : public DataTransferClient {
     TF_RETURN_IF_ERROR(VerifyClientIsNotCancelled());
     TF_ASSIGN_OR_RETURN(std::shared_ptr<DataServiceWorkerImpl> worker,
                         GetWorker(req));
-    return worker->GetElementResult(&req, &result);
+    int64_t start_time_us = env_->NowMicros();
+    Status s = worker->GetElementResult(&req, &result);
+    int64_t end_time_us = env_->NowMicros();
+    TF_RETURN_IF_ERROR(s);
+    metrics::RecordTFDataServiceGetElementDuration(kLocalTransferProtocol,
+                                                   end_time_us - start_time_us);
+    return s;
   }
 
   void TryCancel() override {
