@@ -347,7 +347,7 @@ __global__ void SegmentReduceVectorKernel(
         Treducevec block_result =
             x_ok && y_ok ? input_vec[input_idx] : Tvec(initial_value);
         // Apply weights if provided.
-        if (weights && y_ok) block_result *= Tvec(weights[y_idx]);
+        if (weights && y_ok) block_result = block_result * Tvec(weights[y_idx]); // MSVC fix
         // Reduce along the columns of the block, returning result in first row.
         block_result = ReduceBlockAlongCols(reduce_op, block_result, x_ok);
         if (y == 0 && x_ok) {
@@ -363,9 +363,9 @@ __global__ void SegmentReduceVectorKernel(
           typename RealTypeIfComplex<Tinit>::type total_weight(end - begin);
           // Normalize the results if necessary.
           if (is_mean) {
-            result /= Treducevec(total_weight);
+            result = result / Treducevec(total_weight); // MSVC fix
           } else if (is_sqrtn) {
-            result /= Treducevec(sqrt(total_weight));
+            result = result / Treducevec(sqrt(static_cast<double>(total_weight))); // MSVC fix
           }
         }
         // Cast from Treducevec to Tvec.
@@ -439,10 +439,11 @@ __global__ void SegmentReduceEpilogueKernel(
       // Empty segment.
       val = Treducevec(empty_segment_value);
     } else if (is_mean) {
-      val /= Treducevec(segment_size);
+      val = val / Treducevec(segment_size); // MSVC fix
     } else if (is_sqrtn) {
-      val /= Treducevec(
-          sqrt(typename RealTypeIfComplex<Tinit>::type(segment_size)));
+      // MSVC fix
+      val = val / Treducevec(
+          sqrt(static_cast<double>(typename RealTypeIfComplex<Tinit>::type(segment_size))));
     }
     // Cast from Treducevec to Tvec.
     output[seg] = static_cast<Tvec>(val);
@@ -491,7 +492,7 @@ struct LookupAndScaleAndCastInputsFunctor {
   __device__ Treducevec operator()(Tindex idx) const {
     if (indices_) idx = indices_[idx];
     Treducevec result = static_cast<Treducevec>(input_vec_[idx]);
-    if (weights_) result *= Tvec(weights_[idx]);
+    if (weights_) result = result * Tvec(weights_[idx]); // MSVC fix
     return result;
   }
 
