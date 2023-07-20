@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/location_importer.h"
 
+#include <string>
+
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/stack_location_utils.h"
 
 namespace mlir {
 namespace mhlo {
@@ -24,9 +28,20 @@ namespace mhlo {
 mlir::Location GenerateInstructionLocation(
     const xla::HloInstruction* instruction, mlir::MLIRContext* context) {
   mlir::Builder b(context);
+
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
     return mlir::NameLoc::get(b.getStringAttr(instruction->name()));
+  }
+
+  if (instruction->metadata().stack_frame_id() != 0) {
+    mlir::Location frame_location =
+        GetLocationFromFrameIndex(instruction->metadata().stack_frame_id(), b,
+                                  instruction->parent()->parent());
+
+    if (!isa<mlir::UnknownLoc>(frame_location)) {
+      return mlir::NameLoc::get(b.getStringAttr(op_name), frame_location);
+    }
   }
 
   mlir::Location op_name_loc = mlir::NameLoc::get(b.getStringAttr(op_name));
