@@ -4845,7 +4845,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[31,14]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[14,31]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
-; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]])
+; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]]), padding=0_2x0_1
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[14,14]{1,0} parameter(2)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(0)
 ; CHECK-NEXT:    [[P2_PADDED:%[^ ]+]] = f32[16,16]{1,0} pad([[P2]], [[C2]]), padding=0_2x0_2
@@ -5636,6 +5636,72 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK:           }"
 ; CHECK-NEXT:      [[SLICE:%[^ ]+]] = f32[45,31]{1,0} slice([[GEMM]]), slice={[0:45], [0:31]}
 ; CHECK-NEXT:      ROOT [[OUT:%[^ ]+]] = f32[3,15,31]{2,1,0} bitcast([[SLICE]])
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest,
+       ScaledABUnscaledDMatrixBiasWithSliceF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
+#endif
+  const char* hlo_text = R"(
+    HloModule test
+    ENTRY test {
+      x = f8e4m3fn[48,16] parameter(0)
+      y = f8e4m3fn[16,32] parameter(1)
+      b = f32[32,16] parameter(2)
+      x_f32 = f32[48,16] convert(x)
+      y_f32 = f32[16,32] convert(y)
+      x_scale = f32[] parameter(3)
+      y_scale = f32[] parameter(4)
+      x_scale_bcast = f32[48,16] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[48,16] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[48,32] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot_a_sliced = f32[32,16] slice(dot_a), slice={[16:48], [16:32]}
+      ROOT out = f32[32,16] add(dot_a_sliced, b)
+          }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(
+      se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[48,16], y: f8e4m3fn[16,32], b: f32[32,16], x_scale: f32[], y_scale: f32[]) -> f32[32,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[48,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[32,16]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f32[48,32]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C]], /*index=5*/[[C]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+; CHECK-NEXT:      [[SLICE:%[^ ]+]] = f32[32,16]{1,0} slice([[GEMM]]), slice={[16:48], [16:32]}
+; CHECK-NEXT:      [[B:%[^ ]+]] = f32[32,16]{1,0} parameter(2)
+; CHECK-NEXT:      ROOT [[OUT:%[^ ]+]] = f32[32,16]{1,0} add([[SLICE]], [[B]])
       )");
 }
 
