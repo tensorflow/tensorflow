@@ -1044,6 +1044,7 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({
