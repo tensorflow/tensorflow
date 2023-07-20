@@ -348,9 +348,9 @@ StatusOr<mlir::Value> EmitRelayout(
     else
       intermediate_specs_1[i] = src_layout.sharding_spec(i);
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_1,
-      Layout::GetLayout(intermediate_specs_1, src_layout.mesh()));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_1,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_1,
+                                        src_layout.mesh()));
 
   llvm::SmallPtrSet<mlir::Operation*, 4> local_newly_created_ops;
   TF_ASSIGN_OR_RETURN(mlir::Value split_result,
@@ -365,9 +365,9 @@ StatusOr<mlir::Value> EmitRelayout(
     else
       intermediate_specs_2[i] = intermediate_specs_1[i];
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_2,
-      Layout::GetLayout(intermediate_specs_2, src_layout.mesh()));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_2,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_2,
+                                        src_layout.mesh()));
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value concat_result,

@@ -738,6 +738,29 @@ TEST_F(LayoutTest, RaggedLayoutToFromString) {
   EXPECT_THAT(layout.ToProto(),
               IsOkAndHolds(EqualsProto(layout_from_str_proto)));
 }
+
+TEST_F(LayoutTest, RaggedLayoutEqual) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout fully_sharded,
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout x_sharded,
+      Layout::FromString("sharding_specs:x,unsharded, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout x_ragged,
+      Layout::FromString("ragged:x,unsharded, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(Layout x_y_ragged,
+                          Layout::FromString("ragged:x,y, mesh:|x=2,y=1|*TPU"));
+
+  // Test that 'IsEquivalent' and '==' take layout type into account.
+  EXPECT_TRUE(x_ragged.IsEquivalent(x_y_ragged));
+  EXPECT_TRUE(x_y_ragged.IsEquivalent(x_ragged));
+  EXPECT_FALSE(x_sharded.IsEquivalent(x_ragged));
+  EXPECT_FALSE(fully_sharded.IsEquivalent(x_y_ragged));
+  EXPECT_FALSE(x_sharded == x_ragged);
+  EXPECT_FALSE(fully_sharded == x_y_ragged);
+}
+
 }  // namespace
 }  // namespace dtensor
 }  // namespace tensorflow

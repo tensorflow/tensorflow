@@ -472,10 +472,9 @@ class RelayoutTest(test_util.DTensorBaseTest):
   @combinations.generate(combinations.combine(is_graph=[False, True]))
   def test_relayout_to_ragged(self, is_graph):
     data = np.array([1, 2, 3, 4.0], dtype='f4')
-    inp = api.relayout(data, self.y_layout)
 
     def do_relayout():
-      return api.relayout(inp, self.y_layout.to_ragged())
+      return api.relayout(data, self.y_layout.to_ragged())
 
     if is_graph:
       do_relayout = polymorphic_function.function(do_relayout)
