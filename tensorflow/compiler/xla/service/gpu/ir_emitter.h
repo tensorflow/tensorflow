@@ -216,12 +216,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // A convenience method to determine the proper sync scope for an atomic op.
   llvm::SyncScope::ID DetermineSyncScope() const;
-
-  // Map nested computations to emitted IR functions. This serves as a cache so
-  // that IrEmitter does not emit multiple functions for the same
-  // HloComputation.
-  absl::flat_hash_map<const HloComputation*, llvm::Function*>
-      computation_to_ir_function_;
 };
 
 }  // namespace gpu

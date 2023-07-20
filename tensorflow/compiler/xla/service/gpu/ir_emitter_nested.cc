@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -47,19 +48,17 @@ IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true),
       nested_computation_(nested_computation) {}
 
-StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
-    const HloModuleConfig& hlo_module_config,
-    const HloComputation& nested_computation,
-    IrEmitterContext* ir_emitter_context) {
-  std::unique_ptr<IrEmitterNested> emitter(new IrEmitterNested(
-      hlo_module_config, nested_computation, ir_emitter_context));
-  TF_RETURN_IF_ERROR(emitter->EmitConstants(nested_computation));
-  return emitter;
-}
-
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
-Status IrEmitterNested::CodegenNestedComputation() {
+StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
+  std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
+      nested_computation_.name(), "_",
+      absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_))));
+  auto* function =
+      ir_emitter_context_->llvm_module()->getFunction(function_name);
+  if (function) return function;
+
+  TF_RETURN_IF_ERROR(EmitConstants(nested_computation_));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -90,13 +89,11 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(b_.getVoidTy(), argument_types, false);
-  llvm::Function* function = llvm::Function::Create(
+  function = llvm::Function::Create(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
-      ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeFunctionName(std::string(
-              nested_computation_.name()))),  // The name of the function.
-      ir_emitter_context_->llvm_module());    // The parent LLVM module.
+      function_name,
+      ir_emitter_context_->llvm_module());  // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
@@ -169,8 +166,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
     }
   }
   b_.SetInsertPoint(ret_instr);
-  emitted_function_ = function;
-  return OkStatus();
+  return function;
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {

@@ -149,22 +149,10 @@ Status IrEmitter::EmitCallToNestedComputation(
     absl::Span<llvm::Value* const> operands, llvm::Value* output) {
   TF_RET_CHECK(nested_computation.num_parameters() > 0);
 
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * emitted_function, [&]() -> StatusOr<llvm::Function*> {
-        if (auto it = computation_to_ir_function_.find(&nested_computation);
-            it != computation_to_ir_function_.end()) {
-          return it->second;
-        }
-        TF_ASSIGN_OR_RETURN(
-            auto ir_emitter_nested,
-            IrEmitterNested::Create(hlo_module_config_, nested_computation,
-                                    ir_emitter_context_));
-        TF_RETURN_IF_ERROR(ir_emitter_nested->CodegenNestedComputation());
-        return computation_to_ir_function_
-            .insert(
-                {&nested_computation, ir_emitter_nested->GetEmittedFunction()})
-            .first->second;
-      }());
+  TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
+                      IrEmitterNested(hlo_module_config_, nested_computation,
+                                      ir_emitter_context_)
+                          .CodegenNestedComputation());
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
