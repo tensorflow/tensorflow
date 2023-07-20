@@ -21,12 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #ifdef DNNL_AARCH64_USE_ACL
 #include "tensorflow/core/platform/mutex.h"
 #endif
@@ -79,7 +79,7 @@ inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n, int64_t k,
   constexpr float kHeuristicMultiplier = 1.01;
   const float mul_size = bytes * (m * n + k * (m + n));
   const float l2_heur = l2_size * kHeuristicMultiplier;
-  return mul_size < l2_heur;
+  return (!(mul_size < 0) && (mul_size < l2_heur));
 }
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.

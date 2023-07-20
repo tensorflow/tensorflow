@@ -15,7 +15,6 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using namespace dnnl;
 using dnnl::batch_normalization_forward;
@@ -80,7 +80,7 @@ class MklFusedInstanceNormOp : public OpKernel {
       std::shared_ptr<stream> engine_stream_ptr;
       engine_stream_ptr.reset(CreateStream(&eigen_tp, cpu_engine_));
 
-      const int batch_size = src_tensor.shape().dim_size(0);
+      const int64_t batch_size = src_tensor.shape().dim_size(0);
       const int64_t elems_per_batch =
           src_tensor.shape().num_elements() / batch_size;
 

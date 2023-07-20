@@ -99,10 +99,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     // Get dimension size of each matrix, dim_pair[] is the location of k
     // in the inputs, we have constraint that k of the two inputs are
     // the same
-    const int dim_pair[] = {1, transpose_b_ ? 1 : 0};
-    const int batch = src_tf_shape.dim_size(1 - dim_pair[0]);
-    const int k = src_tf_shape.dim_size(dim_pair[0]);
-    const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
+    const int64_t dim_pair[] = {1, transpose_b_ ? 1 : 0};
+    const int64_t batch = src_tf_shape.dim_size(1 - dim_pair[0]);
+    const int64_t k = src_tf_shape.dim_size(dim_pair[0]);
+    const int64_t channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
     OP_REQUIRES(
         ctx, k == weight_tf_shape.dim_size(dim_pair[1]),

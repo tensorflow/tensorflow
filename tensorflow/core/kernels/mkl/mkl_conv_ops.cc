@@ -456,9 +456,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
         } else if (post_op_param.name == "wei_scale") {
           is_scale_set.insert({"wei", true});
           const int scale_size = post_op_param.param.size();
-          const int mask = scale_size == 1            ? 0
-                           : convFwdDims.is_depthwise ? 3
-                                                      : 1;
+          const int mask =
+              scale_size == 1 ? 0 : convFwdDims.is_depthwise ? 3 : 1;
           post_ops_attr.set_scales_mask(DNNL_ARG_WEIGHTS, mask);
           context_.wei_scale_md.reset(new memory::desc(
               {scale_size}, MklDnnType<float>(), memory::format_tag::x));
@@ -1786,8 +1785,8 @@ class MklFusedConvOp
     Eigen::Tensor<Tinput, 1, Eigen::RowMajor> bn_rsqrt =
         (bn_var_tensor.flat<Tinput>() + static_cast<Tinput>(epsilon)).rsqrt();
     Tinput* bn_rsqrt_data = bn_rsqrt.data();
-    size_t num_elem = bn_var_tensor.shape().dim_size(0);
-    for (size_t i = 0; i < num_elem; i++) {
+    int64_t num_elem = bn_var_tensor.shape().dim_size(0);
+    for (int64_t i = 0; i < num_elem; i++) {
       scale_buf_ptr[i] = bn_rsqrt_data[i];
     }
     return;
