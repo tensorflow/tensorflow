@@ -3629,7 +3629,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
     ]) + if_rocm_is_configured([
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_helpers",
     ]) + ["//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header"],
 )
