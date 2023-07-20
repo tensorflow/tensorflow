@@ -21,13 +21,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
 #if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/hipfft/hipfft.h"
 #else
 #include "rocm/include/hipfft.h"
 #endif
-#include "rocm/rocm_config.h"
 
 #endif
 

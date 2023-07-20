@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -703,6 +704,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                     bool b_mult_scale,
                                     std::vector<HloInstruction *> a_unary_ops,
                                     std::vector<HloInstruction *> b_unary_ops) {
+#if GOOGLE_CUDA
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
@@ -963,6 +965,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
     return true;
+#else  // TENSORFLOW_USE_ROCM
+    return false;
+#endif
   }
 
   Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
@@ -1556,6 +1561,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                    DataType /*output_dtype*/>,
         32>
         supported_type_combinations = {{
+#if GOOGLE_CUDA
             // FP8 types:
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
              PrimitiveType::F8E4M3FN, DataType::kBF16},
@@ -1587,8 +1593,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
              PrimitiveType::F8E4M3FN, DataType::kHalf},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
              PrimitiveType::F8E4M3FN, DataType::kFloat},
-
-            // Other data types:
+#endif  // GOOGLE_CUDA
+        // Other data types:
             {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
              PrimitiveType::F16, DataType::kHalf},
 
@@ -1609,7 +1615,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
              PrimitiveType::F16, DataType::kFloat},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
              PrimitiveType::F32, DataType::kFloat},
-
+#if GOOGLE_CUDA
             // There would be an entry here for A/BType complex int8, but we do
             // not support that type.
             {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
@@ -1619,7 +1625,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
              PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kF16AsF32, DataType::kComplexFloat,
              PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
-
+            // The next 4 may be supported by hipblaslt, but they are not
+            // covered by any unit tests
             {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
              PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kBF16AsF32, DataType::kComplexFloat,
@@ -1635,6 +1642,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             {ComputationType::kF64, DataType::kComplexDouble,
              PrimitiveType::C128, PrimitiveType::C128,
              DataType::kComplexDouble},
+#endif  // GOOGLE_CUDA
         }};
 
     return absl::c_linear_search(
@@ -1677,10 +1685,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      return false;
-    }
-
     const HloInstruction *lhs = instr.operand(0);
     const HloInstruction *rhs = instr.operand(1);
     const Shape &output_shape = instr.shape();
@@ -1709,6 +1713,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
+    TF_ASSIGN_OR_RETURN(bool output_is_column_major,
+                        MatrixIsColumnMajor(instr, gemm_backend_config));
+
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
+      if (!output_is_column_major) return false;
+
+      auto rocm_compute_capability_ =
+          std::get<se::RocmComputeCapability>(gpu_version_);
+
+      // as of ROCm 5.5, hipblaslt only supports MI200.
+      if (rocm_compute_capability_.gcn_arch_name().substr(0, 6) != "gfx90a") {
+        return false;
+      }
+    }
+
     // 2. cublasLt does not support rhs col dimension size > 4194240 for
     // C64.
     constexpr int kMaxDimensionSize{4194240};
@@ -1717,24 +1736,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    auto cuda_compute_capability_ =
-        std::get<se::CudaComputeCapability>(gpu_version_);
-    if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      // cuBlasLt has an implementation for complex data with compute type
-      // 32F_FAST_32TF that uses tensor cores and that is free from the
-      // restriction. This implementation only works on Ampere
-      // architecture though (where TF32 was introduced).
-      return true;
+    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
+      auto cuda_compute_capability_ =
+          std::get<se::CudaComputeCapability>(gpu_version_);
+      if (cuda_compute_capability_.IsAtLeast(
+              se::CudaComputeCapability::AMPERE)) {
+        // cuBlasLt has an implementation for complex data with compute type
+        // 32F_FAST_32TF that uses tensor cores and that is free from the
+        // restriction. This implementation only works on Ampere
+        // architecture though (where TF32 was introduced).
+        return true;
+      }
     }
-
     // Get the rhs non-contracting dimensions as they will eventually be at the
     // cublasLt level.
     std::vector<int64_t> rhs_non_contracting_dims;
     const DotDimensionNumbers &dot_dims =
         gemm_backend_config.dot_dimension_numbers();
 
-    TF_ASSIGN_OR_RETURN(bool output_is_column_major,
-                        MatrixIsColumnMajor(instr, gemm_backend_config));
     if (!output_is_column_major) {
       // cublasLt's matmul output is column major by default. This gemm requires
       // the output to be in row major. Later we will swap lhs & rhs (and

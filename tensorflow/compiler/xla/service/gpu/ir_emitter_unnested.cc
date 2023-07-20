@@ -146,10 +146,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
@@ -986,7 +986,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   return OkStatus();
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulOp>(op);
@@ -1008,7 +1008,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   }
 
   TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(matmul));
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
                       cublas_lt::AsBlasLtEpilogue(matmul.getEpilogue()));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(gemm_config), epilogue, matmul.getAlgorithm(),
@@ -1017,7 +1017,9 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
+#if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op);
   TF_RET_CHECK(matmul != nullptr);
@@ -4663,10 +4665,12 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitGemmThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
     return EmitCublasLtMatmulThunk(op);
   }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op)) {
     return EmitCublasLtMatmulThunkF8(op);
   }

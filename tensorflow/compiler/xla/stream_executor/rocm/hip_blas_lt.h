@@ -1,11 +1,8 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
-
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,35 +10,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
-#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 
-#include <algorithm>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "third_party/gpus/cuda/include/cublasLt.h"
-#include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/tsl/platform/status.h"
 
+#if TF_HIPBLASLT
+
+#include "rocm/rocm_config.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipblaslt_wrapper.h"
+
 namespace stream_executor {
+
 namespace gpu {
 class GpuExecutor;
 }  // namespace gpu
 
-namespace cuda {
+namespace rocm {
 
 class BlasLt {
   template <typename T>
   using Owned =
-      std::unique_ptr<std::remove_pointer_t<T>, cublasStatus_t (*)(T)>;
+      std::unique_ptr<std::remove_pointer_t<T>, hipblasStatus_t (*)(T)>;
 
  public:
   class MatrixLayout {
@@ -59,15 +54,15 @@ class BlasLt {
         std::optional<int64_t> leading_dim_stride = std::nullopt,
         std::optional<int64_t> batch_stride = std::nullopt);
 
-    cudaDataType_t type() const;
+    hipblasDatatype_t type() const;
 
-    cublasLtMatrixLayout_t get() const { return handle_.get(); }
+    hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
    private:
-    explicit MatrixLayout(cublasLtMatrixLayout_t handle)
-        : handle_(handle, cublasLtMatrixLayoutDestroy) {}
+    explicit MatrixLayout(hipblasLtMatrixLayout_t handle)
+        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy) {}
 
-    Owned<cublasLtMatrixLayout_t> handle_;
+    Owned<hipblasLtMatrixLayout_t> handle_;
   };
 
   enum class Epilogue {
@@ -96,17 +91,17 @@ class BlasLt {
         Epilogue epilogue = Epilogue::kDefault,
         PointerMode pointer_mode = PointerMode::kHost);
 
-    cublasComputeType_t compute_type() const;
-    cudaDataType_t scale_type() const;
-    cublasLtPointerMode_t pointer_mode() const;
+    hipblasLtComputeType_t compute_type() const;
+    hipblasDatatype_t scale_type() const;
+    hipblasPointerMode_t pointer_mode() const;
 
-    cublasLtMatmulDesc_t get() const { return handle_.get(); }
+    hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:
-    explicit MatmulDesc(cublasLtMatmulDesc_t handle)
-        : handle_(handle, cublasLtMatmulDescDestroy) {}
+    explicit MatmulDesc(hipblasLtMatmulDesc_t handle)
+        : handle_(handle, wrap::hipblasLtMatmulDescDestroy) {}
 
-    Owned<cublasLtMatmulDesc_t> handle_;
+    Owned<hipblasLtMatmulDesc_t> handle_;
   };
 
   // TODO(cjfj): Add consistency checks for types, shapes, etc.?
@@ -122,22 +117,22 @@ class BlasLt {
    public:
     static tsl::StatusOr<MatmulPreference> Create(size_t max_workspace_size);
 
-    cublasLtMatmulPreference_t get() const { return handle_.get(); }
+    hipblasLtMatmulPreference_t get() const { return handle_.get(); }
 
    private:
-    explicit MatmulPreference(cublasLtMatmulPreference_t handle)
-        : handle_(handle, cublasLtMatmulPreferenceDestroy) {}
+    explicit MatmulPreference(hipblasLtMatmulPreference_t handle)
+        : handle_(handle, wrap::hipblasLtMatmulPreferenceDestroy) {}
 
-    Owned<cublasLtMatmulPreference_t> handle_;
+    Owned<hipblasLtMatmulPreference_t> handle_;
   };
 
   struct MatmulAlgorithm {
-    cublasLtMatmulAlgo_t algo;
+    hipblasLtMatmulAlgo_t algo;
     size_t workspace_size;
   };
 
   explicit BlasLt(gpu::GpuExecutor* parent)
-      : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
+      : parent_(parent), blas_lt_(nullptr, wrap::hipblasLtDestroy) {}
 
   tsl::Status Init();
 
@@ -164,13 +159,13 @@ class BlasLt {
                        const DeviceMemory<Scale>& d_scale = {},
                        const DeviceMemory<Scale>& d_amax = {},
                        blas::ProfileResult* profile_result = nullptr) {
-    if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
+    if (AsHipblasDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
       return tsl::errors::InvalidArgument("mismatched scale types");
     }
 
     bool expect_scale_factor_on_device =
-        (plan.op_desc.pointer_mode() == CUBLASLT_POINTER_MODE_DEVICE);
+        (plan.op_desc.pointer_mode() == HIPBLAS_POINTER_MODE_DEVICE);
 
     if (alpha.on_device() != expect_scale_factor_on_device) {
       return tsl::errors::InvalidArgument("wrong location for alpha");
@@ -180,19 +175,19 @@ class BlasLt {
       return tsl::errors::InvalidArgument("wrong location for beta");
     }
 
-    if (AsCudaDataType(blas::ToDataType<A>::value) != plan.a_desc.type()) {
+    if (AsHipblasDataType(blas::ToDataType<A>::value) != plan.a_desc.type()) {
       return tsl::errors::InvalidArgument("mismatched A matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<B>::value) != plan.b_desc.type()) {
+    if (AsHipblasDataType(blas::ToDataType<B>::value) != plan.b_desc.type()) {
       return tsl::errors::InvalidArgument("mismatched B matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<C>::value) != plan.c_desc.type()) {
+    if (AsHipblasDataType(blas::ToDataType<C>::value) != plan.c_desc.type()) {
       return tsl::errors::InvalidArgument("mismatched C matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<D>::value) != plan.d_desc.type()) {
+    if (AsHipblasDataType(blas::ToDataType<D>::value) != plan.d_desc.type()) {
       return tsl::errors::InvalidArgument("mismatched D matrix types");
     }
 
@@ -232,19 +227,21 @@ class BlasLt {
   gpu::GpuExecutor* parent_;
 
   absl::Mutex mu_;
-  Owned<cublasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
+  Owned<hipblasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
 };
 
 // Returns `BlasLt` implementation for a stream if available, or `nullptr`.
 BlasLt* GetBlasLt(Stream* stream);
 
-}  // namespace cuda
+}  // namespace rocm
 
 namespace gpu {
-using BlasLt = ::stream_executor::cuda::BlasLt;
-inline BlasLt* GetBlasLt(Stream* stream) { return cuda::GetBlasLt(stream); }
+using BlasLt = ::stream_executor::rocm::BlasLt;
+inline BlasLt* GetBlasLt(Stream* stream) { return rocm::GetBlasLt(stream); }
 }  // namespace gpu
 
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
+#endif
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_

@@ -440,10 +440,14 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<TopkDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-      return !stream_exec->GetDeviceDescription()
-                  .cuda_compute_capability()
-                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
-             !gpu::IsMatrixMultiplication(*instr);
+      if (gpu_target_config.platform_name == "ROCM") {
+        return !gpu::IsMatrixMultiplication(*instr);
+      } else {
+        return !stream_exec->GetDeviceDescription()
+                    .cuda_compute_capability()
+                    .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
+               !gpu::IsMatrixMultiplication(*instr);
+      }
     };
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);

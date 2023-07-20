@@ -768,22 +768,32 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace {
 
-StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
+StatusOr<se::gpu::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
     const MatrixLayout& layout) {
   TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
 
   auto order = (layout.order == MatrixLayout::Order::kColumnMajor)
-                   ? se::cuda::BlasLt::MatrixLayout::Order::kColumnMajor
-                   : se::cuda::BlasLt::MatrixLayout::Order::kRowMajor;
+                   ? se::gpu::BlasLt::MatrixLayout::Order::kColumnMajor
+                   : se::gpu::BlasLt::MatrixLayout::Order::kRowMajor;
 
-  return se::cuda::BlasLt::MatrixLayout::Create(
+  return se::gpu::BlasLt::MatrixLayout::Create(
       dtype, layout.num_rows, layout.num_cols, order, layout.batch_size,
       layout.leading_dim_stride, layout.batch_stride);
 }
+
+#if TF_HIPBLASLT
+using cudaDataType_t = hipblasDatatype_t;
+#define CUDA_R_16BF HIPBLAS_R_16B
+#define CUDA_R_16F HIPBLAS_R_16F
+#define CUDA_R_32F HIPBLAS_R_32F
+#define CUDA_R_64F HIPBLAS_R_64F
+#define CUDA_C_32F HIPBLAS_C_32F
+#define CUDA_C_64F HIPBLAS_C_64F
+#endif
 
 template <cudaDataType_t CudaT>
 struct CudaToNativeT;
@@ -828,31 +838,31 @@ struct CudaToNativeT<CUDA_C_64F> {
 
 namespace cublas_lt {
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
   switch (epilogue) {
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
-      return se::cuda::BlasLt::Epilogue::kDefault;
+      return se::gpu::BlasLt::Epilogue::kDefault;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
-      return se::cuda::BlasLt::Epilogue::kReLU;
+      return se::gpu::BlasLt::Epilogue::kReLU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Gelu:
-      return se::cuda::BlasLt::Epilogue::kGELU;
+      return se::gpu::BlasLt::Epilogue::kGELU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux:
-      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
-      return se::cuda::BlasLt::Epilogue::kBias;
+      return se::gpu::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
-      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
   return InternalError("unexpected epilogue value");
 }
 
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::From(
-    const GemmConfig& config, se::cuda::BlasLt::Epilogue epilogue) {
+    const GemmConfig& config, se::gpu::BlasLt::Epilogue epilogue) {
   MatrixLayout lhs_layout = config.lhs_layout;
   MatrixLayout rhs_layout = config.rhs_layout;
   MatrixLayout output_layout = config.output_layout;
@@ -893,24 +903,24 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
                              config.compute_precision));
 
   TF_ASSIGN_OR_RETURN(
-      se::cuda::BlasLt::MatmulDesc op_desc,
-      se::cuda::BlasLt::MatmulDesc::Create(
+      se::gpu::BlasLt::MatmulDesc op_desc,
+      se::gpu::BlasLt::MatmulDesc::Create(
           computation_type, GetScaleType(output_dtype, computation_type),
           trans_a, trans_b, epilogue));
 
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::MatrixLayout a_desc,
                       AsBlasLtMatrixLayout(lhs_layout));
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout b_desc,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::MatrixLayout b_desc,
                       AsBlasLtMatrixLayout(rhs_layout));
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout c_desc,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::MatrixLayout c_desc,
                       AsBlasLtMatrixLayout(c_layout));
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout d_desc,
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::MatrixLayout d_desc,
                       AsBlasLtMatrixLayout(output_layout));
 
   return MatmulPlan{
-      se::cuda::BlasLt::MatmulPlan{std::move(op_desc), std::move(a_desc),
-                                   std::move(b_desc), std::move(c_desc),
-                                   std::move(d_desc)},
+      se::gpu::BlasLt::MatmulPlan{std::move(op_desc), std::move(a_desc),
+                                  std::move(b_desc), std::move(c_desc),
+                                  std::move(d_desc)},
       config.alpha, config.beta, must_swap_operands};
 }
 
@@ -922,10 +932,10 @@ Status MatmulPlan::DoMatmul(
     se::DeviceMemoryBase aux_buffer, se::DeviceMemoryBase a_scale_buffer,
     se::DeviceMemoryBase b_scale_buffer, se::DeviceMemoryBase c_scale_buffer,
     se::DeviceMemoryBase d_scale_buffer, se::DeviceMemoryBase d_amax_buffer,
-    const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+    const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) const {
-  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
   TF_RET_CHECK(blas_lt != nullptr);
 
   Scale alpha;
@@ -958,7 +968,7 @@ Status MatmulPlan::ExecuteOnStream(
     se::DeviceMemoryBase aux_buffer, se::DeviceMemoryBase a_scale_buffer,
     se::DeviceMemoryBase b_scale_buffer, se::DeviceMemoryBase c_scale_buffer,
     se::DeviceMemoryBase d_scale_buffer, se::DeviceMemoryBase d_amax_buffer,
-    const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+    const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) const {
   if (must_swap_operands_) {
@@ -1030,19 +1040,19 @@ Status MatmulPlan::ExecuteOnStream(
   return InternalError("Unexpected dtype");
 }
 
-StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>>
+StatusOr<std::vector<se::gpu::BlasLt::MatmulAlgorithm>>
 MatmulPlan::GetAlgorithms(se::Stream* stream) const {
-  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
   TF_RET_CHECK(blas_lt != nullptr);
   TF_ASSIGN_OR_RETURN(auto preference,
-                      se::cuda::BlasLt::MatmulPreference::Create(
+                      se::gpu::BlasLt::MatmulPreference::Create(
                           /*max_workspace_size=*/1ll << 32));  // 4GB
   return blas_lt->GetMatmulAlgorithms(plan_, preference);
 }
 
 }  // namespace cublas_lt
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 }  // namespace gpu
 }  // namespace xla
