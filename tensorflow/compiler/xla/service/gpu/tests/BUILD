@@ -753,7 +753,7 @@ glob_lit_tests(
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
     ],
-    driver = "@llvm-project//mlir:run_lit.sh",
+    driver = "//tensorflow/compiler/xla:run_lit.sh",
     exclude = ["execute_memzero_thunk.mlir"],
     features = if_cuda_is_configured([
         "--param=PTX=PTX",
@@ -786,6 +786,7 @@ filegroup(
     data = [
         ":hlo_to_llvm_ir",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//mlir:run_lit.sh",
     ],
 )
 
