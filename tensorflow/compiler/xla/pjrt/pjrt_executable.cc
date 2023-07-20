@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -217,6 +216,16 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
     GetOpSharding(out, s.ToProto());
   }
   return out;
+}
+
+StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
+  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(modules.size());
+  for (const auto& module : modules) {
+    output_shapes.push_back(module->result_shape());
+  }
+  return output_shapes;
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

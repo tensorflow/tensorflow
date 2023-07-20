@@ -271,6 +271,10 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
 
+  // Returns an output Shape per program, the size should be equal to
+  // `GetHloModules()`.
+  virtual StatusOr<std::vector<Shape>> GetOutputShapes() const;
+
   // Returns a list of parameter OpSharding protos.
   virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 

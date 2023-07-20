@@ -100,24 +100,17 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  // TODO(hyeontaek): We should request output sharding instead of the entire
-  // HLO modules once PjRt supports it.
-  // TODO(hyeontaek): We would not need to use GetHloModules() if
-  // PjRtLoadedExecutable can return the result shape and op sharding when
-  // output sharding propagation is not used.
+  // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
+  // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
-  VLOG(3) << "Requesting GetHloModules";
-  TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                      pjrt_loaded_executable->GetHloModules());
-  if (hlo_modules.empty()) {
-    return FailedPrecondition("No HLO module found");
+  VLOG(3) << "Using per-shard shape";
+  TF_ASSIGN_OR_RETURN(auto result_shapes,
+                      pjrt_loaded_executable->GetOutputShapes());
+  if (result_shapes.empty()) {
+    return FailedPrecondition("No output shape found");
   }
-  const auto& hlo_module = hlo_modules.front();
-  // result_shape already contains per-device shapes. Do not use HLO sharding
-  // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-  // apply sharding twice.
-  const xla::Shape& result_shape = hlo_module->result_shape();
-  return CreateInternal(client, std::move(pjrt_loaded_executable), result_shape,
+  return CreateInternal(client, std::move(pjrt_loaded_executable),
+                        result_shapes.front(),
                         /*result_hlo_sharding=*/nullptr, loaded_host_callbacks);
 }
 
@@ -157,24 +150,19 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       client->pjrt_client()->Compile(module, std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): We should request output shapes and shardings instead of
-    // the entire HLO modules once PjRt supports it.
-    VLOG(3) << "Requesting GetHloModules";
-    TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                        pjrt_loaded_executable->GetHloModules());
-    if (hlo_modules.empty()) {
-      return FailedPrecondition("No HLO module found");
+    // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
+    // shape.
+    VLOG(3) << "Using per-shard shape";
+    TF_ASSIGN_OR_RETURN(auto result_shapes,
+                        pjrt_loaded_executable->GetOutputShapes());
+    if (result_shapes.empty()) {
+      return FailedPrecondition("No output shape found");
     }
-    const auto& hlo_module = hlo_modules.front();
-    // result_shape already contains per-device shapes. Do not use HLO sharding
-    // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-    // apply sharding twice.
-    const xla::Shape& result_shape = hlo_module->result_shape();
     return CreateInternal(
-        client, std::move(pjrt_loaded_executable), result_shape,
+        client, std::move(pjrt_loaded_executable), result_shapes.front(),
         /*result_hlo_sharding=*/nullptr, std::move(loaded_host_callbacks));
   } else {
-    VLOG(3) << "Not requesting GetHloModules";
+    VLOG(3) << "Using full shape";
     TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
@@ -228,24 +216,19 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       client->pjrt_client()->Compile(computation, std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): We should request output shapes and shardings instead of
-    // the entire HLO modules once PjRt supports it.
-    VLOG(3) << "Requesting GetHloModules";
-    TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                        pjrt_loaded_executable->GetHloModules());
-    if (hlo_modules.empty()) {
-      return FailedPrecondition("No HLO module found");
+    // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
+    // shape.
+    VLOG(3) << "Using per-shard shape";
+    TF_ASSIGN_OR_RETURN(auto result_shapes,
+                        pjrt_loaded_executable->GetOutputShapes());
+    if (result_shapes.empty()) {
+      return FailedPrecondition("No output shape found");
     }
-    const auto& hlo_module = hlo_modules.front();
-    // result_shape already contains per-device shapes. Do not use HLO sharding
-    // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-    // apply sharding twice.
-    const xla::Shape& result_shape = hlo_module->result_shape();
     return CreateInternal(
-        client, std::move(pjrt_loaded_executable), result_shape,
+        client, std::move(pjrt_loaded_executable), result_shapes.front(),
         /*result_hlo_sharding=*/nullptr, std::move(loaded_host_callbacks));
   } else {
-    VLOG(3) << "Not requesting GetHloModules";
+    VLOG(3) << "Using full shape";
     TF_ASSIGN_OR_RETURN(const auto* root_instruction,
                         FindRootInstruction(computation.proto()));
     const xla::Shape result_shape(root_instruction->shape());
