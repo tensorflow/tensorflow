@@ -685,8 +685,10 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
       return FailedPrecondition("Unable to get CUDA driver version");
     }
-    bool ok = driver_version >= ptxas_version;
-    if (!ok) {
+
+    if (driver_version >= ptxas_version) {
+      linking_method = LinkingMethod::kDriver;
+    } else {
       LOG_FIRST_N(WARNING, 1)
           << "The NVIDIA driver's CUDA version is "
           << absl::StrFormat("%d.%d", driver_version / 1000,
@@ -699,8 +701,6 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
              "disabling parallel compilation, which may slow down compilation. "
              "You should update your NVIDIA driver or use the NVIDIA-provided "
              "CUDA forward compatibility packages.";
-    } else {
-      linking_method = LinkingMethod::kDriver;
     }
   }
   {
