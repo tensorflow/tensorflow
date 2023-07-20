@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 
 namespace tensorflow {
 
@@ -177,10 +178,12 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
   // Register GPU JIT devices for NextPluggableDevice if its jit_device_type is
   // `XLA_GPU_JIT`.
-  if (DeviceFactory::IsPluggableDevice(device_name)) {
+  if (DeviceFactory::IsPluggableDevice(device_name) &&
+      GetOrCreatePjRtClient(DeviceType(device_name)).ok()) {
     mutex_lock lock(registry.mutex_);
+
     NextPluggableDeviceFactory* device_factory =
-        dynamic_cast<NextPluggableDeviceFactory*>(
+        static_cast<NextPluggableDeviceFactory*>(
             DeviceFactory::GetFactory(device_name));
     if (device_factory != nullptr &&
         DeviceType(device_factory->compilation_device_name()) ==

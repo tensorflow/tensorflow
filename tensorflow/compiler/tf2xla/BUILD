@@ -609,6 +609,7 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory_hdrs",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
     ],
     alwayslink = 1,
 )
