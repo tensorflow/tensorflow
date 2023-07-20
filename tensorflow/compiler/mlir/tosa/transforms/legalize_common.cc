@@ -78,8 +78,10 @@ static OpFoldResult multiply_dims(llvm::ArrayRef<OpFoldResult> dims,
   }
 
   // Use the firs value as the initial value
-  init = dims.front();
-  dims = dims.drop_front();
+  if (!init) {
+    init = dims.front();
+    dims = dims.drop_front();
+  }
 
   auto multiply = [&](OpFoldResult x, OpFoldResult y) -> OpFoldResult {
     auto val_x = getValueOrCreateConstantIndexOp(builder, loc, x);
@@ -111,8 +113,9 @@ static llvm::SmallVector<int64_t> as_static_dimension_list(
 // shape parameter. Attempts to use tosa.reshape when at most one value is
 // dynamic, otherwise generates a full tensor.reshape operation using a runtime
 // representation of the desired shape.
-static Value build_reshape(PatternRewriter& rewriter, Location loc, Value value,
-                           llvm::ArrayRef<OpFoldResult> shape) {
+static std::optional<Value>
+build_reshape(PatternRewriter& rewriter, Location loc, Value value,
+              ArrayRef<OpFoldResult> shape) {
   auto static_shape = as_static_dimension_list(shape);
   auto element_type = value.getType().dyn_cast<TensorType>().getElementType();
 
@@ -3905,11 +3908,17 @@ std::optional<Value> convertTFConv3DCommon(
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.
-std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result_value, Value params_value,
-                                     Value indices_value, int32_t batch_dims,
-                                     int32_t axis) {
-  auto result_type = dyn_cast<ShapedType>(result_value.getType());
+std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
+                                     Operation* op,
+                                     Value params_value,
+                                     Value indices_value,
+                                     int32_t batch_dims,
+                                     int32_t axis,
+                                     ReshapeBuilder reshaper) {
+  if (!reshaper)
+    reshaper = build_reshape;
+
+  auto result_type = dyn_cast<ShapedType>(op->getResult(0).getType());
   auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
   auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
 
@@ -4143,11 +4152,17 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                            params_type.getElementType()),
       params_value, params_transpose_perm_val.value());
 
-  Value tosa_values_reshape_op =
-      build_reshape(rewriter, op->getLoc(), params_transpose_op, {N, K, C});
+  std::optional<Value> tosa_values_reshape_op =
+      reshaper(rewriter, op->getLoc(), params_transpose_op, {N, K, C});
 
-  Value tosa_indices_reshape_op =
-      build_reshape(rewriter, op->getLoc(), indices_value, {N, W});
+  if (!tosa_values_reshape_op)
+    return std::nullopt;
+
+  std::optional<Value> tosa_indices_reshape_op =
+      reshaper(rewriter, op->getLoc(), indices_value, {N, W});
+
+  if (!tosa_indices_reshape_op)
+    return std::nullopt;
 
   auto tosa_gather_static_shape =
       as_static_dimension_list(tosa_gather_result_shape);
@@ -4156,13 +4171,16 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_gather_static_shape,
                                            result_type.getElementType()),
-      tosa_values_reshape_op, tosa_indices_reshape_op);
+      tosa_values_reshape_op.value(), tosa_indices_reshape_op.value());
 
-  Value tosa_result_reshape_op = build_reshape(
+  std::optional<Value> tosa_result_reshape_op = reshaper(
       rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape);
 
+  if (!tosa_result_reshape_op)
+    return std::nullopt;
+
   return CreateOpAndInfer<tosa::TransposeOp>(
-             rewriter, op->getLoc(), result_type, tosa_result_reshape_op,
+             rewriter, op->getLoc(), result_type, tosa_result_reshape_op.value(),
              result_transpose_perm_val.value())
       .getResult();
 }

@@ -281,11 +281,17 @@ std::optional<Value> convertTFConv3DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, StringRef padding_ref, StringRef data_format_ref);
 
+using ReshapeBuilder = llvm::function_ref<
+ std::optional<Value>(PatternRewriter&, Location, Value, ArrayRef<OpFoldResult>)>;
+
 // Lowers Gather operator to a sequence of TOSA ops.
-std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result_value, Value params_value,
-                                     Value indices_value, int32_t batch_dims,
-                                     int32_t axis);
+std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
+                                     Operation* op,
+                                     Value params_value,
+                                     Value indices_value,
+                                     int32_t batch_dims,
+                                     int32_t axis,
+                                     ReshapeBuilder reshaper = nullptr);
 
 // Lowers GatherNd operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,

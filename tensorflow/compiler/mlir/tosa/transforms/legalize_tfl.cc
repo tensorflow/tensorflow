@@ -4050,7 +4050,7 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
   }
 
   std::optional<Value> result = convertGatherOp(
-      rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.getParams(),
+      rewriter, op, tfl_gather_op.getParams(),
       tfl_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();

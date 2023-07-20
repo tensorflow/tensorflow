@@ -1922,7 +1922,7 @@ LogicalResult ConvertTFGatherOp::matchAndRewrite(
   int32_t axis = 0;
 
   std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
+      rewriter, op, tf_gather_op.getParams(),
       tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
@@ -1946,7 +1946,7 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
   int32_t batch_dims = tf_gather_op.getBatchDimsAttr().getInt();
 
   std::optional<Value> result = convertGatherOp(
-      rewriter, op, tf_gather_op.getResult(), tf_gather_op.getParams(),
+      rewriter, op, tf_gather_op.getParams(),
       tf_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
