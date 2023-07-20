@@ -328,6 +328,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
 #ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
 #endif  // !ENABLE_ONEDNN_V3
+          fwd_pd(nullptr),
           src_md(nullptr),
           filter_md(nullptr),
           bias_md(nullptr),
@@ -339,7 +340,6 @@ class MklConvFwdPrimitive : public MklPrimitive {
           src_scale_md(nullptr),
           wei_scale_md(nullptr),
           dst_scale_md(nullptr),
-          fwd_pd(nullptr),
           conv_fwd(nullptr) {
     }
   };
@@ -2146,15 +2146,17 @@ class MklQuantizedConvOp
          (min_filter_vector.shape() == max_filter_vector.shape())),
         absl::InvalidArgumentError("`min_ and max_filter` must have same"
                                    "shape and contain at least one element."));
-    float int_input_limit =
-        std::is_same<Tinput, quint8>::value ? 255.0f : 127.0f;
     size_t depth = min_filter_vector.NumElements();
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
     std::vector<float> SCALE(depth);
     float float_input_range =
         std::max(std::abs(min_input), std::abs(max_input));
+#ifdef ENABLE_ONEDNN_V3
+    float int_input_limit =
+        std::is_same<Tinput, quint8>::value ? 255.0f : 127.0f;
     const float src_scale = float_input_range / int_input_limit;
+#endif  // ENABLE_ONEDNN_V3
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       // min_freezed_output and max_freezed_output are the actual range
