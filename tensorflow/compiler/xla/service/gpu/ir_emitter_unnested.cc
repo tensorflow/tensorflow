@@ -1945,8 +1945,11 @@ Status IrEmitterUnnested::EmitTritonFusion(
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
   auto* tiling_scheme = fusion_analysis.GetTransposeTilingScheme();
+  // Set flag ot false as Transpose has it's own custom logic of choosing a
+  // block size.
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
-                      fusion_analysis.GetLaunchDimensions());
+                      fusion_analysis.GetLaunchDimensions(
+                          /*use_experimental_block_size=*/false));
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
@@ -4306,8 +4309,11 @@ Status IrEmitterUnnested::EmitIRForReduction(
 Status IrEmitterUnnested::EmitUnnestedReduction(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
   auto* reduction_codegen_info = fusion_analysis.GetReductionCodegenInfo();
+  // Set flag ot false as Reduction has it's own custom logic of choosing a
+  // block size.
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
-                      fusion_analysis.GetLaunchDimensions());
+                      fusion_analysis.GetLaunchDimensions(
+                          /*use_experimental_block_size=*/false));
 
   VLOG(3) << "Launch dimensions of "
           << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc()) << ": "
