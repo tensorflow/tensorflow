@@ -376,9 +376,10 @@ class CPUIDInfo {
       return;
     }
 
+    int present_cpu = -1;
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__) && !defined(__OpenBSD__)
     std::ifstream CPUspresent;
     CPUspresent.open("/sys/devices/system/cpu/present", std::ios::in);
-    int present_cpu = -1;
     if (CPUspresent.is_open()) {
       std::string line;
       if (bool(getline(CPUspresent, line))) {
@@ -397,11 +398,13 @@ class CPUIDInfo {
         present_cpu = std::stoi(line);
       }
     }
+#endif
 
     if (present_cpu == -1) {
       return;
     }
 
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__) && !defined(__OpenBSD__)
     std::stringstream str;
     str << "/sys/devices/system/cpu/cpu" << present_cpu
         << "/regs/identification/midr_el1";
@@ -417,6 +420,7 @@ class CPUIDInfo {
         cpuid->cpunum_ = (midr_el1 >> 4) & 0xFFF;
       }
     }
+#endif
   }
 
   int implementer() const { return implementer_; }
