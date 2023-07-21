@@ -1075,7 +1075,7 @@ __global__ void ScatterUniqueIndicesKernel(
     const TindicesCompact* __restrict__ sorted_indices,  // [nouter]
     const Toffsets* __restrict__ sorted_indices_ids,     // [nouter]
     Tindices* __restrict__ sorted_unique_indices) {      // [num_unique]
-  GPU_1D_KERNEL_LOOP(i, nouter) {
+  for (int i : GpuGridRangeX(nouter)) {
     if (i == 0 || sorted_indices_edge_indicator[i]) {
       sorted_unique_indices[sorted_indices_ids[i]] =
           static_cast<Tindices>(sorted_indices[i]);
@@ -1121,17 +1121,17 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
     // Note: nouter and ninner are not expected to be huge, so we use int32 to
     // save memory bandwidth.
     using Toffsets = int32;
-    OP_REQUIRES_ASYNC(
-        context, nouter64 <= std::numeric_limits<Toffsets>::max(),
-        errors::InvalidArgument("Indices vector of length ", nouter64,
-                                " is too large to fit in int32."),
-        done);
+    OP_REQUIRES_ASYNC(context, nouter64 <= std::numeric_limits<Toffsets>::max(),
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Indices vector of length ", nouter64,
+                                       " is too large to fit in int32.")),
+                      done);
     const Toffsets nouter = static_cast<Toffsets>(nouter64);
-    OP_REQUIRES_ASYNC(
-        context, ninner64 <= std::numeric_limits<Toffsets>::max(),
-        errors::InvalidArgument("Inner data dimension of size ", ninner64,
-                                " is too large to fit in int32."),
-        done);
+    OP_REQUIRES_ASYNC(context, ninner64 <= std::numeric_limits<Toffsets>::max(),
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Inner data dimension of size ", ninner64,
+                          " is too large to fit in int32.")),
+                      done);
     const Toffsets ninner = static_cast<Toffsets>(ninner64);
 
     // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
@@ -1287,7 +1287,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
 
     se::Stream* stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(context, stream,
-                      errors::Internal("No GPU stream available."), done);
+                      absl::InternalError("No GPU stream available."), done);
 
     // Copy the last element of sorted_indices_unique_ids back to the host to
     // obtain num_unique.
@@ -1303,7 +1303,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                     sizeof(*last_idx_host.data())),
                 sizeof(*last_idx_host.data()))
             .ok(),
-        errors::Internal("Failed to copy last_idx to host"), done);
+        absl::InternalError("Failed to copy last_idx to host"), done);
 
     auto async_finish_computation =
         [this, context, dense_output_shape, nouter, ninner, input,
