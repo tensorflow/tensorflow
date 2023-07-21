@@ -97,6 +97,10 @@ class InitializeTRTResource : public OpKernel {
         tensorflow::profiler::TraceMeLevel::kInfo);
     ResourceHandle handle = HandleFromInput(ctx, 0);
     core::RefCountPtr<TRTEngineCacheResource> resource;
+    int stream_id = ctx->device()->GetStreamId();
+    if (stream_id > 0) {
+      handle.set_name(strings::StrCat(handle.name(), "_", stream_id));
+    }
     OP_REQUIRES_OK(
         ctx, LookupOrCreateResource<TRTEngineCacheResource>(
                  ctx, handle, &resource,
