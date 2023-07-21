@@ -2448,7 +2448,7 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   std::string str_config;
   matmul_config->SerializeToString(&str_config);
 
-  EmitCallToFunc("onednn.matmul",
+  EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
                  {
                      GetExecutableRunOptionsArgument(),
                      lhs_stack_alloca.value,
