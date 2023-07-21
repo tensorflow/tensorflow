@@ -432,7 +432,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfothr_.push_back(
         {{csinfo_.conv2d, mkl_op_registry::GetMklOpName(csinfo_.conv2d),
           CopyAttrsConvCheckConstFilter,
-          std::function<bool(const Node*)>(),  // we set this function to empty
+          std::function<bool(const Node*)>(),  // We set this function to empty.
           GetRewriteCause()},
          Conv2DRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias,
