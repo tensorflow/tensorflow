@@ -112,7 +112,7 @@ Shape PadShapeToMultipleOf16(const Shape old_shape,
   return padded_shape;
 }
 
-// Pad the non-batch dimensions of the operands to the target shape.
+// Pad the dimensions of the operands to the target shape.
 HloInstruction *PadOperandToTargetShape(const Shape &target,
                                         HloInstruction *x) {
   if (ShapeUtil::Equal(target, x->shape())) {
@@ -1073,8 +1073,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    // To ensure numerical correctness, only slices that chop off the ends of 
-    // dimensions are supported.
+    // To ensure correctness, only slices that chop off the ends of dimensions 
+    // are supported.
     if (slice) {
       int slice_op_dim = slice->operand(0)->shape().rank();
       if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0) ||
@@ -1132,19 +1132,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
     HloInstruction *maybe_constant_folded_bias = MaybeConstantFoldBias(bias);
-    // if (slice && bitcast) {
     if (bitcast) {
       maybe_constant_folded_bias =
           instr->AddInstruction(HloInstruction::CreateBitcast(
               slice->shape(), maybe_constant_folded_bias));
     }
 
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget ||
-        gemm->custom_call_target() == kCublasLtMatmulCallTarget ||
-        gemm->custom_call_target() == kGemmCallTarget) {
-      maybe_constant_folded_bias = PadOperandToTargetShape(
-          gemm->shape(), maybe_constant_folded_bias);
-    }
+    maybe_constant_folded_bias = PadOperandToTargetShape(
+        gemm->shape(), maybe_constant_folded_bias);
 
     operands.insert(operands.begin() + 2, maybe_constant_folded_bias);
 
