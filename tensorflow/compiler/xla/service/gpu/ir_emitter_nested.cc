@@ -270,12 +270,332 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   return arg;
 }
 
+void EmitAMDGPUAtomicAdd(llvm::IRBuilder<>* builder,
+                         llvm::Value* output_address, llvm::Value* source) {
+  CHECK(IsAMDGPU(builder->GetInsertBlock()->getModule()));
+  auto output_address_type =
+      llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+  CHECK_NE(output_address_type, nullptr);
+
+  auto output_ptr =
+      (output_address_type->getPointerAddressSpace() == 3)
+          // adds to shared memory are always atomic.
+          ? output_address
+          // the compiler will only generate a global_atomic_fadd if the pointer
+          // is in global addrspace (1)
+          : builder->CreateAddrSpaceCast(
+                output_address,
+                llvm::PointerType::getWithSamePointeeType(output_address_type,
+                                                          /*AddressSpace=*/1));
+
+  builder->CreateAtomicRMW(
+      llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
+      llvm::AtomicOrdering::SequentiallyConsistent,
+      builder->getContext().getOrInsertSyncScopeID("agent"));
+}
+
+llvm::SyncScope::ID DetermineSyncScope(llvm::Module* module) {
+  return IsAMDGPU(module) ? module->getContext().getOrInsertSyncScopeID("agent")
+                          : llvm::SyncScope::System;
+}
+
+// A helper method for EmitAtomicOperationForNestedComputation. Certain
+// computations, such as floating-point addition and integer maximization, can
+// be simply implemented using an LLVM atomic instruction. If "computation" is
+// one of this kind, emits code to do that and returns true; otherwise,
+// returns false.
+bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
+                                    IrEmitterContext& ir_emitter_context,
+                                    const HloComputation& computation,
+                                    llvm::Value* output_address,
+                                    llvm::Value* source_address) {
+  CHECK_EQ(2, computation.num_parameters());
+
+  auto* module = builder->GetInsertBlock()->getModule();
+  HloOpcode root_opcode = computation.root_instruction()->opcode();
+  PrimitiveType element_type =
+      computation.root_instruction()->shape().element_type();
+  bool is_atomic_integral = element_type == S32 || element_type == U32 ||
+                            element_type == S64 || element_type == U64;
+  llvm::Value* source =
+      builder->CreateLoad(llvm_ir::PrimitiveTypeToIrType(element_type, module),
+                          source_address, "source");
+
+  // Just passing along RHS -> atomic store.
+  if (computation.instruction_count() == 2 &&
+      root_opcode == HloOpcode::kParameter &&
+      (element_type == F32 || is_atomic_integral) &&
+      computation.root_instruction()->parameter_number() == 1) {
+    llvm::StoreInst* store = builder->CreateStore(source, output_address);
+    store->setAtomic(llvm::AtomicOrdering::Unordered);
+    // Derive a minimum alignment from the type. The optimizer can increase it
+    // later.
+    store->setAlignment(
+        llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(element_type)));
+    return true;
+  }
+
+  if (computation.instruction_count() != 3) {
+    // We special-case only computations with one computing instruction for now.
+    // Such computation has exactly three instructions given it has two
+    // parameters.
+    return false;
+  }
+
+  auto sync_scope = DetermineSyncScope(module);
+  if (root_opcode == HloOpcode::kAdd) {
+    llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+    // NVPTX supports atomicAdd on F32 and integer types.
+    if (target_triple.isNVPTX()) {
+      // "atom.add.f64 requires sm_60 or higher."
+      // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
+      bool f64_atomic_add_supported =
+          ir_emitter_context.cuda_compute_capability().IsAtLeast(6);
+      bool atomic_add_supported =
+          element_type == F32 ||
+          (f64_atomic_add_supported && element_type == F64);
+      if (atomic_add_supported) {
+        builder->CreateAtomicRMW(llvm::AtomicRMWInst::FAdd, output_address,
+                                 source, llvm::MaybeAlign(),
+                                 llvm::AtomicOrdering::SequentiallyConsistent);
+        return true;
+      }
+    }
+
+    if (target_triple.isAMDGPU() &&
+        (element_type == F32 ||
+         (element_type == F16 &&
+          ir_emitter_context.rocm_compute_capability()
+              .has_fp16_atomics_support()))) /* is atomic add supported? */ {
+      EmitAMDGPUAtomicAdd(builder, output_address, source);
+      return true;
+    }
+
+    if (is_atomic_integral) {
+      // integral + integral
+      builder->CreateAtomicRMW(
+          llvm::AtomicRMWInst::Add, output_address, source, llvm::MaybeAlign(),
+          llvm::AtomicOrdering::SequentiallyConsistent, sync_scope);
+      return true;
+    }
+  }
+
+  // NVPTX supports atomicMax and atomicMin only on integer types.
+  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
+    // max(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Max
+                      : llvm::AtomicRMWInst::UMax;
+    builder->CreateAtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
+                             llvm::AtomicOrdering::SequentiallyConsistent,
+                             sync_scope);
+    return true;
+  }
+
+  if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
+    // min(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Min
+                      : llvm::AtomicRMWInst::UMin;
+    builder->CreateAtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
+                             llvm::AtomicOrdering::SequentiallyConsistent,
+                             sync_scope);
+    return true;
+  }
+
+  return false;
+}
+
+// Implements atomic binary operations using atomic compare-and-swap
+// (atomicCAS) as follows:
+//   1. Reads the value from the memory pointed to by output_address and
+//     records it as old_output.
+//   2. Uses old_output as one of the source operand to perform the binary
+//     operation and stores the result in new_output.
+//   3. Calls atomicCAS which implements compare-and-swap as an atomic
+//     operation. In particular, atomicCAS reads the value from the memory
+//     pointed to by output_address, and compares the value with old_output. If
+//     the two values equal, new_output is written to the same memory location
+//     and true is returned to indicate that the atomic operation succeeds.
+//     Otherwise, the new value read from the memory is returned. In this case,
+//     the new value is copied to old_output, and steps 2. and 3. are repeated
+//     until atomicCAS succeeds.
+//
+// On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
+// the element type of the binary operation is 32 bits or 64 bits, the integer
+// type of the same size is used for the atomicCAS operation. On the other hand,
+// if the element type is smaller than 32 bits, int32_t is used for the
+// atomicCAS operation. In this case, atomicCAS reads and writes 32 bit values
+// from the memory, which is larger than the memory size required by the
+// original atomic binary operation. We mask off the last two bits of the
+// output_address and use the result as an address to read the 32 bit values
+// from the memory. This can avoid out of bound memory accesses if tensor
+// buffers are 4 byte aligned and have a size of 4N, an assumption that the
+// runtime can guarantee.
+//
+// The pseudo code is shown below. Variables *_address are pointers to a memory
+// region with a size equal to the size of the atomicCAS operation, with the
+// exception that new_output_address is a pointer to a memory region with a size
+// equal to the element size of the binary operation.
+//
+//   element_size = sizeof(element_type);
+//   atomic_size = max(32, element_size);
+//   cas_new_output_address = alloca(atomic_size);
+//   cas_old_output_address = alloca(atomic_size);
+//   if (atomic_size != element_size) {
+//     atomic_address = output_address & ((int64_t)(-4));
+//     new_output_address = cas_new_output_address + (output_address & 3);
+//   } else {
+//     atomic_address = output_address;
+//     new_output_address = cas_new_output_address;
+//   }
+//
+//   *cas_old_output_address = *atomic_address;
+//   do {
+//     *cas_new_output_address = *cas_old_output_address;
+//     *new_output_address = operation(*new_output_address, *source_address);
+//     (*cas_old_output_address, success) =
+//       atomicCAS(atomic_address, *cas_old_output_address,
+//       *cas_new_output_address);
+//   } while (!success);
+//
+Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
+                                   IrEmitterContext& ir_emitter_context,
+                                   const HloModuleConfig& hlo_module_config,
+                                   const HloComputation& computation,
+                                   llvm::Value* output_address,
+                                   llvm::Value* source_address,
+                                   llvm::Type* element_type) {
+  llvm::PointerType* output_address_type =
+      llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+  CHECK_NE(output_address_type, nullptr);
+  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
+
+  int element_size = llvm_ir::GetSizeInBits(element_type);
+
+  int atomic_size = (element_size < 32) ? 32 : element_size;
+  llvm::Type* atomic_type = builder->getIntNTy(atomic_size);
+  llvm::Type* atomic_address_type =
+      atomic_type->getPointerTo(output_address_type->getPointerAddressSpace());
+
+  // cas_old_output_address and cas_new_output_address point to the scratch
+  // memory where we store the old and new values for the repeated atomicCAS
+  // operations.
+  llvm::AllocaInst* cas_old_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+      atomic_type, "cas_old_output_address", builder);
+  llvm::AllocaInst* cas_new_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+      atomic_type, "cas_new_output_address", builder);
+
+  // Emit preparation code to the preheader.
+  llvm::BasicBlock* loop_preheader_bb = builder->GetInsertBlock();
+  auto* module = loop_preheader_bb->getModule();
+
+  llvm::Value* atomic_memory_address;
+  // binop_output_address points to the scratch memory that stores the
+  // result of the binary operation.
+  llvm::Value* binop_output_address;
+  if (element_size < 32) {
+    // Assume the element size is an integer number of bytes.
+    CHECK_EQ((element_size % sizeof(char)), 0);
+    llvm::Type* address_int_type =
+        module->getDataLayout().getIntPtrType(output_address_type);
+    atomic_memory_address =
+        builder->CreatePtrToInt(output_address, address_int_type);
+    llvm::Value* mask = llvm::ConstantInt::get(address_int_type, 3);
+    llvm::Value* offset = builder->CreateAnd(atomic_memory_address, mask);
+    mask = llvm::ConstantInt::get(address_int_type, -4);
+    atomic_memory_address = builder->CreateAnd(atomic_memory_address, mask);
+    atomic_memory_address =
+        builder->CreateIntToPtr(atomic_memory_address, atomic_address_type);
+    binop_output_address = builder->CreateAdd(
+        builder->CreatePtrToInt(cas_new_output_address, address_int_type),
+        offset);
+    binop_output_address = builder->CreateIntToPtr(
+        binop_output_address,
+        llvm::PointerType::get(
+            element_type,
+            cas_new_output_address->getType()->getPointerAddressSpace()));
+  } else {
+    atomic_memory_address = builder->CreatePointerBitCastOrAddrSpaceCast(
+        output_address, atomic_address_type);
+    binop_output_address = builder->CreatePointerBitCastOrAddrSpaceCast(
+        cas_new_output_address,
+        llvm::PointerType::get(
+            element_type,
+            cas_new_output_address->getType()->getPointerAddressSpace()));
+  }
+
+  // Use the value from the memory that atomicCAS operates on to initialize
+  // cas_old_output.
+  llvm::Value* cas_old_output =
+      builder->CreateLoad(atomic_type, atomic_memory_address, "cas_old_output");
+  builder->CreateStore(cas_old_output, cas_old_output_address);
+
+  llvm::BasicBlock* loop_exit_bb = loop_preheader_bb->splitBasicBlock(
+      builder->GetInsertPoint(), "atomic_op_loop_exit");
+  llvm::BasicBlock* loop_body_bb =
+      llvm::BasicBlock::Create(builder->getContext(), "atomic_op_loop_body",
+                               builder->GetInsertBlock()->getParent());
+  builder->SetInsertPoint(loop_body_bb);
+  // Change preheader's successor from loop_exit_bb to loop_body_bb.
+  loop_preheader_bb->getTerminator()->setSuccessor(0, loop_body_bb);
+
+  // Emit the body of the loop that repeatedly invokes atomicCAS.
+  //
+  // Use cas_old_output to initialize cas_new_output.
+  cas_old_output =
+      builder->CreateLoad(cas_old_output_address->getAllocatedType(),
+                          cas_old_output_address, "cas_old_output");
+  builder->CreateStore(cas_old_output, cas_new_output_address);
+  // Emits code to calculate new_output = operation(old_output, source);
+  TF_RETURN_IF_ERROR(CallNestedComputation(
+      builder, ir_emitter_context, hlo_module_config, computation,
+      {binop_output_address, source_address}, binop_output_address));
+
+  llvm::Value* cas_new_output =
+      builder->CreateLoad(cas_new_output_address->getAllocatedType(),
+                          cas_new_output_address, "cas_new_output");
+
+  // If cas_new_output == cas_old_output, we're not asking for anything to
+  // change, so we're done here!
+  llvm::Value* old_eq_new =
+      builder->CreateICmpEQ(cas_old_output, cas_new_output);
+  llvm::BasicBlock* loop_cas_bb =
+      llvm::BasicBlock::Create(builder->getContext(), "atomic_op_loop_cas",
+                               builder->GetInsertBlock()->getParent());
+  builder->CreateCondBr(old_eq_new, loop_exit_bb, loop_cas_bb);
+  builder->SetInsertPoint(loop_cas_bb);
+
+  // Emit code to perform the atomicCAS operation
+  // (cas_old_output, success) = atomicCAS(memory_address, cas_old_output,
+  //                                       cas_new_output);
+  llvm::Value* ret_value = builder->CreateAtomicCmpXchg(
+      atomic_memory_address, cas_old_output, cas_new_output, llvm::MaybeAlign(),
+      llvm::AtomicOrdering::SequentiallyConsistent,
+      llvm::AtomicOrdering::SequentiallyConsistent, DetermineSyncScope(module));
+
+  // Extract the memory value returned from atomicCAS and store it as
+  // cas_old_output.
+  builder->CreateStore(
+      builder->CreateExtractValue(ret_value, 0, "cas_old_output"),
+      cas_old_output_address);
+  // Extract the success bit returned from atomicCAS and generate a
+  // conditional branch on the success bit.
+  builder->CreateCondBr(builder->CreateExtractValue(ret_value, 1, "success"),
+                        loop_exit_bb, loop_body_bb);
+
+  // Set the insertion point to the exit basic block so that the caller of
+  // this method can continue emitting code to the right place.
+  llvm_ir::SetToFirstInsertPoint(loop_exit_bb, builder);
+  return OkStatus();
+}
+
 }  // namespace
 
 Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                             IrEmitterContext& ir_emitter_context,
                              const HloModuleConfig& hlo_module_config,
                              const HloComputation& computation,
-                             IrEmitterContext& ir_emitter_context,
                              absl::Span<llvm::Value* const> operands,
                              llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
@@ -302,8 +622,8 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
 }
 
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
-    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
   std::vector<llvm::Value*> parameter_buffers;
   for (llvm::Value* parameter_element : parameter_elements) {
@@ -312,14 +632,14 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     builder->CreateStore(parameter_element, parameter_buffers.back());
   }
 
-  return CallNestedComputationWithScalarAddrs(builder, hlo_module_config,
-                                              computation, ir_emitter_context,
+  return CallNestedComputationWithScalarAddrs(builder, ir_emitter_context,
+                                              hlo_module_config, computation,
                                               parameter_buffers);
 }
 
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
-    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();
   llvm::Type* return_buffer_type = llvm_ir::ShapeToIrType(
@@ -340,7 +660,7 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
   }
 
   TF_RETURN_IF_ERROR(CallNestedComputation(
-      builder, hlo_module_config, computation, ir_emitter_context,
+      builder, ir_emitter_context, hlo_module_config, computation,
       parameter_elements_addrs, return_buffer));
 
   std::vector<llvm::Value*> returned_scalars;
@@ -351,6 +671,29 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
         builder->CreateLoad(alloca->getAllocatedType(), alloca));
   }
   return returned_scalars;
+}
+
+Status EmitAtomicOperationForNestedComputation(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
+    llvm::Value* output_address, llvm::Value* source_address,
+    llvm::Type* element_type) {
+  if (computation.num_parameters() != 2) {
+    // TODO(b/30258929): We only accept binary computations so far.
+    return Unimplemented(
+        "We only support atomic functions with exactly two parameters, but "
+        "computation %s has %d.",
+        computation.name(), computation.num_parameters());
+  }
+
+  if (MaybeEmitDirectAtomicOperation(builder, ir_emitter_context, computation,
+                                     output_address, source_address)) {
+    return OkStatus();
+  }
+
+  return EmitAtomicOperationUsingCAS(
+      builder, ir_emitter_context, hlo_module_config, computation,
+      output_address, source_address, element_type);
 }
 
 }  // namespace gpu

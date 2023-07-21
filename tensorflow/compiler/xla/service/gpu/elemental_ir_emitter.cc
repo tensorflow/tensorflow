@@ -338,8 +338,8 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
 StatusOr<std::vector<llvm::Value*>> GpuElementalIrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view, bool /*is_reducer*/) {
-  return CallNestedComputationWithScalars(b(), hlo_module_config_, callee,
-                                          ir_emitter_context_, parameters);
+  return CallNestedComputationWithScalars(
+      b(), ir_emitter_context_, hlo_module_config_, callee, parameters);
 }
 
 }  // namespace gpu

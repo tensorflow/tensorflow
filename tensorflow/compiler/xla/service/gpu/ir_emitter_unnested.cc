@@ -2288,7 +2288,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                             /*is_fusion=*/false));
 
     TF_RETURN_IF_ERROR(CallNestedComputation(
-        &b_, hlo_module_config_, *select_computation, *ir_emitter_context_,
+        &b_, *ir_emitter_context_, hlo_module_config_, *select_computation,
         {selected_value_address, operand_address}, select_return_buffer));
     llvm::Value* result =
         Load(select_return_buffer->getAllocatedType(), select_return_buffer);
@@ -2345,7 +2345,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                             /*is_fusion=*/false));
 
     return EmitAtomicOperationForNestedComputation(
-        *scatter_computation, output_value_address, source_value_address,
+        &b_, *ir_emitter_context_, hlo_module_config_, *scatter_computation,
+        output_value_address, source_value_address,
         source_array.GetElementLlvmType());
   };
 
@@ -2619,13 +2620,14 @@ Status IrEmitterUnnested::EmitScatter(
 
     if (!desc.unique_indices) {
       return EmitAtomicOperationForNestedComputation(
+          &b_, *ir_emitter_context_, hlo_module_config_,
           *desc.update_computation, output_address, input_address,
           desc.output.GetElementLlvmType());
     } else {
-      return CallNestedComputation(
-          &b_, hlo_module_config_, *desc.update_computation,
-          *ir_emitter_context_, {output_address, input_address},
-          output_address);
+      return CallNestedComputation(&b_, *ir_emitter_context_,
+                                   hlo_module_config_, *desc.update_computation,
+                                   {output_address, input_address},
+                                   output_address);
     }
   };
 
@@ -2909,8 +2911,9 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                              : standard_num_iterations_in_sort_dim,
         kTileSize,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(&b_, hlo_module_config_, *comparator,
-                                       *ir_emitter_context_, operands, output);
+          return CallNestedComputation(&b_, *ir_emitter_context_,
+                                       hlo_module_config_, *comparator,
+                                       operands, output);
         });
   };
   std::vector<int64_t> xor_masks;
@@ -3674,8 +3677,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     }
 
     StatusOr<std::vector<llvm::Value*>> returned_scalars =
-        CallNestedComputationWithScalarAddrs(&b_, hlo_module_config_, *reducer,
-                                             *ir_emitter_context_,
+        CallNestedComputationWithScalarAddrs(&b_, *ir_emitter_context_,
+                                             hlo_module_config_, *reducer,
                                              reduction_params);
     TF_CHECK_OK(returned_scalars.status());
 
@@ -3778,7 +3781,8 @@ void IrEmitterUnnested::WriteReductionOutput(
     } else {
       CHECK_EQ(values.size(), 1);
       TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-          *reducer, output_address, output_ptr, type));
+          &b_, *ir_emitter_context_, hlo_module_config_, *reducer,
+          output_address, output_ptr, type));
     }
   }
 }
@@ -4204,8 +4208,8 @@ void IrEmitterUnnested::GenerateElementForReducer(
   // those pointers, and we have returned values on the stack (as well
   // as pointers to them).
   StatusOr<std::vector<llvm::Value*>> returned_scalars =
-      CallNestedComputationWithScalarAddrs(&b_, hlo_module_config_, *reducer,
-                                           *ir_emitter_context_,
+      CallNestedComputationWithScalarAddrs(&b_, *ir_emitter_context_,
+                                           hlo_module_config_, *reducer,
                                            reduction_params);
   TF_CHECK_OK(returned_scalars.status());
 

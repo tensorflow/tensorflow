@@ -41,23 +41,38 @@ namespace gpu {
 //   - a pointer to the output buffer of the computation, and
 //   - a pointer to the top-level temp buffer.
 Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                             IrEmitterContext& ir_emitter_context,
                              const HloModuleConfig& hlo_module_config,
                              const HloComputation& computation,
-                             IrEmitterContext& ir_emitter_context,
                              absl::Span<llvm::Value* const> operands,
                              llvm::Value* output);
 
 // Like CallNestedComputation, but parameters and results are scalars.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
-    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_scalars);
 
 // Like CallNestedComputationWithScalars, but parameters are scalar addresses.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilder<>* builder, const HloModuleConfig& hlo_module_config,
-    const HloComputation& computation, IrEmitterContext& ir_emitter_context,
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs);
+
+// Emits an atomic operation that implements `nested_computation` in the
+// sequentially consistent memory model. `output_address` and `source_address`
+// are the arguments of the nested computation. For example,
+// atomicAdd(output_address, *source_address).
+//
+// If the computation can be implemented using a single atomic operation, it
+// will, otherwise it will be emitted as a compare-and-swap and a loop.
+//
+// The computation must have exactly two parameters.
+Status EmitAtomicOperationForNestedComputation(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
+    llvm::Value* output_address, llvm::Value* source_address,
+    llvm::Type* element_type);
 
 }  // namespace gpu
 }  // namespace xla

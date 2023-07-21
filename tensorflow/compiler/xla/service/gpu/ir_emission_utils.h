@@ -291,6 +291,9 @@ llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
 // Returns a sanitized (doesn't need quoting) identifier name from a location.
 std::string GetIrNameFromLoc(mlir::Location loc);
 
+// Whether the module's target is an AMD GPU.
+bool IsAMDGPU(const llvm::Module* module);
+
 }  // namespace gpu
 }  // namespace xla
 
