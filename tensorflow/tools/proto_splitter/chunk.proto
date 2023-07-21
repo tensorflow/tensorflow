@@ -33,18 +33,18 @@ message ChunkInfo {
 }
 
 message ChunkedMessage {
-  // Index of the ChunkInfo in ChunkedProto.chunks.
+  // Index of the ChunkInfo in ChunkMetadata.chunks.
   optional uint64 chunk_index = 1;
 
   // The same field can appear multiple times in this list. When this
-  // happens, the parsed blob data is joined in the order that they appear.
-  // The way the field is joined depends on the type of field. e.g. Repeated
-  // fields are joined by appending them, bytes are joined concatenated.
+  // happens, the parsed chunk data is merged in the order that they appear.
+  // The way the field is merged depends on the type of field. e.g. Repeated
+  // fields are merged by appending them, bytes are merged concatenated.
   repeated ChunkedField chunked_fields = 2;
 }
 
 message ChunkedField {
-  // Stores the nested field numbers, which tell us where and how to rejoin
+  // Stores the nested field numbers, which tell us where and how to merge
   // this chunk.
   // E.g. If the parent ChunkedMessage contains a GraphDef, this field value
   // could point to: `GraphDef.node[15].attr["value"].tensor.float_value`
