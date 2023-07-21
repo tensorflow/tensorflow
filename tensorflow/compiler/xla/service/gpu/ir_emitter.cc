@@ -43,13 +43,11 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace gpu {
 
-IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested)
+IrEmitter::IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested)
     : ir_emitter_context_(ir_emitter_context),
       module_(ir_emitter_context->llvm_module()),
       b_(module_->getContext()),
-      bindings_(&b_, module_, is_nested),
-      hlo_module_config_(hlo_module_config) {}
+      bindings_(&b_, module_, is_nested) {}
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -60,7 +58,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
     };
   }
   return EmitTargetElementLoop(
-      *hlo, GpuElementalIrEmitter(hlo_module_config_, *ir_emitter_context_, &b_)
+      *hlo, GpuElementalIrEmitter(*ir_emitter_context_, &b_)
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
@@ -185,8 +183,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // kFusion for library calls should be handled by
   // IrEmitterUnnested::HandleFusion.
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
-  GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
-                                          *ir_emitter_context_, &b_);
+  GpuElementalIrEmitter elemental_emitter(*ir_emitter_context_, &b_);
   FusedIrEmitter fused_emitter(elemental_emitter);
   BindFusionArguments(fusion, &fused_emitter);
   TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
@@ -199,9 +196,8 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
   }
-  return CallNestedComputation(&b_, *ir_emitter_context_, hlo_module_config_,
-                               *call->to_apply(), operand_addresses,
-                               GetBasePointer(*call));
+  return CallNestedComputation(&b_, *ir_emitter_context_, *call->to_apply(),
+                               operand_addresses, GetBasePointer(*call));
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction*) {

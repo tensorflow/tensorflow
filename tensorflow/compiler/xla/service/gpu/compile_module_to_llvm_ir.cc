@@ -398,9 +398,7 @@ Status CompileModuleToLlvmIrImpl(
 
   ir_emitter_context.set_allocations(results->allocations);
 
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter,
-      IrEmitterUnnested::Create(hlo_module->config(), &ir_emitter_context));
+  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
 
   {
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(

@@ -35,8 +35,7 @@ namespace gpu {
 
 class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
-  GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                        IrEmitterContext& ir_emitter_context,
+  GpuElementalIrEmitter(IrEmitterContext& ir_emitter_context,
                         llvm::IRBuilder<>* b);
 
  protected:
@@ -95,7 +94,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   llvm::Value* EmitThreadId() override;
 
   bool fast_min_max() override {
-    return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
+    return ir_emitter_context_.debug_options().xla_gpu_enable_fast_min_max();
   }
 
  private:
@@ -126,7 +125,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
       absl::string_view name = "");
 
-  const HloModuleConfig& hlo_module_config_;
   IrEmitterContext& ir_emitter_context_;
 };
 

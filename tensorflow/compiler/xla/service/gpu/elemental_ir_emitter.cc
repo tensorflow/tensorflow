@@ -63,10 +63,8 @@ bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
 }  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
-    const HloModuleConfig& hlo_module_config,
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
-      hlo_module_config_(hlo_module_config),
       ir_emitter_context_(ir_emitter_context) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
@@ -179,7 +177,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType output_type = op->shape().element_type();
   HloOpcode opcode = op->opcode();
 
-  if (hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max() &&
+  if (ir_emitter_context_.debug_options().xla_gpu_enable_fast_min_max() &&
       (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
     return llvm_ir::EmitCallToIntrinsic(
         opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
@@ -338,8 +336,8 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
 StatusOr<std::vector<llvm::Value*>> GpuElementalIrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view, bool /*is_reducer*/) {
-  return CallNestedComputationWithScalars(
-      b(), ir_emitter_context_, hlo_module_config_, callee, parameters);
+  return CallNestedComputationWithScalars(b(), ir_emitter_context_, callee,
+                                          parameters);
 }
 
 }  // namespace gpu

@@ -87,8 +87,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Constructs an IrEmitter with the given IrEmitter context.
   // ir_emitter_context is owned by the caller and should outlive the IrEmitter
   // object.
-  explicit IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested);
+  explicit IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested);
 
   // Helper for calling HloToIrBindings::GetIrArray.
   //
@@ -129,9 +128,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
-
-  // Hlo configuration data used during code generation.
-  const HloModuleConfig& hlo_module_config_;
 
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,

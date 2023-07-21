@@ -42,7 +42,6 @@ namespace gpu {
 //   - a pointer to the top-level temp buffer.
 Status CallNestedComputation(llvm::IRBuilder<>* builder,
                              IrEmitterContext& ir_emitter_context,
-                             const HloModuleConfig& hlo_module_config,
                              const HloComputation& computation,
                              absl::Span<llvm::Value* const> operands,
                              llvm::Value* output);
@@ -50,13 +49,13 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
 // Like CallNestedComputation, but parameters and results are scalars.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
-    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
+    const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_scalars);
 
 // Like CallNestedComputationWithScalars, but parameters are scalar addresses.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
-    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
+    const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs);
 
 // Emits an atomic operation that implements `nested_computation` in the
@@ -70,9 +69,8 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
 // The computation must have exactly two parameters.
 Status EmitAtomicOperationForNestedComputation(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
-    const HloModuleConfig& hlo_module_config, const HloComputation& computation,
-    llvm::Value* output_address, llvm::Value* source_address,
-    llvm::Type* element_type);
+    const HloComputation& computation, llvm::Value* output_address,
+    llvm::Value* source_address, llvm::Type* element_type);
 
 }  // namespace gpu
 }  // namespace xla

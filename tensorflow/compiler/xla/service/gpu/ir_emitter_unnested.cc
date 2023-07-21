@@ -348,16 +348,14 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
 
 }  // namespace
 
-IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                                     IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      elemental_emitter_(hlo_module_config_, *ir_emitter_context, &b_) {}
+IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
+    : IrEmitter(ir_emitter_context, /*is_nested=*/false),
+      elemental_emitter_(*ir_emitter_context, &b_) {}
 
-StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
-    const HloModuleConfig& hlo_module_config,
+std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
   return std::unique_ptr<IrEmitterUnnested>(
-      new IrEmitterUnnested(hlo_module_config, ir_emitter_context));
+      new IrEmitterUnnested(ir_emitter_context));
 }
 
 IrEmitterUnnested::KernelAndIrArrays IrEmitterUnnested::BuildKernelPrototype(
@@ -513,9 +511,7 @@ Status IrEmitterUnnested::EmitConditional(mlir::Operation* op) {
 
   for (int j = 0; j < branch_count; ++j) {
     mlir::Region* branch_computation = &conditional.getBranches()[j];
-    TF_ASSIGN_OR_RETURN(
-        auto ir_emitter,
-        IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+    auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(branch_computation));
     branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
   }
@@ -598,7 +594,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
 
   const Shape& input_shape = GetShape(pad_to_static.getArgs().front());
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -726,7 +722,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
 
   const Shape& input_shape = GetShape(slice_to_dynamic.getArgs().front());
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -976,7 +972,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
   bool deterministic_ops =
-      hlo_module_config_.debug_options().xla_gpu_deterministic_ops();
+      ir_emitter_context_->debug_options().xla_gpu_deterministic_ops();
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
   auto thunk = std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config),
@@ -1477,7 +1473,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   options.set_lower(cholesky_op.getIsLower());
   thunks.push_back(std::make_unique<CholeskyThunk>(
       GetThunkInfo(op), options,
-      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()), a_buffer,
+      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()), a_buffer,
       workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
 
   // Elide the sequential thunk if there's no copy.
@@ -1714,7 +1710,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   int64_t b_batch_stride = m * n * elem_size;
   thunks.push_back(std::make_unique<TriangularSolveThunk>(
       GetThunkInfo(op), backend_config,
-      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()),
+      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()),
       /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
       batch_size, m, n, a_batch_stride, b_batch_stride));
 
@@ -1947,7 +1943,7 @@ Status IrEmitterUnnested::EmitTritonFusion(
 Status IrEmitterUnnested::EmitUnnestedTranspose(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
   auto* tiling_scheme = fusion_analysis.GetTransposeTilingScheme();
-  // Set flag ot false as Transpose has it's own custom logic of choosing a
+  // Set flag to false as Transpose has it's own custom logic of choosing a
   // block size.
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions(
@@ -2099,7 +2095,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
     const std::string& op_name) {
-  if (hlo_module_config_.debug_options().xla_gpu_deterministic_ops()) {
+  if (ir_emitter_context_->debug_options().xla_gpu_deterministic_ops()) {
     return Unimplemented(
         "HLO instruction %s does not have a deterministic implementation, "
         "but run-to-run determinism is required by "
@@ -2134,7 +2130,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                            select_and_scatter_op.getInitValue(),
                                            select_and_scatter_op.getOut()));
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -2288,7 +2284,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                             /*is_fusion=*/false));
 
     TF_RETURN_IF_ERROR(CallNestedComputation(
-        &b_, *ir_emitter_context_, hlo_module_config_, *select_computation,
+        &b_, *ir_emitter_context_, *select_computation,
         {selected_value_address, operand_address}, select_return_buffer));
     llvm::Value* result =
         Load(select_return_buffer->getAllocatedType(), select_return_buffer);
@@ -2345,9 +2341,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                             /*is_fusion=*/false));
 
     return EmitAtomicOperationForNestedComputation(
-        &b_, *ir_emitter_context_, hlo_module_config_, *scatter_computation,
-        output_value_address, source_value_address,
-        source_array.GetElementLlvmType());
+        &b_, *ir_emitter_context_, *scatter_computation, output_value_address,
+        source_value_address, source_array.GetElementLlvmType());
   };
 
   return ParallelLoopEmitter(loop_body_emitter, source_shape, launch_dimensions,
@@ -2373,7 +2368,8 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
   // rely on `lmhlo-to-gpu-runtime` to lower while loops with known trip counts
   // to `scf.for` loops.
   if (while_op.getTripCount() &&
-      !IsXlaRuntimeExecutableEnabled(hlo_module_config_)) {
+      !IsXlaRuntimeExecutableEnabled(
+          ir_emitter_context_->hlo_module().config())) {
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(while_op, GetThunkInfo(op),
                                                   *while_op.getTripCount()));
     AddThunkToThunkSequence(std::move(thunk));
@@ -2431,7 +2427,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   }
 
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   const Shape& data_shape = GetShape(scatter_op.getUpdates());
@@ -2620,14 +2616,12 @@ Status IrEmitterUnnested::EmitScatter(
 
     if (!desc.unique_indices) {
       return EmitAtomicOperationForNestedComputation(
-          &b_, *ir_emitter_context_, hlo_module_config_,
-          *desc.update_computation, output_address, input_address,
-          desc.output.GetElementLlvmType());
+          &b_, *ir_emitter_context_, *desc.update_computation, output_address,
+          input_address, desc.output.GetElementLlvmType());
     } else {
-      return CallNestedComputation(&b_, *ir_emitter_context_,
-                                   hlo_module_config_, *desc.update_computation,
-                                   {output_address, input_address},
-                                   output_address);
+      return CallNestedComputation(
+          &b_, *ir_emitter_context_, *desc.update_computation,
+          {output_address, input_address}, output_address);
     }
   };
 
@@ -2669,7 +2663,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     TF_ASSIGN_OR_RETURN(
         module, HloModule::CreateFromProto(xla_computation.proto(),
                                            HloModuleConfig(program_shape)));
-    module->config().set_debug_options(hlo_module_config_.debug_options());
+    module->config().set_debug_options(ir_emitter_context_->debug_options());
 
     if (is_fusion) {
       HloComputation* fused_computation = module->entry_computation();
@@ -2831,7 +2825,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(
@@ -2911,8 +2905,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
                              : standard_num_iterations_in_sort_dim,
         kTileSize,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(&b_, *ir_emitter_context_,
-                                       hlo_module_config_, *comparator,
+          return CallNestedComputation(&b_, *ir_emitter_context_, *comparator,
                                        operands, output);
         });
   };
@@ -2962,8 +2955,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
                       GetAllocationSlice(collective_permute_op.getOutput()));
 
   const Shape shape = GetShape(collective_permute_op.getOperand());
-  const int64_t replica_count = hlo_module_config_.replica_count();
-  const int64_t partition_count = hlo_module_config_.num_partitions();
+  const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+  const int64_t replica_count = hlo_config.replica_count();
+  const int64_t partition_count = hlo_config.num_partitions();
 
   NcclCollectiveThunk::AsyncExecutor* async_executor;
   if (NcclThunkType::IsDegenerate(collective_permute_op, replica_count,
@@ -2996,8 +2990,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
 template <typename NcclThunkType, typename OpT>
 Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpT op = mlir::cast<OpT>(untyped_op);
-  int64_t replica_count = hlo_module_config_.replica_count();
-  int64_t partition_count = hlo_module_config_.num_partitions();
+  const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+  int64_t replica_count = hlo_config.replica_count();
+  int64_t partition_count = hlo_config.num_partitions();
   VLOG(2) << NcclThunkType::GetHloOpName()
           << "; replica count: " << replica_count
           << "; partition count: " << partition_count
@@ -3353,7 +3348,7 @@ Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
   // will just need the IR arrays for the initial value and the destination.
   const Shape dest_shape = GetShape(dest);
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -3399,7 +3394,7 @@ Status IrEmitterUnnested::BuildFusedInitializerThunk(
 
   const Shape dest_shape = GetShape(dest);
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -3452,17 +3447,13 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info) {
   // Generate thunk sequence for while 'condition'.
   mlir::Region* condition = &while_op.getCond();
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter_condition,
-      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+  auto ir_emitter_condition = IrEmitterUnnested::Create(ir_emitter_context_);
 
   TF_RETURN_IF_ERROR(ir_emitter_condition->EmitLmhloRegion(condition));
 
   // Generate thunk sequence for while 'body'.
   mlir::Region* body = &while_op.getBody();
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter_body,
-      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
 
   TF_RETURN_IF_ERROR(ir_emitter_body->EmitLmhloRegion(body));
 
@@ -3483,9 +3474,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
     const int64_t loop_limit) {
   // Generate thunk sequence for while 'body' (will be used a For loop body).
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter_body,
-      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
   TF_RETURN_IF_ERROR(ir_emitter_body->EmitLmhloRegion(&while_op.getBody()));
 
   return std::unique_ptr<Thunk>(new ForThunk(
@@ -3678,8 +3667,7 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
 
     StatusOr<std::vector<llvm::Value*>> returned_scalars =
         CallNestedComputationWithScalarAddrs(&b_, *ir_emitter_context_,
-                                             hlo_module_config_, *reducer,
-                                             reduction_params);
+                                             *reducer, reduction_params);
     TF_CHECK_OK(returned_scalars.status());
 
     for (int i = 0; i < returned_scalars->size(); i++) {
@@ -3781,8 +3769,8 @@ void IrEmitterUnnested::WriteReductionOutput(
     } else {
       CHECK_EQ(values.size(), 1);
       TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-          &b_, *ir_emitter_context_, hlo_module_config_, *reducer,
-          output_address, output_ptr, type));
+          &b_, *ir_emitter_context_, *reducer, output_address, output_ptr,
+          type));
     }
   }
 }
@@ -4208,8 +4196,7 @@ void IrEmitterUnnested::GenerateElementForReducer(
   // those pointers, and we have returned values on the stack (as well
   // as pointers to them).
   StatusOr<std::vector<llvm::Value*>> returned_scalars =
-      CallNestedComputationWithScalarAddrs(&b_, *ir_emitter_context_,
-                                           hlo_module_config_, *reducer,
+      CallNestedComputationWithScalarAddrs(&b_, *ir_emitter_context_, *reducer,
                                            reduction_params);
   TF_CHECK_OK(returned_scalars.status());
 
@@ -4315,7 +4302,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
 Status IrEmitterUnnested::EmitUnnestedReduction(
     mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
   auto* reduction_codegen_info = fusion_analysis.GetReductionCodegenInfo();
-  // Set flag ot false as Reduction has it's own custom logic of choosing a
+  // Set flag to false as Reduction has it's own custom logic of choosing a
   // block size.
   TF_ASSIGN_OR_RETURN(auto launch_dimensions,
                       fusion_analysis.GetLaunchDimensions(
@@ -4495,7 +4482,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
                                                           /*is_fusion=*/true));
 
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
@@ -4532,7 +4519,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
   // emit it in a separate kernel. Treat it like a loop fusion, writing to
   // the output buffer.
   bool use_experimental_block_size =
-      hlo_module_config_.debug_options()
+      ir_emitter_context_->debug_options()
           .xla_gpu_enable_experimental_block_size();
 
   TF_RETURN_IF_ERROR([&] {
@@ -4578,7 +4565,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
   {
     const Shape& updates_shape = root->operand(2)->shape();
     bool use_experimental_block_size =
-        hlo_module_config_.debug_options()
+        ir_emitter_context_->debug_options()
             .xla_gpu_enable_experimental_block_size();
 
     TF_ASSIGN_OR_RETURN(
@@ -4826,7 +4813,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   // Point to point communication operations are only implemented as XLA
   // GPU runtime custom calls.
-  bool is_gpu_runtime = hlo_module_config_.debug_options()
+  bool is_gpu_runtime = ir_emitter_context_->debug_options()
                             .xla_gpu_enable_xla_runtime_executable();
   if (is_gpu_runtime &&
       mlir::isa<mlir::lmhlo::SendOp, mlir::lmhlo::RecvOp,

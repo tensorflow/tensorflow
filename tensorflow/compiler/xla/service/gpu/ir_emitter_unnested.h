@@ -97,8 +97,7 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
 
-  static StatusOr<std::unique_ptr<IrEmitterUnnested>> Create(
-      const HloModuleConfig& hlo_module_config,
+  static std::unique_ptr<IrEmitterUnnested> Create(
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
@@ -118,8 +117,7 @@ class IrEmitterUnnested : public IrEmitter {
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
-  IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                    IrEmitterContext* ir_emitter_context);
+  explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 
   Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
