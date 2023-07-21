@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/tsl/framework/type_traits.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/numa.h"
 #include "tensorflow/tsl/platform/types.h"
 
@@ -92,6 +93,11 @@ struct AllocatorStats {
   std::optional<int64_t> pool_bytes;
   std::optional<int64_t> peak_pool_bytes;
 
+  // Set shared pool.
+  bool share_memory_pool;
+  mutex* shared_pool_lock;
+  int64_t* shared_pool_bytes TF_GUARDED_BY(*shared_pool_lock);
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
@@ -99,7 +105,8 @@ struct AllocatorStats {
         largest_alloc_size(0),
         bytes_reserved(0),
         peak_bytes_reserved(0),
-        largest_free_block_bytes(0) {}
+        largest_free_block_bytes(0),
+        share_memory_pool(false) {}
 
   std::string DebugString() const;
 };

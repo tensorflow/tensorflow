@@ -20,11 +20,14 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
 #include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
+
+bool GetAllowGrowthValue(bool orig_value);
 
 // A GPU memory allocator that implements a 'best-fit with coalescing'
 // algorithm.
@@ -46,6 +49,11 @@ class GPUBFCAllocator : public tsl::BFCAllocator {
 
     double fragmentation_fraction = 0;
     bool allow_retry_on_failure = true;
+
+    // Set shared pool.
+    bool share_memory_pool = false;
+    mutex* shared_pool_lock = nullptr;
+    int64_t* shared_pool_bytes = nullptr;
   };
 
   GPUBFCAllocator(std::unique_ptr<tsl::SubAllocator> sub_allocator,

@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
 bool GetAllowGrowthValue(bool orig_value) {
   const char* force_allow_growth_string =
       std::getenv("TF_FORCE_GPU_ALLOW_GROWTH");
@@ -60,6 +59,7 @@ bool GetAllowGrowthValue(bool orig_value) {
   return orig_value;
 }
 
+namespace {
 bool GetGarbageCollectionValue() {
   const char* enable_gpu_garbage_collection =
       std::getenv("TF_ENABLE_GPU_GARBAGE_COLLECTION");
@@ -95,6 +95,9 @@ GPUBFCAllocator::GPUBFCAllocator(
           o.garbage_collection = GetGarbageCollectionValue();
         }
         o.fragmentation_fraction = opts.fragmentation_fraction;
+        o.share_memory_pool = opts.share_memory_pool;
+        o.shared_pool_lock = opts.shared_pool_lock;
+        o.shared_pool_bytes = opts.shared_pool_bytes;
         return o;
       }()) {}
 

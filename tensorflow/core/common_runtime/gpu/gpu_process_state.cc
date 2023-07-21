@@ -185,13 +185,18 @@ Allocator* GPUProcessState::GetGPUAllocator(
   AllocatorParts& allocator_parts =
       gpu_allocators_[tf_device_id.value()][stream_id];
   if (allocator_parts.allocator == nullptr) {
-    // Divide the memory by stream group count for multiple stream groups.
-    if (UseCudaMemoryGuardAllocator() || UseCudaMallocAllocator() ||
-        (!UseCudaMallocAsyncAllocator() &&
-         !options.experimental().use_cuda_malloc_async())) {
+    const bool share_memory_pool =
+        options.multi_stream_options().stream_group_count() > 1 &&
+        GetAllowGrowthValue(options.allow_growth()) &&
+        options.multi_stream_options().gpu_memory_pool_mode() == "shared";
+    // Divide the memory by stream group count if async allocator is not used
+    // and don't share_memory_pool between stream groups.
+    if ((UseCudaMemoryGuardAllocator() || UseCudaMallocAllocator() ||
+         (!UseCudaMallocAsyncAllocator() &&
+          !options.experimental().use_cuda_malloc_async())) &&
+        !share_memory_pool) {
       total_bytes /=
           std::max(1, options.multi_stream_options().stream_group_count());
-      ;
     }
 
     // Validate allocator types.
@@ -216,6 +221,11 @@ Allocator* GPUProcessState::GetGPUAllocator(
         total_bytes, peer_gpu_ids, stream_id);
     SubAllocator* sub_allocator_ptr = sub_allocator.get();
 
+    if (share_memory_pool && shared_pool_bytes_.find(tf_device_id.value()) ==
+                                 shared_pool_bytes_.end()) {
+      shared_pool_lock_.emplace(tf_device_id.value(), mutex());
+      shared_pool_bytes_.emplace(tf_device_id.value(), 0);
+    }
     auto gpu_bfc_allocator = std::make_unique<GPUBFCAllocator>(
         std::move(sub_allocator), total_bytes,
         strings::StrCat("GPU_", tf_device_id.value(), "_", stream_id, "_bfc"),
@@ -226,6 +236,9 @@ Allocator* GPUProcessState::GetGPUAllocator(
               !options.experimental().disallow_retry_on_allocation_failure();
           o.fragmentation_fraction =
               options.experimental().internal_fragmentation_fraction();
+          o.share_memory_pool = share_memory_pool;
+          o.shared_pool_lock = &shared_pool_lock_[tf_device_id.value()];
+          o.shared_pool_bytes = &shared_pool_bytes_[tf_device_id.value()];
           return o;
         }());
     Allocator* gpu_allocator = gpu_bfc_allocator.get();

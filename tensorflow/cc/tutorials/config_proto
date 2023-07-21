@@ -8,6 +8,7 @@ graph_options {
   }
 }
 gpu_options {
+  allow_growth: true
   stream_merge_options {
     merge_h_to_d_stream: true
     merge_d_to_h_stream: true
@@ -15,6 +16,7 @@ gpu_options {
   }
   multi_stream_options {
     stream_group_count: 4
+    gpu_memory_pool_mode: "shared"
     host_allocator_mode: "private"
     constant_memory_mode: "shared"
   }

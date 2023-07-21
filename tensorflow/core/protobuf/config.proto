@@ -121,11 +121,18 @@ message GPUOptions {
     // to different groups for parallelism.
     int32 stream_group_count = 1;
 
+    // Supported values: private or shared. Default is private.
+    // Only effective when stream_group_count > 1. If set to "shared", the
+    // GPU allocators for different stream groups in one logical GPU will share
+    // one memory pool, or one memory limit. This prevents fake OOM due to
+    // uneven memory usage across stream groups.
+    string gpu_memory_pool_mode = 2;
+
     // Supported values: private or shared. Default is shared.
     // Only effective when stream_group_count > 1. If set to "private", each
     // stream group will use its own host memory allocators to avoid lock
     // contention in host memory allocation.
-    string host_allocator_mode = 2;
+    string host_allocator_mode = 3;
 
     // Supported values: private or shared. Default is private.
     // Only effective when stream_group_count > 1. If set to "shared", the
@@ -136,7 +143,7 @@ message GPUOptions {
     // enabled (with the environment variable "TF_GPU_CONTEXT_COUNT"), this
     // option may cause cross-context memory copying, introducing more stream
     // synchronization overhead.
-    string constant_memory_mode = 3;
+    string constant_memory_mode = 4;
   }
 
   MULTI_STREAM_OPTIONS multi_stream_options = 10;

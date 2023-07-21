@@ -191,6 +191,9 @@ class GPUProcessState {
       gpu_host_alloc_visitors_ TF_GUARDED_BY(mu_);
   std::vector<std::vector<std::vector<SubAllocator::Visitor>>>
       gpu_host_free_visitors_ TF_GUARDED_BY(mu_);
+
+  std::unordered_map<int, mutex> shared_pool_lock_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int, int64_t> shared_pool_bytes_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
