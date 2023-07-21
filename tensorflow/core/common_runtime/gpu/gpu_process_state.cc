@@ -84,6 +84,14 @@ static bool UseCudaMallocAsyncAllocator() {
 #endif
 }
 
+static const bool share_memory_pool = [] {
+  bool share_memory_pool;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_GPU_STREAM_GROUP_SHARE_MEM_POOL",
+                                      /*default_val=*/false,
+                                      &share_memory_pool));
+  return share_memory_pool;
+}();
+
 /*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
   static GPUProcessState* instance = ps ? ps : new GPUProcessState;
   DCHECK((!ps) || (ps == instance))
@@ -207,6 +215,11 @@ Allocator* GPUProcessState::GetGPUAllocator(
         total_bytes, peer_gpu_ids, stream_id);
     SubAllocator* sub_allocator_ptr = sub_allocator.get();
 
+    if (share_memory_pool && shared_pool_bytes_.find(tf_device_id.value()) ==
+                                 shared_pool_bytes_.end()) {
+      shared_pool_lock_.emplace(tf_device_id.value(), mutex());
+      shared_pool_bytes_.emplace(tf_device_id.value(), 0);
+    }
     auto gpu_bfc_allocator = std::make_unique<GPUBFCAllocator>(
         std::move(sub_allocator), total_bytes,
         strings::StrCat("GPU_", tf_device_id.value(), "_", stream_id, "_bfc"),
@@ -217,6 +230,9 @@ Allocator* GPUProcessState::GetGPUAllocator(
               !options.experimental().disallow_retry_on_allocation_failure();
           o.fragmentation_fraction =
               options.experimental().internal_fragmentation_fraction();
+          o.share_memory_pool = share_memory_pool;
+          o.shared_pool_lock = &shared_pool_lock_[tf_device_id.value()];
+          o.shared_pool_bytes = &shared_pool_bytes_[tf_device_id.value()];
           return o;
         }());
     Allocator* gpu_allocator = gpu_bfc_allocator.get();
@@ -301,18 +317,18 @@ void GPUProcessState::GetGPUAllocators(
     const GPUOptions& options, tsl::TfDeviceId tf_device_id, size_t total_bytes,
     const std::vector<tsl::TfDeviceId>& peer_gpu_ids, size_t num_allocators,
     std::vector<Allocator*>& allocators) {
-  size_t each_bytes;
-  if (!UseCudaMemoryGuardAllocator() && !UseCudaMallocAllocator() &&
-      (UseCudaMallocAsyncAllocator() ||
-       options.experimental().use_cuda_malloc_async())) {
-    each_bytes = total_bytes;
-  } else {
-    each_bytes = total_bytes / num_allocators;
+  // Divide the memory by stream group count if async allocator is not used
+  // and don't share_memory_pool between stream groups.
+  if ((UseCudaMemoryGuardAllocator() || UseCudaMallocAllocator() ||
+       (!UseCudaMallocAsyncAllocator() &&
+        !options.experimental().use_cuda_malloc_async())) &&
+      !share_memory_pool) {
+    total_bytes /= num_allocators;
   }
   allocators.resize(num_allocators);
   for (int i = 0; i < num_allocators; ++i) {
     allocators[i] =
-        GetGPUAllocator(options, tf_device_id, each_bytes, peer_gpu_ids, i);
+        GetGPUAllocator(options, tf_device_id, total_bytes, peer_gpu_ids, i);
   }
 }
 

@@ -68,6 +68,11 @@ class BFCAllocator : public Allocator {
     // Controls when a chunk should be split, if its size exceeds the requested
     // allocation size.
     double fragmentation_fraction = 0;
+
+    // Set shared pool.
+    bool share_memory_pool = false;
+    mutex* shared_pool_lock = nullptr;
+    int64_t* shared_pool_bytes = nullptr;
   };
   BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator, size_t total_memory,
                const string& name, const Options& opts);
