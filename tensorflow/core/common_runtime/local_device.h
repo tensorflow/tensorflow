@@ -38,15 +38,15 @@ class LocalDevice : public Device {
   ~LocalDevice() override;
 
   bool merge_DtoD_copy_stream() const override {
-    return gpu_stream_merge_options.merge_d_to_d_stream();
+    return gpu_stream_merge_options_.merge_d_to_d_stream();
   }
 
   bool merge_DtoH_copy_stream() const override {
-    return gpu_stream_merge_options.merge_d_to_h_stream();
+    return gpu_stream_merge_options_.merge_d_to_h_stream();
   }
 
   bool merge_HtoD_copy_stream() const override {
-    return gpu_stream_merge_options.merge_h_to_d_stream();
+    return gpu_stream_merge_options_.merge_h_to_d_stream();
   }
 
  private:
@@ -59,7 +59,7 @@ class LocalDevice : public Device {
   struct EigenThreadPoolInfo;
   std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
 
-  const GPUOptions::STREAM_MERGE_OPTIONS gpu_stream_merge_options;
+  const GPUOptions::STREAM_MERGE_OPTIONS gpu_stream_merge_options_;
 
   friend class test::Benchmark;
 
