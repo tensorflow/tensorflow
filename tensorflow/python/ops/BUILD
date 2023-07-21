@@ -2603,6 +2603,7 @@ cuda_py_strict_test(
     deps = [
         ":sparse_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
