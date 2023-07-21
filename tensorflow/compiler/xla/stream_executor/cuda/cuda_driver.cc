@@ -377,13 +377,15 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   }
   int context_idx = stream_idx % gpu_context_count;
 
-  // Use created context or use the primary context or create a new context.
+  // Use created context or use the primary context or create a new context. The
+  // primary context is only for the stream group 0.
   int device_idx = DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal);
   if (CreatedContexts::OrdinalHas(device_idx, context_idx)) {
     new_context = CreatedContexts::OrdinalGet(device_idx, context_idx);
     VLOG(2) << "Device " << device << " stream " << stream_idx
             << " use created context " << new_context;
-  } else if (primary_ctx_used_.find(new_context) == primary_ctx_used_.end()) {
+  } else if (stream_idx == 0 &&
+             primary_ctx_used_.find(new_context) == primary_ctx_used_.end()) {
     // Don't create new context. Use the primary context.
     VLOG(2) << "No context for device " << device << " stream " << stream_idx
             << ", use cuDevicePrimaryCtxRetain context " << new_context;
