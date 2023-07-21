@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_heuristics.h"
 
+#include <vector>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
