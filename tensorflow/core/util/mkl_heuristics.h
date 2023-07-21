@@ -20,12 +20,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_HEURISTICS_H_
 #ifdef INTEL_MKL
 
+#include <vector>
+
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 
 struct RewriteThreshold {
-  string op;
+  std::string op;
   int cpu_family;
   int cpu_model_num;
   // The model that is used to decide whether it is worth
