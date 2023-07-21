@@ -571,6 +571,14 @@ py_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "strict_mode",
+    srcs = ["strict_mode.py"],
+    deps = [
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 tf_py_strict_test(
     name = "function_def_to_graph_test",
     size = "small",

@@ -89,6 +89,11 @@
     * Added `dtensor.get_default_mesh`, for retrieving the current default 
       mesh under the dtensor context.
 
+*  `tf.experimental.strict_mode`
+    * Added a new API, `strict_mode`, which converts all deprecation warnings
+      into runtime errors with instructions on switching to a recommended 
+      substitute.
+
 *   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
 *   TensorFlow now supports C++ RTTI on mobile and Android. To enable this
