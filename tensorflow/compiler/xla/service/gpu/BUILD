@@ -3066,47 +3066,8 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
     ]),
-)
-
-cc_library(
-    name = "cudnn_fused_mha_rewriter",
-    srcs = ["cudnn_fused_mha_rewriter.cc"],
-    hdrs = ["cudnn_fused_mha_rewriter.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":matmul_utils",
-        "//tensorflow/compiler/xla:permutation_util",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
-)
-
-xla_cc_test(
-    name = "cudnn_fused_mha_rewriter_test",
-    srcs = ["cudnn_fused_mha_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":backend_configs_cc",
-        ":cublas_cudnn",
-        ":cudnn_fused_mha_rewriter",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test_main",
-        "@com_google_googletest//:gtest_main",
-    ],
 )
 
 xla_cc_test(
@@ -3140,6 +3101,50 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
+)
+
+cc_library(
+    name = "cudnn_fused_mha_rewriter",
+    srcs = ["cudnn_fused_mha_rewriter.cc"],
+    hdrs = ["cudnn_fused_mha_rewriter.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        ":matmul_utils",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
+)
+
+xla_cc_test(
+    name = "cudnn_fused_mha_rewriter_test",
+    srcs = ["cudnn_fused_mha_rewriter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        ":cudnn_fused_mha_rewriter",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_googletest//:gtest_main",
     ],
 )

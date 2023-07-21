@@ -166,22 +166,18 @@ TEST_F(BufferComparatorTest, TestInfs) {
   EXPECT_TRUE(
       CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {std::nanf("")}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {inf}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {65504}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({-inf}, {-65504}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-65504}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({-inf}, {65504}));
+  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {448}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-448}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({inf}, {-20}));
-  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({-inf}, {20}));
-  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e4m3fn>({-inf}, {-20}));
 
   EXPECT_FALSE(
       CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {std::nanf("")}));
   EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {inf}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {65504}));
-  EXPECT_TRUE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-65504}));
-  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-65504}));
-  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {65504}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-inf}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {57344}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {-57344}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({inf}, {-20}));
   EXPECT_FALSE(CompareEqualFloatBuffers<tsl::float8_e5m2>({-inf}, {20}));

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 
 namespace xla {
 namespace gpu {
@@ -353,83 +354,83 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     final_instr = instr;
   }
 
-  if (instr->user_count() == 1) {
-    HloInstruction *op, *operand, *user = instr->users()[0];
-    if (pattern_level == 0) {
-      // Add
-      if (Match(user, m::AddAnyOrder(&op, m::Op(), m::Op(&operand)))) {
-        graph_string.AppendOp("add", op->shape().element_type());
-        operands.push_back(operand);
-        CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
-                                  final_instr, 0);
-        return;
-      }
-      // Scale
-      if (Match(user, m::MultiplyAnyOrder(&op, m::Op(),
-                                          m::Broadcast(m::Op(&operand)))) &&
-          ShapeUtil::IsScalar(operand->shape())) {
-        graph_string.AppendOp("scale", op->shape().element_type());
-        operands.push_back(operand);
-        CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
-                                  final_instr, 0);
-        return;
-      }
-      // Inverse Scale
-      if (Match(user, m::Divide(&op, m::Op(), m::Broadcast(m::Op(&operand)))) &&
-          ShapeUtil::IsScalar(operand->shape())) {
-        graph_string.AppendOp("invscale", op->shape().element_type());
-        operands.push_back(operand);
-        CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
-                                  final_instr, 0);
-        return;
-      }
-      // ReLU
-      if (Match(user, m::MaximumAnyOrder(&op, m::Op(),
-                                         m::Broadcast(m::ConstantScalar(0))))) {
-        graph_string.AppendOp("relu", op->shape().element_type());
-        CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
-                                  final_instr, 0);
-        return;
-      }
-    }
+  if (instr->user_count() != 1) {
+    return;
+  }
 
-    if (pattern_level == 1) {
-      // Convert with clamp to FP8 types
-      HloInstruction *clamp_lower, *clamp_upper;
-      if (Match(user,
-                m::Convert(
-                    &op,
-                    m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)),
-                             m::Op(),
-                             m::Broadcast(m::ConstantScalar(&clamp_upper)))))) {
-        if ((op->shape().element_type() == F8E4M3FN &&
-             clamp_lower->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
-             clamp_upper->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
-            (op->shape().element_type() == F8E5M2 &&
-             clamp_lower->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
-             clamp_upper->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e5m2>::max())))) {
-          graph_string.ChangeDataType(op->shape().element_type());
-          CaptureConvGraphRecursive(user, operands, graph_string,
-                                    visited_instrs, final_instr, 0);
-          return;
-        }
-      }
-    }
-
-    // If none of the matches was successful and the pattern level is below the
-    // maximum level, attempt to match at higher level.
-    if (pattern_level < max_pattern_level) {
+  HloInstruction *op, *operand, *user = instr->users()[0];
+  if (pattern_level == 0) {
+    // Add
+    if (Match(user, m::AddAnyOrder(&op, m::Op(), m::Op(&operand)))) {
+      graph_string.AppendOp("add", op->shape().element_type());
+      operands.push_back(operand);
       CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
-                                final_instr, pattern_level + 1);
+                                final_instr, 0);
+      return;
+    }
+    // Scale
+    if (Match(user, m::MultiplyAnyOrder(&op, m::Op(),
+                                        m::Broadcast(m::Op(&operand)))) &&
+        ShapeUtil::IsScalar(operand->shape())) {
+      graph_string.AppendOp("scale", op->shape().element_type());
+      operands.push_back(operand);
+      CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
+                                final_instr, 0);
+      return;
+    }
+    // Inverse Scale
+    if (Match(user, m::Divide(&op, m::Op(), m::Broadcast(m::Op(&operand)))) &&
+        ShapeUtil::IsScalar(operand->shape())) {
+      graph_string.AppendOp("invscale", op->shape().element_type());
+      operands.push_back(operand);
+      CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
+                                final_instr, 0);
+      return;
+    }
+    // ReLU
+    if (Match(user, m::MaximumAnyOrder(&op, m::Op(),
+                                       m::Broadcast(m::ConstantScalar(0))))) {
+      graph_string.AppendOp("relu", op->shape().element_type());
+      CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
+                                final_instr, 0);
       return;
     }
   }
 
-  return;
+  if (pattern_level == 1) {
+    // Convert with clamp to FP8 types
+    HloInstruction *clamp_lower, *clamp_upper;
+    if (Match(
+            user,
+            m::Convert(
+                &op,
+                m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)), m::Op(),
+                         m::Broadcast(m::ConstantScalar(&clamp_upper)))))) {
+      if ((op->shape().element_type() == F8E4M3FN &&
+           clamp_lower->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
+           clamp_upper->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
+          (op->shape().element_type() == F8E5M2 &&
+           clamp_lower->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
+           clamp_upper->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e5m2>::max())))) {
+        graph_string.ChangeDataType(op->shape().element_type());
+        CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
+                                  final_instr, 0);
+        return;
+      }
+    }
+  }
+
+  // If none of the matches was successful and the pattern level is below the
+  // maximum level, attempt to match at higher level.
+  if (pattern_level < max_pattern_level) {
+    CaptureConvGraphRecursive(user, operands, graph_string, visited_instrs,
+                              final_instr, pattern_level + 1);
+    return;
+  }
 }
 
 // Captures in a GraphString the subgraph of pointwise operations operating on
@@ -477,16 +478,17 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* x_scale,
 // following steps are elided and rewritten into a ForwardGraph Custom Call:
 //
 // 1. Cast the filter and input from FP8 to a wider type such as FP16 or FP32.
-// 2. Unscale the filter and input by multiplying or dividing by scalars.
+// 2. Optionally unscale the filter and input by multiplying or dividing by
+// scalars.
 // 3. Evaluate the convolution based on the scaled filter and input.
 // 4. Apply a series of elementwise transformations, where a transformation can
 // be adding a matrix bias, applying a ReLU activation, or
 // multiplying or dividing by a broadcast scalar.
-// 5. Cast the output back to FP8.
+// 5. Optionally cast the output back to FP8.
 
 StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
   bool changed = false;
-#if CUDA_VERSION >= 12000
+#if (CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900)
   for (auto instr : comp->MakeInstructionPostOrder()) {
     const DebugOptions& debug_options =
         instr->GetModule()->config().debug_options();
@@ -504,6 +506,7 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
         m::CustomCall(
             &convolution,
             m::AnyOf<HloInstruction>(
+                m::Op(&input).WithPredicate(IsF8Type),
                 m::Convert(m::Op(&input).WithPredicate(IsF8Type)),
                 m::Divide(&x_scale_op,
                           m::Convert(m::Op(&input).WithPredicate(IsF8Type)),
@@ -513,6 +516,7 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
                     m::Convert(m::Op(&input).WithPredicate(IsF8Type)),
                     m::Broadcast(m::Op(&x_scale)))),
             m::AnyOf<HloInstruction>(
+                m::Op(&filter).WithPredicate(IsF8Type),
                 m::Convert(m::Op(&filter).WithPredicate(IsF8Type)),
                 m::Divide(&w_scale_op,
                           m::Convert(m::Op(&input).WithPredicate(IsF8Type)),
@@ -523,6 +527,12 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
                     m::Broadcast(m::Op(&w_scale))))),
         0);
     if (Match(instr, pattern)) {
+      if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+            return absl::StrCat("F8GraphConv: ", convolution->ToString());
+          })) {
+        continue;
+      }
+
       std::vector<HloInstruction*> operands;
       GraphString graph_string;
       HloInstruction* final_instr;
@@ -530,31 +540,28 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
           const_cast<HloInstruction*>(instr), x_scale, w_scale,
           x_scale_op ? x_scale_op->opcode() == HloOpcode::kMultiply : false,
           w_scale_op ? w_scale_op->opcode() == HloOpcode::kMultiply : false);
-      if (graph_string.Size() > 1) {
-        TF_ASSIGN_OR_RETURN(
-            auto config, convolution->backend_config<CudnnConvBackendConfig>());
-        config.set_serialized_graph(graph_string.Graph());
-        operands.insert(operands.begin(), input);
-        operands.insert(operands.begin() + 1, filter);
+      TF_ASSIGN_OR_RETURN(
+          auto config, convolution->backend_config<CudnnConvBackendConfig>());
+      config.set_serialized_graph(graph_string.Graph());
+      operands.insert(operands.begin(), input);
+      operands.insert(operands.begin() + 1, filter);
 
-        Shape new_shape = ShapeUtil::MakeTupleShape(
-            {ShapeUtil::ChangeElementType(
-                 ShapeUtil::GetTupleElementShape(convolution->shape(), 0),
-                 final_instr->shape().element_type()),
-             ShapeUtil::GetTupleElementShape(convolution->shape(), 1)});
-        HloInstruction* new_convolution = comp->AddInstruction(
-            convolution->CloneWithNewOperands(new_shape, operands));
-        new_convolution->set_custom_call_target(
-            kCudnnConvForwardGraphCallTarget);
-        TF_RETURN_IF_ERROR(new_convolution->set_backend_config(config));
-        TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
-                            MakeGetTupleElementHlo(new_convolution, 0));
-        TF_RETURN_IF_ERROR(comp->ReplaceInstruction(final_instr, new_gte));
-        changed = true;
-      }
+      Shape new_shape = ShapeUtil::MakeTupleShape(
+          {ShapeUtil::ChangeElementType(
+               ShapeUtil::GetTupleElementShape(convolution->shape(), 0),
+               final_instr->shape().element_type()),
+           ShapeUtil::GetTupleElementShape(convolution->shape(), 1)});
+      HloInstruction* new_convolution = comp->AddInstruction(
+          convolution->CloneWithNewOperands(new_shape, operands));
+      new_convolution->set_custom_call_target(kCudnnConvForwardGraphCallTarget);
+      TF_RETURN_IF_ERROR(new_convolution->set_backend_config(config));
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
+                          MakeGetTupleElementHlo(new_convolution, 0));
+      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(final_instr, new_gte));
+      changed = true;
     }
   }
-#endif
+#endif  // CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
   return changed;
 }
 

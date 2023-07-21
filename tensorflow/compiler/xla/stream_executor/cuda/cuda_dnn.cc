@@ -3541,18 +3541,6 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
   return tensor;
 }
 
-tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
-    const cudnn_frontend::Tensor& original, int64_t uid, dnn::DataType dtype,
-    bool is_virtual = false) {
-  auto tensor = cudnn_frontend::TensorBuilder()
-                    .cloneFrom(original, uid)
-                    .setAlignment(32)
-                    .setDataType(ToCudnnDataType(dtype))
-                    .setVirtual(is_virtual)
-                    .build();
-  RETURN_MSG_IF_CUDNN_ERROR(tensor);
-  return tensor;
-}
 #else
 tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> strides,
@@ -3583,13 +3571,22 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
   return tensor;
 }
 
-tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
-    cudnn_frontend::Tensor original, int64_t uid, dnn::DataType dtype,
-    bool is_virtual = false) {
-  return tsl::errors : Internal("Not implemented.");
-}
-
 #endif
+
+#if (CUDNN_VERSION >= 8900 && TF_ENABLE_CUDNN_FRONTEND)
+tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
+    const cudnn_frontend::Tensor& original, int64_t uid, dnn::DataType dtype,
+    bool is_virtual = false) {
+  auto tensor = cudnn_frontend::TensorBuilder()
+                    .cloneFrom(original, uid)
+                    .setAlignment(32)
+                    .setDataType(ToCudnnDataType(dtype))
+                    .setVirtual(is_virtual)
+                    .build();
+  RETURN_MSG_IF_CUDNN_ERROR(tensor);
+  return tensor;
+}
+#endif  // CUDNN_VERSION >= 8900 && TF_ENABLE_CUDNN_FRONTEND
 
 #if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 enum CudnnfMHAUid {
@@ -4214,9 +4211,9 @@ OpNameStringToInputKindAndMode(string opstring) {
 // TODO(philipphack): Consider merging with GetCudnnOperationGraph and
 // GetCudnnFusedOperationGraph.
 
-// Returns a generic cuDNN OperationGraph for ForwardGraph
-// convolutions with dynamically identified fused ops and the
-// associated set of UIDs of non-virtual cuDNN tensors.
+// Returns a generic cuDNN OperationGraph for ForwardGraph convolutions with the
+// fused ops listed in serialized_graph and the associated set of UIDs of
+// non-virtual cuDNN tensors.
 tsl::StatusOr<std::pair<std::unique_ptr<cudnn_frontend::OperationGraph>,
                         std::vector<int64_t>>>
 GetGenericCudnnOperationGraph(
@@ -4290,15 +4287,15 @@ GetGenericCudnnOperationGraph(
 
   auto next_uid = [&non_virtual_uids,
                    &virtual_uids](bool is_virtual) -> int64_t {
-    int64_t next_uid =
-        std::max(non_virtual_uids.empty()
-                     ? 0
-                     : *std::max_element(non_virtual_uids.begin(),
-                                         non_virtual_uids.end()),
-                 virtual_uids.empty() ? 0
-                                      : *std::max_element(virtual_uids.begin(),
-                                                          virtual_uids.end())) +
-        1;
+    int64_t max_non_virtual_uid =
+        non_virtual_uids.empty() ? 0
+                                 : *std::max_element(non_virtual_uids.begin(),
+                                                     non_virtual_uids.end());
+    int64_t max_virtual_uid =
+        virtual_uids.empty()
+            ? 0
+            : *std::max_element(virtual_uids.begin(), virtual_uids.end());
+    int64_t next_uid = std::max(max_non_virtual_uid, max_virtual_uid) + 1;
     if (is_virtual) {
       return virtual_uids.emplace_back(next_uid);
     } else {
@@ -4351,9 +4348,9 @@ GetGenericCudnnOperationGraph(
   TF_ASSIGN_OR_RETURN(
       auto tensor_y,
       CreateCudnnTensor(output_dims, output_strides,
-                        next_uid(/*is_virtual=*/true),
+                        next_uid(/*is_virtual=*/op_sequence.size() > 1),
                         op_sequence[0].output_type, vector_size, vector_dim,
-                        /*is_virtual=*/true));
+                        /*is_virtual=*/op_sequence.size() > 1));
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
   CHECK_NE(convolution_descriptor.pad_alignment(),
