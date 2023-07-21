@@ -33,8 +33,6 @@ struct StackAlloca {
   void EmitLifetimeEnd() {
     builder->CreateLifetimeEnd(value, builder->getInt64(-1));
   }
-
-  ~StackAlloca() {}
 };
 
 // Declare as opaque to put structure definition together with dependant code.

@@ -325,11 +325,10 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
-
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  registry->Register("onednn.matmul", reinterpret_cast<void*>(onednn_matmul),
-                     "Host");
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),
                      "Host");
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),

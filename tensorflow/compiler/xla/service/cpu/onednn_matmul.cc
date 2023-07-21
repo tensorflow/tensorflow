@@ -35,7 +35,7 @@ namespace cpu {
 
 using namespace dnnl;
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void onednn_matmul(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
     const void* run_options_ptr, void* lhs, void* rhs, void* result,
     void* config) {
   const xla::ExecutableRunOptions* run_options =
