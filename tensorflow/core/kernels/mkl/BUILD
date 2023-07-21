@@ -224,6 +224,7 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_conv",
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
@@ -506,6 +507,7 @@ tf_mkl_kernel_library(
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:quantization_utils",
     ],
 )
