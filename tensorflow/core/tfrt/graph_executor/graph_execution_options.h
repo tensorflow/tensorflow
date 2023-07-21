@@ -79,11 +79,6 @@ struct GraphExecutionOptions {
 
   CostAnalysisOptions cost_analysis_options;
 
-  // Normalize the op costs recorded during online cost analysis by dividing by
-  // this.
-  // TODO(b/278298965): Maybe remove normalization.
-  uint64_t online_cost_analysis_normalize_ratio = 1;
-
   // If true, the MLRT interpreter will be used instead of the BEF executor.
   // This option is experimental.
   bool enable_mlrt = false;
