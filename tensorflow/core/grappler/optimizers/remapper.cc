@@ -946,7 +946,6 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
   bool dtypeU_is_float = HasDataType(node_def, DT_FLOAT, "U");
-  bool dtypeT_is_bf16 = HasDataType(node_def, DT_BFLOAT16, "T");
   if (node_view->GetOp() != "FusedBatchNorm" && !dtypeU_is_float) return false;
 
   // Check that batch normalization is in inference mode.
