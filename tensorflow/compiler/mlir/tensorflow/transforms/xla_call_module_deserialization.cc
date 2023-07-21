@@ -80,7 +80,9 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
       tensorflow::XlaCallModuleLoader::Create(
           context, static_cast<int>(op.getVersion()), op.getModule().str(),
           std::move(dim_args_spec), std::move(disabled_checks),
-          std::move(platforms), std::move(loading_platform)));
+          std::move(platforms), std::move(loading_platform),
+          /*num_invocation_args=*/op.getArgs().size(),
+          op.getHasTokenInputOutput()));
   return std::move(*loader).module();
 }
 

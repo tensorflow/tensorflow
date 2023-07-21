@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -68,48 +69,38 @@ namespace {
 
 // When adding a new version, write when it was added. Also change the default
 // version in the constructor in xla.py.
-// Version 1 used MHLO & CHLO, not supported anymore.
-// Version 2 supports StableHLO & CHLO. From 10/2022.
-constexpr int VERSION_START_STABLE_HLO = 2;
-// Version 3 supports platform checking and multiple platforms. From 02/2023.
-constexpr int VERSION_START_PLATFORMS = 3;
-// Version 4 supports StableHLO with compatibility guarantees.
-// Used in jax2tf from March 15, 2023 (cl/516885716). Starting with
-// March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
+// See
+// https://github.com/google/jax/blob/main/jax/experimental/jax2tf/README.md#native-serialization-versions
+// for a description of the different versions.
+
 // TODO(b/283439649): Remove support for dim_args_spec.
-constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-// Version 5 adds support for call_tf_graph. This does not change the semantics
-// of the op, but it allows the `function_list` attribute.
-// Used in jax2tf from May 3rd, 2023 (cl/529106145).
-constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
-// Version 6 adds support for the `disabled_checks` attribute. This version
-// mandates a non-empty `platforms` attribute.
-// Used in jax2tf since June 2023.
-constexpr int VERSION_START_SUPPORT_DISABLED_CHECKS = 6;
-// Version 7 adds support for `stablehlo.shape_assertion` operations and
-// for `shape_assertions` specified in `disabled_checks`.
-// Used in JAX serialization since July 2023.
-constexpr int VERSION_START_SUPPORT_SHAPE_ASSERTIONS = 7;
-constexpr int VERSION_MINIMUM_SUPPORTED =
-    VERSION_START_STABLE_HLO_COMPATIBILITY;
+constexpr int kVersionStartStableHloCompatibility = 4;
+constexpr int kVersionStartSupportCallTFGraph = 5;
+constexpr int kVersionStartSupportDisabledChecks = 6;
+constexpr int kVersionStartSupportShapeAssertions = 7;
+constexpr int kVersionStartSupportUsesShapePolymorphismAttr = 8;
+constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 
-constexpr int VERSION_MAXIMUM_SUPPORTED =
-    VERSION_START_SUPPORT_SHAPE_ASSERTIONS;
+// This should match xla.py:call_module_maximum_supported_version
+constexpr int kVersionMaximumSupported =
+    kVersionStartSupportUsesShapePolymorphismAttr;
 
-constexpr absl::string_view DISABLED_CHECK_PLATFORM = "platform";
+constexpr absl::string_view kDisabledCheckPlatform = "platform";
 
 bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
-  return llvm::is_contained(disabled_checks, DISABLED_CHECK_PLATFORM);
+  return llvm::is_contained(disabled_checks, kDisabledCheckPlatform);
 }
 
-constexpr absl::string_view DISABLED_CHECK_SHAPE_ASSERTIONS =
-    "shape_assertions";
+constexpr absl::string_view kDisabledCheckShapeAssertions = "shape_assertions";
 
 bool IsShapeAssertionsCheckDisabled(
     absl::Span<const std::string> loading_disabled_checks) {
   return llvm::is_contained(loading_disabled_checks,
-                            DISABLED_CHECK_SHAPE_ASSERTIONS);
+                            kDisabledCheckShapeAssertions);
 }
+
+constexpr absl::string_view kUsesShapePolymorphismAttr =
+    "jax.uses_shape_polymorphism";
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -162,12 +153,14 @@ tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
     mlir::MLIRContext *context, int version, std::string module_str,
     std::vector<std::string> dim_args_spec,
     std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform) {
+    std::vector<std::string> platforms, std::string loading_platform,
+    int num_invocation_args, bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
       context, version, std::move(module_str), std::move(dim_args_spec),
       std::move(disabled_checks), std::move(platforms),
-      std::move(loading_platform)));
+      std::move(loading_platform), num_invocation_args,
+      main_has_token_input_output));
   return loader;
 }
 
@@ -305,22 +298,33 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
 
 tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     llvm::ArrayRef<xla::Shape> input_shapes) {
-  // Locate the (wrapped) 'main' function.
-  // This is the convention used by MlirToXlaComputation.
-  mlir::Block &main_body = main_.front();
-  int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
-  int nr_dim_args = dim_args_spec_.size();
-  int non_dimension_arguments = input_shapes.size();
-  if (non_dimension_arguments != main_body.getNumArguments()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Incorrect number of arguments passed to XlaCallModule: ",
-        non_dimension_arguments, ". The module takes ",
-        main_body.getNumArguments() + nr_platform_args + nr_dim_args,
-        " arguments of which ", nr_platform_args,
-        " platform index arguments and ", nr_dim_args,
-        " dimension arguments. It must be called with ",
-        main_body.getNumArguments(), " arguments."));
+  // Skip shape refinement for new versions if USES_SHAPE_POLYMORPHISM_ATTR=1
+  if (version_ >= kVersionStartSupportUsesShapePolymorphismAttr) {
+    if (mlir::Attribute uses_shape_poly_attr =
+            (*module_)->getAttr(kUsesShapePolymorphismAttr)) {
+      mlir::BoolAttr uses_shape_poly_bool_attr =
+          llvm::dyn_cast<mlir::BoolAttr>(uses_shape_poly_attr);
+
+      if (!uses_shape_poly_bool_attr) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "jax.uses_shape_polymorphism is not a boolean attribute: ",
+            mlir::debugString(uses_shape_poly_attr)));
+      }
+      if (!uses_shape_poly_bool_attr.getValue()) {
+        VLOG(3) << "XlaCallModule skipping shape refinement due to module "
+                << " attribute " << kUsesShapePolymorphismAttr << "="
+                << mlir::debugString(uses_shape_poly_attr);
+        return tsl::OkStatus();
+      }
+    } else {
+      VLOG(3) << "XlaCallModule skipping shape refinement due to module "
+              << " attribute " << kUsesShapePolymorphismAttr << " missing";
+      return tsl::OkStatus();
+    }
   }
+
+  mlir::Block &main_body = main_.front();
+  int non_dimension_arguments = input_shapes.size();
 
   mlir::Builder builder(module_->getContext());
   std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
@@ -411,7 +415,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
   }
   bool enable_shape_assertions =
-      (version_ >= VERSION_START_SUPPORT_SHAPE_ASSERTIONS &&
+      (version_ >= kVersionStartSupportShapeAssertions &&
        !IsShapeAssertionsCheckDisabled(loading_disabled_checks_));
   TF_RETURN_IF_ERROR(
       xla::RefinePolymorphicShapes(*module_, enable_shape_assertions));
@@ -426,7 +430,8 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     mlir::MLIRContext *context, int version, std::string module_str,
     std::vector<std::string> dim_args_spec,
     std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform) {
+    std::vector<std::string> platforms, std::string loading_platform,
+    int num_invocation_args, bool main_has_token_input_output) {
   context_ = context;
   version_ = version;
   dim_args_spec_ = std::move(dim_args_spec);
@@ -439,14 +444,14 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
 
-  if (version >= VERSION_START_SUPPORT_DISABLED_CHECKS && platforms.empty()) {
+  if (version >= kVersionStartSupportDisabledChecks && platforms.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("XlaCallModuleOp with version ", version,
                      " must have non-empty platforms."));
   }
 
   // Parses both IR text and bytecode.
-  if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
+  if (version >= kVersionStartStableHloCompatibility) {
     module_ =
         mlir::stablehlo::deserializePortableArtifact(module_str, context_);
   } else {
@@ -471,16 +476,16 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
           << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
           << DumpMlirOpToFile("xla_call_module.parsed", *module_);
 
-  if (version < VERSION_MINIMUM_SUPPORTED) {
+  if (version < kVersionMinimumSupported) {
     return absl::InvalidArgumentError(absl::StrCat(
         "XlaCallModuleOp with version ", version,
-        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
+        " is not supported anymore. Must be >= ", kVersionMinimumSupported));
   }
-  if (version > VERSION_MAXIMUM_SUPPORTED) {
+  if (version > kVersionMaximumSupported) {
     return absl::InvalidArgumentError(
         absl::StrCat("XlaCallModuleOp with version ", version,
                      " is not supported by this build. Must be <= ",
-                     VERSION_MAXIMUM_SUPPORTED));
+                     kVersionMaximumSupported));
   }
 
   platform_index_ = -1;
@@ -507,8 +512,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     }
   }
 
-  if (version >= VERSION_START_SUPPORT_CALL_TF_GRAPH &&
-      !dim_args_spec_.empty()) {
+  if (version >= kVersionStartSupportCallTFGraph && !dim_args_spec_.empty()) {
     return absl::InvalidArgumentError(
         "dim_args_spec not supported in this version");
   }
@@ -527,6 +531,22 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   if (!dim_args_spec_.empty() || platform_index_ >= 0) {
     TF_RETURN_IF_ERROR(AddMainWrapper());
     main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
+  }
+
+  mlir::Block &main_body = main_.front();
+  int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
+  int nr_dim_args = dim_args_spec_.size();
+  int nr_token_arguments = main_has_token_input_output ? 1 : 0;
+  if (num_invocation_args != main_body.getNumArguments() - nr_token_arguments) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Incorrect number of arguments passed to XlaCallModule: ",
+        num_invocation_args, ". The module takes ",
+        main_body.getNumArguments() + nr_platform_args + nr_dim_args +
+            nr_token_arguments,
+        " arguments of which ", nr_platform_args, " platform index arguments, ",
+        nr_dim_args, " dimension arguments and ", nr_token_arguments,
+        " token arguments. It must be called with ",
+        main_body.getNumArguments() - nr_token_arguments, " arguments."));
   }
   return tsl::OkStatus();
 }
