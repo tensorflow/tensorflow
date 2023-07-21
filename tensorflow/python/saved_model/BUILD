@@ -411,7 +411,6 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_stack",
         "@absl_py//absl/logging",
     ] + if_google([
         "//tensorflow/tools/proto_splitter/python:saved_model",

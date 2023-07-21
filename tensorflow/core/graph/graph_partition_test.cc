@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -584,24 +583,27 @@ TEST_F(GraphPartitionTest, GraphDebugInfo) {
   // A stack trace for A1 should be in the A partition (".../cpu:0").
   string a = "/job:a/replica:0/task:0/cpu:0";
   const GraphDebugInfo& a_debug_info = partitions_[a].debug_info();
-  StackTracesMap traces = LoadTracesFromDebugInfo(a_debug_info);
-  const auto& a_it = traces.find("A1");
-  EXPECT_THAT(a_it, Ne(traces.end()));
-  EXPECT_THAT(a_it->second->ToString({}),
-              ::testing::ContainsRegex("alpha.cc.*30"));
+  const auto& a_it = a_debug_info.traces().find("A1");
+  EXPECT_EQ(1, a_debug_info.traces().size());
+  EXPECT_THAT(a_it, Ne(a_debug_info.traces().end()));
+  EXPECT_THAT(FormatStackTrace(a_it->second, a_debug_info),
+              Eq("x@main.cc:20.0\n"
+                 "a1@alpha.cc:30.0\n"));
 
   // Stack traces for B1 and B2 should be in the B partition (".../cpu:1").
   string b = "/job:a/replica:0/task:0/cpu:1";
   const GraphDebugInfo& b_debug_info = partitions_[b].debug_info();
-  traces = LoadTracesFromDebugInfo(b_debug_info);
-  const auto& b1_it = traces.find("B1");
-  const auto& b2_it = traces.find("B2");
-  EXPECT_THAT(b1_it, Ne(traces.end()));
-  EXPECT_THAT(b2_it, Ne(traces.end()));
-  EXPECT_THAT(b1_it->second->ToString({}),
-              ::testing::ContainsRegex("beta.cc.*35"));
-  EXPECT_THAT(b2_it->second->ToString({}),
-              ::testing::ContainsRegex("beta.cc.*39"));
+  const auto& b1_it = b_debug_info.traces().find("B1");
+  const auto& b2_it = b_debug_info.traces().find("B2");
+  EXPECT_EQ(2, b_debug_info.traces().size());
+  EXPECT_THAT(b1_it, Ne(b_debug_info.traces().end()));
+  EXPECT_THAT(b2_it, Ne(b_debug_info.traces().end()));
+  EXPECT_THAT(FormatStackTrace(b1_it->second, b_debug_info),
+              Eq("y@window.cc:21.0\n"
+                 "b1@beta.cc:35.0\n"));
+  EXPECT_THAT(FormatStackTrace(b2_it->second, b_debug_info),
+              Eq("bar@cache.cc:22.0\n"
+                 "b2@beta.cc:39.0\n"));
 }
 
 TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {

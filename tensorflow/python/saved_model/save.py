@@ -40,6 +40,7 @@ from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as framework_fn
 from tensorflow.python.framework import meta_graph
@@ -75,7 +76,6 @@ from tensorflow.python.training.saving import trace_saveable_util
 from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 # Placeholder for protosplitter import.
 
@@ -1077,14 +1077,16 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  debug_builder = tf_stack.GraphDebugInfoBuilder()
+  per_fn_info = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
-    debug_builder.AppendGraphDebugInfo(fn_name, fn.graph_debug_info)
 
-  graph_debug_info = debug_builder.Build()
+    per_fn_info.append((fn_name, fn.graph_debug_info))
+
+  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
+      per_fn_info)
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
