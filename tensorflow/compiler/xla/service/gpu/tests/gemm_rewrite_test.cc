@@ -5639,6 +5639,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
       )");
 }
 
+// Do not fuse matrix bias When there is a slice that does not chop off the ends
+// of dimensions.
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDMatrixBiasWithSliceF8) {
 #if CUDA_VERSION < 12000

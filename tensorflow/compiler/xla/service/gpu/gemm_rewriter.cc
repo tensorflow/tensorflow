@@ -114,7 +114,6 @@ Shape PadShapeToMultipleOf16(const Shape old_shape,
 
 // Pad the non-batch dimensions of the operands to the target shape.
 HloInstruction *PadOperandToTargetShape(const Shape &target,
-                                        HloInstruction *instr,
                                         HloInstruction *x) {
   if (ShapeUtil::Equal(target, x->shape())) {
     return x;
@@ -129,19 +128,18 @@ HloInstruction *PadOperandToTargetShape(const Shape &target,
     dimension->set_interior_padding(0);
   }
 
-  HloInstruction *zero = instr->AddInstruction(HloInstruction::CreateConstant(
+  HloInstruction *zero = x->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(x->shape().element_type())));
-  return instr->AddInstruction(
+  return x->AddInstruction(
       HloInstruction::CreatePad(target, x, zero, padding_config));
 }
 
 // Pad the non-batch dimensions of the operands to multiples of 16 as required
 // by cuBLASLt FP8 gemms.
 HloInstruction *PadOperandToMultipleOf16(absl::Span<const int64_t> batch_dims,
-                                         HloInstruction *instr,
                                          HloInstruction *x) {
   Shape padded_shape = PadShapeToMultipleOf16(x->shape(), batch_dims);
-  return PadOperandToTargetShape(padded_shape, instr, x);
+  return PadOperandToTargetShape(padded_shape, x);
 }
 
 // Recursively collects unary, pad, divide or multiply operands of instr until
@@ -882,8 +880,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    a = PadOperandToMultipleOf16(batch_dims, instr, a);
-    b = PadOperandToMultipleOf16(batch_dims, instr, b);
+    a = PadOperandToMultipleOf16(batch_dims, a);
+    b = PadOperandToMultipleOf16(batch_dims, b);
     Shape new_output_shape = PadShapeToMultipleOf16(instr->shape(), batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
@@ -1058,8 +1056,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // Fuses a matrix bias into a cuBLAS call. 'instr' should be an Add 
   // instruction in the following form:
   //   Add(OptionalBitcast(OptionalSlice(gemm)), bias) 
-  // where 'gemm' is expected to be a cuBLAS custom_call. Slices are introduced 
-  // when the inputs of the gemm are possibly padded.
+  // where 'gemm' is expected to be a cuBLAS custom_call. Slice is introduced 
+  // when the inputs of the gemm are possibly padded. Bitcast is introduced to 
+  // handle high rank input.
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
                            const HloInstruction *gemm,
                            HloInstruction *bitcast = nullptr,
@@ -1074,6 +1073,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
+    // To ensure numerical correctness, only slices that chop off the ends of 
+    // dimensions are supported.
+    if (slice) {
+      int slice_op_dim = slice->operand(0)->shape().rank();
+      if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0) ||
+          slice->slice_strides() != std::vector<int64_t>(slice_op_dim, 1)) {
+        return OkStatus();
+      }
+    }
     // Cublas gemm overwrites the bias matrix, so fusion is only possible if the
     // gemm is the only user. CublasLt gemm can operate out-of-place.
     bool can_overwrite_bias = [bias]() {
@@ -1124,16 +1132,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
     HloInstruction *maybe_constant_folded_bias = MaybeConstantFoldBias(bias);
-    if (slice && bitcast) {
+    // if (slice && bitcast) {
+    if (bitcast) {
       maybe_constant_folded_bias =
           instr->AddInstruction(HloInstruction::CreateBitcast(
               slice->shape(), maybe_constant_folded_bias));
     }
 
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget ||
-        gemm->custom_call_target() == kCublasLtMatmulCallTarget) {
+        gemm->custom_call_target() == kCublasLtMatmulCallTarget ||
+        gemm->custom_call_target() == kGemmCallTarget) {
       maybe_constant_folded_bias = PadOperandToTargetShape(
-          gemm->shape(), instr, maybe_constant_folded_bias);
+          gemm->shape(), maybe_constant_folded_bias);
     }
 
     operands.insert(operands.begin() + 2, maybe_constant_folded_bias);
@@ -1164,18 +1174,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
-    if (slice != nullptr) {
-      int slice_op_dim = slice->operand(0)->shape().rank();
-      if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0)) {
-        return OkStatus();
-      }
-
+    if (slice) {
       fused_op = slice->CloneWithNewOperands(
           slice->shape(),
           {slice->parent()->AddInstruction(std::move(fused_op))});
     }
 
-    if (bitcast != nullptr) {
+    if (bitcast) {
       fused_op = bitcast->CloneWithNewOperands(
           bitcast->shape(),
           {bitcast->parent()->AddInstruction(std::move(fused_op))});
@@ -1186,7 +1191,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   // Fuses a vector bias into a cuBLAS call. 'instr' should be an Add
   // instruction in the following form:
-  //   Add(OptionalBitcast(OptionalSlice(gemm)), broadcast)
+  //   Add(OptionalBitcast(OptionalSlice(gemm)), Broadcast(OptionalConvert()))
   // where 'gemm' is expected to be a cuBLAS custom_call. The optional
   // convert is only used for F8 matmuls as cublasLt has specific constraints
   // on the vector bias type for such matmuls. The optional bitcast is
@@ -1197,7 +1202,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                    HloInstruction *slice = nullptr,
                                    HloInstruction *convert = nullptr,
                                    HloInstruction *bitcast = nullptr) {
-    if (bitcast == nullptr) {
+    if (!bitcast) {
       TF_RET_CHECK(ShapeUtil::Compatible(
           broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
     }
@@ -1288,9 +1293,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // In the case of high rank input, it is necessary to consider potential
     // padding for the bias.
-    if (bitcast != nullptr && slice != nullptr) {
+    if (bitcast) {
       bias = PadOperandToMultipleOf16(
-          config.dot_dimension_numbers().rhs_batch_dimensions(), instr, bias);
+          config.dot_dimension_numbers().rhs_batch_dimensions(), bias);
     }
     // Replace add(gemm, broadcast) with fused new_gemm.
     operands.push_back(bias);
@@ -1299,12 +1304,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
-    if (slice != nullptr) {
+    if (slice) {
       result = slice->CloneWithNewOperands(
           slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
     }
 
-    if (bitcast != nullptr) {
+    if (bitcast) {
       result = bitcast->CloneWithNewOperands(
           bitcast->shape(),
           {bitcast->parent()->AddInstruction(std::move(result))});
@@ -1341,7 +1346,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
 
-    if (slice_or_bitcast != nullptr) {
+    if (slice_or_bitcast) {
       result = slice_or_bitcast->CloneWithNewOperands(
           slice_or_bitcast->shape(),
           {slice_or_bitcast->parent()->AddInstruction(std::move(result))});
