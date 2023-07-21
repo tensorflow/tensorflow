@@ -485,6 +485,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["hip_blas_utils.h"]),
     deps = if_rocm_is_configured([
         ":rocblas_plugin",
+        ":hipblas_lt_header",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/tsl/platform:status",
