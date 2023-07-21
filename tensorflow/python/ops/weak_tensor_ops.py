@@ -25,8 +25,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import image_ops_impl
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
@@ -235,22 +234,20 @@ nn_ops.gelu = weak_tensor_unary_op_wrapper(nn_ops.gelu)
 nn_ops.log_softmax = weak_tensor_unary_op_wrapper(nn_ops.log_softmax)
 nn_ops.log_softmax_v2 = weak_tensor_unary_op_wrapper(nn_ops.log_softmax_v2)
 nn_impl.swish = weak_tensor_unary_op_wrapper(nn_impl.swish)
-gen_nn_ops.elu = weak_tensor_unary_op_wrapper(gen_nn_ops.elu)
-gen_nn_ops.relu = weak_tensor_unary_op_wrapper(gen_nn_ops.relu)
-gen_nn_ops.selu = weak_tensor_unary_op_wrapper(gen_nn_ops.selu)
-gen_nn_ops.softsign = weak_tensor_unary_op_wrapper(gen_nn_ops.softsign)
-image_ops_impl.random_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.random_brightness
+nn_ops.elu = weak_tensor_unary_op_wrapper(nn_ops.elu)
+nn_ops.relu = weak_tensor_unary_op_wrapper(nn_ops.relu)
+nn_ops.selu = weak_tensor_unary_op_wrapper(nn_ops.selu)
+nn_ops.softsign = weak_tensor_unary_op_wrapper(nn_ops.softsign)
+image_ops.random_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.random_brightness
 )
-image_ops_impl.stateless_random_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.stateless_random_brightness
+image_ops.stateless_random_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.stateless_random_brightness
 )
-image_ops_impl.adjust_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.adjust_brightness
+image_ops.adjust_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.adjust_brightness
 )
-image_ops_impl.adjust_gamma = weak_tensor_unary_op_wrapper(
-    image_ops_impl.adjust_gamma
-)
+image_ops.adjust_gamma = weak_tensor_unary_op_wrapper(image_ops.adjust_gamma)
 clip_ops.clip_by_value = weak_tensor_unary_op_wrapper(clip_ops.clip_by_value)
 special_math_ops.dawsn = weak_tensor_unary_op_wrapper(special_math_ops.dawsn)
 special_math_ops.expint = weak_tensor_unary_op_wrapper(special_math_ops.expint)
@@ -438,6 +435,7 @@ np_array_ops.prod = weak_tensor_unary_op_wrapper(np_array_ops.prod)
 np_array_ops.ravel = weak_tensor_unary_op_wrapper(np_array_ops.ravel)
 np_array_ops.real = weak_tensor_unary_op_wrapper(np_array_ops.real)
 np_array_ops.reshape = weak_tensor_unary_op_wrapper(np_array_ops.reshape)
+np_array_ops.repeat = weak_tensor_unary_op_wrapper(np_array_ops.repeat)
 np_array_ops.rot90 = weak_tensor_unary_op_wrapper(np_array_ops.rot90)
 np_array_ops.round = weak_tensor_unary_op_wrapper(np_array_ops.round)
 np_array_ops.squeeze = weak_tensor_unary_op_wrapper(np_array_ops.squeeze)
@@ -477,6 +475,15 @@ weak_tensor.WeakTensor.__floordiv__ = math_ops.floordiv
 weak_tensor.WeakTensor.__mod__ = gen_math_ops.floor_mod
 weak_tensor.WeakTensor.__pow__ = math_ops.pow
 weak_tensor.WeakTensor.__matmul__ = math_ops.matmul
+weak_tensor.WeakTensor.__radd__ = tensor.Tensor.__radd__
+weak_tensor.WeakTensor.__rsub__ = tensor.Tensor.__rsub__
+weak_tensor.WeakTensor.__rmul__ = tensor.Tensor.__rmul__
+weak_tensor.WeakTensor.__rdiv__ = tensor.Tensor.__rdiv__
+weak_tensor.WeakTensor.__rtruediv__ = tensor.Tensor.__rtruediv__
+weak_tensor.WeakTensor.__rfloordiv__ = tensor.Tensor.__rfloordiv__
+weak_tensor.WeakTensor.__rmod__ = tensor.Tensor.__rmod__
+weak_tensor.WeakTensor.__rpow__ = tensor.Tensor.__rpow__
+weak_tensor.WeakTensor.__rmatmul__ = tensor.Tensor.__rmatmul__
 
 # Add/Update NumPy methods in Tensor and WeakTensor.
 np_math_ops.enable_numpy_methods_on_tensor()

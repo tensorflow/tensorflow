@@ -1831,10 +1831,9 @@ pytype_strict_library(
     srcs = ["flexible_dtypes.py"],
     deps = [
         ":dtypes",
+        ":extension_type",
         ":ops",
-        ":tensor_shape",
         ":weak_tensor",
-        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
