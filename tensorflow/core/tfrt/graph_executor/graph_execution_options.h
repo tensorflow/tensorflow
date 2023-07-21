@@ -61,10 +61,23 @@ struct GraphExecutionOptions {
   // The model-specific runtime configurations.
   tensorflow::tfrt_stub::RuntimeConfig runtime_config;
 
-  // If true, for each client graph, the op costs of the first request will be
-  // recorded and used to re-compile the client graph.
-  // TODO(b/266251216): Maybe flip the default value or remote it.
-  bool enable_online_cost_analysis = false;
+  // TODO(b/266251216): Maybe flip the default value.
+  [[deprecated(
+      "Use CostAnalysisOptions's `CostAnalysisOptions::ONCE` instead")]] bool
+      enable_online_cost_analysis = false;
+
+  // Determines how often op costs are recorded, and how often these costs
+  // are used to re-compile the executable. Note to users: CostAnalysisOptions
+  // is overwritten when `enable_online_cost_analysis = true`.
+  struct CostAnalysisOptions {
+    enum CostAnalysisVersion {
+      DISABLED,
+      ONCE,  // Cost recording and recompilation occurs on the first run only.
+    };
+    CostAnalysisVersion version = DISABLED;
+  };
+
+  CostAnalysisOptions cost_analysis_options;
 
   // Normalize the op costs recorded during online cost analysis by dividing by
   // this.

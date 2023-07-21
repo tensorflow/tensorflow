@@ -749,6 +749,16 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   return OkStatus();
 }
 
+void Graph::AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
+  if (src_slot == Graph::kControlSlot) {
+    dst->add_input(strings::StrCat("^", src_name));
+  } else if (src_slot == 0) {
+    dst->add_input(src_name.data(), src_name.size());
+  } else {
+    dst->add_input(strings::StrCat(src_name, ":", src_slot));
+  }
+}
+
 Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
   if (!dst->IsWhileNode()) {
     return errors::Internal(
@@ -811,20 +821,6 @@ Status Graph::AddGradientDef(const GradientDef& gdef) {
   }
   return ops_.AddGradientDef(gdef);
 }
-
-namespace {
-
-void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
-  if (src_slot == Graph::kControlSlot) {
-    dst->add_input(strings::StrCat("^", src_name));
-  } else if (src_slot == 0) {
-    dst->add_input(src_name.data(), src_name.size());
-  } else {
-    dst->add_input(strings::StrCat(src_name, ":", src_slot));
-  }
-}
-
-}  // namespace
 
 void Graph::ToGraphDef(GraphDef* graph_def, bool include_flib_def,
                        bool include_debug_info) const {

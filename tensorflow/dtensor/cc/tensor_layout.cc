@@ -1093,8 +1093,8 @@ StatusOr<LayoutProto> Layout::ToProto() const {
       case LayoutType::kStatic:
         proto.set_type(LayoutProto::STATIC);
         break;
-      case LayoutType::kRagged:
-        proto.set_type(LayoutProto::RAGGED);
+      case LayoutType::kParted:
+        proto.set_type(LayoutProto::PARTED);
         break;
       default:
         proto.set_type(LayoutProto::UNKNOWN);
@@ -1221,8 +1221,8 @@ StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
     case LayoutProto::STATIC:
       type = LayoutType::kStatic;
       break;
-    case LayoutProto::RAGGED:
-      type = LayoutType::kRagged;
+    case LayoutProto::PARTED:
+      type = LayoutType::kParted;
       break;
     default:
       return absl::InvalidArgumentError(absl::StrCat(
@@ -1291,8 +1291,8 @@ StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   absl::string_view sharding_spec_str = layout_parts[0];
   if (absl::ConsumePrefix(&sharding_spec_str, kSingleDevicePrefix)) {
     type = LayoutType::kSingleDevice;
-  } else if (absl::ConsumePrefix(&sharding_spec_str, kRaggedPrefix)) {
-    type = LayoutType::kRagged;
+  } else if (absl::ConsumePrefix(&sharding_spec_str, kPartedPrefix)) {
+    type = LayoutType::kParted;
   } else if (absl::ConsumePrefix(&sharding_spec_str, kStaticPrefix)) {
     type = LayoutType::kStatic;
   } else {
@@ -1301,7 +1301,7 @@ StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   }
 
   const bool has_sharding_spec =
-      (type == LayoutType::kRagged) || (type == LayoutType::kStatic);
+      (type == LayoutType::kParted) || (type == LayoutType::kStatic);
 
   std::vector<std::string> sharding_spec_strs;
   // Parse sharding specs.
@@ -1330,8 +1330,8 @@ std::string Layout::ToString() const {
     case LayoutType::kStatic:
       absl::StrAppend(&layout_str, kStaticPrefix);
       break;
-    case LayoutType::kRagged:
-      absl::StrAppend(&layout_str, kRaggedPrefix);
+    case LayoutType::kParted:
+      absl::StrAppend(&layout_str, kPartedPrefix);
       break;
   }
   // Serialize sharding specs.

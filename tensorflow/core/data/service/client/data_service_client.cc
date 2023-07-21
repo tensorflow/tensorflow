@@ -854,8 +854,7 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       }
     }
     int64_t backoff_until = std::min(
-        deadline_micros,
-        now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
+        deadline_micros, now_micros + ComputeBackoffMicroseconds(num_retries));
     VLOG(1) << "Failed to get an element from worker "
             << task->info.worker_address() << ": " << s << ". Will retry in "
             << (backoff_until - now_micros) << " microseconds";

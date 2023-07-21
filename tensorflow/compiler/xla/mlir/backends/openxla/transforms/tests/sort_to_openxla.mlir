@@ -1,3 +1,4 @@
+// RUN: export MSAN_OPTIONS=intercept_strpbrk=0
 // RUN: xla-openxla-opt %s --xla-gpu-to-openxla --split-input-file             \
 // RUN:   | FileCheck %s
 

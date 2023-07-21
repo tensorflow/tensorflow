@@ -67,6 +67,7 @@ using tsl::internal::CachedDsoLoader::GetCufftDsoHandle;
 using tsl::internal::CachedDsoLoader::GetCuptiDsoHandle;
 using tsl::internal::CachedDsoLoader::GetCusolverDsoHandle;
 using tsl::internal::CachedDsoLoader::GetCusparseDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipblasltDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipfftDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipsolverDsoHandle;

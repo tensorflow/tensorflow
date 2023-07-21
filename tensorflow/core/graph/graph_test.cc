@@ -832,6 +832,37 @@ TEST_F(GraphTest, NodeShrinkTypeInput) {
   EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
 }
 
+TEST(AddInput, AddsControlSlot) {
+  auto input_name = "input-name";
+  auto expected_input_name = absl::StrCat("^", input_name);
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, Graph::kControlSlot);
+
+  EXPECT_EQ(node_def.input(0), expected_input_name);
+}
+
+TEST(AddInput, AddsSourceSlotZero) {
+  auto input_name = "input-name";
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, 0);
+
+  EXPECT_EQ(node_def.input(0), input_name);
+}
+
+TEST(AddInput, AddsOtherSlots) {
+  auto input_name = "input-name";
+  int arbitrary_slot = 37;
+  auto expected_input_name =
+      absl::StrCat(input_name, ":", arbitrary_slot);  // non-absl ok
+  NodeDef node_def;
+
+  tensorflow::Graph::AddInput(&node_def, input_name, arbitrary_slot);
+
+  EXPECT_EQ(node_def.input(0), expected_input_name);
+}
+
 void BM_InEdgeIteration(::testing::benchmark::State& state) {
   const int num_nodes = state.range(0);
   const int num_edges_per_node = state.range(1);

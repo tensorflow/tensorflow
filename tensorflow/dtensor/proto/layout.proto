@@ -41,7 +41,11 @@ message LayoutProto {
   enum LayoutType {
     UNKNOWN = 0;
     STATIC = 1;  // A tiled layout for static and evenly shaped local shards.
-    RAGGED = 2;  // A tiled layout for dynamic (and/or) uneven local  sharded.
+    PARTED = 2;  // A parted layout contains axes that are treated as
+                 // independent by most of SPMD expanders.
+                 // FIXME(b/285905569): The exact semantics is still being
+                 // investigated.
+
     SINGLE_DEVICE = 3;  // A single device layout that represents DTensor on a
                         // single device Mesh.
   }

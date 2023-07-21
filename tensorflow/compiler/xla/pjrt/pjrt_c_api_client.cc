@@ -946,6 +946,15 @@ CApiCopyToDeviceStream::CApiCopyToDeviceStream(
   granule_bytes_ = granule_size_args.granule_size_in_bytes;
 }
 
+CApiCopyToDeviceStream::~CApiCopyToDeviceStream() {
+  PJRT_CopyToDeviceStream_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_CopyToDeviceStream_Destroy_Args_STRUCT_SIZE;
+  destroy_args.priv = nullptr;
+  destroy_args.stream = c_stream_;
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_CopyToDeviceStream_Destroy(&destroy_args), c_api_);
+}
+
 PjRtFuture<Status> CApiCopyToDeviceStream::AddChunk(PjRtChunk chunk) {
   PJRT_Chunk c_chunk = ::pjrt::ConvertFromCppChunk(std::move(chunk));
 

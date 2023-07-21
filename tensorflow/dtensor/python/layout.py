@@ -497,9 +497,15 @@ class Layout(_pywrap_dtensor_device.Layout):
     """Creates an instance from a human-readable string."""
     return cls._new_object(layout_str=layout_str)
 
-  def to_ragged(self) -> 'Layout':
-    """Returns a layout ragged layout from a static layout."""
-    return Layout._new_object(layout=super().to_ragged())
+  def to_parted(self) -> 'Layout':
+    """Returns a "parted" layout from a static layout.
+
+    A parted layout contains axes that are treated as independent by most of
+    SPMD expanders.
+
+    FIXME(b/285905569): The exact semantics is still being investigated.
+    """
+    return Layout._new_object(layout=super().to_parted())
 
   @classmethod
   def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':

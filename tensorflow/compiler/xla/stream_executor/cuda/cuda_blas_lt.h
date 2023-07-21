@@ -239,6 +239,12 @@ class BlasLt {
 BlasLt* GetBlasLt(Stream* stream);
 
 }  // namespace cuda
+
+namespace gpu {
+using BlasLt = ::stream_executor::cuda::BlasLt;
+inline BlasLt* GetBlasLt(Stream* stream) { return cuda::GetBlasLt(stream); }
+}  // namespace gpu
+
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_

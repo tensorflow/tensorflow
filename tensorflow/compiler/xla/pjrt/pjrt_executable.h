@@ -89,7 +89,7 @@ struct CompileOptions {
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
-  using OptionOverride = std::variant<std::string, bool>;
+  using OptionOverride = std::variant<std::string, bool, int64_t>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
 
   // Used to indicate the precision configuration.
@@ -270,6 +270,10 @@ class PjRtExecutable {
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
+
+  // Returns an output Shape per program, the size should be equal to
+  // `GetHloModules()`.
+  virtual StatusOr<std::vector<Shape>> GetOutputShapes() const;
 
   // Returns a list of parameter OpSharding protos.
   virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;

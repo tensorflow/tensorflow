@@ -189,6 +189,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1043,6 +1044,7 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({

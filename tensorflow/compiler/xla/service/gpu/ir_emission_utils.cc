@@ -1133,5 +1133,9 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
       mlir::mhlo::GetDebugNameFromLocation(loc));
 }
 
+bool IsAMDGPU(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
 }  // namespace gpu
 }  // namespace xla

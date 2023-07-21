@@ -126,10 +126,20 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
-  // This pass only targets a specific set of models that contain "decomposed"
-  // quantized ops produced from the framework level. There is a plan to make
-  // the framework directly produce StableHLO uniform quantized ops.
+  // The following two passes find specific uniform quantization patterns in
+  // StableHLO and converts them to TFLite ops that accept or produce uniform
+  // quantized types. They only target a specific set of models that contain
+  // "decomposed" quantized ops produced from the framework level. This is why
+  // they are placed right after the `LegalizeTFXlaCallModuleToStablehloPass`
+  // because the quantization patterns should be identified before any
+  // optimizations kick in.
+  //
+  // There are future plans to make the framework to directly produce StableHLO
+  // uniform quantized ops and deprecate `ComposeUniformQuantizedTypePass`. If
+  // no quantization patterns are found, it is a no-op.
   pass_manager->addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
+  pass_manager->addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateUniformQuantizedStablehloToTflPass());
 
   pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.

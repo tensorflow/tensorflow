@@ -172,7 +172,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
-  opts.set_xla_gpu_enable_experimental_block_size(false);
+  opts.set_xla_gpu_enable_experimental_block_size(true);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(false);
@@ -1176,6 +1176,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_triton_fusion_level),
       debug_options->xla_gpu_triton_fusion_level(),
       "Triton fusion level, higher levels mean more fused operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotuned_triton_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_triton_fusions),
+      debug_options->xla_gpu_dump_autotuned_triton_fusions(),
+      "Dumps autotuned Triton fusions to the directory specified by "
+      "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
+      "HLO."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

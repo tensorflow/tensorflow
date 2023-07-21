@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batch_kernels.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -26,6 +27,9 @@ limitations under the License.
 #include "tensorflow/tsl/platform/blocking_counter.h"
 
 namespace tensorflow {
+
+using PerModelData = serving::WarmupStateRegistry::PerModelData;
+
 class BatchFunctionKernelTest : public BatchFunctionKernelTestBase {};
 
 TEST_P(BatchFunctionKernelTest, EnableAdaptiveScheduler) {
@@ -117,7 +121,7 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   serving::WarmupStateRegistry::Key key(session_metadata.name(),
                                         session_metadata.version());
 
-  int batch_size = 16;
+  int num_requests = 16;
 
   bool enable_splitting = GetParam();
 
@@ -125,10 +129,11 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
     // Setting the state to warmup disables batching in the BatchFunction op. We
     // are checking this behavior by checking the tensor shape inside batch
     // function is the same as the input tensor shape using EnsureShape op.
-    auto handle = serving::GetGlobalWarmupStateRegistry().Register(key);
-
-    tsl::BlockingCounter blocking_counter(batch_size);
-    for (int i = 0; i < batch_size; ++i) {
+    auto per_model_data = std::make_unique<PerModelData>();
+    auto handle = serving::GetGlobalWarmupStateRegistry().Register(
+        key, std::move(per_model_data));
+    tsl::BlockingCounter blocking_counter(num_requests);
+    for (int i = 0; i < num_requests; ++i) {
       Env::Default()->SchedClosure([&]() {
         BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
@@ -141,28 +146,29 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
         blocking_counter.DecrementCount();
       });
     }
-
+    // Note this times out after 60s, so `batch_timeout_micros` and `batch_size`
+    // need to be set accordingly.
     blocking_counter.Wait();
   }
 
   EXPECT_FALSE(serving::GetGlobalWarmupStateRegistry().Lookup(key));
+  {
+    tsl::BlockingCounter blocking_counter(num_requests);
+    for (int i = 0; i < num_requests; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        BatchFunctionKernelParallelWarmupTestState test;
+        test.set_session_metadata(session_metadata);
+        TF_CHECK_OK(test.Init(enable_splitting));
+        test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
+        // We expect requests to be batched together when the warm-up mode is
+        // turned off, which will make the execution fail at `EnsureShape`.
+        EXPECT_FALSE(test.RunOpKernel().ok());
 
-  tsl::BlockingCounter blocking_counter(batch_size);
-  for (int i = 0; i < batch_size; ++i) {
-    Env::Default()->SchedClosure([&]() {
-      BatchFunctionKernelParallelWarmupTestState test;
-      test.set_session_metadata(session_metadata);
-      TF_CHECK_OK(test.Init(enable_splitting));
-      test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
-      // We expect requests to be batched together when the warm-up mode is
-      // turned off, which will make the execution fail at `EnsureShape`.
-      EXPECT_FALSE(test.RunOpKernel().ok());
-
-      blocking_counter.DecrementCount();
-    });
+        blocking_counter.DecrementCount();
+      });
+    }
+    blocking_counter.Wait();
   }
-
-  blocking_counter.Wait();
 }
 
 INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,

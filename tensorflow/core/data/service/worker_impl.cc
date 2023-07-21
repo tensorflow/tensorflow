@@ -567,6 +567,9 @@ std::vector<ActiveTask> DataServiceWorkerImpl::GetActiveTasks() const
   }
 
   for (const auto& [task_id, task] : current_tasks) {
+    if (task == nullptr) {
+      continue;
+    }
     ActiveTask active_task;
     active_task.set_task_id(task_id);
     active_task.set_processing_time_nsec(0.0);
@@ -576,7 +579,7 @@ std::vector<ActiveTask> DataServiceWorkerImpl::GetActiveTasks() const
       mutex_lock task_lock(task->mu);
       task_initialized = task->initialized;
     }
-    if (task_initialized) {
+    if (task_initialized && task->task_runner != nullptr) {
       std::optional<double> processing_time_nsec =
           task->task_runner->GetProcessingTimeNsec();
       active_task.set_processing_time_nsec(

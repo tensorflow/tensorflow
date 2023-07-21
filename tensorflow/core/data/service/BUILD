@@ -265,9 +265,9 @@ cc_library(
         ":data_transfer_visibility",
     ],
     deps = [
-        ":common_proto_cc",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",

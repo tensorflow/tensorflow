@@ -47,5 +47,14 @@ Status LoopFusion::EmitKernel(const LaunchDimensions& launch_dims,
       .EmitLoop(GetIrNameFromLoc(fusion_op()->getLoc()), index_type);
 }
 
+StatusOr<LaunchDimensions> LoopFusion::launch_dimensions() const {
+  return analysis_.GetLaunchDimensions(
+      ir_emitter_context()
+          .hlo_module()
+          .config()
+          .debug_options()
+          .xla_gpu_enable_experimental_block_size());
+}
+
 }  // namespace gpu
 }  // namespace xla

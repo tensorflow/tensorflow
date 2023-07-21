@@ -312,6 +312,7 @@ filegroup(
         "//tensorflow/compiler/xla:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/framework:__pkg__",
+        "//tensorflow/core/util:__pkg__",
     ]),
 )
 
