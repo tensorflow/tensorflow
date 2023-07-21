@@ -235,7 +235,11 @@ class PjRtFuture {
         std::move(callback)(*promise);
         return;
       }
-      DCHECK_EQ(promise.value()->NumRef(), 1);
+      // For non-copyable types, we have no ways to check the number of waiters
+      // but we have to move the data into the consumer callback. Registering
+      // two callbacks will lead to double-move of the data. It is users'
+      // responsibility to make sure only one waiter is registered.
+      // TODO(yunlongl): Implement `PjRtUniqueFuture`.
       std::move(callback)(std::move(*promise));
     });
   }
