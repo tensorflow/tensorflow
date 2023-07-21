@@ -38,6 +38,10 @@ void SetOptionOverride(OptionOverrideProto& option, bool value) {
   option.set_bool_field(value);
 }
 
+void SetOptionOverride(OptionOverrideProto& option, int64_t value) {
+  option.set_int_field(value);
+}
+
 }  // namespace
 
 StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
@@ -92,14 +96,20 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
       case OptionOverrideProto::kStringField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.string_field())});
         break;
       case OptionOverrideProto::kBoolField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.bool_field())});
+        break;
+      case OptionOverrideProto::kIntField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             CompileOptions::OptionOverride(
+                 env_option_override.second.int_field())});
         break;
       case OptionOverrideProto::VALUE_NOT_SET:
         return InternalError("OptionOverrideProto value not set.");
@@ -288,6 +298,16 @@ Status CompileOptions::ApplyOption(const std::string& key,
                std::holds_alternative<std::string>(value)) {
       reflection->SetString(&debug_options, xla_field,
                             std::get<std::string>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_INT32 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt32(&debug_options, xla_field, std::get<int64_t>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
       return OkStatus();
     } else {
       return InvalidArgument(

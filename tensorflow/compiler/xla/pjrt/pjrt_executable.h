@@ -89,7 +89,7 @@ struct CompileOptions {
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
-  using OptionOverride = std::variant<std::string, bool>;
+  using OptionOverride = std::variant<std::string, bool, int64_t>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
 
   // Used to indicate the precision configuration.
