@@ -753,9 +753,9 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     }
 
     if (use_pjrt_tensor_buffer) {
-      *var->tensor() = MakeTensorFromPjRtStreamExecutorBuffer(
+      PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
           var->tensor()->dtype(), var->tensor()->shape(),
-          std::move(executable_outputs[output_num]));
+          std::move(executable_outputs[output_num]), var->tensor());
     } else {
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           var->tensor()->dtype(), var->tensor()->shape(), var->tensor()));
