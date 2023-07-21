@@ -1,41 +1,8 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/AttributorAttributes.cpp b/llvm/lib/Transforms/IPO/AttributorAttributes.cpp
---- a/llvm/lib/Transforms/IPO/AttributorAttributes.cpp
-+++ b/llvm/lib/Transforms/IPO/AttributorAttributes.cpp
-@@ -11356,7 +11356,7 @@
-   /// See AbstractAttribute::updateImpl(...).
-   ChangeStatus updateImpl(Attributor &A) override {
-     auto AssumedBefore = getAssumed();
--    bool UsedAssumedInformation;
-+    bool UsedAssumedInformation = false;
- 
-     SmallVector<AA::ValueAndContext> Values;
-     Function *AnchorScope = getAnchorScope();
-@@ -11441,7 +11441,7 @@
-           Changed = ChangeStatus::CHANGED;
-       return true;
-     };
--    bool UsedAssumedInformation;
-+    bool UsedAssumedInformation = false;
-     (void)A.checkForAllInstructions(RetInstPred, *this, {Instruction::Ret},
-                                     UsedAssumedInformation,
-                                     /* CheckBBLivenessOnly */ true);
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/Attributor.cpp b/llvm/lib/Transforms/IPO/Attributor.cpp
---- a/llvm/lib/Transforms/IPO/Attributor.cpp
-+++ b/llvm/lib/Transforms/IPO/Attributor.cpp
-@@ -1923,7 +1923,7 @@
-   if (!AssociatedFunction)
-     return false;
- 
--  bool UsedAssumedInformation;
-+  bool UsedAssumedInformation = false;
-   SmallVector<AA::ValueAndContext> Values;
-   if (!getAssumedSimplifiedValues(
-           IRPosition::returned(*AssociatedFunction), &QueryingAA, Values, S,
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -9019,6 +9019,7 @@
+@@ -9023,6 +9023,7 @@
      srcs = [
          "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
          "include/mlir/Dialect/Linalg/IR/LinalgEnums.td",
