@@ -880,12 +880,12 @@ class MklMatMulPrimitive : public MklPrimitive {
     // Create memory primitive based on dummy data.
     context_.a_mem.reset(
         new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
-#ifndef DNNL_AARCH64_USE_ACL
-    context_.b_mem.reset(
-        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
-#else
+#ifdef DNNL_AARCH64_USE_ACL
     context_.b_mem.reset(new dnnl::memory(
         context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
+#else
+    context_.b_mem.reset(
+        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
 #endif
     context_.c_mem.reset(
         new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
