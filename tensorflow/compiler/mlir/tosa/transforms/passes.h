@@ -44,7 +44,8 @@ class TosaDialect;
 
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
-void populateLegalizeTFLToTensorPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+void populateLegalizeTFLToTensorPatterns(MLIRContext* ctx,
+                                         RewritePatternSet& patterns);
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass();
