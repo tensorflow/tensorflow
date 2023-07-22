@@ -186,6 +186,12 @@ __host__ __device__ inline int tf_min(unsigned int x, int y) {
 __host__ __device__ inline int tf_max(unsigned int x, int y) {
   return max(static_cast<int>(x), y);
 }
+__host__ __device__ inline int tf_min(int x, unsigned int y) {
+  return min(x, static_cast<int>(y));
+}
+__host__ __device__ inline int tf_max(int x, unsigned int y) {
+  return max(x, static_cast<int>(y));
+}
 #endif
 #endif
 
