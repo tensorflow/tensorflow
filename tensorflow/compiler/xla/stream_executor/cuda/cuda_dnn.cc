@@ -3573,10 +3573,10 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
 
 #endif
 
-#if (CUDNN_VERSION >= 8900 && TF_ENABLE_CUDNN_FRONTEND)
 tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     const cudnn_frontend::Tensor& original, int64_t uid, dnn::DataType dtype,
     bool is_virtual = false) {
+#if (CUDNN_VERSION >= 8900 && TF_ENABLE_CUDNN_FRONTEND)
   auto tensor = cudnn_frontend::TensorBuilder()
                     .cloneFrom(original, uid)
                     .setAlignment(32)
@@ -3585,8 +3585,10 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor);
   return tensor;
-}
+#else
+  return tsl::errors::Internal("Not implemented.");
 #endif  // CUDNN_VERSION >= 8900 && TF_ENABLE_CUDNN_FRONTEND
+}
 
 #if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 enum CudnnfMHAUid {
