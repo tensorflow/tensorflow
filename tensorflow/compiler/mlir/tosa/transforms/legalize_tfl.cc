@@ -86,12 +86,14 @@ struct ConvertConstantOp : public RewritePattern {
                                 PatternRewriter& rewriter) const override;
 };
 
-#define DECL_CONVERT_OP(tfl_op)                                              \
-  struct ConvertTFL##tfl_op##Op : public RewritePattern {                    \
-    explicit ConvertTFL##tfl_op##Op(MLIRContext* context)                    \
-        : RewritePattern(TFL::tfl_op##Op::getOperationName(), 1, context) {} \
-    LogicalResult matchAndRewrite(Operation* op,                             \
-                                  PatternRewriter& rewriter) const override; \
+#define DECL_CONVERT_OP(tfl_op)                                                  \
+  struct ConvertTFL##tfl_op##Op : public RewritePattern {                        \
+    explicit ConvertTFL##tfl_op##Op(MLIRContext* context, bool tosaOnly = false) \
+        : RewritePattern(TFL::tfl_op##Op::getOperationName(), 1, context)        \
+        , tosaOnly{tosaOnly} {}                                                  \
+    LogicalResult matchAndRewrite(Operation* op,                                 \
+                                  PatternRewriter& rewriter) const override;     \
+    bool tosaOnly = true;                                                        \
   }
 DECL_CONVERT_OP(Gelu);
 DECL_CONVERT_OP(Relu);
@@ -4051,7 +4053,7 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
 
   std::optional<Value> result = convertGatherOp(
       rewriter, op, tfl_gather_op.getParams(),
-      tfl_gather_op.getIndices(), batch_dims, axis);
+      tfl_gather_op.getIndices(), batch_dims, axis, tosaOnly);
 
   if (!result) return failure();
 
@@ -4497,6 +4499,7 @@ LogicalResult ConvertTFLBroadcastToOp::matchAndRewrite(
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
+  mlir::tosa::populateLegalizeTFLToTensorPatterns(context, patterns);
   frozen_patterns_ = FrozenRewritePatternSet(
       std::move(patterns), this->disabled_patterns_, this->enabled_patterns_);
   return success();
@@ -4632,6 +4635,16 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLImag);
   DEF_PATTERN_INSERT(TFLRFFT2d);
   DEF_PATTERN_INSERT(TFLBroadcastTo);
+#undef DEF_PATTERN_INSERT
+}
+
+void populateLegalizeTFLToTensorPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
+#define DEF_PATTERN_INSERT(PAT) \
+  patterns.addWithLabel<Convert##PAT##Op>({#PAT"ToTensor"}, ctx, /*tosaOnly*/false);
+
+  DEF_PATTERN_INSERT(TFLGather);
+
+#undef DEF_PATTERN_INSERT
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

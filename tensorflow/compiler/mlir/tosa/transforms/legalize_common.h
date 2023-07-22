@@ -291,7 +291,7 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
                                      Value indices_value,
                                      int32_t batch_dims,
                                      int32_t axis,
-                                     ReshapeBuilder reshaper = nullptr);
+                                     bool tosaOnly = true);
 
 // Lowers GatherNd operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,

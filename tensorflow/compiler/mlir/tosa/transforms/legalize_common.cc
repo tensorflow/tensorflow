@@ -115,7 +115,7 @@ static llvm::SmallVector<int64_t> as_static_dimension_list(
 // representation of the desired shape.
 static std::optional<Value>
 build_reshape(PatternRewriter& rewriter, Location loc, Value value,
-              ArrayRef<OpFoldResult> shape) {
+              ArrayRef<OpFoldResult> shape, bool tosaOnly) {
   auto static_shape = as_static_dimension_list(shape);
   auto element_type = value.getType().dyn_cast<TensorType>().getElementType();
 
@@ -126,13 +126,17 @@ build_reshape(PatternRewriter& rewriter, Location loc, Value value,
     return rewriter.create<tensor::ReshapeOp>(
         loc, tensorflow::GetTypeFromTFTensorShape(static_shape, element_type),
         value, runtime_shape);
-  } else {
+  }
+
+  if (!tosaOnly) {
     return CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, loc,
         tensorflow::GetTypeFromTFTensorShape(static_shape, element_type), value,
         rewriter.getDenseI64ArrayAttr(
             tensorflow::ConvertMlirShapeToTF(static_shape)));
   }
+
+  return std::nullopt;
 }
 
 namespace {
@@ -3914,10 +3918,7 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
                                      Value indices_value,
                                      int32_t batch_dims,
                                      int32_t axis,
-                                     ReshapeBuilder reshaper) {
-  if (!reshaper)
-    reshaper = build_reshape;
-
+                                     bool tosaOnly) {
   auto result_type = dyn_cast<ShapedType>(op->getResult(0).getType());
   auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
   auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
@@ -4153,13 +4154,13 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
       params_value, params_transpose_perm_val.value());
 
   std::optional<Value> tosa_values_reshape_op =
-      reshaper(rewriter, op->getLoc(), params_transpose_op, {N, K, C});
+      build_reshape(rewriter, op->getLoc(), params_transpose_op, {N, K, C}, tosaOnly);
 
   if (!tosa_values_reshape_op)
     return std::nullopt;
 
   std::optional<Value> tosa_indices_reshape_op =
-      reshaper(rewriter, op->getLoc(), indices_value, {N, W});
+      build_reshape(rewriter, op->getLoc(), indices_value, {N, W}, tosaOnly);
 
   if (!tosa_indices_reshape_op)
     return std::nullopt;
@@ -4173,8 +4174,8 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter,
                                            result_type.getElementType()),
       tosa_values_reshape_op.value(), tosa_indices_reshape_op.value());
 
-  std::optional<Value> tosa_result_reshape_op = reshaper(
-      rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape);
+  std::optional<Value> tosa_result_reshape_op = build_reshape(
+      rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape, tosaOnly);
 
   if (!tosa_result_reshape_op)
     return std::nullopt;
