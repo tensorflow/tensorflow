@@ -77,13 +77,13 @@ static OpFoldResult multiply_dims(llvm::ArrayRef<OpFoldResult> dims,
     return init ? init : OpFoldResult{builder.getIndexAttr(1)};
   }
 
-  // Use the firs value as the initial value
+  // Use the first value as the initial value
   if (!init) {
     init = dims.front();
     dims = dims.drop_front();
   }
 
-  auto multiply = [&](OpFoldResult x, OpFoldResult y) -> OpFoldResult {
+  auto multiply = [&builder, &loc](OpFoldResult x, OpFoldResult y) -> OpFoldResult {
     auto val_x = getValueOrCreateConstantIndexOp(builder, loc, x);
     auto val_y = getValueOrCreateConstantIndexOp(builder, loc, y);
     return getAsOpFoldResult(
