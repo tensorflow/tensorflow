@@ -1223,7 +1223,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       if (!builder) {
         builder = std::make_unique<GraphDebugInfoBuilder>();
       }
-      builder->AccumulateStackTrace(stack_trace, dst->name());
+      builder->AccumulateStackTrace(*stack_trace, dst->name());
     }
   }
 

@@ -112,7 +112,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
@@ -241,8 +240,6 @@ class ImporterBase {
         LOG(INFO) << "\t" << it.first << " -> " << it.second;
       }
     }
-
-    stack_traces_ = LoadTracesFromDebugInfo(debug_info_);
   }
 
   // Returns the inferred function signature of the given function body. Input
@@ -468,7 +465,6 @@ class ImporterBase {
   const FunctionLibraryDefinition& graph_flib_;
   const GraphImportConfig& specs_;
   const GraphDebugInfo& debug_info_;
-  StackTracesMap stack_traces_;
   llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
   // TODO(jpienaar): Remove once shape inference on import is removed.
@@ -1744,6 +1740,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
 mlir::Location ImporterBase::GetLocation(const Node& node) {
   DVLOG(1) << "Getting location for " << node.name() << " " << &node;
   // TODO(b/142400497): What is the semantic contract for locations?
+  const auto& debug_info = debug_info_.traces();
+
   // Create a location for node `name` in function `function_name`.
   auto create_location = [&](llvm::StringRef name,
                              llvm::StringRef function_name) -> mlir::Location {
@@ -1761,30 +1759,35 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
         function_name.empty() ? name.str() : debug_info_key;
     auto name_loc_id = mlir::StringAttr::get(context_, name_for_name_loc);
 
-    std::shared_ptr<AbstractStackTrace> stack_trace = node.GetStackTrace();
-
-    // Prefer stack traces if available, fallback to debug info if not, and then
-    // finally to just name. Older versions of debug info concatenated `@` onto
-    // the node name for the default graph, so we check both locations.
-    if (stack_trace != nullptr) {
-    } else if (stack_traces_.contains(name_for_name_loc)) {
-      stack_trace = stack_traces_.at(name_for_name_loc);
-    } else if (stack_traces_.contains(debug_info_key)) {
-      stack_trace = stack_traces_.at(debug_info_key);
-    } else {
-      DVLOG(1) << "No stack trace for " << node.name();
-    }
-
     llvm::SmallVector<mlir::Location, 4> locations;
-
-    if (stack_trace != nullptr) {
+    // Prefer stack traces if available, fallback to debug info if not, and then
+    // finally to just name.
+    if (auto stack_trace = node.GetStackTrace()) {
       DVLOG(1) << "Stack available for " << node.name();
-      for (const StackFrame& frame : stack_trace->ToFrames()) {
+      absl::Span<const StackFrame> frames = stack_trace->ToFrames();
+      locations.reserve(frames.size());
+      for (const StackFrame& frame : llvm::reverse(frames)) {
         auto file_name = mlir::StringAttr::get(context_, frame.file_name);
         // Use col 1 as there is no column info in StackTrace.
         auto file_line_loc =
             mlir::FileLineColLoc::get(file_name, frame.line_number, 1);
         locations.push_back(file_line_loc);
+      }
+    } else {
+      DVLOG(1) << "No stack trace for " << node.name();
+      const auto location_it = debug_info.find(debug_info_key);
+      if (location_it != debug_info.end()) {
+        DVLOG(1) << "Available serialized debug info for " << node.name();
+        // Convert the stack trace to a chain of mlir::CallSiteLocs.
+        const auto& trace = location_it->second;
+        locations.reserve(trace.file_line_cols_size());
+        for (const auto& location : trace.file_line_cols()) {
+          const auto& file = debug_info_.files(location.file_index());
+          auto file_name = mlir::StringAttr::get(context_, file);
+          auto file_line_loc = mlir::FileLineColLoc::get(
+              file_name, location.line(), location.col());
+          locations.push_back(file_line_loc);
+        }
       }
     }
 

@@ -511,7 +511,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/util:tf_stack",
     ],
 )
 
@@ -568,6 +567,14 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops:resource_variable_ops",
+    ],
+)
+
+pytype_strict_library(
+    name = "strict_mode",
+    srcs = ["strict_mode.py"],
+    deps = [
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1824,10 +1831,9 @@ pytype_strict_library(
     srcs = ["flexible_dtypes.py"],
     deps = [
         ":dtypes",
+        ":extension_type",
         ":ops",
-        ":tensor_shape",
         ":weak_tensor",
-        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],

@@ -41,10 +41,6 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 # from tensorflow.python.layers import layers
 from tensorflow.python.module import module
-from tensorflow.python.profiler import profiler
-from tensorflow.python.profiler import profiler_client
-from tensorflow.python.profiler import profiler_v2
-from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops

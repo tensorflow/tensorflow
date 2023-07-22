@@ -535,10 +535,6 @@ void UpdateCompileOptions(SavedModel::Options& options) {
       !options.graph_execution_options.enable_mlrt;
 
   if (options.graph_execution_options.enable_mlrt) {
-    options.lazy_loading_use_graph_executor = options.enable_lazy_loading;
-    LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
-                 "enable_lazy_loading: "
-              << options.enable_lazy_loading;
     options.graph_execution_options.compile_options
         .enable_while_parallel_iterations = true;
     LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
@@ -831,8 +827,10 @@ tensorflow::Status SavedModelImpl::Run(
         const LoadingResult& loading_result,
         GetOrCreateLoadingResult(run_options, {std::string(name)}));
     symbol_uids = &loading_result.symbol_uids;
-    func = loading_result.bef_file->GetFunction(
-        tensorflow::kImportModelDefaultGraphFuncName);
+    loaded_executable = loading_result.bytecode_executable.get();
+    if (loaded_executable == nullptr) {
+      func = loading_result.bef_file->GetFunction(loading_result.name);
+    }
     runner_table = loading_result.runner_table.get();
     resource_array = loading_result.resource_array.get();
   } else {
@@ -935,11 +933,12 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
 
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelImpl::ImportSubgraph(
-    mlir::MLIRContext* context,
+    mlir::MLIRContext* context, absl::string_view name,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
     const std::vector<std::string>& output_nodes,
     const std::vector<std::string>& target_nodes) {
   tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.graph_func_name = name;
   graph_import_config.prune_unused_nodes = true;
   graph_import_config.enable_shape_inference = false;
   graph_import_config.inputs = input_nodes;
@@ -1061,10 +1060,11 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
 
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      auto module, ImportSubgraph(&context, joined_signature.input_nodes,
-                                  joined_signature.output_nodes,
-                                  joined_signature.target_nodes));
+  ASSIGN_OR_RETURN_IN_IMPORT(auto module,
+                             ImportSubgraph(&context, joined_signature.name,
+                                            joined_signature.input_nodes,
+                                            joined_signature.output_nodes,
+                                            joined_signature.target_nodes));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
@@ -1081,22 +1081,39 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       options_.graph_execution_options.compile_options.saved_model_dir,
       &graph_executor_->resource_context());
 
-  RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef, model_context, fallback_state_.get()));
+  if (options_.graph_execution_options.enable_mlrt) {
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        loading_result->bytecode_buffer,
+        tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
+            options_.graph_execution_options.compile_options, *fallback_state_,
+            module.get(), model_context));
+    mlrt::bc::Executable executable(loading_result->bytecode_buffer.data());
+    loading_result->bytecode_executable =
+        std::make_unique<mlrt::LoadedExecutable>(
+            executable, graph_executor_->kernel_registry());
+    RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
+        graph_executor_->options(), /*initializers_and_signatures=*/{},
+        *loading_result->bytecode_executable,
+        &graph_executor_->resource_context(),
+        loading_result->runner_table.get(),
+        loading_result->resource_array.get(), *fallback_state_));
+  } else {
+    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+        options_.graph_execution_options.compile_options, module.get(),
+        &loading_result->bef, model_context, fallback_state_.get()));
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        loading_result->bef_file,
+        tfrt::CreateBefFileFromBefBuffer(
+            *options_.graph_execution_options.runtime, loading_result->bef));
+    RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
+        graph_executor_->options(),
+        /*initializers_and_signatures=*/{}, loading_result->bef_file.get(),
+        &graph_executor_->resource_context(),
+        loading_result->runner_table.get(),
+        loading_result->resource_array.get(), *fallback_state_));
+  }
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
   loading_result->symbol_uids = std::move(symbol_uids);
-
-  // Step 3: Initialize runtime states using special BEF functions.
-  ASSIGN_OR_RETURN_IN_INIT(
-      loading_result->bef_file,
-      tfrt::CreateBefFileFromBefBuffer(
-          *options_.graph_execution_options.runtime, loading_result->bef));
-  RETURN_IF_ERROR_IN_INIT(RunBefInitializers(
-      graph_executor_->options(),
-      /*initializers_and_signatures=*/{}, loading_result->bef_file.get(),
-      &graph_executor_->resource_context(), loading_result->runner_table.get(),
-      loading_result->resource_array.get(), *fallback_state_));
 
   // Store loading_result in cache.
   const auto* loading_result_ptr = loading_result.get();

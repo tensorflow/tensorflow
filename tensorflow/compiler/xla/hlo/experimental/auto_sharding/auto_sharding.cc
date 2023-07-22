@@ -2285,24 +2285,14 @@ AutoShardingSolverResult CallSolver(
   // Serialize liveness_set
   request.live.resize(liveness_set.size());
   for (size_t t = 0; t < liveness_set.size(); ++t) {
-    std::vector<int>& current_liveness_set_indices = request.live[t];
-    std::function<void(const StrategyVector*, const ShapeIndex&)>
-        traverse_live_instructions;
-    traverse_live_instructions = [&](const StrategyVector* strategies,
-                                     const ShapeIndex& index) {
-      if (!index.empty()) {
-        current_liveness_set_indices.push_back(
-            strategies->childs.at(index.front())->id);
-      } else {
-        current_liveness_set_indices.push_back(strategies->id);
-      }
-    };
     for (const HloValue* value : liveness_set[t]) {
-      if (value->instruction()->shape().IsTuple() && value->index().empty()) {
-        continue;
-      }
-      traverse_live_instructions(strategy_map.at(value->instruction()).get(),
-                                 value->index());
+      const HloInstruction* instruction = value->instruction();
+      const ShapeIndex& index = value->index();
+      if (instruction->shape().IsTuple() && index.empty()) continue;
+      const StrategyVector* strategies = strategy_map.at(instruction).get();
+      const int id = index.empty() ? strategies->id
+                                   : strategies->childs.at(index.front())->id;
+      request.live[t].push_back(id);
     }
   }
   const AutoShardingSolverResult result = CallORToolsSolver(request);

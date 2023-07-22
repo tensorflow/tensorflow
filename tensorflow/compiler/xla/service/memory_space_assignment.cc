@@ -65,6 +65,10 @@ const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 // Each time we retry compilation, increase the preferred eviction end time by
 // this amount multiplied by preferred overlap to async copy ratio.
 const float kEvictionRetryMultiplier = 2.0;
+// The number of decreasing intervals for CostAnalysisPrefetchIntervalPicker to
+// return when it runs out of increasing intervals. Increasing this number may
+// hurt compilation time.
+const int kNumExploredDecreasingIntervals = 100;
 
 template <typename T>
 std::string VectorToString(const std::vector<T>& v,
@@ -1105,9 +1109,40 @@ int64_t CostAnalysisPrefetchIntervalPicker::Next() {
     return prefetch_time;
   } else {
     int64_t prefetch_time = decreasing_prefetch_time_iterator_--;
+    // As a compilation time optimization, reduce the number of intervals that
+    // this prefetch interval picker returns. When we run out of the increasing
+    // prefetch time iterator, only explore up to
+    // kNumExploredDecreasingIntervals intervals. To do that, calculate the
+    // 1/kNumExploredDecreasingIntervals of the elapsed time between the
+    // earliest prefetch time and the use, and decrement the iterator until the
+    // prefetch elapsed time is at least as large as this target value. This
+    // allows us to reduce the number of expensive heap fit and resource checks
+    // when the graph consists of a large number of fast-executing HLOs.
+    //
+    // Shown pictorially, assuming kNumExploredDecreasingIntervals = 3 and the
+    // numbers indicating the elapsed time of the HLOs, only the indicated
+    // options for prefetch start time would be explored:
+    //
+    //    ---1---1---3---1---1---1---1---0---0---0---0---1---5---X
+    //     ^           ^                                   ^     ^
+    //  Option3     Option2                             Option1 Use
+    // (Earliest)
+    float next_target_interval_elapsed = 0;
+    if (increasing_prefetch_time_iterator_ > latest_prefetch_time_) {
+      next_target_interval_elapsed =
+          GetLogicalIntervalElapsed(prefetch_time, end_logical_time_) +
+          (GetLogicalIntervalElapsed(earliest_prefetch_time_,
+                                     end_logical_time_) /
+           kNumExploredDecreasingIntervals);
+      VLOG(3) << "Next target interval elapsed: "
+              << next_target_interval_elapsed;
+    }
     while (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_ &&
-           computation_nest_level_[decreasing_prefetch_time_iterator_] !=
-               computation_nest_level_[end_logical_time_]) {
+           (computation_nest_level_[decreasing_prefetch_time_iterator_] !=
+                computation_nest_level_[end_logical_time_] ||
+            GetLogicalIntervalElapsed(decreasing_prefetch_time_iterator_,
+                                      end_logical_time_) <
+                next_target_interval_elapsed)) {
       --decreasing_prefetch_time_iterator_;
     }
     if (increasing_prefetch_time_iterator_ <= latest_prefetch_time_) {

@@ -1226,7 +1226,9 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
         std::move(dim_args_spec), std::move(disabled_checks),
-        std::move(platforms), std::move(loading_platform));
+        std::move(platforms), std::move(loading_platform),
+        /*num_invocation_args=*/op.getArgs().size(),
+        op.getHasTokenInputOutput());
     if (!l.ok()) {
       LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
                               << l.status().ToString() << "\n");

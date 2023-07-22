@@ -148,9 +148,13 @@ static void AddGraphInstances(std::weak_ptr<GraphInstances::Impl> impl) {
 static void EvictAllGraphs(
     se::StreamExecutor* executor,
     std::optional<uint64_t> eviction_timeout_seconds = std::nullopt) {
-  LOG(WARNING) << "Evict "
-               << (eviction_timeout_seconds.has_value() ? "timed out" : "all")
-               << " gpu graphs from executor " << executor;
+  // We WARN only when we evict all Gpu graphs because it happens when we
+  // recover from OOM. Eviction by time out is business as usual.
+  if (eviction_timeout_seconds.has_value()) {
+    VLOG(3) << "Evict timed out gpu graphs from executor " << executor;
+  } else {
+    LOG(WARNING) << "Evict all gpu graphs from executor " << executor;
+  }
 
   TraceMe trace_instantiation([&] {
     return TraceMeEncode("cuda.graph.evict_all_graphs",

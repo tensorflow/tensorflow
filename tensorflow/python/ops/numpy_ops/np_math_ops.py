@@ -116,7 +116,7 @@ def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
     if x1.dtype == dtypes.bool:
       assert x2.dtype == dtypes.bool
-      float_ = np_dtypes.default_float_type()
+      float_ = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_)
       x2 = math_ops.cast(x2, float_)
     if not np_dtypes.is_allow_float64():
@@ -374,7 +374,7 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
   y = _bin_op(f, x1, x2)
   if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
-    y = y.astype(np_dtypes.default_float_type())
+    y = y.astype(np_utils.result_type(float))
   return y
 
 
@@ -587,17 +587,17 @@ def _scalar(tf_fn, x, promote_to_float=False):
     tf_fn: function that takes a single Tensor argument.
     x: array_like. Could be an ndarray, a Tensor or any object that can be
       converted to a Tensor using `ops.convert_to_tensor`.
-    promote_to_float: whether to cast the argument to a float dtype
-      (`np_dtypes.default_float_type`) if it is not already.
+    promote_to_float: whether to cast the argument to a float dtype if it is not
+      already.
 
   Returns:
     An ndarray with the same shape as `x`. The default output dtype is
-    determined by `np_dtypes.default_float_type`, unless x is an ndarray with a
+    determined by `np_utils.result_type(float)`, unless x is an ndarray with a
     floating point type, in which case the output type is same as x.dtype.
   """
   x = np_array_ops.asarray(x)
   if promote_to_float and not np.issubdtype(x.dtype.as_numpy_dtype, np.inexact):
-    x = x.astype(np_dtypes.default_float_type())
+    x = x.astype(np_utils.result_type(float))
   return tf_fn(x)
 
 
@@ -1201,7 +1201,10 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
       math_ops.equal(array_ops.rank(a), 0), lambda: constant_op.constant([0]),
       lambda: _argsort(a, axis, stable))
 
-  return np_array_ops.array(tf_ans, dtype=np.intp)
+  if ops.is_auto_dtype_conversion_enabled():
+    return np_array_ops.array(tf_ans, dtype=int)
+  else:
+    return np_array_ops.array(tf_ans, dtype=np.intp)
 
 
 @np_utils.np_doc('sort')
@@ -1257,10 +1260,10 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     raise ValueError('Argument `axis` must be an integer. '
                      f'Received axis={axis} (of type {type(axis)})')
   a = np_array_ops.array(a)
+  default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
-      a = a.astype(
-          np_utils.result_type(a.dtype, np_dtypes.default_float_type()))
+      a = a.astype(np_utils.result_type(a.dtype, default_float_type))
     avg = math_ops.reduce_mean(a, axis=axis)
     if returned:
       if axis is None:
@@ -1272,8 +1275,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     if np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
       out_dtype = np_utils.result_type(a.dtype, weights)
     else:
-      out_dtype = np_utils.result_type(a.dtype, weights,
-                                       np_dtypes.default_float_type())
+      out_dtype = np_utils.result_type(a.dtype, weights, default_float_type)
     a = np_array_ops.array(a, out_dtype)
     weights = np_array_ops.array(weights, out_dtype)
 

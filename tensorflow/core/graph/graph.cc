@@ -1074,7 +1074,7 @@ GraphDebugInfo Graph::BuildDebugInfo() const {
     const std::shared_ptr<AbstractStackTrace>& stack_trace =
         node->GetStackTrace();
     if (stack_trace != nullptr) {
-      builder.AccumulateStackTrace(stack_trace, node->name());
+      builder.AccumulateStackTrace(*stack_trace, node->name());
     }
   }
 

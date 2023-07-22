@@ -72,6 +72,9 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 
+# Function
+from tensorflow.core.function.trace_type import *
+
 # Session
 from tensorflow.python.client.client_lib import *
 
@@ -128,8 +131,11 @@ nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
 
-# Function
-from tensorflow.core.function.trace_type import *
+# Profiler
+from tensorflow.python.profiler import profiler
+from tensorflow.python.profiler import profiler_client
+from tensorflow.python.profiler import profiler_v2
+from tensorflow.python.profiler import trace
 
 # Summary
 from tensorflow.python.summary import summary

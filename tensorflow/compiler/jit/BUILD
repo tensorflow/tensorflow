@@ -1551,6 +1551,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
     ],
 )
 

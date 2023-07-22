@@ -827,6 +827,28 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
+@@ -17,7 +17,6 @@
+ #ifndef STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
+ #define STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
+ 
+-include "mlir/Bindings/Python/Attributes.td"
+ include "stablehlo/dialect/ChloOps.td"
+ 
+ #endif
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
+@@ -17,7 +17,6 @@
+ #ifndef STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
+ #define STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
+ 
+-include "mlir/Bindings/Python/Attributes.td"
+ include "stablehlo/dialect/StablehloOps.td"
+ 
+ #endif
 diff --ruN a/stablehlo/stablehlo/reference/Element.cpp b/stablehlo/stablehlo/reference/Element.cpp
 --- stablehlo/stablehlo/reference/Element.cpp
 +++ stablehlo/stablehlo/reference/Element.cpp

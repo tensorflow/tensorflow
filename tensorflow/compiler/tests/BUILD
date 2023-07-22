@@ -2885,3 +2885,21 @@ tf_xla_py_strict_test(
         "//third_party/py/numpy",
     ],
 )
+
+tpu_py_strict_test(
+    name = "mean_op_test",
+    size = "small",
+    srcs = ["mean_op_test.py"],
+    disable_experimental = False,
+    disable_mlir_bridge = False,
+    deps = [
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)

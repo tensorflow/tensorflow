@@ -62,7 +62,6 @@ pytype_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
-        "//tensorflow/python/util:tf_stack",
     ],
 )
 
@@ -301,6 +300,7 @@ cuda_py_strict_test(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/training:training_ops",
+        "//tensorflow/python/types:trace",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
