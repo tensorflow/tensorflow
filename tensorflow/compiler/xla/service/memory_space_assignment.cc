@@ -156,7 +156,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
 // Filters out buffer uses that cannot use the cross-program prefetch due to
 // aliasing with program output.
 std::vector<HloUse> FindCrossProgramPrefetchUses(
-    absl::Span<const HloUse> buffer_uses) {
+    absl::Span<const HloUse> buffer_uses,
+    const HloAliasAnalysis& alias_analysis) {
   std::vector<HloUse> uses;
   if (buffer_uses.empty()) {
     return uses;
@@ -165,32 +166,44 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
                                                .instruction->GetModule()
                                                ->entry_computation()
                                                ->root_instruction();
-  absl::c_for_each(buffer_uses, [&](auto& use) {
-    if (use.instruction == root_instruction) {
-      if (use.instruction->opcode() == HloOpcode::kTuple ||
-          use.instruction->opcode() == HloOpcode::kBitcast) {
-        return;
-      }
-      auto in_place_pairs =
-          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
-      if (absl::c_any_of(
-              in_place_pairs,
-              [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
-                return in_place_pair.first.operand_number ==
-                           use.operand_number &&
-                       in_place_pair.first.operand_index == use.operand_index;
-              })) {
-        return;
-      }
-    }
-    uses.push_back(use);
-  });
+  // This function returns true if the use value does not live out of the
+  // module. The value lives out if it is the root or it aliases with another
+  // value that lives out. We recurse to detect the latter case.
+  std::function<bool(const HloUse&)> use_does_not_live_out =
+      [&](const HloUse& use) {
+        if (use.instruction == root_instruction &&
+            (use.instruction->opcode() == HloOpcode::kTuple ||
+             use.instruction->opcode() == HloOpcode::kBitcast)) {
+          return false;
+        }
+        auto in_place_pairs =
+            HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+        return absl::c_all_of(
+            in_place_pairs,
+            [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+              if (in_place_pair.first.operand_number == use.operand_number &&
+                  in_place_pair.first.operand_index == use.operand_index) {
+                return use.instruction != root_instruction &&
+                       absl::c_all_of(
+                           alias_analysis.dataflow_analysis()
+                               .GetUniqueValueAt(use.instruction,
+                                                 in_place_pair.second)
+                               .GetUses(),
+                           use_does_not_live_out);
+              }
+              return true;
+            });
+      };
+
+  absl::c_copy_if(buffer_uses, std::back_inserter(uses), use_does_not_live_out);
   return uses;
 }
 
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
+                                     const HloAliasAnalysis& alias_analysis,
                                      const Options& options) {
-  std::vector<HloUse> uses = FindCrossProgramPrefetchUses(value.GetUses());
+  std::vector<HloUse> uses =
+      FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -227,7 +240,7 @@ FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
-    if (IsCrossProgramPrefetchCandidate(*value, options)) {
+    if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
       MemorySpaceAssignment::BufferInterval interval;
       interval.buffer = value;
       interval.size = options.size_fn(*value);
@@ -4661,7 +4674,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses());
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses(), alias_analysis_);
   CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <
