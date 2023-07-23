@@ -407,6 +407,7 @@ cc_library(
         ":hlo_fusion_analysis",
         ":hlo_to_ir_bindings",
         ":ir_emitter_context",
+        ":kernel_reuse_cache",
         ":target_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

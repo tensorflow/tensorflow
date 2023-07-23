@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_reuse_cache.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -85,9 +86,16 @@ IrEmitterNested::IrEmitterNested(const HloComputation& nested_computation,
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
 StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
-  std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
-      nested_computation_.name(), "_",
-      absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_))));
+  // Include a fingerprint of the HLO in the function name. Currently, codegen
+  // is invoked on temporary HLO objects, which means the address of the
+  // computation is not necessarily unique.
+  std::string fingerprint = GetComputationFingerprint(&nested_computation_, {});
+  size_t hash = absl::Hash<std::string>{}(fingerprint);
+  std::string function_name = llvm_ir::SanitizeFunctionName(
+      absl::StrCat(nested_computation_.name(), "_",
+                   absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_)),
+                   "_", absl::Hex(hash)));
+
   auto* function =
       ir_emitter_context_->llvm_module()->getFunction(function_name);
   if (function) return function;
