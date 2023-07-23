@@ -124,23 +124,23 @@ static std::optional<Value> build_reshape(PatternRewriter& rewriter,
   auto element_type = value.getType().dyn_cast<TensorType>().getElementType();
 
   if (count_dynamic_dims(static_shape) > 1) {
-    auto runtime_shape = rewriter.create<tensor::FromElementsOp>(
-        loc, getValueOrCreateConstantIndexOp(rewriter, loc, shape));
+    if (!tosaOnly) {
+      auto runtime_shape = rewriter.create<tensor::FromElementsOp>(
+          loc, getValueOrCreateConstantIndexOp(rewriter, loc, shape));
 
-    return rewriter.create<tensor::ReshapeOp>(
-        loc, tensorflow::GetTypeFromTFTensorShape(static_shape, element_type),
-        value, runtime_shape);
+      return rewriter.create<tensor::ReshapeOp>(
+          loc, tensorflow::GetTypeFromTFTensorShape(static_shape, element_type),
+          value, runtime_shape);
+    }
+
+    return std::nullopt;
   }
 
-  if (!tosaOnly) {
-    return CreateOpAndInfer<tosa::ReshapeOp>(
-        rewriter, loc,
-        tensorflow::GetTypeFromTFTensorShape(static_shape, element_type), value,
-        rewriter.getDenseI64ArrayAttr(
-            tensorflow::ConvertMlirShapeToTF(static_shape)));
-  }
-
-  return std::nullopt;
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+    rewriter, loc,
+    tensorflow::GetTypeFromTFTensorShape(static_shape, element_type), value,
+    rewriter.getDenseI64ArrayAttr(
+      tensorflow::ConvertMlirShapeToTF(static_shape)));
 }
 
 namespace {
