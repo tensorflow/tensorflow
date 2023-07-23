@@ -100,13 +100,16 @@ static int64_t count_dynamic_dims(llvm::ArrayRef<int64_t> dims) {
   return count;
 }
 
-static int64_t as_static_index(OpFoldResult value) {
+// Try to extract the known integer value for the given OpFoldResult
+// with the intention of interpreting it as a tensor dimension.
+// When the value is not statically known, produce ShapedType::kDynamic.
+static int64_t as_static_dimension(OpFoldResult value) {
   return getConstantIntValue(value).value_or(ShapedType::kDynamic);
 }
 
 static llvm::SmallVector<int64_t> as_static_dimension_list(
     llvm::ArrayRef<OpFoldResult> values) {
-  return llvm::map_to_vector(values, as_static_index);
+  return llvm::map_to_vector(values, as_static_dimension);
 }
 
 // Reshape the given tensor value based the new shape described by the
@@ -4070,25 +4073,25 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   // Batch
   for (int i = 0; i < params_batch.size(); i++) {
     params_transpose_perm.push_back(params_idx_batch[i]);
-    params_transpose_shape.push_back(as_static_index(params_batch[i]));
+    params_transpose_shape.push_back(as_static_dimension(params_batch[i]));
   }
 
   // Indices
   for (int i = 0; i < params_indices.size(); i++) {
     params_transpose_perm.push_back(params_idx_indices[i]);
-    params_transpose_shape.push_back(as_static_index(params_indices[i]));
+    params_transpose_shape.push_back(as_static_dimension(params_indices[i]));
   }
 
   // LeftChannels
   for (int i = 0; i < params_left_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_left_channels[i]);
-    params_transpose_shape.push_back(as_static_index(params_left_channels[i]));
+    params_transpose_shape.push_back(as_static_dimension(params_left_channels[i]));
   }
 
   // RightChannels
   for (int i = 0; i < params_right_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_right_channels[i]);
-    params_transpose_shape.push_back(as_static_index(params_right_channels[i]));
+    params_transpose_shape.push_back(as_static_dimension(params_right_channels[i]));
   }
 
   /////////////////////////////////////////////
