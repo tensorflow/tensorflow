@@ -85,13 +85,13 @@ constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 constexpr int kVersionMaximumSupported =
     kVersionStartSupportUsesShapePolymorphismAttr;
 
-constexpr absl::string_view kDisabledCheckPlatform = "platform";
+constexpr llvm::StringRef kDisabledCheckPlatform = "platform";
 
 bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
   return llvm::is_contained(disabled_checks, kDisabledCheckPlatform);
 }
 
-constexpr absl::string_view kDisabledCheckShapeAssertions = "shape_assertions";
+constexpr llvm::StringRef kDisabledCheckShapeAssertions = "shape_assertions";
 
 bool IsShapeAssertionsCheckDisabled(
     absl::Span<const std::string> loading_disabled_checks) {
@@ -99,7 +99,7 @@ bool IsShapeAssertionsCheckDisabled(
                             kDisabledCheckShapeAssertions);
 }
 
-constexpr absl::string_view kUsesShapePolymorphismAttr =
+constexpr llvm::StringRef kUsesShapePolymorphismAttr =
     "jax.uses_shape_polymorphism";
 
 // Computes a dimension value from the dim_arg specification.
@@ -312,13 +312,14 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       }
       if (!uses_shape_poly_bool_attr.getValue()) {
         VLOG(3) << "XlaCallModule skipping shape refinement due to module "
-                << " attribute " << kUsesShapePolymorphismAttr << "="
+                << " attribute " << kUsesShapePolymorphismAttr.str() << "="
                 << mlir::debugString(uses_shape_poly_attr);
         return tsl::OkStatus();
       }
     } else {
       VLOG(3) << "XlaCallModule skipping shape refinement due to module "
-              << " attribute " << kUsesShapePolymorphismAttr << " missing";
+              << " attribute " << kUsesShapePolymorphismAttr.str()
+              << " missing";
       return tsl::OkStatus();
     }
   }
