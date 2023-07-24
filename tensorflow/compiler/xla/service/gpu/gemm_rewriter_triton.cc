@@ -993,6 +993,19 @@ void CopyIncrementingAboveThreshold(
   }
 }
 
+// Copy source values into destination incrementing those >= threshold by 1.
+void CopyIncrementingAboveThreshold(absl::Span<const int64_t> source,
+                                    DimensionVector& destination,
+                                    const int threshold) {
+  destination.reserve(source.size());
+  for (int64_t x : source) {
+    if (x >= threshold) {
+      ++x;
+    }
+    destination.push_back(x);
+  }
+}
+
 Status UncompilableMatmul(absl::string_view explanation) {
   Status s = absl::CancelledError(explanation);
   s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
@@ -1133,6 +1146,15 @@ Status MakeDotComputationSplitKBatch(
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
                             dot->shape().element_type())
                      .value();
+      // Make the added batch dimension the major-most, keep the order of the
+      // original dimensions.
+      expanded->mutable_shape()->mutable_layout()->clear_minor_to_major();
+      CopyIncrementingAboveThreshold(dot->shape().layout().minor_to_major(),
+                                     *expanded->mutable_shape()
+                                          ->mutable_layout()
+                                          ->mutable_minor_to_major(),
+                                     0);
+      expanded->mutable_shape()->mutable_layout()->add_minor_to_major(0);
       dot->SetupDerivedInstruction(expanded);
     } else {
       expanded = computation->AddInstruction(
@@ -1343,8 +1365,7 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
       HloInstruction * reduce,
       MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0}, HloOpcode::kAdd));
 
-  // If the original dot had non-standard layout, this reduce should have that
-  // too.
+  // The output of the reduce has to have the layout of the original dot.
   *reduce->mutable_shape()->mutable_layout() = output_layout;
 
   if (dot_fusion->IsRoot()) {

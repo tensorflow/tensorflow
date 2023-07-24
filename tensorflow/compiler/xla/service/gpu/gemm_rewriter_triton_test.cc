@@ -1034,6 +1034,44 @@ ENTRY e {
                              "Contracting dimension is too fragmented."));
 }
 
+TEST_F(SplitKTest, MakeSplitKWithNonDefaultOutputLayout) {
+  const std::string kHloText = R"(
+triton_gemm_dot.4842_computation {
+  parameter_0 = bf16[96,96]{1,0} parameter(0)
+  parameter_1 = bf16[96,7]{1,0} parameter(1)
+  dot.0 = bf16[96,7]{0,1} dot(parameter_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT bitcast.2 = bf16[7,3,32]{2,1,0} bitcast(dot.0)
+}
+
+ENTRY e {
+  parameter_0.91 = bf16[96,96]{1,0} parameter(0)
+  parameter_1.86 = bf16[96,7]{1,0} parameter(1)
+  ROOT triton_gemm_dot.4842 = bf16[7,3,32]{2,1,0}
+    fusion(parameter_0.91, parameter_1.86), kind=kCustom,
+    calls=triton_gemm_dot.4842_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(16);
+  key.set_block_k(16);
+  key.set_split_k(2);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kReduce);
+  const HloComputation* dot_computation = module->entry_computation()
+                                              ->root_instruction()
+                                              ->operand(0)
+                                              ->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          DotFusionAnalysis::Execute(dot_computation));
+}
+
 TEST_F(GemmRewriterTritonTest, HandleDotIfCublasRequiresPadding) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
