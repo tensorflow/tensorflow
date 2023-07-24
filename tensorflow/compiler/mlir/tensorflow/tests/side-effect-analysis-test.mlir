@@ -1939,7 +1939,7 @@ func.func @device_ordinal_placeholder_side_effect_free(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         // expected-remark@above {{ID: 0}}
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 1}}
