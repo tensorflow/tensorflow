@@ -16,6 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_TRANSFORMS_PASSES_H_
 
+//===----------------------------------------------------------------------===//
+// TODO(ezhulenev): We currently do not build with OpenXLA runtime in open
+// source because we do not have bazel dependency from XLA to IREE.
+#if XLA_DISABLE_OPENXLA_RUNTIME
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+class OpPassManager;
+}  // namespace mlir
+
+namespace xla::gpu {
+class ThunkSequence;
+inline void populateOpenXlaRuntimePasses(mlir::OpPassManager&, ThunkSequence*) {
+}
+}  // namespace xla::gpu
+
+//===----------------------------------------------------------------------===//
+#else  // !XLA_DISABLE_OPENXLA_RUNTIME
+//===----------------------------------------------------------------------===//
+
 #include <memory>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -35,8 +55,8 @@ void populateOpenXlaRuntimePasses(mlir::OpPassManager& pm,
 // Conversion from LMHLO dialects to OpenXLA runtime
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createConvertToOpenXlaPass(
-    ThunkSequence* thunk_sequence = nullptr);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
+createConvertToOpenXlaPass(ThunkSequence* thunk_sequence = nullptr);
 
 //===----------------------------------------------------------------------===//
 // OpenXLA passes registration
@@ -46,4 +66,5 @@ void registerOpenXlaPases();
 
 }  // namespace xla::gpu
 
+#endif  // !XLA_DISABLE_OPENXLA_RUNTIME
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_TRANSFORMS_PASSES_H_

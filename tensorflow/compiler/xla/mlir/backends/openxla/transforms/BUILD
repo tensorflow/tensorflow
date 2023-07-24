@@ -31,8 +31,8 @@ package(
 #         "passes.cc",
 #     ],
 #     hdrs = ["passes.h"],
-#     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
-#     # because IREE targets are not compatible with `non_prod` constraint.
+#     # TODO(ezhulenev): Override cc_library()'s default compatibility because IREE targets are not
+#     # compatible with `non_prod` constraint.
 #     compatible_with = [],
 #     deps = [
 #         ":passes_inc_gen",
@@ -54,4 +54,10 @@ package(
 #     ],
 # )
 #
-# copybara:uncomment_end
+# copybara:uncomment_end_and_comment_begin
+cc_library(
+    name = "passes",
+    hdrs = ["passes.h"],
+    defines = ["XLA_DISABLE_OPENXLA_RUNTIME=1"],
+)
+# copybara:comment_end

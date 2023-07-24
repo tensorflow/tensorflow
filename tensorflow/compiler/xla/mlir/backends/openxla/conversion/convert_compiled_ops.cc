@@ -310,8 +310,8 @@ LogicalResult ConvertCompiledOp<OpTy>::matchAndRewrite(
     auto src_memref = cast<TypedValue<MemRefType>>(copy->source_value());
     auto dst_memref = cast<TypedValue<MemRefType>>(copy->destination_value());
 
-    auto src = state->remapped[block][src_memref];
-    auto dst = state->remapped[block][dst_memref];
+    auto src = state->remapped[block][stripReinterpretCast(src_memref)];
+    auto dst = state->remapped[block][stripReinterpretCast(dst_memref)];
 
     assert(src && "unknown mapping from `src` memref to a tensor");
     assert(dst && "unknown mapping from `dst` memref to a tensor");

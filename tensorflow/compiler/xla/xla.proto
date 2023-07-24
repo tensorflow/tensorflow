@@ -422,6 +422,15 @@ message DebugOptions {
   // If true, use XLA runtime for XLA:GPU backend.
   bool xla_gpu_enable_xla_runtime_executable = 169;
 
+  // If true, use OpenXLA runtime for XLA:GPU backend. That is, use IREE VM
+  // as a host executable, CUDA HAL for dispatching device kernels and
+  // custom modules for integration with libraries required for running
+  // XLA:GPU programs.
+  //
+  // Note: this mode disables thunks and the "classic" gpu runtime, which
+  // is defined above.
+  bool xla_gpu_enable_openxla_runtime = 233;
+
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
   int64 xla_gpu_nccl_termination_timeout_seconds = 163;
@@ -580,7 +589,7 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_triton_fusions = 232;
 
-  // Next id: 233
+  // Next id: 234
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
