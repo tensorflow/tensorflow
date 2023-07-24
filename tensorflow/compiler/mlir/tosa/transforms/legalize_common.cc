@@ -4154,12 +4154,18 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   std::optional<Value> tosa_values_reshape_op = build_reshape(
       rewriter, op->getLoc(), params_transpose_op, {N, K, C}, tosaOnly);
 
-  if (!tosa_values_reshape_op) return std::nullopt;
+  if (!tosa_values_reshape_op) {
+    (void)rewriter.notifyMatchFailure(op, "unable to reshape values");
+    return std::nullopt;
+  }
 
   std::optional<Value> tosa_indices_reshape_op =
       build_reshape(rewriter, op->getLoc(), indices_value, {N, W}, tosaOnly);
 
-  if (!tosa_indices_reshape_op) return std::nullopt;
+  if (!tosa_indices_reshape_op) {
+    (void)rewriter.notifyMatchFailure(op, "unable to reshape indices");
+    return std::nullopt;
+  }
 
   auto tosa_gather_static_shape =
       as_static_dimension_list(tosa_gather_result_shape);
@@ -4173,7 +4179,10 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   std::optional<Value> tosa_result_reshape_op = build_reshape(
       rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape, tosaOnly);
 
-  if (!tosa_result_reshape_op) return std::nullopt;
+  if (!tosa_result_reshape_op) {
+    (void)rewriter.notifyMatchFailure(op, "unable to reshape result");
+    return std::nullopt;
+  }
 
   return CreateOpAndInfer<tosa::TransposeOp>(
              rewriter, op->getLoc(), result_type,
