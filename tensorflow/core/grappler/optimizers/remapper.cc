@@ -1860,6 +1860,18 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
       sigmoidmul_pattern, {}, ctx->graph_view.GetNode(node_index),
       matched_nodes_map, remove_node_indices);
 
+  if (found_op_type_match) {
+    NodeDef* matched_sigmoid_node =
+        ctx->graph_view.GetNode(matched_nodes_map->at("sigmoid"))->node();
+    auto in_tensor_sigmoid = matched_sigmoid_node->input(0);
+    if ((mul_node_def->input(0) != in_tensor_sigmoid) &&
+        (mul_node_def->input(1) != in_tensor_sigmoid)) {
+      // If the input tensor of Sigmoid doesn't match with either of input
+      // tensors of mul return false
+      found_op_type_match = false;
+    }
+  }
+
   return found_op_type_match;
 }
 
@@ -4184,6 +4196,18 @@ bool FindSoftplusAndTanhAndMul(RemapperContext* ctx, int node_index,
   found_op_type_match = graph_matcher.GetMatchedNodes(
       softplustanhmul_pattern, {}, ctx->graph_view.GetNode(node_index),
       matched_nodes_map, remove_node_indices);
+
+  if (found_op_type_match) {
+    NodeDef* matched_softplus_node =
+        ctx->graph_view.GetNode(matched_nodes_map->at("softplus"))->node();
+    auto in_tensor_softplus = matched_softplus_node->input(0);
+    if ((mul_node_def->input(0) != in_tensor_softplus) &&
+        (mul_node_def->input(1) != in_tensor_softplus)) {
+      // If the input tensor of Softplus doesn't match with either of input
+      // tensors of mul return false
+      found_op_type_match = false;
+    }
+  }
 
   return found_op_type_match;
 }
