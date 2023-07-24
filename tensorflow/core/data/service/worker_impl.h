@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
-#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
@@ -35,14 +34,12 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace data {
