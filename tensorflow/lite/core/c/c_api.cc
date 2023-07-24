@@ -309,15 +309,17 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
 
   // Try using newer RegistrationExternal API.
   if (op_resolver_callbacks_.find_builtin_op_external) {
-    // Get a RegistrationExternal object and create a Registration (V3) object.
+    // Get a RegistrationExternal object and create a Registration (V4) object.
     const TfLiteRegistrationExternal* registration_external =
         op_resolver_callbacks_.find_builtin_op_external(
             op_resolver_callbacks_.user_data,
             static_cast<TfLiteBuiltinOperator>(op), version);
-    if (registration_external && (registration_external->init != nullptr ||
-                                  registration_external->free != nullptr ||
-                                  registration_external->invoke != nullptr ||
-                                  registration_external->prepare != nullptr)) {
+    if (registration_external != nullptr &&
+        (registration_external->init != nullptr ||
+         registration_external->free != nullptr ||
+         registration_external->invoke != nullptr ||
+         registration_external->prepare != nullptr ||
+         registration_external->async_kernel != nullptr)) {
       TfLiteRegistration* new_registration =
           RegistrationExternalToRegistration(registration_external);
       temporary_builtin_registrations_.push_back(
