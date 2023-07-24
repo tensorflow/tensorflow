@@ -48,11 +48,11 @@ using dnnl::stream;
 
 namespace tensorflow {
 
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
 // Op descriptor is no longer supported in oneDNN v3.x. Instead, primitive
 // descriptor will directly accept primitive parameters during creation.
 using ConvFwdDesc = dnnl::convolution_forward::desc;
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
 using ConvFwdPd = dnnl::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {

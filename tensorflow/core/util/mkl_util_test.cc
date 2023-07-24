@@ -53,7 +53,7 @@ TEST(MklUtilTest, MklDnnTfShape) {
   EXPECT_NE(b_tf_shape_nchw, b_mkldnn_tf_shape);
 }
 
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
 // TODO(intel-tf): This code is not tested for oneDNN v3.x and needs to be
 // removed
 TEST(MklUtilTest, MklDnnBlockedFormatTest) {
@@ -83,7 +83,7 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.dims[0], 3);
   EXPECT_EQ(b_md2.data.dims[1], 4);
 }
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
 
 TEST(MklUtilTest, LRUCacheTest) {
   // The cached objects are of type int*

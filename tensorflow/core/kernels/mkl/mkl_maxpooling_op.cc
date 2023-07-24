@@ -116,12 +116,12 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                       : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
                                                    this->data_format_tf_);
       memory::dims filter_dims, strides, padding_left, padding_right;
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
 #else
       memory::dims dilations;
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides, &dilations,
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
                              &padding_left, &padding_right, is_pool2d);
 
       // Get a pooling op from the cached pool
@@ -134,11 +134,11 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       else
         pooling_prop_kind = prop_kind::forward_training;
       MklPoolingParams fwdParams(
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
           src_dims, output_dims_mkl_order, filter_dims, strides,
 #else
           src_dims, output_dims_mkl_order, filter_dims, strides, dilations,
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
           padding_left, padding_right, dnnl::algorithm::pooling_max,
           pooling_prop_kind,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
@@ -291,12 +291,12 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                   orig_input_shape);
 
       memory::dims filter_dims, strides, padding_left, padding_right;
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
 #else
       memory::dims dilations;
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides, &dilations,
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
                              &padding_left, &padding_right, is_pool2d);
 
       memory::dims orig_input_dims_mkl_order =
@@ -333,12 +333,12 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
-#ifdef ENABLE_ONEDNN_V2
+#ifndef ENABLE_ONEDNN_V3
           strides, padding_left, padding_right, dnnl::algorithm::pooling_max,
 #else
           strides, dilations, padding_left, padding_right,
           dnnl::algorithm::pooling_max,
-#endif  // ENABLE_ONEDNN_V2
+#endif  // !ENABLE_ONEDNN_V3
           prop_kind::forward_training,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
           this->native_format_);

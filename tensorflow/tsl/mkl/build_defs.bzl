@@ -107,6 +107,21 @@ def mkl_deps():
         "//conditions:default": [],
     })
 
+def onednn_v3_define():
+    """Returns a define to indicate if oneDNN v3.x is enabled or not. It is
+       defined only on Linux and Windows x86 builds.
+       Returns none for all other cases (including ARM builds).
+
+    Returns:
+      a select evaluating to a define or none as appropriate.
+    """
+    return select({
+        "@org_tensorflow//tensorflow/tsl/mkl:build_with_mkl_aarch64": [],
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["-DENABLE_ONEDNN_V3"],
+        "@org_tensorflow//tensorflow/tsl:windows": ["-DENABLE_ONEDNN_V3"],
+        "//conditions:default": [],
+    })
+
 def _enable_local_mkl(repository_ctx):
     return _TF_MKL_ROOT in repository_ctx.os.environ
 
