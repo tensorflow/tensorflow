@@ -92,7 +92,6 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
