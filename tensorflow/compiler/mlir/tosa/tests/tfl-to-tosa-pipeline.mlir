@@ -2804,3 +2804,94 @@ func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tens
   %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768xf32>, tensor<1x197x1xf32>) -> tensor<1x197x768xf32>
   func.return %0 : tensor<1x197x768xf32>
 }
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_f32
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<3x3x13x7xf32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xf32>, tensor<3x3x13x7xf32>) -> tensor<3x3x13x7xf32>
+// CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf32>
+func.func @test_broadcast_to_f32(%arg0: tensor<13x1xf32>) -> (tensor<3x3x13x7xf32>) {
+  %shape = arith.constant dense<[3, 3, 1, 7]> : tensor<4xi32>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<13x1xf32>, tensor<4xi32>) -> tensor<3x3x13x7xf32>
+  return %1 : tensor<3x3x13x7xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_f16
+// CHECK: %[[VAL_0:.*]] = "tosa.const"()
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xf16>)
+// CHECK: %[[VAL_2:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xf16>, tensor<3x3x13x7xf16>) -> tensor<3x3x13x7xf16>
+// CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf16>
+func.func @test_broadcast_to_f16(%arg0: tensor<13x1xf16>) -> (tensor<3x3x13x7xf16>) {
+  %shape = arith.constant dense<[3, 3, 1, 7]> : tensor<4xi32>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<13x1xf16>, tensor<4xi32>) -> tensor<3x3x13x7xf16>
+  return %1 : tensor<3x3x13x7xf16>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i32
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xi32>
+// CHECK: %[[VAL_2:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xi32>, tensor<7x7x13x3xi32>) -> tensor<7x7x13x3xi32>
+// CHECK: return %[[VAL_2]] : tensor<7x7x13x3xi32>
+func.func @test_broadcast_to_i32(%arg0: tensor<13x1xi32>) -> (tensor<3x3x13x3xi32>) {
+  %shape = arith.constant dense<[7, 7, 13, 3]> : tensor<4xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<13x1xi32>, tensor<4xi64>) -> tensor<3x3x13x3xi32>
+  return %1 : tensor<3x3x13x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i1
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<false> : tensor<7x7x13x7xi1>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xi1>
+// CHECK: %[[VAL_2:.*]] = "tosa.logical_or"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xi1>, tensor<7x7x13x7xi1>) -> tensor<7x7x13x7xi1>
+// CHECK: return %[[VAL_2]] : tensor<7x7x13x7xi1>
+func.func @test_broadcast_to_i1(%arg0: tensor<13x1xi1>) -> (tensor<7x7x13x7xi1>) {
+  %shape = arith.constant dense<[7, 7, 13, 7]> : tensor<4xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<13x1xi1>, tensor<4xi64>) -> tensor<7x7x13x7xi1>
+  return %1 : tensor<7x7x13x7xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_qi8
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}
+// CHECK: %[[VAL_2:.*]] = "tosa.cast"(%1) : (tensor<1x1x13x1x!quant.uniform<i16:f32, 1.000000e+00:-1>>) -> tensor<1x1x13x1xi32>
+// CHECK: %[[VAL_3:.*]] = "tosa.add"(%[[VAL_2]], %[[VAL_0]]) : (tensor<1x1x13x1xi32>, tensor<7x7x13x3xi32>) -> tensor<7x7x13x3xi32>
+// CHECK: %[[VAL_4:.*]] = "tosa.cast"(%3) : (tensor<7x7x13x3xi32>) -> tensor<7x7x13x3x!quant.uniform<i16:f32, 1.000000e+00:-1>>
+// CHECK: return %[[VAL_4]] : tensor<7x7x13x3x!quant.uniform<i16:f32, 1.000000e+00:-1>>
+func.func @test_broadcast_to_qi8(%arg0: tensor<13x1x!quant.uniform<i16:f32, 1.0:-1>>) -> (tensor<7x7x13x3x!quant.uniform<i16:f32, 1.0:-1>>) {
+  %shape = arith.constant dense<[7, 7, 1, 3]> : tensor<4xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<13x1x!quant.uniform<i16:f32, 1.0:-1>>, tensor<4xi64>) -> tensor<7x7x13x3x!quant.uniform<i16:f32, 1.0:-1>>
+  return %1 : tensor<7x7x13x3x!quant.uniform<i16:f32, 1.0:-1>>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_smaller_rank
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<[13, 7]> : tensor<2xi48>}
+// CHECK: %[[VAL_1:.*]] = "tfl.broadcast_to"(%arg0, %[[VAL_0]]) : (tensor<2x3x13x1xi32>, tensor<2xi48>) -> tensor<13x7xi32>
+// CHECK: return %[[VAL_1]] : tensor<13x7xi32>
+func.func @test_broadcast_to_smaller_rank(%arg0: tensor<2x3x13x1xi32>) -> (tensor<13x7xi32>) {
+  %shape = arith.constant dense<[13, 7]> : tensor<2xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<2x3x13x1xi32>, tensor<2xi64>) -> tensor<13x7xi32>
+  return %1 : tensor<13x7xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i48
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<[7, 7, 1, 7]> : tensor<4xi48>}
+// CHECK: %[[VAL_1:.*]] = "tfl.broadcast_to"(%arg0, %[[VAL_0]]) : (tensor<1x1x13x1xi48>, tensor<4xi48>) -> tensor<7x7x13x7xi48>
+// CHECK: return %[[VAL_1]] : tensor<7x7x13x7xi48>
+func.func @test_broadcast_to_i48(%arg0: tensor<1x1x13x1xi48>) -> (tensor<7x7x13x7xi48>) {
+  %shape = arith.constant dense<[7, 7, 1, 7]> : tensor<4xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x1x13x1xi48>, tensor<4xi64>) -> tensor<7x7x13x7xi48>
+  return %1 : tensor<7x7x13x7xi48>
+}

@@ -151,6 +151,7 @@ DECL_CONVERT_OP(LeftShift);
 DECL_CONVERT_OP(RightShift);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(BatchMatMulV2);
+DECL_CONVERT_OP(BroadcastTo);
 #undef DECL_CONVERT_OP
 
 LogicalResult ConvertTFReluOp::matchAndRewrite(
@@ -2421,6 +2422,21 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+
+  std::optional<Value> result =
+      convertBroadcastToOp(rewriter, op, tf_broadcast_to_op.getInput(),
+                           tf_broadcast_to_op.getShape());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 void LegalizeTF::runOnOperation() {
   auto* ctx = &getContext();
   RewritePatternSet patterns(ctx);
@@ -2523,6 +2539,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFRightShiftOp>(ctx);
   patterns.add<ConvertTFOneHotOp>(ctx);
   patterns.add<ConvertTFBatchMatMulV2Op>(ctx);
+  patterns.add<ConvertTFBroadcastToOp>(ctx);
 }
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.

@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -4608,6 +4609,159 @@ std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
   return CreateOpAndInfer<tosa::SelectOp>(builder, output_type, gt_zero_op,
                                           pos_one, select_neg_op)
       .getResult();
+}
+
+// Lowers BroadcastTo operator to a sequence of TOSA ops.
+std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
+                                          Operation* op, Value input,
+                                          Value shape) {
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
+  if (!input_type) {
+    (void)rewriter.notifyMatchFailure(op, "input type not ranked tensor");
+    return std::nullopt;
+  }
+
+  Type element_type = input_type.getElementType();
+  if (element_type.isa<ComplexType>()) {
+    (void)rewriter.notifyMatchFailure(op, "input element type is complex");
+    return std::nullopt;
+  }
+
+  if (isa<IntegerType>(element_type)) {
+    auto bitwidth = element_type.getIntOrFloatBitWidth();
+    if (bitwidth > 32) {
+      (void)rewriter.notifyMatchFailure(
+          op, "input element type has greater than 32 bits");
+      return std::nullopt;
+    }
+  }
+
+  ElementsAttr shape_elems;
+  if (!matchPattern(shape, m_Constant(&shape_elems))) {
+    (void)rewriter.notifyMatchFailure(op, "shape is not constant");
+    return std::nullopt;
+  }
+  int input_rank = input_type.getRank();
+  int shape_rank = shape_elems.getNumElements();
+
+  if (auto shape_type = dyn_cast<ShapedType>(shape.getType())) {
+    if (shape_type.hasStaticShape()) {
+      assert(shape_type.getRank() == 1);
+      if (!shape_type.isDynamicDim(0) &&
+          shape_rank != shape_type.getDimSize(0)) {
+        // shape_elems and shape's type's 'are different
+        // this is not supported for now
+        (void)rewriter.notifyMatchFailure(
+            op,
+            "shape's constant value has different elements than its static "
+            "dimension");
+        return std::nullopt;
+      }
+    }
+  }
+
+  if (input_rank > shape_rank) {
+    // not clear what to do in this case, bail for now
+    (void)rewriter.notifyMatchFailure(op, "shape has less rank than input");
+    return std::nullopt;
+  }
+
+  // equalize new_rank and input_rank
+  if (input_rank < shape_rank) {
+    // reshape input to shape_rank
+    SmallVector<int64_t> reshaped_shape((shape_rank - input_rank), 1);
+    for (auto dim : input_type.getShape()) {
+      reshaped_shape.push_back(dim);
+    }
+    input_type =
+        tensorflow::GetTypeFromTFTensorShape(reshaped_shape, element_type);
+    input = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(), input_type, input,
+        rewriter.getDenseI64ArrayAttr(
+            tensorflow::ConvertMlirShapeToTF(reshaped_shape)));
+  }
+
+  auto input_shape = input_type.getShape();
+  assert(input_shape.size() == shape_rank);  // should be equal ranks by now
+
+  // construct new_shape as broadcasted shape of input_shape and shape_elems
+  int32_t num_elements = 1;
+  SmallVector<int64_t> new_shape;
+  for (int i = 0; i < shape_rank; i++) {
+    auto shape_dim = shape_elems.getValues<IntegerAttr>()[i].getInt();
+    auto input_dim = input_shape[i];
+    if (shape_dim != input_dim && std::min(shape_dim, input_dim) != 1) {
+      // shape_dim and input_dim are different, but the lower value is not 1
+      // this is not broadcastable
+      (void)rewriter.notifyMatchFailure(
+          op, "input and shape are not broadcastable");
+      return std::nullopt;
+    }
+    auto dim = std::max(shape_dim, input_dim);
+    new_shape.push_back(dim);
+    num_elements *= dim;
+  }
+
+  RankedTensorType output_type =
+      tensorflow::GetTypeFromTFTensorShape(new_shape, element_type);
+
+  if (element_type.isa<FloatType>()) {
+    // F32: legalize to broadcastable Add with (0.f)
+    auto const_attr =
+        DenseElementsAttr::get(output_type, rewriter.getZeroAttr(element_type));
+    Value f32_const_zero =
+        rewriter.create<tosa::ConstOp>(op->getLoc(), output_type, const_attr);
+    return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
+                                         input, f32_const_zero)
+        .getResult();
+  }
+
+  if (element_type.isInteger(1)) {
+    // I1: legalize to broadcastable LogicalOr with false
+    auto const_attr =
+        DenseElementsAttr::get(output_type, rewriter.getZeroAttr(element_type));
+    Value i1_const_zero =
+        rewriter.create<tosa::ConstOp>(op->getLoc(), output_type, const_attr);
+    return CreateOpAndInfer<tosa::LogicalOrOp>(
+               rewriter, op->getLoc(), output_type, input, i1_const_zero)
+        .getResult();
+  }
+
+  if (isa<IntegerType>(element_type)) {
+    RankedTensorType cast_shaped_type = output_type.clone(element_type);
+    auto const_attr = DenseElementsAttr::get(
+        cast_shaped_type, rewriter.getZeroAttr(element_type));
+    Value const_zero = rewriter.create<tosa::ConstOp>(
+        op->getLoc(), cast_shaped_type, const_attr);
+    // I32: legalize to broadcastable Add with 0
+    return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
+                                         input, const_zero)
+        .getResult();
+  }
+
+  if (auto quant_ty = dyn_cast<quant::UniformQuantizedType>(element_type)) {
+    auto cast_type = rewriter.getI32Type();
+    RankedTensorType cast_shaped_type = output_type.clone(cast_type);
+    auto const_attr = DenseElementsAttr::get(cast_shaped_type,
+                                             rewriter.getZeroAttr(cast_type));
+    Value const_zero = rewriter.create<tosa::ConstOp>(
+        op->getLoc(), cast_shaped_type, const_attr);
+
+    // for any other non-float element type:
+    // cast input to the storage type, perform an add 0, then cast back.
+    Value input_cast = CreateOpAndInfer<tosa::CastOp>(
+        rewriter, op->getLoc(),
+        /* I32 input type */ input_type.clone(cast_type), input);
+    Value add_const = CreateOpAndInfer<tosa::AddOp>(
+        rewriter, op->getLoc(), output_type.clone(cast_type), input_cast,
+        const_zero);
+    return CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
+                                          add_const)
+        .getResult();
+  }
+
+  (void)rewriter.notifyMatchFailure(op, "Unsupported element type");
+  return std::nullopt;
 }
 
 };  // namespace tosa
