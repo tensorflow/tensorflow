@@ -80,7 +80,9 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
       tensorflow::XlaCallModuleLoader::Create(
           context, static_cast<int>(op.getVersion()), op.getModule().str(),
           std::move(dim_args_spec), std::move(disabled_checks),
-          std::move(platforms), std::move(loading_platform)));
+          std::move(platforms), std::move(loading_platform),
+          /*num_invocation_args=*/op.getArgs().size(),
+          op.getHasTokenInputOutput()));
   return std::move(*loader).module();
 }
 
@@ -111,8 +113,6 @@ FailureOr<StringAttr> RenameStablehloFunctions(
     MLIRContext *context, SymbolTableCollection &symbol_tables,
     ModuleOp tf_module, ModuleOp stablehlo_module) {
   SymbolTable &tf_symbol_table = symbol_tables.getSymbolTable(tf_module);
-  SymbolTable &stablehlo_symbol_table =
-      symbol_tables.getSymbolTable(stablehlo_module);
   Builder builder(context);
   StringAttr main_func_name;
   for (auto func : stablehlo_module.getOps<func::FuncOp>()) {
@@ -121,8 +121,8 @@ FailureOr<StringAttr> RenameStablehloFunctions(
       main_func_name = func_name;
     }
     if (func_name != func.getSymNameAttr()) {
-      if (failed(stablehlo_symbol_table.replaceAllSymbolUses(
-              func, func_name, stablehlo_module))) {
+      if (failed(SymbolTable::replaceAllSymbolUses(func, func_name,
+                                                   stablehlo_module))) {
         return func.emitError()
                << "failed to rename StableHLO function " << func.getSymName();
       }
@@ -228,16 +228,17 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
     return failure();
   }
 
-  MoveFunctions(symbol_tables, *stablehlo_module, module);
-
   // Translate `called_index` in TF function custom calls into symbol
   // references. `function_list` attribute is needed after that.
   SmallVector<SymbolRefAttr> function_list(
       op.getFunctionList().getAsRange<SymbolRefAttr>());
-  if (failed(SymbolizeCustomCallCalledIndex(module, function_list))) {
+  if (failed(
+          SymbolizeCustomCallCalledIndex(*stablehlo_module, function_list))) {
     return failure();
   }
   op.removeFunctionListAttr();
+
+  MoveFunctions(symbol_tables, *stablehlo_module, module);
 
   // Module is deserialized, we set an empty string to it instead removing
   // it because it's a required attribute.

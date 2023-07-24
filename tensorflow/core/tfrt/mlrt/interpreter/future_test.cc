@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace mlrt {
 namespace {
@@ -122,9 +123,9 @@ TEST(FutureTest, Error) {
     std::move(promise).SetError(absl::InternalError("test error"));
 
     ASSERT_TRUE(future.IsError());
-    EXPECT_THAT(future.GetError(),
-                ::testing::status::CanonicalStatusIs(
-                    absl::StatusCode::kInternal, "test error"));
+    EXPECT_THAT(
+        future.GetError(),
+        ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
   }
 
   {
@@ -136,8 +137,8 @@ TEST(FutureTest, Error) {
 
     std::move(promise).SetError(absl::InternalError("test error"));
 
-    EXPECT_THAT(r, ::testing::status::CanonicalStatusIs(
-                       absl::StatusCode::kInternal, "test error"));
+    EXPECT_THAT(
+        r, ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
   }
 
   {
@@ -147,8 +148,8 @@ TEST(FutureTest, Error) {
     std::move(future).Then([&](absl::Status status) { s = std::move(status); });
     std::move(promise).SetError(absl::InternalError("test error"));
 
-    EXPECT_THAT(s, ::testing::status::CanonicalStatusIs(
-                       absl::StatusCode::kInternal, "test error"));
+    EXPECT_THAT(
+        s, ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
   }
 }
 

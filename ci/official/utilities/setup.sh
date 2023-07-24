@@ -45,7 +45,8 @@ else
 fi
 
 # Make a "build" directory for outputting all build artifacts (TF's .gitignore
-# ignores the "build" directory)
+# ignores the "build" directory), and ensure all further commands are executed
+# inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
 mkdir -p build
 

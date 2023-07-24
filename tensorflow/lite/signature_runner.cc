@@ -79,8 +79,11 @@ TfLiteStatus SignatureRunner::Invoke() {
   TF_LITE_ENSURE_STATUS(subgraph_->Invoke());
 
   // Makes sure output tensors are readable.
-  for (int tensor_index : subgraph_->outputs()) {
-    TF_LITE_ENSURE_STATUS(subgraph_->EnsureTensorDataIsReadable(tensor_index));
+  if (!allow_buffer_handle_output_) {
+    for (int tensor_index : subgraph_->outputs()) {
+      TF_LITE_ENSURE_STATUS(
+          subgraph_->EnsureTensorDataIsReadable(tensor_index));
+    }
   }
   return kTfLiteOk;
 }

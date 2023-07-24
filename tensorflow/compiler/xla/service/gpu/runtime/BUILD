@@ -5,6 +5,10 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -428,8 +432,14 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
+<<<<<<< HEAD
         "@local_config_rocm//rocm:rocm_headers",
     ],
+=======
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+>>>>>>> upstream/master
 )
 
 cc_library(

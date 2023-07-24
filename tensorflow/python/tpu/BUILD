@@ -915,7 +915,6 @@ tpu_py_strict_test(
     disable_experimental = True,
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         ":functional",
         ":tpu_py",

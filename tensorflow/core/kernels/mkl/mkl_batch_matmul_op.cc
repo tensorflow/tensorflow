@@ -172,47 +172,24 @@ class BatchMatMulMkl : public OpKernel {
             *params, false /* value for do_not_cache */);
 
     Trhs* weight_data = const_cast<Trhs*>(rhs.flat<Trhs>().data());
-
 // TODO(Arm, Intel): Reach agreement on whether this block should be deleted.
 // https://github.com/tensorflow/tensorflow/pull/57987#discussion_r993731524
 #ifdef DNNL_AARCH64_USE_ACL
-    memory::format_tag weight_format;
-    switch (params->b_dims.size()) {
-      case 2:
-        weight_format =
-            adj_y_ ? memory::format_tag::ba : memory::format_tag::ab;
-        break;
-      case 3:
-        weight_format =
-            adj_y_ ? memory::format_tag::acb : memory::format_tag::abc;
-        break;
-      case 4:
-        weight_format =
-            adj_y_ ? memory::format_tag::abdc : memory::format_tag::abcd;
-        break;
-      case 5:
-        weight_format =
-            adj_y_ ? memory::format_tag::abced : memory::format_tag::abcde;
-        break;
-      default:
-        weight_format = memory::format_tag::undef;
-    }
     MklDnnData<Trhs> weights_mkl(&(this->cpu_engine_));
-    if (weight_format != memory::format_tag::undef) {
-      auto weight_md =
-          memory::desc(params->b_dims, MklDnnType<Trhs>(), weight_format);
-      std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
-          matmul_prim->GetPrimitiveDesc();
-      // Reorder weights if necessary.
-      // Check whether we need to do reorder.
-      if (weight_md != matmul_pd->weights_desc()) {
-        weights_mkl.SetUsrMem(weight_md, weight_data);
-        weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
-                                        this->cpu_engine_, ctx);
-        weight_data =
-            reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
-      }
+    auto weight_md =
+        memory::desc(params->b_dims, MklDnnType<Trhs>(), params->b_strides);
+    std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
+        matmul_prim->GetPrimitiveDesc();
+    // Reorder weights if necessary.
+    // Check whether we need to do reorder.
+    if (weight_md != matmul_pd->weights_desc()) {
+      weights_mkl.SetUsrMem(weight_md, weight_data);
+      weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                      this->cpu_engine_, ctx);
+      weight_data =
+          reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
     }
+
 #endif  // DNNL_AARCH64_USE_ACL
 
     UserScratchPad<unsigned char> scratch_pad;

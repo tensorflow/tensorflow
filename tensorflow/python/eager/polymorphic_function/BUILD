@@ -300,6 +300,7 @@ cuda_py_strict_test(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/training:training_ops",
+        "//tensorflow/python/types:trace",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
@@ -379,6 +380,10 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "polymorphic_function_xla_test",
     srcs = ["polymorphic_function_xla_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/185944215) # Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [

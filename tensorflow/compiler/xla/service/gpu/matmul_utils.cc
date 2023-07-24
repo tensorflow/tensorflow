@@ -919,8 +919,13 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
   return MatmulPlan{
       se::gpu::BlasLt::MatmulPlan{std::move(op_desc), std::move(a_desc),
+<<<<<<< HEAD
                                    std::move(b_desc), std::move(c_desc),
                                    std::move(d_desc)},
+=======
+                                  std::move(b_desc), std::move(c_desc),
+                                  std::move(d_desc)},
+>>>>>>> upstream/master
       config.alpha, config.beta, must_swap_operands};
 }
 

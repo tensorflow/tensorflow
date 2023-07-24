@@ -268,8 +268,15 @@ class SavedModelImpl final : public SavedModel {
   struct LoadingResult {
     std::string name;
     SymbolUids symbol_uids;
+
+    // For the MLRT path.
+    mlrt::bc::Buffer bytecode_buffer;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable;
+
+    // For the TFRT path.
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
+
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
   };
@@ -277,7 +284,7 @@ class SavedModelImpl final : public SavedModel {
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
-      mlir::MLIRContext* context,
+      mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);

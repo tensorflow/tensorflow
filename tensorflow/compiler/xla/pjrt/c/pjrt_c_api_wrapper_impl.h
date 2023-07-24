@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -98,8 +99,15 @@ struct PJRT_LoadedExecutable {
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
   PJRT_Client* client;
-  // Set the first time PJRT_Buffer_UnpaddedDimensions is called.
+  // Set and cached the first time PJRT_Buffer_GetMemoryLayout is called.
+  std::optional<pjrt::BufferMemoryLayoutData> layout_data;
+  // Set and cached the first time PJRT_Buffer_UnpaddedDimensions is called.
   std::optional<std::vector<int64_t>> unpadded_dims;
+  // Set and cached the first time PJRT_Buffer_DynamicDimensionIndices is
+  // called.
+  std::optional<std::vector<size_t>> dynamic_dim_indices;
+  // Used to synchronize concurrent setting of cached values.
+  absl::Mutex mu;
 };
 
 struct PJRT_Event {
@@ -220,6 +228,9 @@ PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
 PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
 PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args);
+PJRT_Error* PJRT_Buffer_GetMemoryLayout(PJRT_Buffer_GetMemoryLayout_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
@@ -233,6 +244,8 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
@@ -398,6 +411,10 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_Dimensions=*/pjrt::PJRT_Buffer_Dimensions,
       /*PJRT_Buffer_UnpaddedDimensions=*/
       pjrt::PJRT_Buffer_UnpaddedDimensions,
+      /*PJRT_Buffer_DynamicDimensionIndices=*/
+      pjrt::PJRT_Buffer_DynamicDimensionIndices,
+      /*PJRT_Buffer_GetMemoryLayout=*/
+      pjrt::PJRT_Buffer_GetMemoryLayout,
       /*PJRT_Buffer_OnDeviceTrimmedShape=*/
       pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
       /*PJRT_Buffer_OnDeviceSizeInBytes=*/
@@ -411,6 +428,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_ReadyEvent=*/pjrt::PJRT_Buffer_ReadyEvent,
       /*PJRT_Buffer_UnsafePointer=*/pjrt::PJRT_Buffer_UnsafePointer,
 
+      /*PJRT_CopyToDeviceStream_Destroy=*/
+      pjrt::PJRT_CopyToDeviceStream_Destroy,
       /*PJRT_CopyToDeviceStream_AddChunk=*/
       pjrt::PJRT_CopyToDeviceStream_AddChunk,
       /*PJRT_CopyToDeviceStream_TotalBytes=*/

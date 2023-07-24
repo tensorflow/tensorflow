@@ -19,10 +19,13 @@ import inspect
 import numbers
 import os
 import re
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import flexible_dtypes
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond as tf_cond
@@ -499,6 +502,10 @@ def _maybe_get_dtype(x):
 # Can't use np_doc because np.result_type is a builtin function.
 @np_doc_only('result_type')
 def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstring
+  if ops.is_auto_dtype_conversion_enabled():
+    # Use auto dtype conversion semantics for type inference.
+    dtype, _ = flexible_dtypes.result_type(*arrays_and_dtypes)
+    return dtype
   arrays_and_dtypes = [
       _maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
   ]

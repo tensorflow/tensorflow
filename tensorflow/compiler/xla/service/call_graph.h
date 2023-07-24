@@ -92,7 +92,7 @@ class CallSite {
 // A node in the call graph representing an HLO computation.
 class CallGraphNode {
  public:
-  CallGraphNode(HloComputation* computation);
+  explicit CallGraphNode(HloComputation* computation);
 
   // Returns the computation represented by this call graph node.
   HloComputation* computation() const { return computation_; }
@@ -250,6 +250,78 @@ class CallGraph {
   // computation.
   std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
       HloInstruction* a, HloInstruction* b) const;
+
+  // Given a set of instructions within a computation, returns nearest common
+  // ancestors as Hlo instructions (There could be multiple nearest common
+  // ancestors in a DAG). If the given instructions are not in the same
+  // computation, this function would report FAILURE.
+  //
+  // Unlike the `NearestAncestorsInSameComputation` defined above, it:
+  //
+  // (1) Only compute the nearest common ancestors within a computation, instead
+  // of across computations (that's the function
+  // `ComputationsNearestCommonAncestors` that defined below).
+  //
+  // (2) Takes in **a set of** Hlo instructions, instead of two Hlo
+  // instructions, and find their nearest common ancestors.
+  //
+  // Example:
+  //
+  // Computation A:
+  //   %p0   = Param(0)
+  //   %p1   = Param(1)
+  //   %p2   = Param(2)
+  //   %add0 = Add(%p0, %p1)
+  //   %mul0 = Mul(%p1, %p2)
+  //   %sub0 = Sub(%add0, %mul0)
+  //
+  // If called with {%p0, %p1}, this function would return {%add0}.
+  //
+  // Please check the detailed example in
+  // `CallGraphTest.NearestCommonAncestorInstructions`.
+  absl::flat_hash_set<const HloInstruction*> NearestCommonAncestorInstructions(
+      std::vector<const HloInstruction*> instructions);
+
+  // Given a set of computations within a module, returns nearest common
+  // ancestors as Hlo computations (There could be multiple nearest common
+  // ancestors in a DAG).
+  //
+  // Entry_computation:
+  //   %x = Call(A, {Constant(42.0)})
+  //   %y = Call(B, {%x})
+  //
+  // Computation_A:
+  //   %a = Negate(Param())
+  //
+  // Computation_B:
+  //   %b = Exp(Param());
+  //
+  // If called with {Computation_A, Computation_B}, this function would return
+  // {Entry_computation}.
+  //
+  // Please check the detailed example in
+  // `CallGraphTest.NearestCommonAncestorComputations`.
+  absl::flat_hash_set<const HloComputation*> NearestCommonAncestorComputations(
+      std::vector<const HloComputation*> computations);
+
+  // A template helper function that computes the nearest common ancestors among
+  // instructions/computations. `T` can be either `HloInstruction` or
+  // `HloComputation`. Computing nearest common ancestors are basically the same
+  // for HloInstruction and HloComputation. The only difference is that they
+  // require different ways to access the ancestors of one node. Specifically,
+  // the ancestors are users_instruction for instructions, and are
+  // caller_computations for computations.
+  //
+  // The overall idea is to conduct BFS from the `starting_nodes`, and keep
+  // track of the visited ancestors of each node. For each BFS step, we check if
+  // there is a common node in all the visited ancestors, and if yes, that
+  // common node is the nearest ancestor we are looking for. Note that, since we
+  // are traversing DAG, there could be multiple nearest common ancestors. And
+  // there must be at least one common ancestor (i.e., entry computations among
+  // computations or root instruction among instructions).
+  template <typename T>
+  absl::flat_hash_set<const T*> NearestCommonAncestorsHelper(
+      std::vector<const T*>& starting_nodes);
 
   // Returns whether the call graph is flattened. A call graph is flattened if
   // every computation called in a sequential context (eg, kWhile or kCall) has

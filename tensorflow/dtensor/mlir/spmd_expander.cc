@@ -188,6 +188,17 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
     const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.IsSingleDevice()) {
+    TF_ASSIGN_OR_RETURN(
+        Layout layout,
+        Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh));
+    auto layouts = llvm::DenseMap<int, Layout>{};
+    for (int i = 0; i < op->getNumResults(); ++i) {
+      layouts.insert({i, layout});
+    }
+    return layouts;
+  }
   return ComputeLayoutForward(op, input_layouts);
 }
 
@@ -200,6 +211,17 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
     const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.IsSingleDevice()) {
+    TF_ASSIGN_OR_RETURN(
+        Layout layout,
+        Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh));
+    auto layouts = llvm::DenseMap<int, Layout>{};
+    for (int i = 0; i < op->getNumOperands(); ++i) {
+      layouts.insert({i, layout});
+    }
+    return layouts;
+  }
   return ComputeLayoutBackward(op, output_layouts);
 }
 

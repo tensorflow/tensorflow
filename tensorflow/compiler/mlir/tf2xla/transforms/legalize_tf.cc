@@ -6924,6 +6924,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     LowerYieldOp>(context);
   // clang-format on
 }
-// LINT.ThenChange(:MlirPreferredOps)
+// LINT.ThenChange(:MlirAlwaysOps)
 }  // end namespace mhlo
 }  // end namespace mlir

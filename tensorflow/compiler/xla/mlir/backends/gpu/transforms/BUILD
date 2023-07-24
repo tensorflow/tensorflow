@@ -53,6 +53,7 @@ cc_library(
         "memref_get_global_to_arg.cc",
         "outline_cuda_graphs.cc",
         "passes.cc",
+        "stream_assignment.cc",
         "uid_generator.h",
     ],
     hdrs = ["passes.h"],

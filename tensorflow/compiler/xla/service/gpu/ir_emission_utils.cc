@@ -33,8 +33,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -1017,6 +1019,122 @@ void LogAndVerify(const llvm::Module* m) {
   bool broken = llvm::verifyModule(*m, &llir_stream);
   llir_stream.flush();
   CHECK(!broken) << llir_str;
+}
+
+llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
+                                  int64_t launch_size, llvm::IRBuilder<>* b) {
+  // Find the unnested hlo instruction for which the kernel is generated for.
+  const HloInstruction* unnested_hlo = hlo;
+  const HloComputation* computation = hlo->parent();
+  if (computation->IsFusionComputation()) {
+    unnested_hlo = computation->FusionInstruction();
+  }
+
+  auto shape_in_range = [&](const Shape& s) {
+    bool in_range = true;
+    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
+                                      const ShapeIndex& /*index*/) {
+      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
+        in_range = false;
+      }
+    });
+
+    return in_range;
+  };
+
+  llvm::Type* i64_ty = b->getInt64Ty();
+  // Check launch dimension
+  if (!IsInt32(launch_size)) {
+    return i64_ty;
+  }
+
+  // Check the size of result tensors
+  if (!shape_in_range(unnested_hlo->shape())) {
+    return i64_ty;
+  }
+
+  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
+    return shape_in_range(operand->shape());
+  };
+
+  // Check the size of input tensors
+  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
+    return i64_ty;
+  }
+
+  // Check the size of the internal result tensors
+  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
+    if (!absl::c_all_of(
+            unnested_hlo->fused_instructions_computation()->instructions(),
+            hlo_shape_in_range)) {
+      return i64_ty;
+    }
+  }
+
+  return b->getInt32Ty();
+}
+
+llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
+                                  llvm::IRBuilder<>* b) {
+  auto shape_in_range = [&](const Shape& s) {
+    bool in_range = true;
+    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
+                                      const ShapeIndex& /*index*/) {
+      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
+        in_range = false;
+      }
+    });
+
+    return in_range;
+  };
+
+  llvm::Type* i64_ty = b->getInt64Ty();
+  // Check launch dimension
+  if (!IsInt32(launch_size)) {
+    return i64_ty;
+  }
+
+  // Check the size of result tensors
+  for (auto result : GetHloOutputs(op)) {
+    if (!shape_in_range(GetShape(result))) {
+      return i64_ty;
+    }
+  }
+
+  auto hlo_shape_in_range = [&](mlir::Value operand) -> bool {
+    return shape_in_range(GetShape(operand));
+  };
+
+  // Check the size of input tensors
+  if (!absl::c_all_of(op->getOperands(), hlo_shape_in_range)) {
+    return i64_ty;
+  }
+
+  // Check the size of the internal result tensors
+  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
+    auto result = fusion.getRegion().walk([&](mlir::Operation* op) {
+      for (mlir::Value result : op->getResults()) {
+        if (!hlo_shape_in_range(result)) {
+          return mlir::WalkResult::interrupt();
+        }
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (result.wasInterrupted()) {
+      return i64_ty;
+    }
+  }
+
+  return b->getInt32Ty();
+}
+
+std::string GetIrNameFromLoc(mlir::Location loc) {
+  return llvm_ir::SanitizeConstantName(
+      mlir::mhlo::GetDebugNameFromLocation(loc));
+}
+
+bool IsAMDGPU(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isAMDGPU();
 }
 
 }  // namespace gpu

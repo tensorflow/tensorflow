@@ -2983,7 +2983,7 @@ def pybind_library(
 def pybind_extension_opensource(
         name,
         srcs,
-        module_name = None,
+        module_name = None,  # Unused.
         hdrs = [],
         dynamic_deps = [],
         static_deps = [],
@@ -2994,6 +2994,7 @@ def pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -3006,7 +3007,7 @@ def pybind_extension_opensource(
         visibility = None,
         win_def_file = None):
     """Builds a generic Python extension module."""
-    _ignore = [module_name]
+    _ignore = [enable_stub_generation, module_name]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3273,12 +3274,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
-        "@python_x86_64-pc-windows-msvc//:__subpackages__",
-        "@python_x86_64-apple-darwin//:__subpackages__",
-        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
-        "@python_aarch64-apple-darwin//:__subpackages__",
-        "@pypi_numpy//:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [

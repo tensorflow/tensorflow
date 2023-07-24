@@ -1439,14 +1439,11 @@ class BroadcastDimsProductEqual<int agg_start_idx> : Constraint<CPred<
   "TFL::BroadcastDimsProductEqual($0, $1, "# agg_start_idx #")">>;
 
 // Returns true if the dimensions of a subsection of two tensors is equal
-// and the subsections are not empty
 class AreTensorSubSectionShapesEqual<int skip_first, int skip_last> : Constraint<CPred<
   "($0.getType().dyn_cast<ShapedType>().getShape()"
-  ".drop_back("#skip_last#").drop_front("#skip_first#") =="
-    "$1.getType().dyn_cast<ShapedType>().getShape()"
-    ".drop_back("#skip_last#").drop_front("#skip_first#"))"
-  "&& !$0.getType().dyn_cast<ShapedType>().getShape()"
-  ".drop_back("#skip_last#").drop_front("#skip_first#").empty()">>;
+    ".drop_back("#skip_last#").drop_front("#skip_first#") =="
+  "$1.getType().dyn_cast<ShapedType>().getShape()"
+    ".drop_back("#skip_last#").drop_front("#skip_first#"))">>;
 
 // Returns true if the broadcast dimension of a tensor is [1]
 // here- broadcast dimension is first prefix dimension
@@ -1489,25 +1486,23 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
    (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
 
 def AreLastTwoDimsTransposed : Constraint<CPred<
-  "TFL::AreLastTwoDimsTransposed($0, $1)">>;
+  "TFL::AreLastTwoDimsTransposed($0)">>;
 
 // Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
 def FuseTransposeIntoBatchMatMulRHS: Pat<
   (TFL_BatchMatMulOp $lhs,
-    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
     $adj_x, $adj_y, $asymmetric_quantize_inputs),
   (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $input, $transposed_value),
-   (IsBoolAttrEqual<"false"> $adj_y),
-   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
+  [(AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_y)]>;
 
 // Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
 def FuseTransposeIntoBatchMatMulLHS: Pat<
   (TFL_BatchMatMulOp
-    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp $p0)),
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
     $rhs, $adj_x, $adj_y, $asymmetric_quantize_inputs),
   (TFL_BatchMatMulOp $input, $rhs, ConstBoolAttrTrue, $adj_y, $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $input, $transposed_value),
-   (IsBoolAttrEqual<"false"> $adj_x),
-   (AreTensorSubSectionShapesEqual<0, 2> $input, $transposed_value)]>;
+  [(AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_x)]>;
 

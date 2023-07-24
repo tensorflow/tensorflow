@@ -261,6 +261,7 @@ BlasLt* GetBlasLt(Stream* stream);
 }  // namespace cuda
 
 namespace gpu {
+<<<<<<< HEAD
 #if GOOGLE_CUDA
 using BlasLt = ::stream_executor::cuda::BlasLt;
 inline BlasLt* GetBlasLt(Stream* stream) { return cuda::GetBlasLt(stream); }
@@ -269,6 +270,11 @@ using BlasLt = ::stream_executor::rocm::BlasLt;
 inline BlasLt* GetBlasLt(Stream* stream) { return rocm::GetBlasLt(stream); }
 #endif
 };
+=======
+using BlasLt = ::stream_executor::cuda::BlasLt;
+inline BlasLt* GetBlasLt(Stream* stream) { return cuda::GetBlasLt(stream); }
+}  // namespace gpu
+>>>>>>> upstream/master
 
 }  // namespace stream_executor
 

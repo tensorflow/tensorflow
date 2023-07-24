@@ -2304,7 +2304,7 @@ class UninitializedVariable(BaseResourceVariable):
         trainable=trainable,
         synchronization=synchronization,
         aggregation=aggregation,
-        in_graph_mode=self._in_graph_mode)
+        in_graph_mode=self._in_graph_mode, **unused_kwargs)
 
 
 _pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)

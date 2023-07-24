@@ -309,6 +309,7 @@ ENTRY twomatmul {
                           ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
+  option.allow_replicated_strategy_for_dot_and_conv = false;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
@@ -335,6 +336,34 @@ ENTRY twomatmul {
   ASSERT_NE(dot5, nullptr);
   EXPECT_THAT(dot5,
               op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
+
+  // Test with replicated strategies on for dot
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
+  option.enable = true;
+  option.allow_replicated_strategy_for_dot_and_conv = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  param1 = FindInstruction(module.get(), "parameter.1");
+  ASSERT_NE(param1, nullptr);
+  EXPECT_THAT(param1, op::Sharding("{replicated}"));
+  param2 = FindInstruction(module.get(), "parameter.2");
+  ASSERT_NE(param2, nullptr);
+  EXPECT_THAT(param2, op::Sharding("{replicated}"));
+  param3 = FindInstruction(module.get(), "parameter.3");
+  ASSERT_NE(param3, nullptr);
+  EXPECT_THAT(param3,
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"));
+  dot4 = FindInstruction(module.get(), "dot.4");
+  ASSERT_NE(dot4, nullptr);
+  EXPECT_THAT(dot4, op::Sharding("{replicated}"));
+  dot5 = FindInstruction(module.get(), "dot.5");
+  ASSERT_NE(dot5, nullptr);
+  EXPECT_THAT(dot5, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
 TEST_F(AutoShardingTest, ProcessCustomCallShardings) {

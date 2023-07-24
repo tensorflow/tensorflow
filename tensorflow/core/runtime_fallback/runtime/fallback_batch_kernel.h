@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
-#include "util/task/status_macros.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

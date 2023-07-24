@@ -67,6 +67,14 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   }
 }
 
+void AddMhloOptimizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
+  pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
+  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
+  pm.addNestedPass<func::FuncOp>(createOptimizePass());
+  pm.addPass(mlir::createCanonicalizerPass());
+}
+
 void AddStablehloOptimizationPasses(OpPassManager& pm) {
   // The current plan of record is to avoid doing optimization passes
   // on StableHLO, treating StableHLO purely as an input format, and do all
@@ -74,11 +82,7 @@ void AddStablehloOptimizationPasses(OpPassManager& pm) {
   // Therefore, this function inserts a StableHLO <=> MHLO roundtrip to make
   // this happen.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
-  pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
-  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
-  pm.addNestedPass<func::FuncOp>(createOptimizePass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  AddMhloOptimizationPasses(pm);
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
 

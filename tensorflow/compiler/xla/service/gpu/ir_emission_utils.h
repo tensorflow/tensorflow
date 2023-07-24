@@ -273,6 +273,27 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);
 
+// Returns the llvm type for the indices used in the kernel that contains the
+// hlo instruction. Such indices include the index for the parallel loop and
+// the indices for the tensors accessed by the kernel. The return type is i32
+// iff the following conditions are met:
+//  . The launch_size of the kernel is within the range of i32.
+//  . The sizes of all the tensors accessed within the kernel are within the
+//    range of i32.
+// Otherwise, the return type is i64.
+llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
+                                  int64_t launch_size, llvm::IRBuilder<>* b);
+
+// The same as GetIndexTypeForKernel, but works with MLIR ops.
+llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
+                                  llvm::IRBuilder<>* b);
+
+// Returns a sanitized (doesn't need quoting) identifier name from a location.
+std::string GetIrNameFromLoc(mlir::Location loc);
+
+// Whether the module's target is an AMD GPU.
+bool IsAMDGPU(const llvm::Module* module);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -314,7 +314,11 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
     for row in libs_paths:
         name = row[0]
         lib_paths = row[1]
+<<<<<<< HEAD
         optional = (len(row)>2 and row[2]==True)
+=======
+        optional = (len(row) > 2 and row[2] == True)
+>>>>>>> upstream/master
         selected_path = None
         for path in lib_paths:
             if test_results[i] and selected_path == None:
@@ -651,7 +655,11 @@ def _create_local_rocm_repository(repository_ctx):
         ],
     ))
 
+<<<<<<< HEAD
     have_hipblaslt = "1" if rocm_libs["hipblaslt"]!=None else "0"
+=======
+    have_hipblaslt = "1" if rocm_libs["hipblaslt"] != None else "0"
+>>>>>>> upstream/master
 
     # Set up BUILD file for rocm/
     repository_ctx.template(
@@ -666,6 +674,7 @@ def _create_local_rocm_repository(repository_ctx):
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
+            "%{rocm_hipblaslt}": "True" if rocm_libs["hipblaslt"] != None else "False",
         },
     )
 

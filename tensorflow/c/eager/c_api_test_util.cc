@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/logging.h"
@@ -549,4 +550,57 @@ TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
   CHECK_EQ(0, num_retvals);
   TF_DeleteStatus(status);
   return var_handle;
+}
+
+TFE_Context* CreateContext(const std::string& serialized_server_def,
+                           bool isolate_session_state,
+                           int64_t init_timeout_in_ms) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  opts->session_options.options.config.set_isolate_session_state(
+      isolate_session_state);
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(false));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TFE_ContextSetServerDefWithTimeout(ctx, 0, serialized_server_def.data(),
+                                     serialized_server_def.size(),
+                                     init_timeout_in_ms, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+  TF_DeleteStatus(status);
+  return ctx;
+}
+
+tensorflow::ServerDef ReplaceTaskInServerDef(
+    const tensorflow::ServerDef& server_def, int task_index) {
+  tensorflow::ServerDef server_def_copy = server_def;
+  tensorflow::ClusterDef* cluster_def = server_def_copy.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
+  const int port = tensorflow::testing::PickUnusedPortOrDie();
+  job_def->mutable_tasks()->at(task_index) =
+      tensorflow::strings::StrCat("localhost:", port);
+  return server_def_copy;
+}
+
+void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index,
+                            const string& host, int port) {
+  tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
+  job_def->mutable_tasks()->at(task_index) =
+      tensorflow::strings::StrCat(host, ":", port);
+}
+
+std::vector<std::string> ListDeviceNames(TFE_Context* ctx) {
+  TF_Status* status = TF_NewStatus();
+  std::vector<std::string> device_names;
+  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  const int num_devices = TF_DeviceListCount(devices);
+  for (int i = 0; i < num_devices; ++i) {
+    device_names.emplace_back(TF_DeviceListName(devices, i, status));
+    EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  }
+  TF_DeleteDeviceList(devices);
+  TF_DeleteStatus(status);
+  return device_names;
 }

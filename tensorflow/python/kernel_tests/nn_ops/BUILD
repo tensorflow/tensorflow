@@ -281,7 +281,9 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -319,6 +321,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

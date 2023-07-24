@@ -719,7 +719,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
     int_ty = i32_ty;
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const DotFusionAnalysis analysis(dot_instr->parent(), config.split_k());
+  TF_ASSIGN_OR_RETURN(
+      const auto analysis,
+      DotFusionAnalysis::Execute(dot_instr->parent(), config.split_k()));
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
@@ -1021,18 +1023,18 @@ StatusOr<LaunchDimensions> MatMulImpl(
     }
 
     // Emit all operations of LHS and RHS scopes.
-    TF_ASSIGN_OR_RETURN(
-        Value dot_input_lhs,
+    Value dot_input_lhs =
         EmitScope(b, libdevice_path,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(0))),
-                  values_lhs, {block_m, block_k}, lhs_mask));
-    TF_ASSIGN_OR_RETURN(
-        Value dot_input_rhs,
+                  values_lhs, {block_m, block_k}, lhs_mask)
+            .value();
+    Value dot_input_rhs =
         EmitScope(b, libdevice_path,
                   dot_instr->parent()->MakeInstructionPostOrderFrom(
                       const_cast<HloInstruction&>(*dot_instr->operand(1))),
-                  values_rhs, {block_k, block_n}, rhs_mask));
+                  values_rhs, {block_k, block_n}, rhs_mask)
+            .value();
 
     // Operation in the fusion before the dot can alter the elements of the
     // tiles that were zero masked during loads. These have to be zeroed here
@@ -1053,7 +1055,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);
-    return OkStatus();
   };
 
   // Pointers to parameters of LHS scope, then RHS, then the accumulator

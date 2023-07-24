@@ -65,7 +65,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -205,7 +204,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
-        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLProgramDialect",

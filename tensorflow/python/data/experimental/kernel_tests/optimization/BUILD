@@ -189,7 +189,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "optimization_test",
-    size = "small",
+    size = "medium",
     srcs = ["optimization_test.py"],
     shard_count = 2,
     deps = [

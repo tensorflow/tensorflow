@@ -116,12 +116,23 @@ bool ROCMBlas::Init() {
 }
 
 ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
+<<<<<<< HEAD
     : parent_(CHECK_NOTNULL(parent)), blas_(nullptr)
 #if TF_HIPBLASLT
     , 
     blas_lt_(parent)
 #endif    
      {}
+=======
+    : parent_(CHECK_NOTNULL(parent)),
+      blas_(nullptr)
+#if TF_HIPBLASLT
+      ,
+      blas_lt_(parent)
+#endif
+{
+}
+>>>>>>> upstream/master
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {

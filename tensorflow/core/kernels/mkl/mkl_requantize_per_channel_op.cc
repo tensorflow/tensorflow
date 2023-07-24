@@ -110,9 +110,10 @@ class MklRequantizePerChannelOp : public OpKernel {
       reorder_attr.set_output_scales(2, scales);
 #else
       reorder_attr.set_scales_mask(DNNL_ARG_SRC, 2);
-      auto scale_mem =
-          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
-                 cpu_engine_, scales.data());
+      auto scale_mem = memory({{static_cast<int64_t>(scales.size())},
+                               MklDnnType<float>(),
+                               memory::format_tag::x},
+                              cpu_engine_, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
 
       // Create the oneDNN wrapper over Eigen threadpool and set max threads

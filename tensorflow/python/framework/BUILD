@@ -161,6 +161,22 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "python_op_gen_test",
+    srcs = ["python_op_gen_test.cc"],
+    deps = [
+        ":kythe_metadata_proto_cc",
+        ":op_reg_offset_proto_cc",
+        ":python_op_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_proto_library(
     name = "op_reg_offset_proto",
     srcs = ["op_reg_offset.proto"],
@@ -567,6 +583,14 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops:resource_variable_ops",
+    ],
+)
+
+pytype_strict_library(
+    name = "strict_mode",
+    srcs = ["strict_mode.py"],
+    deps = [
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1480,7 +1504,10 @@ tpu_py_strict_test(
     name = "config_test_tpu",
     size = "small",
     srcs = ["config_test.py"],
-    disable_tfrt = True,  # TODO(tfrt-devs): Update this test to call initialize_tpu_system
+    # copybara:uncomment_begin
+    # args = ["--tpu_use_tfrt=false"],
+    # copybara:uncomment_end
+    disable_tfrt = True,  # TODO(b/291666911): Update this test to call initialize_tpu_system
     main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.
@@ -1820,10 +1847,9 @@ pytype_strict_library(
     srcs = ["flexible_dtypes.py"],
     deps = [
         ":dtypes",
+        ":extension_type",
         ":ops",
-        ":tensor_shape",
         ":weak_tensor",
-        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],

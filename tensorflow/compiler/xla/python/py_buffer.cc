@@ -143,7 +143,7 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr) {
     auto* pjrt_buffer = arr->pjrt_buffers().front().get();
-    TF_RET_CHECK(pjrt_buffer->on_device_shape().IsArray());
+    TF_RET_CHECK(!pjrt_buffer->IsTuple());
     // On CPU, we can return the value in a zero-copy way.
     if (pjrt_buffer->IsOnCpu()) {
       TF_ASSIGN_OR_RETURN(
@@ -259,44 +259,42 @@ StatusOr<pybind11::dict> IfrtHelpers::CudaArrayInterface(
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }
-  if (!pjrt_buffer->on_device_shape().IsArray()) {
+  if (pjrt_buffer->IsTuple()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for array buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == BF16) {
+  if (pjrt_buffer->element_type() == BF16) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for bfloat16 buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == F8E4M3FN) {
+  if (pjrt_buffer->element_type() == F8E4M3FN) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == F8E4M3B11FNUZ) {
+  if (pjrt_buffer->element_type() == F8E4M3B11FNUZ) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E4M3B11FNUZ buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == F8E5M2) {
+  if (pjrt_buffer->element_type() == F8E5M2) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E5M2 buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == F8E4M3FNUZ) {
+  if (pjrt_buffer->element_type() == F8E4M3FNUZ) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E4M3FNUZ buffers.");
   }
-  if (pjrt_buffer->on_device_shape().element_type() == F8E5M2FNUZ) {
+  if (pjrt_buffer->element_type() == F8E5M2FNUZ) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E5M2FNUZ buffers.");
   }
-  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      pjrt_buffer->on_device_shape().layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(pjrt_buffer->layout()));
 
   py::dict result;
   TF_ASSIGN_OR_RETURN(const auto* dynamic_shape,
                       IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
   result["shape"] = SpanToTuple(dynamic_shape->dimensions());
-  TF_ASSIGN_OR_RETURN(py::str typestr,
-                      TypeDescriptorForPrimitiveType(
-                          pjrt_buffer->on_device_shape().element_type()));
+  TF_ASSIGN_OR_RETURN(py::str typestr, TypeDescriptorForPrimitiveType(
+                                           pjrt_buffer->element_type()));
   result["typestr"] = std::move(typestr);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,

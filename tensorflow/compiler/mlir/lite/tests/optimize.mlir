@@ -668,7 +668,7 @@ func.func @FuseReshapeAroundBMMRHS(%arg0: tensor<1x3x6x5x1024xf32>) -> tensor<1x
 
 // CHECK-LABEL: @FuseTransposeIntoBMM_RHS
 func.func @FuseTransposeIntoBMM_RHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x1440x1440xf32> {
-  %cst_1 = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
   %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<1x1440x256xf32>, tensor<3xi32>) -> tensor<1x256x1440xf32>
   %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<1x4x1440x256xf32>, tensor<1x256x1440xf32>) -> tensor<1x4x1440x1440xf32>
   return %33 : tensor<1x4x1440x1440xf32>
@@ -676,9 +676,19 @@ func.func @FuseTransposeIntoBMM_RHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tens
   // CHECK: return %0 : tensor<1x4x1440x1440xf32>
 }
 
+// CHECK-LABEL: @FuseTransposeIntoBMM_RHS2
+func.func @FuseTransposeIntoBMM_RHS2(%arg0: tensor<?x?x40xf32>,  %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
+  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return %33 : tensor<?x?x?xf32>
+  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  // CHECK: return %0 : tensor<?x?x?xf32>
+}
+
 // CHECK-LABEL: @FuseTransposeIntoBMM_LHS
 func.func @FuseTransposeIntoBMM_LHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x256x256xf32> {
-  %cst_1 = arith.constant dense_resource<__elided__> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
   %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<1x1440x256xf32>, tensor<3xi32>) -> tensor<1x256x1440xf32>
   %33 = "tfl.batch_matmul"(%32, %arg0) {adj_x = false, adj_y = false} : (tensor<1x256x1440xf32>, tensor<1x4x1440x256xf32>) -> tensor<1x4x256x256xf32>
   return %33 : tensor<1x4x256x256xf32>
@@ -2623,6 +2633,30 @@ func.func @RemoveReshapeBeforeFullyConnectedExpandDims0(%arg0: tensor<128x64xf32
   %1 = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
   func.return %1 : tensor<128x32xf32>
   // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
+  // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
+}
+
+// CHECK-LABEL: RemoveReshapeBeforeFullyConnectedExpandNeg
+func.func @RemoveReshapeBeforeFullyConnectedExpandNeg(%arg0: tensor<1x128x64xf32>, %arg1: tensor<32x64xf32>, %arg2: tensor<32xf32>) -> tensor<128x32xf32> {
+  %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x128x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
+  %1 = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
+  func.return %1 : tensor<128x32xf32>
+  // CHECK: %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x128x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
+  // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
+  // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
+}
+
+// CHECK-LABEL: RemoveReshapeBeforeFullyConnectedReshapeNeg
+func.func @RemoveReshapeBeforeFullyConnectedReshapeNeg(%arg0: tensor<4x32x64xf32>, %arg1: tensor<32x64xf32>, %arg2: tensor<32xf32>) -> tensor<128x32xf32> {
+  %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x32x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
+  %1 = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
+  func.return %1 : tensor<128x32xf32>
+  // CHECK: %cst = arith.constant dense<[128, 64]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x32x64xf32>, tensor<2xi32>) -> tensor<128x64xf32>
+  // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x64xf32>, tensor<32x64xf32>, tensor<32xf32>) -> tensor<128x32xf32>
   // CHECK: return %[[FULLY_CONNECTED]] : tensor<128x32xf32>
 }
 

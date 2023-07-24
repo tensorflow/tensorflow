@@ -104,9 +104,6 @@ class MklFusedInstanceNormOp : public OpKernel {
       }
       auto src_md = memory::desc(src_dims, MklDnnType<T>(), tag);
 
-      void* src_buf =
-          static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
-
 #ifndef ENABLE_ONEDNN_V3
 #define NUM_DUPLICATE 2
 #else
@@ -189,8 +186,6 @@ class MklFusedInstanceNormOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
                               {0}, 0, src_tensor.shape(), &output_tensor));
-      void* dst_buf =
-          static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
 
       std::unique_ptr<dnnl::memory> dst_mem_ptr(
           new memory(src_md, cpu_engine_, (char*)nullptr));
