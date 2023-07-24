@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -106,6 +108,47 @@ Status TensorShapeToXLAShape(DataType dtype,
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
+  return OkStatus();
+}
+
+Status TensorShapeToBoundedXLAShape(DataType dtype,
+                                    const PartialTensorShape& tensor_shape,
+                                    const TensorShape& bound,
+                                    xla::Shape* shape) {
+  xla::PrimitiveType type;
+  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
+  if (tensor_shape.unknown_rank()) {
+    // For unknown shape, create a rank 1 size 0 tensor.
+    *shape = xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
+    return OkStatus();
+  }
+
+  if (tensor_shape.dims() != bound.dims()) {
+    return errors::InvalidArgument(
+        "`tensor_shape` and `bound` have different ranks. tensor_shape=",
+        tensor_shape.dims(), "vs bound=", bound.dims());
+  }
+
+  int rank = tensor_shape.dims();
+  std::vector<int64_t> dimensions(rank);
+  std::vector<int64_t> layout(rank);
+  for (int d = 0; d < rank; ++d) {
+    if (bound.dim_size(d) < 0) {
+      return errors::InvalidArgument("Bound dimension ", d,
+                                     " has unknown size.");
+    }
+    dimensions[d] = bound.dim_size(d);
+  }
+  // XLA uses minor-to-major; Tensorflow uses major-to-minor.
+  std::iota(layout.rbegin(), layout.rend(), 0);
+  xla::Shape result =
+      xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
+  for (int d = 0; d < rank; ++d) {
+    if (tensor_shape.dim_size(d) < 0) {
+      result.set_dynamic_dimension(d, true);
+    }
+  }
+  *shape = result;
   return OkStatus();
 }
 

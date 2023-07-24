@@ -2063,6 +2063,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "DepthwiseConv2dNativeBackpropInput",
       "Dequantize",
       "Diag",
+      "DynamicInfeedEnqueueTupleOp",
+      "DynamicInfeedDequeueTupleOp",
       "DynamicStitch",
       "DynamicPartition",
       "Einsum",
