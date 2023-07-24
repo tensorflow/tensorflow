@@ -70,7 +70,7 @@ static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   return res;
 }
 
-static OpFoldResult multiply_dims(llvm::ArrayRef<OpFoldResult> dims,
+static OpFoldResult multiply_dims(ArrayRef<OpFoldResult> dims,
                                   OpBuilder& builder, Location loc,
                                   OpFoldResult init = nullptr) {
   if (dims.size() == 0) {
@@ -93,11 +93,8 @@ static OpFoldResult multiply_dims(llvm::ArrayRef<OpFoldResult> dims,
   return std::accumulate(dims.begin(), dims.end(), init, multiply);
 }
 
-static int64_t count_dynamic_dims(llvm::ArrayRef<int64_t> dims) {
-  int64_t count = 0;
-  for (auto dim : dims)
-    if (ShapedType::isDynamic(dim)) ++count;
-  return count;
+static int64_t count_dynamic_dims(ArrayRef<int64_t> dims) {
+  return llvm::count_if(dims, ShapedType::isDynamic);
 }
 
 // Try to extract the known integer value for the given OpFoldResult
@@ -108,7 +105,7 @@ static int64_t as_static_dimension(OpFoldResult value) {
 }
 
 static llvm::SmallVector<int64_t> as_static_dimension_list(
-    llvm::ArrayRef<OpFoldResult> values) {
+    ArrayRef<OpFoldResult> values) {
   return llvm::map_to_vector(values, as_static_dimension);
 }
 
@@ -121,7 +118,7 @@ static std::optional<Value> build_reshape(PatternRewriter& rewriter,
                                           ArrayRef<OpFoldResult> shape,
                                           bool tosaOnly) {
   auto static_shape = as_static_dimension_list(shape);
-  auto element_type = value.getType().dyn_cast<TensorType>().getElementType();
+  auto element_type = cast<TensorType>(value.getType()).getElementType();
 
   if (count_dynamic_dims(static_shape) > 1) {
     if (!tosaOnly) {

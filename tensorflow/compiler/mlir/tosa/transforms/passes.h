@@ -44,6 +44,9 @@ class TosaDialect;
 
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+
+// A set of temporary patterns for lowering TFL dialects to core MLIR dialects
+// when TOSA lacks the required operation(s).
 void populateLegalizeTFLToTensorPatterns(MLIRContext* ctx,
                                          RewritePatternSet& patterns);
 

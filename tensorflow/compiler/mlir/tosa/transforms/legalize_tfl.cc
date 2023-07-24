@@ -4642,7 +4642,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 void populateLegalizeTFLToTensorPatterns(MLIRContext* ctx,
                                          RewritePatternSet& patterns) {
 #define DEF_PATTERN_INSERT(PAT)                                   \
-  patterns.addWithLabel<Convert##PAT##Op>({#PAT "ToTensor"}, ctx, \
+  patterns.addWithLabel<Convert##PAT##Op>({#PAT"ToTensor"}, ctx, \
                                           /*tosaOnly*/ false);
 
   DEF_PATTERN_INSERT(TFLGather);
