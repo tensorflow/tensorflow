@@ -66,6 +66,7 @@ tf_mkl_kernel_library(
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
     ] + MKL_DEPS,
@@ -80,6 +81,7 @@ tf_mkl_kernel_library(
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels/linalg:einsum_op",
     ] + MKL_DEPS,
 )
@@ -94,7 +96,9 @@ tf_mkl_kernel_library(
         "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
-    deps = MKL_DEPS,
+    deps = [
+        "//tensorflow/core:graph",
+    ] + MKL_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -214,6 +218,7 @@ tf_mkl_kernel_library(
         "mkl_quantized_conv_ops.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL
-#define TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL_H_
 
 #ifdef INTEL_MKL
 
@@ -98,4 +98,4 @@ class FilterMemoryDesc {
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_KERNEL_UTIL_H_
