@@ -5590,7 +5590,9 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
 
 def TFL_ComplexOp : TFL_Op<"complex", [
   Pure,
-  ResultsBroadcastableShape]> {
+  SameOperandsShape,
+  SameOperandsAndResultShape,
+  SameOperandsElementType]> {
   let summary = "Converts two real numbers to a complex number.";
 
   let description = [{

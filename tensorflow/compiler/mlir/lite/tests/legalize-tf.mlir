@@ -2327,13 +2327,13 @@ func.func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x
   // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
 }
 
-func.func @complex(%arg0: tensor<1 x f64>,%arg1: tensor<1 x f64>) -> tensor<1 x complex<f64>> {
-  %0 = "tf.complex"(%arg0, %arg1) : (tensor<1 x f64>, tensor<1 x f64>) -> tensor<1xcomplex<f64>>
+func.func @complex(%arg0: tensor<1xf64>,%arg1: tensor<1xf64>) -> tensor<1xcomplex<f64>> {
+  %0 = "tf.complex"(%arg0, %arg1) : (tensor<1xf64>, tensor<1xf64>) -> tensor<1xcomplex<f64>>
   func.return %0: tensor<1xcomplex<f64>>
 
-// CHECK-LABEL: complex
-// CHECK:  "tfl.complex"(%arg0,%arg1) : (tensor<1xf64>, tensor<1xf64>) -> tensor<1xcomplex<f64>>
-// CHECK:  return
+  // CHECK-LABEL: complex
+  // CHECK:  "tfl.complex"(%arg0, %arg1) : (tensor<1xf64>, tensor<1xf64>) -> tensor<1xcomplex<f64>>
+  // CHECK:  return
 }
 
 func.func @complex_abs(%arg0: tensor<1 x complex<f32>>) -> tensor<1xf32> {
