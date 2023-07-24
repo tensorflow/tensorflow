@@ -28,6 +28,7 @@ def generated_test_models():
         "broadcast_to",
         "cast",
         "ceil",
+        "complex",
         "complex_abs",
         "concat",
         "cond",

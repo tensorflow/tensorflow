@@ -52,6 +52,7 @@ from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadc
 from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests
 from tensorflow.lite.testing.op_tests.cast import make_cast_tests
 from tensorflow.lite.testing.op_tests.ceil import make_ceil_tests
+from tensorflow.lite.testing.op_tests.complex import make_complex_tests
 from tensorflow.lite.testing.op_tests.complex_abs import make_complex_abs_tests
 from tensorflow.lite.testing.op_tests.concat import make_concat_tests
 from tensorflow.lite.testing.op_tests.cond import make_cond_tests
