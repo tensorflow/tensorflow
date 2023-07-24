@@ -978,6 +978,8 @@ REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<50>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<10>,
                             IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
+                            IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
