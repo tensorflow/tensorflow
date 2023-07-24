@@ -19,7 +19,7 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // TODO(ezhulenev): We currently do not build with OpenXLA runtime in open
 // source because we do not have bazel dependency from XLA to IREE.
-#if XLA_DISABLE_OPENXLA_RUNTIME
+#if XLA_DISABLE_OPENXLA_COMPILER
 //===----------------------------------------------------------------------===//
 
 namespace mlir {
@@ -33,7 +33,7 @@ inline void populateOpenXlaRuntimePasses(mlir::OpPassManager&, ThunkSequence*) {
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//
-#else  // !XLA_DISABLE_OPENXLA_RUNTIME
+#else  // !XLA_DISABLE_OPENXLA_COMPILER
 //===----------------------------------------------------------------------===//
 
 #include <memory>

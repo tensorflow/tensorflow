@@ -58,6 +58,6 @@ package(
 cc_library(
     name = "passes",
     hdrs = ["passes.h"],
-    defines = ["XLA_DISABLE_OPENXLA_RUNTIME=1"],
+    defines = ["XLA_DISABLE_OPENXLA_COMPILER=1"],
 )
 # copybara:comment_end
