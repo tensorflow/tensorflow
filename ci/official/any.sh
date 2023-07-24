@@ -43,7 +43,7 @@ if [[ "${PIP_WHEEL}" -eq "1" ]]; then
 
   tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" tensorflow/tools/pip_package:build_pip_package
   tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package build "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"
-  tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
+  tfrun ./ci/official/utilities/rename_and_verify_wheels.sh "$TFCI_GIT_DIR"
 fi
 
 if [[ "${#nonpip_targets[@]}" -ne 0 ]]; then
