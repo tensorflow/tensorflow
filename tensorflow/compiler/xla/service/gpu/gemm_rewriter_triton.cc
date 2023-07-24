@@ -795,11 +795,11 @@ void FuseWithInputsRecursively(
             inputs.erase(operand);
           }
           inputs.insert(operand->operands().begin(), operand->operands().end());
-          // Save the dimension order description of operand's input.
-          CHECK(dim_orders.insert({operand, operand_dim_order}).second)
-              << operand->ToString();
           top_is_ready_to_fuse = false;
         }
+        // Save the dimension order description of operand's input.
+        CHECK(dim_orders.insert({operand, operand_dim_order}).second)
+            << operand->ToString();
       }
     }
     if (top_is_ready_to_fuse) {
@@ -858,7 +858,8 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     // the same tiling.
     auto first_lhs_parameter_it = lhs_dim_orders.cbegin();
     while (first_lhs_parameter_it != lhs_dim_orders.cend()) {
-      if (first_lhs_parameter_it->first->opcode() == HloOpcode::kParameter) {
+      if (old_to_new_mapping[first_lhs_parameter_it->first]->opcode() ==
+          HloOpcode::kParameter) {
         break;
       }
       ++first_lhs_parameter_it;

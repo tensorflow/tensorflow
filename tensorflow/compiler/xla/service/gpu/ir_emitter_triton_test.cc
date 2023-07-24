@@ -1029,10 +1029,9 @@ TEST_F(TritonGemmLevel2Test, SplitLHSInputOutputIsFused) {
   }
 
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY e {
-  p0 = s8[5,18,20,150] parameter(0)
+  p0t = (s8[5,18,20,150]) parameter(0)
+  p0 = s8[5,18,20,150] get-tuple-element(p0t), index=0
   p0c = bf16[5,18,20,150] convert(p0)
   t0 = bf16[18,5,20,150] transpose(p0c), dimensions={1,0,2,3}
   r0 = bf16[18,15000] reshape(t0)
@@ -1047,7 +1046,7 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+      GmockMatch(m::Fusion(m::GetTupleElement(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
