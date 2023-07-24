@@ -61,8 +61,6 @@ class KernelFusionEmitterBase : public FusionInterface {
                                       llvm::IRBuilder<>* builder) const final;
   virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
 
-  static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
-
  protected:
   virtual Status EmitKernel(const LaunchDimensions& launch_dims,
                             std::vector<llvm_ir::IrArray> inputs,
@@ -81,6 +79,15 @@ class KernelFusionEmitterBase : public FusionInterface {
   mlir::lmhlo::FusionOp fusion_op_;
   const HloFusionInstruction& fusion_;
 };
+
+std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+           std::vector<llvm_ir::IrArray>>
+BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
+                     const std::string& suggested_name,
+                     absl::Span<const KernelArgument> arguments,
+                     size_t num_inputs,
+                     const LaunchDimensions& launch_dimensions,
+                     llvm::IRBuilder<>* builder);
 
 }  // namespace gpu
 }  // namespace xla

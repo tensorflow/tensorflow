@@ -28,7 +28,7 @@ StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
   FusionEmissionResult result;
   if (src_buffer != dst_buffer) {
     result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        KernelFusionEmitterBase::GetThunkInfo(fusion_op_),
+        Thunk::ThunkInfo::WithProfileAnnotation(fusion_op_),
         /*source_buffer=*/src_buffer,
         /*destination_buffer=*/dst_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src_)),

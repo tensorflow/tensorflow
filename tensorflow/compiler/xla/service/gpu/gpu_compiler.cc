@@ -398,7 +398,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       } else {
         // Use a simple mesh shape if not specified.
         option.device_mesh_shape = {
-            stream_exec->GetDeviceDescription().core_count(), 1};
+            gpu_target_config.gpu_device_info.core_count, 1};
       }
       if (!hlo_module->config().auto_spmd_partitioning_mesh_ids().empty()) {
         option.device_mesh_ids =
@@ -443,8 +443,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       if (gpu_target_config.platform_name == "ROCM") {
         return !gpu::IsMatrixMultiplication(*instr);
       } else {
-        return !stream_exec->GetDeviceDescription()
-                    .cuda_compute_capability()
+        return !std::get<se::CudaComputeCapability>(
+                    gpu_target_config.gpu_version)
                     .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
                !gpu::IsMatrixMultiplication(*instr);
       }

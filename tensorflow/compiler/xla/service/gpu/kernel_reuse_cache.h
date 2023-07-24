@@ -54,6 +54,19 @@ class KernelReuseCache {
   absl::flat_hash_map<std::string /*fingerprint*/, Entry> cache_;
 };
 
+// Calculates the fingerprint of a (fused_computation, kernel_arguments,
+// discriminator) tuple.
+//
+// If a given fusion is implemented using multiple kernels, then for each
+// kernel we should provide a discriminator, such as "init" and "impl".
+//
+// If the same fingerprint is returned twice, then we can reuse the kernel
+// generated for the first computation.
+std::string GetComputationFingerprint(
+    const HloComputation* fused_computation,
+    absl::Span<const KernelArgument> kernel_arguments,
+    absl::string_view discriminator = "");
+
 }  // namespace gpu
 }  // namespace xla
 

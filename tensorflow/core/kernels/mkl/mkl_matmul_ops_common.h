@@ -262,7 +262,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     context_.weight_md.reset(new memory::desc({matmul_fwd_params.weight_dims},
                                               MklDnnType<Tweight>(),
+#ifdef DNNL_AARCH64_USE_ACL
+                                              memory::format_tag::any));
+#else
                                               matmul_fwd_params.weight_format));
+#endif
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
@@ -904,8 +908,11 @@ class MklMatMulPrimitive : public MklPrimitive {
                                          params.a_strides));
 
     context_.b_md.reset(new memory::desc({params.b_dims}, MklDnnType<Trhs>(),
+#ifdef DNNL_AARCH64_USE_ACL
+                                         memory::format_tag::any));
+#else
                                          params.b_strides));
-
+#endif
     context_.c_md.reset(new memory::desc({params.c_dims}, MklDnnType<Toutput>(),
                                          params.c_strides));
 
@@ -959,8 +966,13 @@ class MklMatMulPrimitive : public MklPrimitive {
     // Create memory primitive based on dummy data.
     context_.a_mem.reset(
         new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
+#ifdef DNNL_AARCH64_USE_ACL
+    context_.b_mem.reset(new dnnl::memory(
+        context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
+#else
     context_.b_mem.reset(
         new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+#endif
     context_.c_mem.reset(
         new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
