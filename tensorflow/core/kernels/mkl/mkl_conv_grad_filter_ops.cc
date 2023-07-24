@@ -36,9 +36,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
 using ConvBwdFilterDesc = dnnl::convolution_backward_weights::desc;
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 using ConvBwdFilterPd = dnnl::convolution_backward_weights::primitive_desc;
 
 struct MklConvBwdFilterParams {
@@ -96,7 +96,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 #ifdef DNNL_AARCH64_USE_ACL
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
+#if !defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_ONEDNN_V2)
     // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_filter_stream);
@@ -121,7 +121,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
     }
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_OPENMP && ENABLE_ONEDNN_V2
     execute_primitives(context_.bwd_filter_primitives, bwd_filter_stream,
                        context_.bwd_filter_primitives_args);
 
@@ -159,15 +159,15 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 
     // Primitive descriptor and descriptor for convolution backward filter.
     std::shared_ptr<ConvBwdFilterPd> bwd_filter_pd;
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     std::shared_ptr<ConvBwdFilterDesc> bwd_filter_desc;
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     // Primitive descriptor and descriptor for convolution forward.
     std::shared_ptr<ConvFwdPd> fwd_pd;
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     std::shared_ptr<ConvFwdDesc> fwd_desc;
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     // Convolution backward filter primitive.
     std::shared_ptr<dnnl::primitive> conv_bwd_filter;
@@ -188,13 +188,13 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           diff_filter_mem(nullptr),
           diff_bias_mem(nullptr),
           diff_dst_mem(nullptr),
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
           bwd_filter_desc(nullptr),
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
           fwd_pd(nullptr),
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
           fwd_desc(nullptr),
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
           src_md(nullptr),
           diff_filter_md(nullptr),
           diff_bias_md(nullptr),
@@ -228,7 +228,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           new memory::desc({convBwdFilterDims.diff_bias_dims}, MklDnnType<T>(),
                            memory::format_tag::x));
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     // Create descriptor and primitive descriptor for convolution forward.
     context_.fwd_desc.reset(new ConvFwdDesc(
         prop_kind::forward, dnnl::algorithm::convolution_direct,
@@ -276,7 +276,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           convBwdFilterDims.padding_left, convBwdFilterDims.padding_right,
           *context_.fwd_pd));
     }
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     auto bwd_filter_pd = context_.bwd_filter_pd.get();
 

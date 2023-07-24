@@ -273,11 +273,11 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReq) {
   // 178 * 1.00392 ~= 178.698 ~= 179
 
   Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 4}));
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
 #else
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 184, 169, 234, 179});
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
 
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, output);
@@ -470,11 +470,11 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
   // 178 * 1.00392 ~= 178.698 ~= 179
 
   Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 4}));
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
 #else
   test::FillValues<quint8>(&expected, {84, 60, 116, 52, 184, 169, 234, 179});
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
 
   const Tensor& output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, output);

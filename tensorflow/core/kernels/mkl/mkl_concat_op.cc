@@ -40,7 +40,7 @@ using dnnl::concat;
 using dnnl::stream;
 
 namespace tensorflow {
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
 #define CONCAT_PRIM_DESC(eng, concat_dims, src_md, dst_md_ptr) \
   concat::primitive_desc(*dst_md_ptr, concat_dims, src_md, eng)
 #define CONCAT_PRIM_DESC_USING_SRC(eng, concat_dims, src_md) \
@@ -54,7 +54,7 @@ namespace tensorflow {
   concat::primitive_desc(eng, concat_dims, src_md)
 #define GET_MEMORY_DESC(md) md
 #define SET_MKL_LAYOUT(md) SetMklLayout(md)
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // List of TensorShape objects. Used in Concat/Split layers.
@@ -302,7 +302,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 #endif
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
-#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
+#if !defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_ONEDNN_V2)
       context_.data_mem_shdptr[i]->set_data_handle(
           static_cast<void*>(in_data[i].get_data_handle()), *fwd_stream);
     }
@@ -314,7 +314,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(dst_data.get_data_handle()));
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_OPENMP && ENABLE_ONEDNN_V2
 
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem[i] = *context_.data_mem_shdptr[i];
@@ -663,7 +663,7 @@ class MklConcatOp : public OpKernel {
             auto src_tf_fmt = MklTensorFormatToMklDnnDataFormat(
                 mkl_input_shapes[k].GetTfDataFormat());
             if (src_tf_fmt != mkl_common_format) {
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
               memory::dims src_dims(src_md.data.dims,
                                     &src_md.data.dims[src_md.data.ndims]);
 #else
@@ -673,7 +673,7 @@ class MklConcatOp : public OpKernel {
               else if (src_md.get_ndims() == 4)
                 src_dims = {src_md.get_dims()[0], src_md.get_dims()[1],
                             src_md.get_dims()[2], src_md.get_dims()[3]};
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
               src_md =
                   memory::desc(src_dims, MklDnnType<T>(), mkl_common_format);
             }

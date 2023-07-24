@@ -49,7 +49,7 @@ class MklTestingUtil {
   }
 };
 
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
 // Since oneDNN v3.x exposes only an opaque memory descriptor, it is no longer
 // possible to cache the entire filter memory descriptor as is. So we store
 // all relevant information about it in the following class.
@@ -94,7 +94,7 @@ class FilterMemoryDesc {
   memory::dims inner_idxs_;
   memory::dims strides_;
 };
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

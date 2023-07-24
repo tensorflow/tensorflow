@@ -253,8 +253,8 @@ def tsl_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
-        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1", "-DENABLE_ONEDNN_V2=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP", "-DENABLE_ONEDNN_V2=1"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +

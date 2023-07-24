@@ -43,11 +43,11 @@ using dnnl::stream;
 using EltwiseFwdActivationPd = dnnl::eltwise_forward::primitive_desc;
 
 namespace tensorflow {
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
 #define GET_MEMORY_DESC(md) md.data
 #else
 #define GET_MEMORY_DESC(md) md
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
 // TODO(tf-onednn): Consolidate this class with `MklEltWiseFwdParams`
 // in `mkl_relu_op.cc`.
@@ -59,23 +59,23 @@ class MklEltwiseFwdActivationParams {
  public:
   memory::dims src_dims;
   memory::desc src_md;
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
   memory::desc dst_md;
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
   algorithm alg_kind;
   float alpha;
   float beta;
 
   MklEltwiseFwdActivationParams(memory::dims src_dims, memory::desc src_md,
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
                                 memory::desc dst_md,
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
                                 algorithm alg_kind, float alpha, float beta)
       : src_dims(src_dims),
         src_md(src_md),
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
         dst_md(dst_md),
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
         alg_kind(alg_kind),
         alpha(alpha),
         beta(beta) {
@@ -134,9 +134,9 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
     std::shared_ptr<memory> dst_mem;
 
     // desc & primitive desc
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     std::shared_ptr<dnnl::eltwise_forward::desc> fwd_desc;
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
     std::shared_ptr<EltwiseFwdActivationPd> fwd_pd;
 
     // memory desc
@@ -156,9 +156,9 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
     EltwiseFwdActivationContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
           fwd_desc(nullptr),
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
           fwd_pd(nullptr),
           src_md(nullptr),
           dst_md(nullptr),
@@ -174,7 +174,7 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
     context_.src_mpd.reset(new memory::desc(*context_.src_md));
 
     // Create an eltwise forward descriptor and primitive descriptor
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     context_.fwd_desc.reset(new eltwise_forward::desc(
         prop_kind::forward, fwdParams.alg_kind, *context_.src_md,
         fwdParams.alpha, fwdParams.beta));
@@ -185,7 +185,7 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
     context_.fwd_pd.reset(new EltwiseFwdActivationPd(
         cpu_engine_, prop_kind::forward, fwdParams.alg_kind, *context_.src_md,
         *context_.dst_md, fwdParams.alpha, fwdParams.beta));
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
     auto fwd_pd = context_.fwd_pd.get();
 
     // Create memory primitive based on dummy data
@@ -301,15 +301,15 @@ class MklEltwiseFwdActivationOpBase : public OpKernel {
       // Create blocked memory descriptor
       src_md = MklDnnData<T>::CreateBlockedMemDesc(src_dims, src_strides);
 
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
       memory::desc dst_md = src_md;
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
 
       // Try to get an eltwise forward primitive from caching pool
       MklEltwiseFwdActivationParams<T> fwdParams(src_dims, src_md,
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
                                                  dst_md,
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
                                                  alg_kind, alpha_, beta_);
       MklEltwiseFwdActivationPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdActivationPrimitiveFactory<T>::Get(fwdParams);

@@ -31,10 +31,6 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-load(
-    "//third_party/mkl_dnn:build_defs.bzl",
-    "if_onednn_v3",
-)
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -7864,8 +7860,8 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -7875,7 +7871,7 @@ tf_cc_shared_library(
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
         # copybara:comment_end
-    ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_platform_strings",

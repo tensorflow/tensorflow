@@ -53,6 +53,9 @@ TEST(MklUtilTest, MklDnnTfShape) {
   EXPECT_NE(b_tf_shape_nchw, b_mkldnn_tf_shape);
 }
 
+#ifdef ENABLE_ONEDNN_V2
+// TODO(intel-tf): This code is not tested for oneDNN v3.x and needs to be
+// removed
 TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   // Let's create 2D tensor of shape {3, 4} with 3 being innermost dimension
   // first (case 1) and then it being outermost dimension (case 2).
@@ -80,6 +83,7 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.dims[0], 3);
   EXPECT_EQ(b_md2.data.dims[1], 4);
 }
+#endif  // ENABLE_ONEDNN_V2
 
 TEST(MklUtilTest, LRUCacheTest) {
   // The cached objects are of type int*

@@ -159,7 +159,7 @@ inline void execute_primitives(
   }
 }
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
 #define ARE_MEMORY_DESCS_EQUAL(md1, md2) dnnl_memory_desc_equal(&md1, &md2)
 #define CREATE_MEMORY_DESC_USING_STRIDES dnnl_memory_desc_init_by_strides
 #define GET_DATA_TYPE data_type
@@ -193,7 +193,7 @@ inline void execute_primitives(
 #define GET_STRIDES_DIMS(dims, dims_outer_blocks) dims
 #define INIT_DIMS_FROM_DESC(in_dims, md) in_dims = md.get_dims()
 #define MEMORY_DESC memory::desc
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
 // In oneDNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
@@ -477,14 +477,14 @@ class MklDnnShape {
   inline void SetElemType(memory::data_type dt) { data_.T_ = dt; }
   inline const memory::data_type GetElemType() { return data_.T_; }
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
   inline void SetMklLayout(memory::desc* md) {
     CHECK_NOTNULL(md);
     data_.mkl_md_ = md->data;
   }
 #else
   inline void SetMklLayout(const memory::desc& md) { data_.mkl_md_ = md; }
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
   inline const memory::desc GetMklLayout() const {
     return memory::desc(data_.mkl_md_);
@@ -1342,7 +1342,7 @@ inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
   std::vector<primitive> net;
   net.push_back(dnnl::reorder(reorder_desc));
   std::vector<MemoryArgsMap> net_args;
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
   net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
 #else
   if (scale_mem != nullptr) {
@@ -1352,7 +1352,7 @@ inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
   } else {
     net_args.push_back({{DNNL_ARG_FROM, src_mem}, {DNNL_ARG_TO, dst_mem}});
   }
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
   ExecutePrimitive(net, &net_args, engine, ctx);
 }
 
@@ -1514,11 +1514,11 @@ class MklDnnData {
                                   std::shared_ptr<stream> t_stream = nullptr) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
+#if !defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_ONEDNN_V2)
     user_memory_->set_data_handle(data_buffer, *t_stream);
 #else
     user_memory_->set_data_handle(data_buffer);
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_OPENMP && ENABLE_ONEDNN_V2
   }
 
   /// Set function for data buffer of user memory primitive.
@@ -2195,7 +2195,7 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     auto to_inner_blks = to_desc.GET_INNER_BLKS;
     auto to_inner_idxs = to_desc.GET_INNER_IDXS;
     auto to_strides = to_desc.GET_STRIDES;
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     memory::dims from_inner_blks_1(from_inner_blks,
                                    &from_inner_blks[from_inner_nblks]);
     memory::dims from_inner_idxs_1(from_inner_idxs,
@@ -2206,7 +2206,7 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
                                            &from_strides[from_desc.ndims]);
     memory::dims to_strides_outer_blocks(to_strides,
                                          &to_strides[to_desc.ndims]);
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     key_creator.AddAsKey(prefix);
 #ifdef DNNL_AARCH64_USE_ACL

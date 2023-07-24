@@ -67,7 +67,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
 #ifdef DNNL_AARCH64_USE_ACL
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
+#if !defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_ONEDNN_V2)
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_cpu_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -76,7 +76,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_OPENMP && ENABLE_ONEDNN_V2
 
     DCHECK_EQ(context_.fwd_primitives.size(), context_.fwd_net_args.size());
     execute_primitives(context_.fwd_primitives, fwd_cpu_stream,
@@ -98,9 +98,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     std::shared_ptr<memory> dst_mem;
 
     // Primitive descriptor.
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     std::shared_ptr<dnnl::softmax_forward::desc> fwd_desc;
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     // Memory descriptor.
     std::shared_ptr<memory::desc> src_md;
@@ -115,9 +115,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     SoftmaxFwdContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
           fwd_desc(nullptr),
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
           src_md(nullptr),
           fwd_pd(nullptr),
           softmax_fwd(nullptr) {
@@ -132,7 +132,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
     // Create softmax descriptor and primitive descriptor.
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
     context_.fwd_desc.reset(new dnnl::softmax_forward::desc(
         prop_kind::forward_scoring, *context_.src_md, fwdParams.axis));
     context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
@@ -142,7 +142,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         cpu_engine_, prop_kind::forward_inference,
         dnnl::algorithm::softmax_accurate, *context_.src_md,
         *context_.src_md /* dst_md */, fwdParams.axis));
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
     // Create memory primitive based on dummy data.
     context_.src_mem.reset(

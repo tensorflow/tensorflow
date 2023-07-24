@@ -79,7 +79,7 @@ class MklLayerNormOp : public OpKernel {
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
       auto src_mem = memory(src_md, cpu_engine, src_buf);
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
       // oneDNN v2.x requires scale-shift as a combined array in float32 type.
       memory::dims scale_shift_dims = {
           2, static_cast<dnnl_dim_t>(num_elements_scale)};
@@ -124,7 +124,7 @@ class MklLayerNormOp : public OpKernel {
       void* shift_buf_dst =
           static_cast<void*>(shift_buf_tensor.flat<float>().data());
       auto shift_mem = memory(scale_shift_md, cpu_engine, shift_buf_dst);
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
       void* scale_buf_src =
           static_cast<void*>(const_cast<T*>(scale_tensor.flat<T>().data()));
@@ -159,7 +159,7 @@ class MklLayerNormOp : public OpKernel {
       shift_reorder_prim.execute(*cpu_stream, shift_reorder_args);
 
       // Create layer_normalization primitive
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
       auto lnorm_desc = layer_normalization_forward::desc(
           prop_kind::forward_inference, src_md, epsilon_,
           normalization_flags::use_scale_shift);
@@ -170,7 +170,7 @@ class MklLayerNormOp : public OpKernel {
       auto lnorm_pd = layer_normalization_forward::primitive_desc(
           cpu_engine, prop_kind::forward_inference, src_md, dst_md, epsilon_,
           normalization_flags::use_scale | normalization_flags::use_shift);
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
       auto lnorm_prim = layer_normalization_forward(lnorm_pd);
 
       // mean and variance memory
@@ -189,12 +189,12 @@ class MklLayerNormOp : public OpKernel {
       lnorm_args.insert({DNNL_ARG_SRC, src_mem});
       lnorm_args.insert({DNNL_ARG_MEAN, mean_mem});
       lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
       lnorm_args.insert({DNNL_ARG_SCALE_SHIFT, scale_shift_mem});
 #else
       lnorm_args.insert({DNNL_ARG_SCALE, scale_mem});
       lnorm_args.insert({DNNL_ARG_SHIFT, shift_mem});
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
       lnorm_args.insert({DNNL_ARG_DST, dst_mem});
       lnorm_prim.execute(*cpu_stream, lnorm_args);
     } catch (dnnl::error& e) {

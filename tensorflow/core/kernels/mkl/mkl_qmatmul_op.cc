@@ -96,7 +96,7 @@ limitations under the License.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
-#if defined(INTEL_MKL)
+#ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -116,11 +116,11 @@ enum {
 
 namespace tensorflow {
 
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
 #define TSCALED_BIAS Tbias
 #else
 #define TSCALED_BIAS float
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
           typename Toutput, bool native_format = false>
@@ -320,7 +320,7 @@ class MklDnnQuantizedMatMulOp
 
       UserScratchPad<unsigned char> scratch_pad;
       scratch_pad.AllocateSPTensor(matmul_fwd, context);
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
 #else
@@ -330,7 +330,7 @@ class MklDnnQuantizedMatMulOp
       Tensor temp_scaled_bias_tensor;
       this->GetBiasHandle(context, matmul_fwd_pd, bias_tensor, weight_tensor,
                           cpu_stream, &temp_scaled_bias_tensor, &bias_data);
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
       // Execute inner-product
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
                           matmul_fwd_dims, scratch_pad.Get(), cpu_stream);
@@ -428,7 +428,7 @@ class MklDnnQuantizedMatMulOp
         absl::InvalidArgumentError(absl::StrCat(
             "`max_b` must be rank 0 but is rank ", max_weight_tensor.dims())));
 
-#ifdef ENABLE_ONEDNN_V3
+#ifndef ENABLE_ONEDNN_V2
     const float min_input = min_input_tensor.scalar<float>()();
     const float max_input = max_input_tensor.scalar<float>()();
     const float min_weight = min_weight_tensor.scalar<float>()();
@@ -441,7 +441,7 @@ class MklDnnQuantizedMatMulOp
     float wei_scale =
         std::max(std::abs(min_weight), std::abs(max_weight)) / 127.0;
     float dst_scale = 1.0;
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V2
     // When the output type is quint8, the output data is requantized into
     // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
@@ -464,7 +464,7 @@ class MklDnnQuantizedMatMulOp
       const float max_freezed_output = max_freezed_tensor.scalar<float>()();
       float scale_eightbit =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
       float min_output_value;
       float max_output_value;
       ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
@@ -504,7 +504,7 @@ class MklDnnQuantizedMatMulOp
     params.post_op_params.push_back({"src_scale", {src_scale}});
     params.post_op_params.push_back({"wei_scale", {wei_scale}});
     params.post_op_params.push_back({"dst_scale", {dst_scale}});
-#endif  // !ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
   }
 
   // This function handles bias conversion and compensation for MIN_FIRST and
@@ -512,7 +512,7 @@ class MklDnnQuantizedMatMulOp
   //  B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 * Wf32
   // If input is quantized via SCALE,
   //   Bs32 = Qa * Qw * Bf32.
-#ifndef ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V2
   Tbias* GetBiasHandle(
       OpKernelContext* context,
       std::shared_ptr<dnnl::inner_product_forward::primitive_desc>&
@@ -753,7 +753,7 @@ class MklDnnQuantizedMatMulOp
     }
     return false;
   }
-#endif  // ENABLE_ONEDNN_V3
+#endif  // ENABLE_ONEDNN_V2
 
  private:
   memory* input_bias_ = nullptr;
@@ -849,4 +849,4 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
+#endif  // INTEL_MKL
