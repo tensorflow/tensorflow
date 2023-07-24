@@ -79,7 +79,7 @@ inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n, int64_t k,
   constexpr float kHeuristicMultiplier = 1.01;
   const float mul_size = bytes * (m * n + k * (m + n));
   const float l2_heur = l2_size * kHeuristicMultiplier;
-  return (!(mul_size < 0) && (mul_size < l2_heur));
+  return (mul_size >= 0 && mul_size < l2_heur);
 }
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
