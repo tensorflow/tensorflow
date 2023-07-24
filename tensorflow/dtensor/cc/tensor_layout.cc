@@ -1105,9 +1105,13 @@ StatusOr<LayoutProto> Layout::ToProto() const {
 }
 
 bool Layout::IsEquivalent(const Layout& b) const {
+  if (this->type() != b.type()) return false;
+  return IsEquivalentIgnoringType(b);
+}
+
+bool Layout::IsEquivalentIgnoringType(const Layout& b) const {
   if (this->rank() != b.rank()) return false;
   if (this->mesh() != b.mesh()) return false;
-  if (this->type() != b.type()) return false;
   for (int i = 0; i < this->rank(); ++i) {
     if (this->sharding_specs_[i] != b.sharding_specs_[i]) {
       if ((this->num_shards_for_dim(i) != 1) || (b.num_shards_for_dim(i) != 1))

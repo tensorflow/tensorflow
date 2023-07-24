@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -36,73 +37,10 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-namespace {
-
-// Convert the local index (associated with local tensor per device) to the
-// global index (associated with the global tensor). The local index must be the
-// first result of `op`.
-StatusOr<mlir::Operation*> LocalIndexToGlobalIndex(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto input_layout,
-                      ExtractLayoutFromOperand(op->getOperand(0)));
-
-  mlir::OpBuilder builder(op);
-  builder.setInsertionPointAfter(op);
-
-  // Calculate the index offset using DeviceId, for now, DTensor only supports
-  // index conversion when sharding is on the first dimension.
-  mlir::Value num_devices_per_dim_0 =
-      IntConst(builder, op->getLoc(),
-               input_layout->mesh().num_local_devices() /
-                   input_layout->num_shards_for_dim(0));
-  TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(op));
-  mlir::Value device_id_offset = builder.create<mlir::TF::DivOp>(
-      op->getLoc(), device_id, num_devices_per_dim_0);
-
-  TF_ASSIGN_OR_RETURN(const auto& shape,
-                      ExtractGlobalInputShape(op->getOpOperand(0)));
-  mlir::Value size_per_shard_dim_0 = IntConst(
-      builder, op->getLoc(), shape[0] / input_layout->num_shards_for_dim(0));
-  mlir::Value index_offset = builder.create<mlir::TF::MulOp>(
-      op->getLoc(), size_per_shard_dim_0, device_id_offset);
-
-  // Add index offset to the local index to get the global index.
-  mlir::Value index_offset_i64 = builder.create<mlir::TF::CastOp>(
-      op->getLoc(),
-      mlir::RankedTensorType::get(
-          index_offset.getType().cast<mlir::TensorType>().getShape(),
-          builder.getIntegerType(64)),
-      index_offset);
-  mlir::Value global_index = builder.create<mlir::TF::AddV2Op>(
-      op->getLoc(), op->getResultTypes(), index_offset_i64, op->getOpResult(0));
-
-  op->getOpResult(0).replaceAllUsesExcept(global_index,
-                                          global_index.getDefiningOp());
-
-  return global_index.getDefiningOp();
-}
-
-}  // namespace
-
 StatusOr<mlir::Operation*> WhereOpSPMDExpander::ExpandOp(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto input_layout,
-                      ExtractLayoutFromOperand(op->getOperand(0)));
-  assert(input_layout);
-
-  // If input is fully replicated, there is no need to manipulate the index
-  // calculated by the Where Op, just return directly.
-  if (input_layout->IsFullyReplicated()) {
-    return op;
-  }
-
-  // Only supports sharding on the first dimension.
-  if (!input_layout->IsBatchParallel()) {
-    return absl::InvalidArgumentError(
-        "Where op only supports batch sharding for now.");
-  }
-
-  // Where Op returns the indices of the non-zero elements in the input tensor.
-  // Convert the local index to global index as the final output.
-  return LocalIndexToGlobalIndex(op);
+  // Where op does not do anything during SPMD expansion.
+  // Because the output layout is parted layout and it follows local semantic.
+  return op;
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> WhereOpSPMDExpander::ComputeLayoutForward(
@@ -121,8 +59,12 @@ StatusOr<llvm::DenseMap<int, Layout>> WhereOpSPMDExpander::ComputeLayoutForward(
   std::vector<std::string> layout_specs;
   layout_specs.push_back(layout.sharding_spec(0));
   layout_specs.push_back(Layout::kUnshardedDim);
+  // The output of Where Op contains dynamic shape and has parted layout.
+  // This is the source of the parted layout and it is propagated to descendent
+  // ops.
   TF_ASSIGN_OR_RETURN(Layout new_layout,
-                      Layout::GetLayout(layout_specs, layout.mesh()));
+                      Layout::GetLayout(Layout::LayoutType::kParted,
+                                        layout_specs, layout.mesh()));
   return llvm::DenseMap<int, Layout>({{0, new_layout}});
 }
 

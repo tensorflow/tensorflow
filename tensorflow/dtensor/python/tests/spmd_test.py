@@ -2162,7 +2162,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         return array_ops.boolean_mask(t, m)
 
       result = boolean_mask_func(tensor, mask)
-      self.assertDTensorEqual(expected, expected_output_layout, result)
+      self.assertDTensorEqual(
+          expected, expected_output_layout.to_parted(), result
+      )
 
   def testRawWhere(self):
     if self.mesh.use_xla_spmd():
@@ -2171,8 +2173,6 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     condition = constant_op.constant(
         np.array([True, True, False, False, True, False, True, True])
     )
-    expected = gen_array_ops.where(condition)
-
     condition = api.relayout(condition, self.first_dimension_sharded_layout_1d)
 
     @polymorphic_function.function
@@ -2180,8 +2180,14 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       return gen_array_ops.where(c)
 
     result = func(condition)
+    # With parted layout, the raw where op will output local index instead of
+    # global index. So the second half of test expectation ([0], [2], [3]) has
+    # an offset of 4.
+    expected = constant_op.constant(
+        np.array([[0], [1], [0], [2], [3]]), dtype=dtypes.int64
+    )
     self.assertDTensorEqual(
-        expected, self.first_dimension_sharded_layout, result
+        expected, self.first_dimension_sharded_layout.to_parted(), result
     )
 
   @parameterized.named_parameters([

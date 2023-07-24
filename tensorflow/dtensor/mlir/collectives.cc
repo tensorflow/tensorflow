@@ -299,7 +299,9 @@ StatusOr<mlir::Value> EmitRelayout(
 
   mlir::OpBuilder builder(input.getContext());
   TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
-  if (src_layout.IsEquivalent(tgt_layout)) {
+  // If two layouts are the same, or the only difference is layout type, then
+  // there is no need to actually relayout data.
+  if (src_layout.IsEquivalentIgnoringType(tgt_layout)) {
     mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
         input.getLoc(), input.getType(), input);
     if (newly_created_ops != nullptr) newly_created_ops->insert(op);
