@@ -966,11 +966,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
     return true;
-<<<<<<< HEAD
-#else
-=======
 #else  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
     return false;
 #endif
   }
@@ -1598,13 +1594,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
              PrimitiveType::F8E4M3FN, DataType::kHalf},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
              PrimitiveType::F8E4M3FN, DataType::kFloat},
-<<<<<<< HEAD
-#endif
-            // Other data types:
-=======
 #endif  // GOOGLE_CUDA
         // Other data types:
->>>>>>> upstream/master
             {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
              PrimitiveType::F16, DataType::kHalf},
 
@@ -1654,11 +1645,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             {ComputationType::kF64, DataType::kComplexDouble,
              PrimitiveType::C128, PrimitiveType::C128,
              DataType::kComplexDouble},
-<<<<<<< HEAD
-#endif
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> upstream/master
         }};
 
     return absl::c_linear_search(
@@ -1731,18 +1718,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
                         MatrixIsColumnMajor(instr, gemm_backend_config));
-<<<<<<< HEAD
-#if TENSORFLOW_USE_ROCM
-    if (!output_is_column_major)
-      return false;
-
-    auto rocm_compute_capability_ =
-        std::get<se::RocmComputeCapability>(gpu_version_);
-    // as of ROCm 5.5, hipblaslt only supports MI200.
-    if(rocm_compute_capability_.gcn_arch_name().substr(0,6) != "gfx90a")
-        return false;
-#endif
-=======
 
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
       if (!output_is_column_major) return false;
@@ -1755,7 +1730,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       }
     }
->>>>>>> upstream/master
 
     // 2. cublasLt does not support rhs col dimension size > 4194240 for
     // C64.
@@ -1764,19 +1738,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Does not match type in unsupported case.
       return true;
     }
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-    auto cuda_compute_capability_ =
-        std::get<se::CudaComputeCapability>(gpu_version_);
-    if (cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      // cuBlasLt has an implementation for complex data with compute type
-      // 32F_FAST_32TF that uses tensor cores and that is free from the
-      // restriction. This implementation only works on Ampere
-      // architecture though (where TF32 was introduced).
-      return true;
-    }
-#endif
-=======
 
     if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
       auto cuda_compute_capability_ =
@@ -1790,7 +1751,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return true;
       }
     }
->>>>>>> upstream/master
     // Get the rhs non-contracting dimensions as they will eventually be at the
     // cublasLt level.
     std::vector<int64_t> rhs_non_contracting_dims;

@@ -28,14 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
-=======
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
->>>>>>> upstream/master
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
@@ -66,37 +62,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   xla::gpu::GpuDeviceInfo gpu_device_info =
 #if GOOGLE_CUDA
       xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
-<<<<<<< HEAD
-
-  tensorflow::se::CudaComputeCapability cuda_compute_capability;
-  cuda_compute_capability.major = sm / 10;
-  cuda_compute_capability.minor = sm % 10;
-  tensorflow::se::RocmComputeCapability rocm_compute_capability("gfx908");
-#if GOOGLE_CUDA
-  std::string target_triple = "nvptx64-nvidia-cuda";
-  std::string datalayout = "nvptx64-nvidia-cuda";
-  std::string platform_name = "CUDA";
-#elif TENSORFLOW_USE_ROCM
-  std::string target_triple = "amdgcn--amdhsa-amdgiz";
-  std::string datalayout = ""; // TODO: correct value?
-  std::string platform_name = "ROCm"; // ditto
-#endif
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> llvm_module,
-      xla::gpu::CompileModuleToLlvmIr(
-          hlo_module.get(), &llvm_context,
-#if GOOGLE_CUDA
-          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
-          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-#elif TENSORFLOW_USE_ROCM
-          /*target_triple=*/xla::gpu::amdgpu::TargetTriple(),
-          /*data_layout=*/xla::gpu::amdgpu::DataLayout(),
-#endif
-          /*platform_name=*/platform_name,
-          stream_executor::rocm::kROCmPlatformId, gpu_device_info,
-          cuda_compute_capability, rocm_compute_capability,
-          /*pointer_size=*/8));
-=======
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
   std::string platform_name = "CUDA";
@@ -130,7 +95,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                           /*platform_id=*/platform_id, gpu_device_info,
                           cuda_compute_capability, rocm_compute_capability,
                           /*pointer_size=*/8));
->>>>>>> upstream/master
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);
@@ -143,19 +107,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                       hlo_module->config().debug_options()));
     std::cout << ptx << std::endl;
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-    std::string libdevice_dir = tsl::RocdlRoot();
-    xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
-    TF_ASSIGN_OR_RETURN(
-      std::vector<uint8_t> ptx,
-      xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
-                                      hlo_module->config().debug_options(), 
-                                      libdevice_dir,
-                                      hlo_module->config().compilation_cache_key()));
-=======
     return {absl::StatusCode::kUnimplemented,
             "Feature not yet implemented in ROCm"};
->>>>>>> upstream/master
 #endif
   }
 #endif

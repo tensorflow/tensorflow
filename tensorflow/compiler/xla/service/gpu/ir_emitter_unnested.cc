@@ -1016,11 +1016,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
-<<<<<<< HEAD
-#endif
-=======
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
->>>>>>> upstream/master
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
@@ -3762,13 +3758,8 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
     return EmitCublasLtMatmulThunk(op);
   }
-<<<<<<< HEAD
-#endif
-#if GOOGLE_CUDA  
-=======
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
->>>>>>> upstream/master
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op)) {
     return EmitCublasLtMatmulThunkF8(op);
   }

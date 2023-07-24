@@ -19,25 +19,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
-<<<<<<< HEAD
-#include "rocm/rocm_config.h"
-=======
->>>>>>> upstream/master
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
-#endif  // GOOGLE_CUDA
-#endif
-=======
 #include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 
 namespace xla {
 namespace gpu {

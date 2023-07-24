@@ -7,16 +7,12 @@ load(
     "stream_executor_friends",
 )
 load("//tensorflow/tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
-<<<<<<< HEAD
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts", "if_rocm_hipblaslt")
-=======
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
     "rocm_copts",
 )
->>>>>>> upstream/master
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -439,14 +435,6 @@ cc_library(
 
 cc_library(
     name = "hipblaslt_plugin",
-<<<<<<< HEAD
-    srcs = ["hip_blas_lt.cc"],
-    hdrs = ["hip_blas_lt.h", "hipblaslt_wrapper.h"],
-    deps = [
-        ":rocm_gpu_executor",
-        ":rocm_platform_id",
-        ":rocblas_plugin",
-=======
     srcs = if_rocm_is_configured(["hip_blas_lt.cc"]),
     hdrs = if_rocm_is_configured([
         "hip_blas_lt.h",
@@ -458,25 +446,17 @@ cc_library(
         ":rocm_platform_id",
         ":rocblas_plugin",
         ":hip_blas_utils",
->>>>>>> upstream/master
         ":hipblas_lt_header",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:errors",
-<<<<<<< HEAD
-=======
         "//tensorflow/compiler/xla:status",
->>>>>>> upstream/master
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/compiler/xla:util",
-<<<<<<< HEAD
-    ] + if_static([
-=======
     ]) + if_static([
->>>>>>> upstream/master
         ":hipblaslt_if_static",
     ]),
     alwayslink = True,
@@ -484,23 +464,6 @@ cc_library(
 
 cc_library(
     name = "hipblas_lt_header",
-<<<<<<< HEAD
-    hdrs = [
-        "hip_blas_lt.h", "hipblaslt_wrapper.h"
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header_for_rocm",
-        "//tensorflow/tsl/platform:errors",
-    ],
-)
-
-=======
     hdrs = if_rocm_is_configured([
         "hip_blas_lt.h",
         "hipblaslt_wrapper.h",
@@ -532,7 +495,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ]),
 )
->>>>>>> upstream/master
 
 cc_library(
     name = "roctracer_if_static",
@@ -585,11 +547,7 @@ cc_library(
         ":rocm_driver",
         ":rocm_platform",
         ":rocm_helpers",
-<<<<<<< HEAD
-        ":hipblaslt_plugin"
-=======
         ":hipblaslt_plugin",
->>>>>>> upstream/master
     ]),
     alwayslink = 1,
 )

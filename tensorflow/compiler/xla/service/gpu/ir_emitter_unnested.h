@@ -131,11 +131,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitGemmThunk(mlir::Operation* op);
 #if GOOGLE_CUDA || TF_HIPBLASLT
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
-<<<<<<< HEAD
-#endif
-=======
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
->>>>>>> upstream/master
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);

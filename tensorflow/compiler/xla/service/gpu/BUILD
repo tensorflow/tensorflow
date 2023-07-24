@@ -442,14 +442,9 @@ cc_library(
 
 cc_library(
     name = "ir_emitter_triton",
-<<<<<<< HEAD
-    srcs = if_cuda_is_configured(["ir_emitter_triton.cc"])
-        + if_rocm_hipblaslt(["ir_emitter_triton.cc"]),
-=======
     srcs = if_cuda_is_configured(["ir_emitter_triton.cc"]) + if_rocm_hipblaslt([
         "ir_emitter_triton.cc",
     ]),
->>>>>>> upstream/master
     hdrs = if_gpu_is_configured(["ir_emitter_triton.h"]),
     deps = [
         ":gemm_rewriter_triton",
@@ -1252,17 +1247,12 @@ cc_library(
 
 cc_library(
     name = "cublas_lt_matmul_thunk",
-<<<<<<< HEAD
-    srcs = if_gpu_is_configured(["cublas_lt_matmul_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cublas_lt_matmul_thunk.h"]),
-=======
     srcs = if_cuda_is_configured(["cublas_lt_matmul_thunk.cc"]) + if_rocm_is_configured([
         "cublas_lt_matmul_thunk.cc",
     ]),
     hdrs = if_cuda_is_configured(["cublas_lt_matmul_thunk.h"]) + if_rocm_is_configured([
         "cublas_lt_matmul_thunk.h",
     ]),
->>>>>>> upstream/master
     deps = if_gpu_is_configured([
         ":matmul_utils",
         ":thunk",
@@ -1401,15 +1391,10 @@ cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
-<<<<<<< HEAD
-    # compatible_with = get_compatible_with_cloud(),
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-=======
     compatible_with = get_compatible_with_portable(),
     defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
->>>>>>> upstream/master
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",

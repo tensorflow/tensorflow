@@ -449,16 +449,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<TopkDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-      return !stream_exec->GetDeviceDescription()
-                  .cuda_compute_capability()
-                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
-             !gpu::IsMatrixMultiplication(*instr);
-#elif TENSORFLOW_USE_ROCM
-      return !gpu::IsMatrixMultiplication(*instr);
-#endif
-=======
       if (gpu_target_config.platform_name == "ROCM") {
         return !gpu::IsMatrixMultiplication(*instr);
       } else {
@@ -467,7 +457,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                     .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
                !gpu::IsMatrixMultiplication(*instr);
       }
->>>>>>> upstream/master
     };
 
 
