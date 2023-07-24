@@ -442,31 +442,31 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // 0:   Disable CUDA graph capture.
-  // 1:   Enable cuda graphs for fusions and memcpy (safest ones).
-  // 2:   Enable cuda graphs for gemms and convs.
-  // 3+   Enable cuda graphs for collectives.
+  // 0:   Disable GPU graph capture.
+  // 1:   Enable GPU graphs for fusions and memcpy (safest ones).
+  // 2:   Enable GPU graphs for gemms and convs.
+  // 3+   Enable GPU graphs for collectives.
   //
   // Default: 0.
-  int32 xla_gpu_cuda_graph_level = 194;
+  int32 xla_gpu_graph_level = 194;
 
-  // Only instantiates a CUDA graph after the captured function execution count
+  // Only instantiates a GPU graph after the captured function execution count
   // reaches the threshold. This constant is a heuristic to avoid creating a
   // large number of CUDA graph instances in memory.
-  int32 xla_gpu_cuda_graph_num_runs_to_instantiate = 202;
+  int32 xla_gpu_graph_num_runs_to_instantiate = 202;
 
   // This number determines how many moved instructions like fusion kernels are
-  // required for a region to be captured as a function to be launched as a cuda
+  // required for a region to be captured as a function to be launched as a GPU
   // graph.
-  int32 xla_gpu_cuda_graph_min_graph_size = 208;
+  int32 xla_gpu_graph_min_graph_size = 208;
 
-  // Identify concurrent regions in cuda graphs and execute them concurrently.
-  bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
+  // Identify concurrent regions in GPU graphs and execute them concurrently.
+  bool xla_gpu_graph_enable_concurrent_region = 215;
 
   // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
   // instantiates new Gpu graphs, it evicts graphs that were not recently
   // executed to free space on device.
-  int32 xla_gpu_cuda_graph_eviction_timeout_seconds = 230;
+  int32 xla_gpu_graph_eviction_timeout_seconds = 230;
 
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot

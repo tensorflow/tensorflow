@@ -152,8 +152,8 @@ def AddHloTraceAnnotationsPass :
 // Xla Gpu <-> Cuda Graphs integration.
 //===----------------------------------------------------------------------===//
 
-def OutlineCudaGraphsPass :
-    Pass<"xla-gpu-outline-cuda-graphs", "mlir::ModuleOp"> {
+def OutlineGpuGraphsPass :
+    Pass<"xla-gpu-outline-gpu-graphs", "mlir::ModuleOp"> {
   let summary = "Outline sequences of Xla Gpu operations into CUDA Graphs";
 
   let description = [{
@@ -178,13 +178,13 @@ def OutlineCudaGraphsPass :
     }
 
     // Replace a sequence of graph launch operations with a call to runtime API.
-    call @xla.gpu.cuda.graph.launch(%arg0: memref<?xf32>,
+    call @xla.gpu.graph.launch(%arg0: memref<?xf32>,
                                      %arg1: memref<?xf32>)
       attributes { capture = @capture }
     ```
   }];
 
-  let constructor = "createOutlineCudaGraphsPass()";
+  let constructor = "createOutlineGpuGraphsPass()";
 
   let options = [
     Option<"min_graph_size_", "min_graph_size", "int64_t", /*default=*/"2",

@@ -209,9 +209,9 @@ void AddConcurrentRegionsPass::runOnOperation() {
   auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
 
   for (auto func_op : func_ops) {
-    // Find the cuda graph capture function.
+    // Find the gpu graph capture function.
     if (absl::StrContains(func_op.getSymNameAttr().str(),
-                          "xla.gpu.cuda.graph.capture")) {
+                          "xla.gpu.graph.capture")) {
       InsertConcurrentRegions(func_op, custom_calls,
                               getAnalysis<DataflowAnalysis>());
     }

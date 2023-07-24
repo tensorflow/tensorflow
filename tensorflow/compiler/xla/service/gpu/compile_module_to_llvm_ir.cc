@@ -117,10 +117,10 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
-  opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
-  opts.min_graph_size = debug_options.xla_gpu_cuda_graph_min_graph_size();
+  opts.gpu_graph_level = debug_options.xla_gpu_graph_level();
+  opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
   opts.enable_concurrent_region =
-      debug_options.xla_gpu_cuda_graph_enable_concurrent_region();
+      debug_options.xla_gpu_graph_enable_concurrent_region();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {

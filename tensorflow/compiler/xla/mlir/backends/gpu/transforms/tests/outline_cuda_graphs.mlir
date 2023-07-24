@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s --split-input-file -xla-gpu-outline-cuda-graphs \
+// RUN: xla-gpu-opt %s --split-input-file -xla-gpu-outline-gpu-graphs \
 // RUN:   | FileCheck %s
 
 module attributes {gpu.container_module} {
@@ -24,8 +24,8 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
   %c5 = arith.constant 5 : index
   %c6 = arith.constant 6 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: return
 
   gpu.launch_func  @gpu_module::@fn0
@@ -41,7 +41,7 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
   func.return
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT:  %[[C1:.*]] = arith.constant 1
 // CHECK-NEXT:  %[[C2:.*]] = arith.constant 2
 // CHECK-NEXT:  %[[C3:.*]] = arith.constant 3
@@ -56,8 +56,8 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
 // CHECK-SAME:    threads in (%[[C6]], %[[C5]], %[[C4]])
 // CHECK-NEXT:  return
 
-// CHECK: func private @xla.gpu.cuda.graph.launch(memref<?xf32>, memref<?xf32>)
-// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.cuda.graph.launch"}
+// CHECK: func private @xla.gpu.graph.launch(memref<?xf32>, memref<?xf32>)
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.graph.launch"}
 }
 
 // -----
@@ -76,7 +76,7 @@ func.func @func(%arg0: memref<?xf32>) {
   %c1 = arith.constant 1 : index
 
   // CHECK: gpu.launch_func {{.*}} args(%[[ARG0]] : memref<?xf32>)
-  // CHECK-NOT: call @xla.gpu.cuda.graph.launch
+  // CHECK-NOT: call @xla.gpu.graph.launch
   gpu.launch_func  @gpu_module::@fn0
     blocks in (%c1, %c1, %c1)
     threads in (%c1, %c1, %c1)
@@ -107,7 +107,7 @@ func.func @func(%arg0: memref<?xf32>) {
   // CHECK: %[[C1:.*]] = arith.constant 1
   %c1 = arith.constant 1 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
   // CHECK-SAME: {capture = @[[CAPTURE:.*]]}
 
   gpu.launch_func  @gpu_module::@fn0
@@ -127,7 +127,7 @@ func.func @func(%arg0: memref<?xf32>) {
   // CHECK: call @external
   call @external(): () -> ()
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
   // CHECK-SAME: {capture = @[[CAPTURE_0:.*]]}
 
   gpu.launch_func  @gpu_module::@fn1
@@ -181,8 +181,8 @@ gpu.module @gpu_module attributes {binary = "kernel binary"} {
 func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
   cf.br ^bb2
 ^bb1:
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: return
 
   gpu.launch_func  @gpu_module::@fn0
@@ -203,7 +203,7 @@ func.func @func(%arg0: memref<?xf32>, %arg1: memref<?xf32>) {
 }
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
@@ -227,8 +227,8 @@ func.func @func(%arg0: memref<16xi8>) {
 
   call @external() : () -> ()
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: return
   gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
     threads in (%c1, %c1, %c1) args(%view : memref<4xf32>)
@@ -241,7 +241,7 @@ func.func @func(%arg0: memref<16xi8>) {
 func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 0
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: memref.view
@@ -267,8 +267,8 @@ func.func @func(%arg0: memref<16xi8>) {
 
   call @external() : () -> ()
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: memref.view
   // CHECK-NEXT: return
   gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
@@ -283,7 +283,7 @@ func.func @func(%arg0: memref<16xi8>) {
 func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
@@ -313,8 +313,8 @@ module attributes {gpu.container_module} {
     %c2 = arith.constant 0 : index
     %arg2 = memref.view %raw_arg2[%c2][] : memref<16xi8> to memref<2x2xf32>
 
-    // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]], %[[ARG2]])
-    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    // CHECK: call @xla.gpu.graph.launch(%[[ARG0]], %[[ARG1]], %[[ARG2]])
+    // CHECK-SAME: {capture = @xla.gpu.graph.capture}
     "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, beta = 0.000000e+00 : f64, batch_size = 1 : i64, lhs_stride = 4 : i64, rhs_stride = 4 : i64, dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
     gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%raw_arg0 : memref<16xi8>)
@@ -324,7 +324,7 @@ module attributes {gpu.container_module} {
   func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 0
 // CHECK-NEXT: memref.view
 // CHECK-NEXT: arith.constant 0
@@ -361,7 +361,7 @@ module attributes {gpu.container_module} {
     %arg2 = memref.view %raw_arg2[%c2][] : memref<16xi8> to memref<2x2xf32>
 
 
-    // CHECK-NOT: call @xla.gpu.cuda.graph.launch
+    // CHECK-NOT: call @xla.gpu.graph.launch
     // CHECK: "lmhlo_gpu.gemm"
     "lmhlo_gpu.gemm"(%arg0, %arg1, %arg2) {algorithm = -5, alpha_imag = 0.000000e+00 : f64, alpha_real = 1.000000e+00 : f64, beta = 0.000000e+00 : f64, batch_size = 1 : i64, lhs_stride = 4 : i64, rhs_stride = 4 : i64, dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
     gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
@@ -468,8 +468,8 @@ module attributes {gpu.container_module} {
                                 ) {
     %c0 = arith.constant 0 : index
 
-    // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
-    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    // CHECK: call @xla.gpu.graph.launch(%[[ARG0]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
+    // CHECK-SAME: {capture = @xla.gpu.graph.capture}
     lmhlo_gpu.conv_forward(%input, %filter, %output, %scratch)
       dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
       window = { stride = [1, 1],
@@ -504,7 +504,7 @@ module attributes {gpu.container_module} {
   func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 0
 // CHECK-NEXT: lmhlo_gpu.conv_forward
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
@@ -521,8 +521,8 @@ module attributes {gpu.container_module} {
     %dst = memref.view %arg0[%c0][] : memref<100xi8> to memref<10xf32>
     %src = memref.view %arg0[%c0][] : memref<100xi8> to memref<10xf32>
 
-    // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.graph.capture}
     gpu.memcpy %dst, %src : memref<10xf32>, memref<10xf32>
     gpu.memcpy %dst, %src : memref<10xf32>, memref<10xf32>
 
@@ -532,7 +532,7 @@ module attributes {gpu.container_module} {
   func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK: gpu.memcpy
 // CHECK: gpu.memcpy
 // CHECK-NEXT: return
@@ -555,8 +555,8 @@ func.func @func(%arg0: memref<16xi8>) {
 
   call @external() : () -> ()
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: return
   gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
     threads in (%c1, %c1, %c1) args(%view : memref<16xi8, strided<[1], offset: 0>>)
@@ -569,7 +569,7 @@ func.func @func(%arg0: memref<16xi8>) {
 func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: memref.reinterpret_cast
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
@@ -593,15 +593,15 @@ func.func @func(%arg0: memref<16xi8>, %cond: memref<i1>) {
   call @external() : () -> ()
 
   "lmhlo.while"(%cond) ({
-    // CHECK: func.call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+    // CHECK: func.call @xla.gpu.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.graph.capture}
     gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
     gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
     "lmhlo.terminator"() : () -> () }, {
-    // CHECK: func.call @xla.gpu.cuda.graph.launch(%[[ARG0]])
-    // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture_0}
+    // CHECK: func.call @xla.gpu.graph.launch(%[[ARG0]])
+    // CHECK-SAME: {capture = @xla.gpu.graph.capture_0}
     gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%arg0: memref<16xi8>)
     gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
@@ -614,13 +614,13 @@ func.func @func(%arg0: memref<16xi8>, %cond: memref<i1>) {
 func.func private @external()
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture
+// CHECK: func @xla.gpu.graph.capture
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: return
 
-// CHECK: func @xla.gpu.cuda.graph.capture_0
+// CHECK: func @xla.gpu.graph.capture_0
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
@@ -647,8 +647,8 @@ func.func @func(%arg0: memref<?xf32> {lmhlo.constant_name = "cst0"},
                 %arg1: memref<?xf32> {lmhlo.constant_name = "cst1"}) {
   %c1 = arith.constant 1 : index
 
-  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
-  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK: call @xla.gpu.graph.launch(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: {capture = @xla.gpu.graph.capture}
   // CHECK-NEXT: return
 
   gpu.launch_func  @gpu_module::@fn0
@@ -664,7 +664,7 @@ func.func @func(%arg0: memref<?xf32> {lmhlo.constant_name = "cst0"},
   func.return
 }
 
-// CHECK: func @xla.gpu.cuda.graph.capture(
+// CHECK: func @xla.gpu.graph.capture(
 // CHECK-SAME:  %[[ARG0]]: memref<?xf32> {lmhlo.constant_name = "cst0"},
 // CHECK-SAME:  %[[ARG1]]: memref<?xf32> {lmhlo.constant_name = "cst1"})
 // CHECK-NEXT:  %[[C1:.*]] = arith.constant 1
@@ -676,6 +676,6 @@ func.func @func(%arg0: memref<?xf32> {lmhlo.constant_name = "cst0"},
 // CHECK-SAME:    threads in (%[[C1]], %[[C1]], %[[C1]])
 // CHECK-NEXT:  return
 
-// CHECK: func private @xla.gpu.cuda.graph.launch(memref<?xf32>, memref<?xf32>)
-// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.cuda.graph.launch"}
+// CHECK: func private @xla.gpu.graph.launch(memref<?xf32>, memref<?xf32>)
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.graph.launch"}
 }

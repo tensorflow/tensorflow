@@ -424,3 +424,22 @@ tsl_gpu_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "gpu_graph",
+    srcs = if_gpu_is_configured(["gpu_graph.cc"]),
+    hdrs = if_gpu_is_configured(["gpu_graph.h"]),
+    deps = if_gpu_is_configured([
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/functional:any_invocable",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:statusor",
+    ]) + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_driver",
+    ]),
+)

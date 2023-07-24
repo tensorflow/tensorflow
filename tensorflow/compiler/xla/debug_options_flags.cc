@@ -102,14 +102,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
+  // TODO(b/258036887): Enable gpu_graph_level=2. Currently blocked by CUDA 12
   // integration.
-  opts.set_xla_gpu_cuda_graph_level(1);
-  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(-1);
+  opts.set_xla_gpu_graph_level(1);
+  opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
-  opts.set_xla_gpu_cuda_graph_min_graph_size(5);
-  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
-  opts.set_xla_gpu_cuda_graph_eviction_timeout_seconds(60);
+  opts.set_xla_gpu_graph_min_graph_size(5);
+  opts.set_xla_gpu_graph_enable_concurrent_region(false);
+  opts.set_xla_gpu_graph_eviction_timeout_seconds(60);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -897,36 +897,36 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_level",
-      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_level),
-      debug_options->xla_gpu_cuda_graph_level(),
-      "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
+      "xla_gpu_graph_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_graph_level),
+      debug_options->xla_gpu_graph_level(),
+      "Set GPU graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
       "capture convolutions and gemms; 3 = capture collectives."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_num_runs_to_instantiate",
+      "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_num_runs_to_instantiate),
-      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate(),
-      "Instantiate a cuda graph after the time a captured function is executed "
+          &DebugOptions::set_xla_gpu_graph_num_runs_to_instantiate),
+      debug_options->xla_gpu_graph_num_runs_to_instantiate(),
+      "Instantiate a gpu graph after the time a captured function is executed "
       "reaches the threshold."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_min_graph_size",
-      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_min_graph_size),
-      debug_options->xla_gpu_cuda_graph_min_graph_size(),
+      "xla_gpu_graph_min_graph_size",
+      int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),
+      debug_options->xla_gpu_graph_min_graph_size(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_graph_enable_concurrent_region",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_graph_enable_concurrent_region),
+                debug_options->xla_gpu_graph_enable_concurrent_region(),
+                "Identify concurrent regions in gpu graphs and execute them "
+                "concurrently."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_enable_concurrent_region",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
-      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
-      "Identify concurrent regions in cuda graphs and execute them "
-      "concurrently."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_eviction_timeout_seconds",
+      "xla_gpu_graph_eviction_timeout_seconds",
       int32_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_eviction_timeout_seconds),
-      debug_options->xla_gpu_cuda_graph_eviction_timeout_seconds(),
+          &DebugOptions::set_xla_gpu_graph_eviction_timeout_seconds),
+      debug_options->xla_gpu_graph_eviction_timeout_seconds(),
       "Timeout in seconds to evict instantiated Gpu graphs from device. When "
       "XLA instantiates new Gpu graphs, it evicts graphs that were not "
       "recently executed to free space on device."));

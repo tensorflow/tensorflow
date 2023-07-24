@@ -350,15 +350,14 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_graph",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-    ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
-    ]),
+    ],
 )
 
 cc_library(
@@ -407,11 +406,10 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_graph",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/synchronization",
-    ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
-    ]),
+    ],
 )
 
 cc_library(

@@ -164,11 +164,13 @@ class GpuRuntimeExecutable {
 #if GOOGLE_CUDA
   // Keep matmul execution plans (only if cuBLASLt is available).
   MatmulPlans cublas_lt_matmul_plans_;
+#endif  // GOOGLE_CUDA
 
-  // Keep captured and instantiated CUDA graphs instances.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
   CapturedFunctionExecutionCounts captured_function_counts_;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Keep an executable state for all registered runtime modules.
   ModulesState modules_state_;
