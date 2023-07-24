@@ -43,6 +43,9 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(PrimitiveType);
 // Allowlist of ternary elementwise operations supported by Triton GEMM codegen.
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(PrimitiveType);
 
+// Data types that are supported by the Triton emitters.
+bool IsTritonSupportedDataType(PrimitiveType, GpuVersion);
+
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 

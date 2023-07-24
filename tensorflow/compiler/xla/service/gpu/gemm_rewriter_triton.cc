@@ -121,26 +121,6 @@ int64_t NonContractingDimensionIndex(const HloInstruction& dot,
   return non_contracting_dims->front();
 }
 
-// Data types that are tested to work in the triton GEMM emitter.
-bool IsSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
-  switch (type) {
-    case PRED:
-    case S8:
-    case S16:
-    case S32:
-    case F16:
-    case F32:
-      return true;
-    case BF16:
-      return cuda_compute_capability.IsAtLeast(
-          stream_executor::CudaComputeCapability::AMPERE);
-    default:
-      return false;
-  }
-}
-
 // Tells if f(a+b) == f(a) + f(b).
 bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   // The list is most likely incomplete.
@@ -622,11 +602,12 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
     return "Unsupported instruction.";
   }
   for (const HloInstruction* operand : hlo.operands()) {
-    if (!IsSupportedDataType(operand->shape().element_type(), gpu_version)) {
+    if (!IsTritonSupportedDataType(operand->shape().element_type(),
+                                   gpu_version)) {
       return "Unsupported input data type.";
     }
   }
-  if (!IsSupportedDataType(hlo.shape().element_type(), gpu_version)) {
+  if (!IsTritonSupportedDataType(hlo.shape().element_type(), gpu_version)) {
     return "Unsupported output data type.";
   }
   if (hlo.opcode() == HloOpcode::kBroadcast &&
@@ -1251,6 +1232,26 @@ Status PropagateDimensionOrdersToParameters(
 
 }  // anonymous namespace
 
+// Data types that are supported by the Triton emitters.
+bool IsTritonSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
+  auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
+  switch (type) {
+    case PRED:
+    case S8:
+    case S16:
+    case S32:
+    case F16:
+    case F32:
+      return true;
+    case BF16:
+      return cuda_compute_capability.IsAtLeast(
+          stream_executor::CudaComputeCapability::AMPERE);
+    default:
+      return false;
+  }
+}
+
 // BF16 is supported in a sense that all operations on it are implemented
 // through F32 and converts have to be inserted into the HLO graph, but
 // they can be missing during fusion.
@@ -1466,10 +1467,10 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
     return "Unsupported output data type.";
   }
 
-  if (!IsSupportedDataType(dot.operand(0)->shape().element_type(),
-                           gpu_version) ||
-      !IsSupportedDataType(dot.operand(1)->shape().element_type(),
-                           gpu_version)) {
+  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
+                                 gpu_version) ||
+      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
+                                 gpu_version)) {
     return "Unsupported input data type.";
   }
 
