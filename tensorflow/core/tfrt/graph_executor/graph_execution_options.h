@@ -20,6 +20,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -71,10 +72,20 @@ struct GraphExecutionOptions {
   // is overwritten when `enable_online_cost_analysis = true`.
   struct CostAnalysisOptions {
     enum CostAnalysisVersion {
-      DISABLED,
-      ONCE,  // Cost recording and recompilation occurs on the first run only.
+      kDisabled,
+      kOnce,  // Cost recording and recompilation occurs on the first run only.
+      kPeriodic,  // This is experimental.
     };
-    CostAnalysisVersion version = DISABLED;
+    CostAnalysisVersion version = kDisabled;
+
+    // Time between resets in Op cost estimates. Upon reset, the executable
+    // will be recompiled.
+    // However, a reset always occurs after the first execution.
+    absl::Duration reset_interval = absl::ZeroDuration();
+
+    // Number of times to record costs before resetting Op cost estimates.
+    // However, a reset always occurs after the first execution.
+    int updates_per_interval = 1;
   };
 
   CostAnalysisOptions cost_analysis_options;
