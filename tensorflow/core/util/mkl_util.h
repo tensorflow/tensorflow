@@ -1983,8 +1983,7 @@ class MklPrimitiveFactory {
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
-#if !defined(DNNL_AARCH64_USE_ACL) || \
-    (defined(DNNL_AARCH64_USE_ACL) && !defined(ENABLE_ONEDNN_OPENMP))
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     return lru_cache.GetOp(key);
 #else
@@ -2020,8 +2019,7 @@ class MklPrimitiveFactory {
   }
 
   void SetOp(const string& key, MklPrimitive* op) {
-#if !defined(DNNL_AARCH64_USE_ACL) || \
-    (defined(DNNL_AARCH64_USE_ACL) && !defined(ENABLE_ONEDNN_OPENMP))
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     lru_cache.SetOp(key, op);
 #else
@@ -2071,8 +2069,7 @@ class MklPrimitiveFactory {
  private:
   static inline LRUCache<MklPrimitive>& GetLRUCache() {
     static const int kCapacity = 1024;  // cache capacity
-#if !defined(DNNL_AARCH64_USE_ACL) || \
-    (defined(DNNL_AARCH64_USE_ACL) && !defined(ENABLE_ONEDNN_OPENMP))
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
