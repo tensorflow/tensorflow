@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/einsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/expanddims_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/fft_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/fill_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/gather_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
@@ -448,42 +449,18 @@ REGISTER_SPMD(AdjustContrastv2, TF::AdjustContrastv2Op,
 REGISTER_SPMD(AdjustSaturation, TF::AdjustSaturationOp,
               DataparallelSPMDExpander, llvm::DenseMap<int, int>{{0, 3}},
               llvm::DenseMap<int, int>{{0, 3}});
-REGISTER_SPMD(FFT, TF::FFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(FFT2D, TF::FFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(FFT3D, TF::FFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT, TF::IFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT2D, TF::IFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IFFT3D, TF::IFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT, TF::IRFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT2D, TF::IRFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(IRFFT3D, TF::IRFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT, TF::RFFTOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT2D, TF::RFFT2DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
-REGISTER_SPMD(RFFT3D, TF::RFFT3DOp, DataparallelSPMDExpander,
-              llvm::DenseMap<int, int>{{0, 1}},
-              llvm::DenseMap<int, int>{{0, 1}});
+REGISTER_SPMD(FFT, TF::FFTOp, FFTSPMDExpander);
+REGISTER_SPMD(FFT2D, TF::FFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(FFT3D, TF::FFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT, TF::IFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT2D, TF::IFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(IFFT3D, TF::IFFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT, TF::IRFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT2D, TF::IRFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(IRFFT3D, TF::IRFFT3DOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT, TF::RFFTOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT2D, TF::RFFT2DOp, FFTSPMDExpander);
+REGISTER_SPMD(RFFT3D, TF::RFFT3DOp, FFTSPMDExpander);
 REGISTER_SPMD(Cholesky, TF::CholeskyOp, DataparallelSPMDExpander,
               llvm::DenseMap<int, int>{{0, 2}},
               llvm::DenseMap<int, int>{{0, 2}});

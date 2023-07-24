@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/mlir:collectives",
         "//tensorflow/dtensor/mlir:collectives_common",
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:device_utils",

@@ -482,6 +482,7 @@ cc_library(
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
         ":value_utils",
+        "//tensorflow/cc:ops",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",

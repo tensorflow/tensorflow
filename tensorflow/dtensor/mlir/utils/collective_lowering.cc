@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/collectives_common.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
@@ -270,31 +271,6 @@ mlir::Operation* EmitCollectiveReduce(
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce, Layout::Empty());
   return collective_reduce;
-}
-
-// Emits TransposeOp with permuting passed dim_idx with first axis.
-mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
-                                 const mlir::Location& loc, mlir::Value input,
-                                 std::vector<int64> perm_arr) {
-  auto tr_input_type = input.getType().cast<mlir::ShapedType>();
-  auto shape = tr_input_type.getShape();
-
-  auto perm_type = mlir::RankedTensorType::get(
-      {static_cast<int64>(perm_arr.size())}, builder.getIntegerType(64));
-
-  auto constant_attr = builder.getI64TensorAttr(perm_arr);
-  auto perm_op =
-      builder.create<mlir::TF::ConstOp>(loc, perm_type, constant_attr);
-
-  std::vector<int64> transposed_shape(shape.begin(), shape.end());
-  for (int i = 0; i < shape.size(); i++) {
-    transposed_shape[i] = shape[perm_arr[i]];
-  }
-  auto transposed_type = mlir::RankedTensorType::get(
-      transposed_shape, tr_input_type.getElementType());
-
-  return builder.create<mlir::TF::TransposeOp>(loc, transposed_type, input,
-                                               perm_op);
 }
 
 mlir::Operation* EmitCollectiveReduceScatter(

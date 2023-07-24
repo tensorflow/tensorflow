@@ -384,6 +384,30 @@ StatusOr<mlir::Value> EmitRelayout(
                                   newly_created_ops);
 }
 
+mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
+                                 const mlir::Location& loc, mlir::Value input,
+                                 std::vector<int64_t>& perm_arr) {
+  auto tr_input_type = input.getType().cast<mlir::ShapedType>();
+  auto shape = tr_input_type.getShape();
+
+  auto perm_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(perm_arr.size())}, builder.getIntegerType(64));
+
+  auto constant_attr = builder.getI64TensorAttr(perm_arr);
+  auto perm_op =
+      builder.create<mlir::TF::ConstOp>(loc, perm_type, constant_attr);
+
+  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  for (int i = 0; i < shape.size(); i++) {
+    transposed_shape[i] = shape[perm_arr[i]];
+  }
+  auto transposed_type = mlir::RankedTensorType::get(
+      transposed_shape, tr_input_type.getElementType());
+
+  return builder.create<mlir::TF::TransposeOp>(loc, transposed_type, input,
+                                               perm_op);
+}
+
 StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
                                                      mlir::Location loc,
                                                      const Mesh& mesh,
