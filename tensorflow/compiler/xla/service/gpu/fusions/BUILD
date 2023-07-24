@@ -61,6 +61,7 @@ cc_library(
         ":fusion_emitter",
         ":in_place_dynamic_update_slice",
         ":loop",
+        ":reduction",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
@@ -99,5 +100,50 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "reduction",
+    srcs = ["reduction.cc"],
+    hdrs = ["reduction.h"],
+    deps = [
+        ":fusion_emitter",
+        ":thunk_util",
+        ":tiling_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter_context",
+        "//tensorflow/compiler/xla/service/gpu:kernel_reuse_cache",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "thunk_util",
+    srcs = ["thunk_util.cc"],
+    hdrs = ["thunk_util.h"],
+    visibility = ["//tensorflow/compiler/xla/service/gpu:__subpackages__"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter_context",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
     ],
 )
