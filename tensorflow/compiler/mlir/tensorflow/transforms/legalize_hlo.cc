@@ -311,6 +311,12 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d_array);
 
     // LHS dilation
+    // Set LHS dilation defaults if not set (1 for each input spatial dimension)
+    if (!conv_op.getLhsDilation().has_value()) {
+      conv_op.setLhsDilationAttr(rewriter.getI64TensorAttr(
+          std::vector<int64_t>(dnums.getInputSpatialDimensions().size(), 1)));
+    }
+
     SmallVector<int64_t, 4> lhs_dilation_array_2d;
     for (const auto v : conv_op.getLhsDilation().value().getValues<int64_t>()) {
       lhs_dilation_array_2d.emplace_back(v);
@@ -321,6 +327,13 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         lhs_dilation_array_2d);
 
     // RHS dilation
+    // Set RHS dilation defaults if not set (1 for each kernel spatial
+    // dimension)
+    if (!conv_op.getRhsDilation().has_value()) {
+      conv_op.setRhsDilationAttr(rewriter.getI64TensorAttr(
+          std::vector<int64_t>(dnums.getKernelSpatialDimensions().size(), 1)));
+    }
+
     SmallVector<int64_t, 4> rhs_dilation_array_2d;
     for (const auto v : conv_op.getRhsDilation().value().getValues<int64_t>()) {
       rhs_dilation_array_2d.emplace_back(v);
@@ -337,9 +350,6 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     auto window_reversal_2d = DenseIntElementsAttr::get(
         RankedTensorType::get({2}, rewriter.getI64Type()),
         SmallVector<int64_t>({0, 0}));
-
-    // Precision config
-    if (!conv_op.getPrecisionConfig().has_value()) return failure();
 
     // Dimension numbers reflect the form of the 2d conv op NWHC * WHIO -> NWHC
     auto dnums_2d =
@@ -380,7 +390,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
         window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
         window_reversal_2d, dnums_2d, conv_op.getFeatureGroupCount(),
-        conv_op.getBatchGroupCount(), *conv_op.getPrecisionConfig());
+        conv_op.getBatchGroupCount(), conv_op.getPrecisionConfigAttr());
 
     OpResult conv2d_output = conv2d_op->getResult(0);
     auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
