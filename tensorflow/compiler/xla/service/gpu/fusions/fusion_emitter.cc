@@ -36,51 +36,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value) {
-  namespace mm = mlir::memref;
-  mlir::Operation* defining_op = value.getDefiningOp();
-  // Don't remove GetGlobalOp's and ViewOp's:
-  // Allow passing constants and views to kernels.
-  if (defining_op == nullptr ||
-      llvm::isa<mm::GetGlobalOp, mm::ViewOp>(defining_op)) {
-    return value;
-  }
-  if (llvm::isa<mm::ReinterpretCastOp, mm::CollapseShapeOp>(defining_op)) {
-    return defining_op->getOperand(0);
-  }
-  return Unimplemented("Defining op for argument to GPU kernel not handled: %s",
-                       defining_op->getName().getStringRef().str());
-}
-
-StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkImpl(
-    absl::string_view kernel_name,
-    absl::Span<const KernelArgument> kernel_arguments,
-    Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions) {
-  std::vector<BufferAllocation::Slice> arg_slices;
-  arg_slices.reserve(kernel_arguments.size());
-  std::vector<bool> written;
-  written.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      arg_slices.push_back(kernel_argument.slice());
-      written.push_back(kernel_argument.written());
-    }
-  }
-
-  std::vector<mlir::Value> values;
-  values.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      TF_ASSIGN_OR_RETURN(mlir::Value value, RemoveTransformingOperations(
-                                                 kernel_argument.value()));
-      values.push_back(value);
-    }
-  }
-  return std::make_unique<KernelThunk>(
-      std::move(thunk_info), std::move(arg_slices), std::move(written),
-      std::string(kernel_name), launch_dimensions, std::move(values));
-}
-
 void AnnotateWithInt32Value(std::string name, int64_t value,
                             const std::string& kernel_name,
                             llvm::Module* llvm_module) {
@@ -218,13 +173,6 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
 }  // namespace
 
-Thunk::ThunkInfo KernelFusionEmitterBase::GetThunkInfo(mlir::Operation* op) {
-  Thunk::ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
-  return thunk_info;
-}
-
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
   std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op_->getLoc());
@@ -254,10 +202,8 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
               << entry.kernel_name;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        result.thunks.emplace_back(),
-        BuildKernelThunkImpl(entry.kernel_name, kernel_arguments.args(),
-                             GetThunkInfo(fusion_op_), launch_dims));
+    result.thunks.emplace_back(std::make_unique<KernelThunk>(
+        fusion_op(), entry.kernel_name, kernel_arguments.args(), launch_dims));
     if (!cached) {
       TF_RETURN_IF_ERROR(EmitKernel(launch_dims, std::move(inputs),
                                     std::move(outputs), builder, i));

@@ -20,6 +20,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
+
 namespace xla {
 namespace gpu {
 
@@ -116,6 +119,13 @@ bool IsReductionCollective(Thunk::Kind kind) {
   return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
          kind == Thunk::kNcclReduceScatter ||
          kind == Thunk::kNcclReduceScatterStart;
+}
+
+Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
+  ThunkInfo thunk_info(op);
+  thunk_info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  return thunk_info;
 }
 
 }  // namespace gpu

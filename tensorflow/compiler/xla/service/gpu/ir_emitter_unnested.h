@@ -570,12 +570,6 @@ class IrEmitterUnnested : public IrEmitter {
   // before passing it to a KernelThunk.
   static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
 
-  // Creates a KernelThunk and adds it to the thunk sequence.
-  Status BuildKernelThunkImpl(absl::string_view kernel_name,
-                              absl::Span<const KernelArgument> kernel_arguments,
-                              Thunk::ThunkInfo thunk_info,
-                              const LaunchDimensions& launch_dimensions);
-
   // Builds a thunk that calls a new or reused kernel for a fusion operation.
   //
   // The caller must specify the same launch dimensions for fusions which have

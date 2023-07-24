@@ -61,8 +61,6 @@ class KernelFusionEmitterBase : public FusionInterface {
                                       llvm::IRBuilder<>* builder) const final;
   virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
 
-  static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
-
  protected:
   virtual Status EmitKernel(const LaunchDimensions& launch_dims,
                             std::vector<llvm_ir::IrArray> inputs,

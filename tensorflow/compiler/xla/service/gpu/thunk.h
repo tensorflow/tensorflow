@@ -92,6 +92,8 @@ class Thunk {
     std::optional<int64_t> profile_index;
     std::string profile_annotation;
     mlir::Operation* op;
+
+    static ThunkInfo WithProfileAnnotation(mlir::Operation* op);
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
