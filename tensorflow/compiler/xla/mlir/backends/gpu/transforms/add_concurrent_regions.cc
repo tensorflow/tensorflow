@@ -202,22 +202,25 @@ void InsertConcurrentRegions(FuncOp capture_func,
 //===----------------------------------------------------------------------===//
 
 void AddConcurrentRegionsPass::runOnOperation() {
-  FuncOp func_op = getOperation();
-
-  if (!absl::StrContains(func_op.getSymNameAttr().str(),
-                         "xla.gpu.cuda.graph.capture")) {
-    return;
-  }
-
-  SymbolTable sym_table(func_op->getParentOfType<mlir::ModuleOp>());
+  ModuleOp module = getOperation();
+  SymbolTable sym_table(module);
   CustomCallDeclarations custom_calls(std::move(sym_table));
-  InsertConcurrentRegions(func_op, custom_calls,
-                          getAnalysis<DataflowAnalysis>());
+
+  auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
+
+  for (auto func_op : func_ops) {
+    // Find the cuda graph capture function.
+    if (absl::StrContains(func_op.getSymNameAttr().str(),
+                          "xla.gpu.cuda.graph.capture")) {
+      InsertConcurrentRegions(func_op, custom_calls,
+                              getAnalysis<DataflowAnalysis>());
+    }
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createAddConcurrentRegionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createAddConcurrentRegionsPass() {
   return std::make_unique<AddConcurrentRegionsPass>();
 }
 

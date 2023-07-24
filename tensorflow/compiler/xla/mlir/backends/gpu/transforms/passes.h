@@ -110,7 +110,7 @@ createOutlineCudaGraphsPass(int32_t cuda_graph_level, int32_t min_graph_size);
 // Passes for marking concurrent region in CUDA graph capture function.
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAddConcurrentRegionsPass();
 
 //===----------------------------------------------------------------------===//
