@@ -38,7 +38,6 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 # pylint: enable=wildcard-import
 
 # from tensorflow.python import keras
-from tensorflow.python.feature_column import feature_column_lib as feature_column
 # from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.saved_model import saved_model

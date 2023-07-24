@@ -359,6 +359,7 @@ py_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:composite_tensor",

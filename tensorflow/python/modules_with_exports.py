@@ -63,6 +63,9 @@ _tf2_gauge = _monitoring.BoolGauge(
     '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
 _tf2_gauge.get_cell().set(_tf2.enabled())
 
+# Feature Column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
