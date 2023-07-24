@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -152,6 +153,12 @@ class OpsTestBase : public ::testing::Test {
 
   const DataTypeVector& output_types() const;
 
+  void set_session_metadata(SessionMetadata session_metadata) {
+    session_metadata_ = std::move(session_metadata);
+  }
+
+  const SessionMetadata& session_metadata() const { return session_metadata_; }
+
  protected:
   void CreateContext();
   Tensor* AddInput(DataType dtype, const TensorShape& shape);
@@ -192,6 +199,8 @@ class OpsTestBase : public ::testing::Test {
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  SessionMetadata session_metadata_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);

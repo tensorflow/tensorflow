@@ -38,6 +38,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
@@ -2908,7 +2909,8 @@ def _multi_worker_concat(v, strategy):
 
 
 def _is_scalar(x):
-  return isinstance(x, (ops.Tensor, variables.Variable)) and x.shape.rank == 0
+  return isinstance(
+      x, (tensor_lib.Tensor, variables.Variable)) and x.shape.rank == 0
 
 
 def write_scalar_summaries(logs, step):

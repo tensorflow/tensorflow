@@ -428,6 +428,17 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   return OkStatus();
 }
 
+StatusOr<const Tensor*> OpKernelContext::get_input(int index) const {
+  if (index < 0 || index >= num_inputs() || input_is_ref(index)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Given index was ", index,
+                     ", but index of input must be greater than "
+                     "0, less than the number of inputs (",
+                     num_inputs(), "), and not a ref."));
+  }
+  return params_->inputs[index].tensor;
+}
+
 const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();

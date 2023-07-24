@@ -15,5 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_interfaces.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/python/ifrt/ir/constants.h"
+
 // Generated definitions.
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_interfaces.cc.inc"
+
+namespace mlir {
+namespace OpTrait {
+namespace xla {
+namespace ifrt {
+namespace impl {
+
+LogicalResult verifyNestedInIfrtFunc(Operation* op) {
+  auto func_op = op->getParentOfType<func::FuncOp>();
+  if (func_op != nullptr &&
+      !func_op->hasAttr(::xla::ifrt::kIfrtFunctionAttrName)) {
+    return op->emitOpError() << "must be in a FuncOp with attr `"
+                             << ::xla::ifrt::kIfrtFunctionAttrName << "`";
+  }
+  return success();
+}
+
+}  // namespace impl
+}  // namespace ifrt
+}  // namespace xla
+}  // namespace OpTrait
+}  // namespace mlir

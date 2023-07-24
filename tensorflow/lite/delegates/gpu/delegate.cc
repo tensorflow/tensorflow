@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
 #include "tensorflow/lite/delegates/serialization.h"
 
 #if defined(__ANDROID__)
@@ -171,7 +172,7 @@ class Delegate {
     delegate_.CopyFromBufferHandle = nullptr;
     delegate_.CopyToBufferHandle = nullptr;
     delegate_.FreeBufferHandle = nullptr;
-    delegate_.flags = kTfLiteDelegateFlagsNone;
+    delegate_.flags = kTfLiteDelegateFlagsPerOperatorProfiling;
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
@@ -1496,6 +1497,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   telemetry::TelemetryReportDelegateSettings(
       context, "GpuDelegate::DelegatePrepare",
       telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
+
+  SetTfLiteProfiler(context->profiler);
   return status;
 }
 

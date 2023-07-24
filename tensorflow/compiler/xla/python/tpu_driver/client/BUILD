@@ -66,7 +66,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@llvm-project//mlir:IR",

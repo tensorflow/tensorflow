@@ -1,10 +1,10 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_compatible_with = get_compatible_with_cloud(),
+    default_compatible_with = get_compatible_with_portable(),
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],
@@ -53,6 +53,7 @@ cc_library(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/transforms:test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = ["mlir"],

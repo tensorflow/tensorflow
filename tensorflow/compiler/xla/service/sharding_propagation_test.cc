@@ -9281,5 +9281,36 @@ ENTRY %entry {
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
               op::Sharding("{devices=[4]0,1,2,3}"));
 }
+
+TEST_F(ShardingPropagationTest, PropagateManualOutfeed) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[1]{0} parameter(1)
+  tuple.1 = (f32[8]{0}) tuple(p0)
+  constant.8 = u32[2]{0} constant({3, 12})
+  tuple.10 = (u32[2]{0}) tuple(constant.8)
+  aa.1 = token[] after-all()
+  outfeed.1 = token[] outfeed(tuple.10, aa.1), outfeed_shape=(u32[2]{0}), sharding={{manual}, {manual}}
+  outfeed.2 = token[] outfeed(tuple.1, outfeed.1), outfeed_shape=(f32[8]{0}), sharding={{manual}, {manual}}
+  ROOT tuple.15 = (f32[1]{0}, token[]) tuple(p1, outfeed.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{replicated}, {manual}}"));
+}
+
 }  // namespace
 }  // namespace xla

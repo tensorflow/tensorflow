@@ -233,15 +233,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
   }
 
   switch (output->type) {
-    case kTfLiteFloat32:
-      Tile<float>(*(input->dims), input, multipliers, output);
-      break;
     case kTfLiteInt8:
+    case kTfLiteUInt8:
       Tile<int8_t>(*(input->dims), input, multipliers, output);
       break;
-    case kTfLiteUInt8:
-      Tile<uint8_t>(*(input->dims), input, multipliers, output);
-      break;
+    case kTfLiteFloat32:
     case kTfLiteInt32:
       Tile<int32_t>(*(input->dims), input, multipliers, output);
       break;

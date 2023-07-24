@@ -41,8 +41,11 @@ ffi::FfiStatus ConvolutionFfi(
     ffi::Span<const int64_t> window_strides, ffi::Span<const int64_t> padding,
     ffi::Span<const int64_t> lhs_dilation,
     ffi::Span<const int64_t> rhs_dilation, int64_t feature_group_count) {
-  auto to_memref_view = [](ffi::BufferArg& view) -> MemrefView& {
-    return *reinterpret_cast<MemrefView*>(&view);
+  auto to_memref_view = [](const ffi::BufferArg& view) -> MemrefView {
+    auto dtype = static_cast<xla::PrimitiveType>(view.dtype);
+    return MemrefView{
+        dtype, view.data,
+        absl::MakeConstSpan(view.sizes.begin(), view.sizes.end())};
   };
   auto to_span =
       [](ffi::Span<const int64_t> span) -> absl::Span<const int64_t> {

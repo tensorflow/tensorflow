@@ -64,7 +64,7 @@ class LowerComplexTypes
 class ComplexTypeConverter : public TypeConverter {
  public:
   static Type convertTensor(RankedTensorType type) {
-    if (auto elementType = type.getElementType().dyn_cast<ComplexType>()) {
+    if (auto elementType = dyn_cast<ComplexType>(type.getElementType())) {
       llvm::SmallVector<int64_t> newShape;
       for (auto dim : type.getShape()) {
         newShape.push_back(dim);
@@ -111,7 +111,7 @@ class GenericTypeConvert : public ConversionPattern {
 };
 
 static bool isIllegalType(Type type) {
-  if (auto shapedType = type.dyn_cast<ShapedType>()) {
+  if (auto shapedType = dyn_cast<ShapedType>(type)) {
     return shapedType.getElementType().isa<ComplexType>();
   }
   return false;

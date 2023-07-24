@@ -408,6 +408,13 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
     roundtrip = layout.Layout.from_proto(tensor_layout.as_proto())
     self.assertEqual(roundtrip, tensor_layout)
 
+  def test_parted_layout(self):
+    tensor_layout = layout.Layout.batch_sharded(
+        _2D_MESH, _MESH_DIM_BATCH, rank=2
+    )
+    parted_layout = tensor_layout.to_parted()
+    self.assertEqual(parted_layout.type, layout.LayoutType.PARTED)
+
 
 class RelayoutTest(test_util.DTensorBaseTest):
 
@@ -461,6 +468,21 @@ class RelayoutTest(test_util.DTensorBaseTest):
       )
     else:
       self.assertDTensorEqual(inp, to_layout, do_relayout())
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_to_parted(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+
+    def do_relayout():
+      return api.relayout(data, self.y_layout.to_parted())
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.y_layout.to_parted(), result)
 
   @combinations.generate(combinations.combine(is_graph=[False, True]))
   def test_relayout_like_simple(self, is_graph):

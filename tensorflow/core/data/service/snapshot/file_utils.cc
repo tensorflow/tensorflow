@@ -107,7 +107,7 @@ tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
-      " Requested file: ", filename);
+      " Requested to atomically write TF record file: ", filename);
   return tsl::OkStatus();
 }
 
@@ -126,30 +126,6 @@ tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
     }
   }
   return result;
-}
-
-Status ValidateSnapshot(const std::string& snapshot_path, tsl::Env* env) {
-  if (!env->FileExists(snapshot_path).ok()) {
-    return errors::NotFound("Failed to load tf.data snapshot at ",
-                            snapshot_path,
-                            ": The snapshot directory does not exist.");
-  }
-  if (env->FileExists(SnapshotErrorFilePath(snapshot_path)).ok()) {
-    StatusProto status_proto;
-    TF_RETURN_IF_ERROR(ReadTextProto(env, SnapshotErrorFilePath(snapshot_path),
-                                     &status_proto));
-    Status status = tsl::StatusFromProto(status_proto);
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        status, "Failed to load tf.data snapshot at ", snapshot_path,
-        " since the save job failed to write it.");
-    return status;
-  }
-  if (!env->FileExists(SnapshotDoneFilePath(snapshot_path)).ok()) {
-    return errors::InvalidArgument(
-        "Failed to load tf.data snapshot at ", snapshot_path,
-        ". The save job has not finished writing the snapshot.");
-  }
-  return OkStatus();
 }
 
 bool IsTemporaryFile(absl::string_view filename) {

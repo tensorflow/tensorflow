@@ -27,7 +27,7 @@ INVOCATION: The following flags are required:
 
 On Windows you might need something like:
 
-    C:\Python38\python.exe C:\path\to\sizetrack_helper.py ...
+    C:\Python310\python.exe C:\path\to\sizetrack_helper.py ...
 
 PREREQUISITES:
 

@@ -220,6 +220,18 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
       )
       self.evaluate(csr)
 
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Index rank .* and shape rank .* do not match",
+    ):
+      self.evaluate(
+          sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+              indices=[[0, 0, 0], [0, 0, 1]],
+              values=[10.0, 20.0],
+              dense_shape=[33, 73],
+          )
+      )
+
   # TODO(b/139491352): Add handle_data propagation to array_ops.identity.
   @test_util.run_deprecated_v1
   def testCSRSparseMatrixResourceVariable(self):
@@ -767,37 +779,53 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
         if (transpose_a and adjoint_a) or (transpose_b and adjoint_b):
           continue
 
-        a_dense_shape = ([53, 127, 65]
-                         if transpose_a or adjoint_a else [53, 65, 127])
-        b_dense_shape = ([53, 67, 127]
-                         if transpose_b or adjoint_b else [53, 127, 67])
+        for a_batch_size in (1, 53):
+          for b_batch_size in (1, 53):
+            a_dense_shape = (
+                [a_batch_size, 127, 65]
+                if transpose_a or adjoint_a
+                else [a_batch_size, 65, 127]
+            )
+            b_dense_shape = (
+                [b_batch_size, 67, 127]
+                if transpose_b or adjoint_b
+                else [b_batch_size, 127, 67]
+            )
 
-        a_mats = sparsify(np.random.randn(*a_dense_shape)).astype(np.float32)
-        b_mats = sparsify(np.random.randn(*b_dense_shape).astype(np.float32))
+            a_mats = sparsify(np.random.randn(*a_dense_shape)).astype(
+                np.float32
+            )
+            b_mats = sparsify(
+                np.random.randn(*b_dense_shape).astype(np.float32)
+            )
 
-        a_sm = dense_to_csr_sparse_matrix(a_mats)
-        b_sm = dense_to_csr_sparse_matrix(b_mats)
-        c_sm = sparse_csr_matrix_ops.sparse_matrix_sparse_mat_mul(
-            a_sm,
-            b_sm,
-            type=dtypes.float32,
-            transpose_a=transpose_a,
-            adjoint_a=adjoint_a,
-            transpose_b=transpose_b,
-            adjoint_b=adjoint_b)
-        c_sm_dense = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
-            c_sm, dtypes.float32)
-        c_dense_t = test_util.matmul_without_tf32(
-            a_mats,
-            b_mats,
-            transpose_a=transpose_a,
-            adjoint_a=adjoint_a,
-            transpose_b=transpose_b,
-            adjoint_b=adjoint_b)
-        c_dense_t_value, c_sm_dense_value = self.evaluate(
-            (c_dense_t, c_sm_dense))
+            a_sm = dense_to_csr_sparse_matrix(a_mats)
+            b_sm = dense_to_csr_sparse_matrix(b_mats)
+            c_sm = sparse_csr_matrix_ops.sparse_matrix_sparse_mat_mul(
+                a_sm,
+                b_sm,
+                type=dtypes.float32,
+                transpose_a=transpose_a,
+                adjoint_a=adjoint_a,
+                transpose_b=transpose_b,
+                adjoint_b=adjoint_b,
+            )
+            c_sm_dense = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
+                c_sm, dtypes.float32
+            )
+            c_dense_t = test_util.matmul_without_tf32(
+                a_mats,
+                b_mats,
+                transpose_a=transpose_a,
+                adjoint_a=adjoint_a,
+                transpose_b=transpose_b,
+                adjoint_b=adjoint_b,
+            )
+            c_dense_t_value, c_sm_dense_value = self.evaluate(
+                (c_dense_t, c_sm_dense)
+            )
 
-        self.assertAllClose(c_sm_dense_value, c_dense_t_value)
+            self.assertAllClose(c_sm_dense_value, c_dense_t_value)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchRegisteredAddN(self):

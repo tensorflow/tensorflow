@@ -93,19 +93,24 @@ Status HostCallbackContext::OnSend(int arg_num,
 
 void HostCallbackContext::Receive(int res_num,
                                   const PjRtTransferMetadata& metadata,
-                                  CopyToDeviceStream& stream) {
+                                  std::unique_ptr<CopyToDeviceStream> stream) {
   auto& result_channel = result_channels_.at(res_num);
-  PjRtChunk chunk = result_channel->Pop();
+  result_channel->Pop().OnReady(
+      [this, res_num, metadata,
+       stream = std::move(stream)](PjRtChunk chunk) mutable {
+        if (!use_major_to_minor_data_layout_for_callbacks_) {
+          const auto& host_shape = host_callback_.results.at(res_num).shape;
+          const auto& device_shape = metadata.device_shape;
+          auto statusor_linearized =
+              host_memory_for_device_manager_->ToDeviceLayout(
+                  chunk.data(), chunk.size(), host_shape, device_shape);
+          chunk = std::move(statusor_linearized.value());
+        }
 
-  if (!use_major_to_minor_data_layout_for_callbacks_) {
-    const auto& host_shape = host_callback_.results.at(res_num).shape;
-    const auto& device_shape = metadata.device_shape;
-    auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
-        chunk.data(), chunk.size(), host_shape, device_shape);
-    chunk = std::move(statusor_linearized.value());
-  }
-
-  stream.AddChunk(std::move(chunk)).OnReady([](Status s) { TF_CHECK_OK(s); });
+        stream->AddChunk(std::move(chunk)).OnReady([](Status s) {
+          TF_CHECK_OK(s);
+        });
+      });
 }
 
 std::unique_ptr<HostCallbackContext>
@@ -138,7 +143,7 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
         /*callback=*/[res_num, context = context.get()](
                          const PjRtTransferMetadata& metadata,
                          std::unique_ptr<CopyToDeviceStream> stream) {
-          context->Receive(res_num, metadata, *stream);
+          context->Receive(res_num, metadata, std::move(stream));
         }});
   }
 

@@ -21,9 +21,9 @@ limitations under the License.
 
 // Generated definitions.
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h.inc"  // IWYU pragma: export
-#define GET_TYPEDEF_CLASSES
-#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.h.inc"  // IWYU pragma: export
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_attrs.h.inc"  // IWYU pragma: export
+#define GET_TYPEDEF_CLASSES
+#include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_types.h.inc"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_H_

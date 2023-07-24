@@ -21,7 +21,7 @@ from tensorflow.python.ops.numpy_ops import np_math_ops
 
 
 @np_export.np_export("experimental_enable_numpy_behavior")
-def enable_numpy_behavior(prefer_float32=False):
+def enable_numpy_behavior(prefer_float32=False, dtype_conversion_mode="legacy"):
   """Enable NumPy behavior on Tensors.
 
   Enabling NumPy behavior has three effects:
@@ -36,11 +36,13 @@ def enable_numpy_behavior(prefer_float32=False):
     [NumPy's](https://numpy.org/doc/stable/reference/arrays.indexing.html).
 
   Args:
-    prefer_float32: Controls whether dtype inference will use float32
-    for Python floats, or float64 (the default and the
-    NumPy-compatible behavior).
+    prefer_float32: Controls whether dtype inference will use float32 for Python
+      floats, or float64 (the default and the NumPy-compatible behavior).
+    dtype_conversion_mode: a string that specifies promotion mode. This string
+      corresponds to a PromoMode Enum and can be 'off', 'legacy', 'safe', or
+      'all'. 'safe' or 'all' mode enables the auto dtype conversion semantics.
   """
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode(dtype_conversion_mode)
   ops.enable_numpy_style_slicing()
   np_math_ops.enable_numpy_methods_on_tensor()
   np_dtypes.set_prefer_float32(prefer_float32)

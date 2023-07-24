@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -50,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -500,7 +503,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       int64_t output_size;
       int64_t pad_low_int64;
       int64_t pad_high_int64;
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
               input_spatial_dim[i]),
           conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
@@ -1227,68 +1230,17 @@ class ConvertDynamicUpdateSliceOp
     if (update_type == nullptr || start_indices_type == nullptr)
       return rewriter.notifyMatchFailure(
           op, "update and start_indices should have ShapedType");
-    if (!operand_type.hasStaticShape() || !update_type.hasStaticShape())
-      return rewriter.notifyMatchFailure(
-          op, "shape of operand and update should be static");
 
     Type idx_type = start_indices_type.getElementType();
     int64_t shape_dim = operand_type.getRank();
-    auto operand_shape = operand_type.getShape();
-    auto update_shape = update_type.getShape();
-
-    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
-    Value zero_cst = BuildIntConstOp(builder, rewriter, 0, idx_type);
-    Value one_cst = BuildIntConstOp(builder, rewriter, 1, idx_type);
-    // Clamp start indices in [0, operand_size - update_size].
     llvm::SmallVector<Value> start_indices_vector;
     Append(start_indices_vector, op.getStartIndices());
     auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
-    Value start_indices_tensor =
-        builder.create<PackOp>(shape_tensor_type, start_indices_vector);
-    Value operand_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, operand_shape, idx_type);
-    Value update_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, update_shape, idx_type);
-    Value max_start_indices =
-        builder.create<SubOp>(operand_shape_cst, update_shape_cst);
-    Value start_indices_clip_max =
-        builder.create<MinimumOp>(start_indices_tensor, max_start_indices);
-    Value clamped_start_indices =
-        builder.create<MaximumOp>(start_indices_clip_max, zero_cst);
-
-    // Do dynamic_upate_slice on flattened operand and update with the aid of
-    // tf.TensorScatterUpdate op. It takes in 3 parameters: flat_operand,
-    // indices and flat_update. The indices are computed as follows:
-    // 1. Construct a range (0, n_operand). It arranges a id number to each
-    //    element position in operand.
-    // 2. Reshape the range to the shape of operand.
-    // 3. Compute the id numbers of update positions by choose a slice form
-    //    clamped_start_indices to clamped_start_indices + update_size.
-    // 4. Flatten the update id numbers and the indices is obtained.
-    int64_t n_operand = operand_type.getNumElements();
-    Value n_operand_cst =
-        BuildIntConstOp(builder, rewriter, n_operand, idx_type);
-    Value range_flat =
-        builder.create<RangeOp>(zero_cst, n_operand_cst, one_cst);
-    Value range = BuildReshapeOp(builder, rewriter, range_flat, operand_shape,
-                                 idx_type, idx_type);
-    Value update_indices_raw =
-        BuildSliceOp(builder, rewriter, range, clamped_start_indices,
-                     update_shape, idx_type, idx_type);
-    int64_t n_update = update_type.getNumElements();
-    Type element_type = operand_type.getElementType();
-    Value update_indices = BuildReshapeOp(builder, rewriter, update_indices_raw,
-                                          {n_update, 1}, idx_type, idx_type);
-    Value operand_flat = BuildReshapeOp(builder, rewriter, op.getOperand(),
-                                        {n_operand}, idx_type, element_type);
-    Value update_flat = BuildReshapeOp(builder, rewriter, op.getUpdate(),
-                                       {n_update}, idx_type, element_type);
-    Value flat_result = builder.create<TensorScatterUpdateOp>(
-        operand_flat, update_indices, update_flat);
-
-    // Reshape back before return.
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, operand_type, flat_result,
-                                           operand_shape_cst);
+    Value start_indices_tensor = rewriter.create<PackOp>(
+        op.getLoc(), shape_tensor_type, start_indices_vector);
+    rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
+        op, op.getType(), op.getOperand(), op.getUpdate(),
+        start_indices_tensor);
     return success();
   };
 };
@@ -1561,6 +1513,7 @@ bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
          MatchIotaConst(dimensions, iota);
 }
 
+template <typename ReturnOpType>
 bool MatchTopKComparator(Region& comparator) {
   if (!comparator.hasOneBlock()) return false;
   Block& comparator_blk = comparator.front();
@@ -1568,14 +1521,16 @@ bool MatchTopKComparator(Region& comparator) {
   OpListType& operations = comparator_blk.getOperations();
   if (operations.size() != 2) return false;
   auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
-  auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
+  auto return_op = dyn_cast_or_null<ReturnOpType>(&operations.back());
   if (!compare_op || !return_op) return false;
   // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
-  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT)
+  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT) {
     return false;
-  if (compare_op.getLhs() != comparator_blk.getArgument(0) ||
-      compare_op.getRhs() != comparator_blk.getArgument(1))
+  }
+  if (compare_op.getOperands()[0] != comparator_blk.getArgument(0) ||
+      compare_op.getOperands()[1] != comparator_blk.getArgument(1)) {
     return false;
+  }
   return return_op.getOperands().front() == compare_op.getResult();
 }
 
@@ -1626,7 +1581,7 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (!MatchIota(sort_dim_attr, indices))
       return rewriter.notifyMatchFailure(
           op, "the second operand is supposed to be obtained from IOTA");
-    if (!MatchTopKComparator(op.getComparator()))
+    if (!MatchTopKComparator<mhlo::ReturnOp>(op.getComparator()))
       return rewriter.notifyMatchFailure(op, "only match for GT comparator");
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
@@ -1812,7 +1767,7 @@ Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
 }
 
 // Checks if the specified region is a binary reduction function that takes 2
-// inputs, passes it to an instance of the specifiied reduction op and then
+// inputs, passes it to an instance of the specified reduction op and then
 // returns the result.
 template <typename ReductionOp>
 LogicalResult MatchBinaryReduceFunction(mlir::Region& function) {
@@ -1849,7 +1804,7 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
 }
 
 // Replace BinaryOp with a combination of TfBinaryOp and TfReduceOp if the
-// init value doesn't match the expection of TfReduceOp.
+// init value doesn't match the expectation of TfReduceOp.
 template <typename TfReduceOp, typename TfBinOp>
 LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
                                        ConstOp reduction_indices,
@@ -1863,7 +1818,7 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
   return success();
 }
 
-// Cannot replace BinaryOp if the init value doesn't match the expection of
+// Cannot replace BinaryOp if the init value doesn't match the expectation of
 // TfReduceOp and there is no corresponding TfBinaryOp.
 template <>
 LogicalResult rewriteNonMatchInitValue<TF::MaxOp, void>(
@@ -3239,7 +3194,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       auto slice_op =
           rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
                                    operand, squeeze_op, slice_size);
-      rewriter.replaceOp(gather_op, {slice_op});
+      rewriter.replaceOp(gather_op, slice_op);
       return mlir::success();
     }
 
@@ -3275,7 +3230,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
     auto concat_op = rewriter.create<ConcatV2Op>(
         gather_op.getLoc(), result_type, slices, zero_scalar);
-    rewriter.replaceOp(gather_op, {concat_op});
+    rewriter.replaceOp(gather_op, concat_op);
     return mlir::success();
   }
 
@@ -3594,6 +3549,281 @@ class ConvertPopulationCountOp
   }
 };
 
+class ConvertCustomCallWithApproxTopK
+    : public mlir::OpConversionPattern<mhlo::CustomCallOp> {
+ public:
+  explicit ConvertCustomCallWithApproxTopK(MLIRContext* context,
+                                           mlir::ModuleOp* module_op)
+      : OpConversionPattern<mhlo::CustomCallOp>(context, /*benefit=*/0),
+        module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mhlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (op.getCallTargetName() != "ApproxTopK") {
+      return mlir::failure();
+    }
+    auto is_supported_attr_name = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == "call_target_name" || name == "backend_config" ||
+             name == "api_version" || name == "called_computations";
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!is_supported_attr_name(attr)) {
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for ApproxTopK";
+      }
+    }
+    auto backend_config =
+        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+    if (!backend_config) {
+      return op.emitOpError() << "Missing backend_config attribute";
+    }
+
+    for (const auto& attr : backend_config) {
+      auto name = attr.getName();
+      if (!(name == "top_k" || name == "reduction_dim" ||
+            name == "recall_target" || name == "aggregate_to_topk" ||
+            name == "reduction_input_size_override" || name == "is_fallback")) {
+        return op.emitOpError()
+               << name.getValue() << " is not a supported backend_config"
+               << " attribute for ApproxTopK";
+      }
+    }
+
+    auto check_i64_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<IntegerAttr>(attr_name);
+      if (!attr || !attr.getType().isInteger(64)) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of i64 type";
+      }
+      return success();
+    };
+    auto check_f32_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<FloatAttr>(attr_name);
+      if (!attr || !attr.getType().isF32()) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of f32 type";
+      }
+      return success();
+    };
+    auto check_bool_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<BoolAttr>(attr_name);
+      if (!attr) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of bool type";
+      }
+      return success();
+    };
+    if (failed(check_i64_attr("top_k"))) return failure();
+    if (failed(check_i64_attr("reduction_dim"))) return failure();
+    if (failed(check_f32_attr("recall_target"))) return failure();
+    if (failed(check_bool_attr("aggregate_to_topk"))) return failure();
+    if (failed(check_i64_attr("reduction_input_size_override"))) {
+      return failure();
+    }
+    bool has_is_fallback = backend_config.contains("is_fallback");
+    if (has_is_fallback && !backend_config.getAs<BoolAttr>("is_fallback")) {
+      return op.emitOpError()
+             << "is_fallback attribute in backend_config must be of bool type";
+    }
+
+    auto top_k_attr = backend_config.getAs<IntegerAttr>("top_k");
+    auto reduction_dim_attr =
+        backend_config.getAs<IntegerAttr>("reduction_dim");
+    auto recall_target_attr = backend_config.getAs<FloatAttr>("recall_target");
+    auto aggregate_to_topk_attr =
+        backend_config.getAs<BoolAttr>("aggregate_to_topk");
+    auto reduction_input_size_override_attr =
+        backend_config.getAs<IntegerAttr>("reduction_input_size_override");
+    if (op.getInputs().size() % 2 != 0) {
+      return op.emitOpError() << "ApproxTopK takes an even number of operands.";
+    }
+
+    auto called_computations = op.getCalledComputations();
+    if (called_computations.size() != 1) {
+      return op.emitOpError()
+             << "ApproxTopK takes exactly 1 called_computation.";
+    }
+    mlir::func::FuncOp callee = module_op_->lookupSymbol<mlir::func::FuncOp>(
+        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+    mlir::FunctionType callee_type = callee.getFunctionType();
+    SmallVector<Type, 4> expected_callee_input_types;
+    auto num_inputs = op.getInputs().size() / 2;
+    for (unsigned i = 0; i < num_inputs; ++i) {
+      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      auto scalar = RankedTensorType::get({}, input_type.getElementType());
+      expected_callee_input_types.push_back(scalar);
+      expected_callee_input_types.push_back(scalar);
+    }
+    FunctionType expected_callee_type = mlir::FunctionType::get(
+        op->getContext(), expected_callee_input_types,
+        RankedTensorType::get({}, IntegerType::get(op->getContext(), 1)));
+    if (callee_type != expected_callee_type) {
+      return op.emitOpError()
+             << "called_computation type does not match the expected type. Got "
+             << callee_type << " expected " << expected_callee_type;
+    }
+    if (!MatchTopKComparator<mlir::func::ReturnOp>(callee.getBody())) {
+      return op.emitOpError() << "only match for GT comparator";
+    }
+    auto is_max_k = rewriter.getBoolAttr(true);
+
+    auto approx_top_k = rewriter.create<TF::ApproxTopKOp>(
+        op.getLoc(), op->getResultTypes(), op.getInputs()[0], top_k_attr,
+        reduction_dim_attr, recall_target_attr, is_max_k,
+        reduction_input_size_override_attr, aggregate_to_topk_attr);
+
+    rewriter.replaceOp(op, approx_top_k.getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp* module_op_;
+};
+
+// Converts a MHLO::GetDimensionSizeOp to TF ops.
+class ConvertGetDimensionSizeOp
+    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+    Value shape_op = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getOperand(),
+                                                  rewriter.getBoolAttr(true));
+    Value size =
+        BuildIntArrayConstOp(builder, rewriter, llvm::SmallVector<int64_t>({1}),
+                             rewriter.getI32Type());
+    Value begin = BuildIntArrayConstOp(
+        builder, rewriter,
+        llvm::SmallVector<int64_t>({static_cast<int64_t>(op.getDimension())}),
+        rewriter.getI64Type());
+    Value slice_op = rewriter.create<TF::SliceOp>(
+        op.getLoc(),
+        RankedTensorType::get({static_cast<int64_t>(1)},
+                              op.getType().getElementType()),
+        shape_op, begin, size);
+    Value squeeze_op = rewriter.create<TF::SqueezeOp>(
+        op.getLoc(), op.getType(), slice_op,
+        rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({0})));
+    rewriter.replaceOp(op, {squeeze_op});
+    return success();
+  }
+};
+
+class ConvertRealDynamicSliceOp
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto start_indices_type = real_dynamic_slice_op.getStartIndices()
+                                  .getType()
+                                  .cast<RankedTensorType>();
+    auto end_indices_type = real_dynamic_slice_op.getLimitIndices()
+                                .getType()
+                                .cast<RankedTensorType>();
+
+    if (start_indices_type.getNumDynamicDims() != 0 ||
+        end_indices_type.getNumDynamicDims() != 0) {
+      return rewriter.notifyMatchFailure(
+          real_dynamic_slice_op,
+          "Start indices and limit indices must not have dynamic dimensions.");
+    }
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        real_dynamic_slice_op, real_dynamic_slice_op.getType(),
+        real_dynamic_slice_op.getOperand(),
+        real_dynamic_slice_op.getStartIndices(),
+        real_dynamic_slice_op.getLimitIndices(),
+        real_dynamic_slice_op.getStrides());
+    return success();
+  };
+};
+
+class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicIotaOp dynamic_iota_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    RankedTensorType type =
+        dynamic_iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type || type.getElementType().isUnsignedInteger(64)) {
+      return rewriter.notifyMatchFailure(dynamic_iota_op,
+                                         "TF::RangeOp doesn't support UI64");
+    }
+    // Only support 1D for now.
+    if (type.getRank() > 1 || dynamic_iota_op.getIotaDimension() != 0) {
+      return rewriter.notifyMatchFailure(
+          dynamic_iota_op, [&](::mlir::Diagnostic& diag) {
+            diag << "Only 1D DynamicIotaOp with iota dimension 0 is supported";
+          });
+    }
+
+    const uint64_t dimension = dynamic_iota_op.getIotaDimension();
+    Type element_type = type.getElementType();
+    Attribute start, delta;
+    if (element_type.isa<FloatType>()) {
+      start = rewriter.getFloatAttr(element_type, 0.0);
+      delta = rewriter.getFloatAttr(element_type, 1.0);
+    } else if (element_type.isa<IntegerType>()) {
+      start = rewriter.getIntegerAttr(element_type, 0);
+      delta = rewriter.getIntegerAttr(element_type, 1);
+    } else {
+      return failure();
+    }
+    auto output_shape = dynamic_iota_op.getOperand();
+    if (element_type.isa<FloatType>()) {
+      auto cast_type =
+          output_shape.getType().cast<ShapedType>().clone(element_type);
+      output_shape = rewriter.create<TF::CastOp>(dynamic_iota_op.getLoc(),
+                                                 cast_type, output_shape);
+    }
+    DenseIntElementsAttr scalar_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({0}, rewriter.getI32Type()),
+        llvm::ArrayRef<int32_t>({}));
+    auto scalar_shape =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), scalar_attr);
+    auto limit_scalar = rewriter.create<TF::ReshapeOp>(
+        dynamic_iota_op.getLoc(), RankedTensorType::get({}, element_type),
+        output_shape, scalar_shape);
+    auto range_type =
+        RankedTensorType::get({type.getShape()[dimension]}, element_type);
+    Value start_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), start);
+    Value delta_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), delta);
+    Value range_op = rewriter.create<TF::RangeOp>(
+        dynamic_iota_op.getLoc(), range_type, start_op, limit_scalar, delta_op);
+    rewriter.replaceOp(dynamic_iota_op, range_op);
+    return success();
+  }
+};
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3632,14 +3862,42 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
   return rewriter.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
 }
 
+Value ExpandedDynamicShape(PatternRewriter& rewriter, Value input,
+                           DenseIntElementsAttr broadcast_dimensions,
+                           Value output) {
+  assert(output.getType().cast<ShapedType>() &&
+         "output type must be of ShapedType");
+  int64_t output_rank = output.getType().cast<ShapedType>().getRank();
+  llvm::SmallVector<int64_t, 4> expanded_dimensions;
+  llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  }
+  for (int64_t i = 0; i < output_rank; i++) {
+    if (!broadcast_dimensions_values.contains(i)) {
+      expanded_dimensions.push_back(i);
+    }
+  }
+  Value expanded_input = input;
+  for (int64_t i : expanded_dimensions) {
+    auto index_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({}, rewriter.getI64Type()), {i});
+    Value index = rewriter.create<TF::ConstOp>(output.getLoc(), index_attr);
+    expanded_input = rewriter.create<TF::ExpandDimsOp>(output.getLoc(),
+                                                       expanded_input, index);
+  }
+  return expanded_input;
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
-/// Performs the lowering to XLA dialect.
+/// Performs the lowering to TF dialect.
 void LegalizeHloToTf::runOnOperation() {
   MLIRContext& context = getContext();
+  mlir::ModuleOp module = getOperation();
 
-  // Add legalization patterns to the list.
   RewritePatternSet patterns(&getContext());
+  patterns.add<ConvertCustomCallWithApproxTopK>(&context, &module);
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
@@ -3657,21 +3915,23 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context) {
-  patterns->add<
-      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
-      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
-      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
-      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
-      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
-      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
-      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp>(context);
+  patterns
+      ->add<ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+            ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+            ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+            ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+            ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+            ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+            ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax,
+            ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+            ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
+            ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
+            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
+            ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 

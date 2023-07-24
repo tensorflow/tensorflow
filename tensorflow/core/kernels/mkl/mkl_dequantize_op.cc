@@ -72,7 +72,12 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<float> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       memory::format_tag dst_layout_type;
@@ -151,9 +156,10 @@ class MklDequantizeOp : public OpKernel {
       attr.set_output_scales(0, scales);
 #else
       attr.set_scales_mask(DNNL_ARG_SRC, 0);
-      auto scale_mem =
-          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
-                 cpu_engine, scales.data());
+      auto scale_mem = memory({{static_cast<int64_t>(scales.size())},
+                               MklDnnType<float>(),
+                               memory::format_tag::x},
+                              cpu_engine, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
       std::vector<primitive> net;
 

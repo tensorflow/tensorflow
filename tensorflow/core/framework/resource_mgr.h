@@ -366,6 +366,12 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
 
 // Returns a resource handle from a numbered op input.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
+
+// Safely returns a resource handle from a numbered op input.
+// Prevents segfault by checking for empty resource handle.
+Status HandleFromInput(OpKernelContext* ctx, int input, ResourceHandle* handle);
+// Returns a resource handle by name, as defined in the OpDef.
+// Also prevents segfault by checking for empty resource handle.
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 

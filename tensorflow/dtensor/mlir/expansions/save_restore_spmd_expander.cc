@@ -203,10 +203,10 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {
       if (!shape_and_slice.empty())
-        return absl::InvalidArgumentError(absl::StrCat(
+        return absl::InvalidArgumentError(
             absl::StrCat("DTensor SaveV2 requires shape_and_slices() field to "
                          "be empty for tensors, but get : ",
-                         shape_and_slice)));
+                         shape_and_slice));
     }
   } else {
     VLOG(2) << "Failed to extract and verify shape_and_slices() from "
@@ -395,9 +395,9 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
                         ExtractLayoutFromOperand(tensor));
     if (!layout)
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InvalidArgumentError(
           "layout is required when saving a DTensor but find no layout "
-          "attached"));
+          "attached");
 
     TF_ASSIGN_OR_RETURN(llvm::ArrayRef<int64_t> tensor_shape,
                         GetGlobalShapeOfValueFromDTensorLayout(it.value()));
@@ -891,8 +891,10 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     // Change the mesh of each layout to `mesh` since RestoreOp always runs on
     // the CPU.
     for (int i = 0; i < layouts.size(); ++i) {
-      Layout host_mesh_layout = layouts[i];
-      host_mesh_layout.set_mesh(mesh);
+      TF_ASSIGN_OR_RETURN(
+          Layout host_mesh_layout,
+          Layout::GetLayout(Layout::LayoutType::kStatic,
+                            layouts[i].sharding_spec_strs(), mesh));
       output_layouts[i] = host_mesh_layout;
     }
     return output_layouts;

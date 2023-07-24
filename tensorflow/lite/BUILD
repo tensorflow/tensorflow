@@ -204,6 +204,20 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "arena_planner_subgraph_test",
+    size = "small",
+    srcs = ["arena_planner_subgraph_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
+    deps = [
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "simple_planner",
     srcs = ["simple_planner.cc"],
@@ -576,6 +590,7 @@ cc_library_with_tflite(
     copts = tflite_copts() + tflite_copts_warnings(),
     generate_opaque_delegate_target = True,
     visibility = [
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -1127,10 +1142,47 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
+        ":array",
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "array",
+    srcs = ["array.cc"],
+    hdrs = ["array.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + tflite_copts(),
+    deps = [
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_test(
+    name = "array_test",
+    srcs = ["array_test.cc"],
+    deps = [
+        ":array",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":array",
+        ":test_util",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1147,9 +1199,6 @@ cc_library_with_tflite(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/core:create_op_resolver_with_builtin_ops"],
-    # Some targets only have an implicit dependency on CreateOpResolver.
-    # This avoids warnings about backwards references when linking.
-    alwayslink = True,
 )
 
 # Defines CreateOpResolver with a selected subset of ops.
@@ -1313,6 +1362,9 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:test_util",
     ],
     deps = [
+        ":array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )

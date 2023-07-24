@@ -60,6 +60,25 @@ else:
 llvm_config.config.substitutions.append(
     ('%tfrt_bindir', 'tensorflow/compiler/aot'))
 
+subst_marker = 'SUBST_'
+subst_marker_len = len(subst_marker)
+# Include aditional substitutions that may be defined via params
+llvm_config.config.substitutions.extend(
+    ('%%{%s}' % key, val)
+    for key, val in lit_config.params.items()
+    if not key.startswith(subst_marker)
+)
+
+# Include ir substitutions for FileCheck
+llvm_config.config.substitutions.append((
+    '%{IR_SUBST}',
+    ' '.join(
+        "-D{}='{}'".format(key[subst_marker_len:], val.replace('[SPACE]', ' '))
+        for key, val in lit_config.params.items()
+        if key.startswith(subst_marker)
+    ),
+))
+
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
@@ -75,7 +94,6 @@ tool_names = [
     'json_to_flatbuffer',
     'kernel-gen-opt',
     'lhlo-tfrt-opt',
-    'mhlo-tosa-opt',
     'mlir-bisect',
     'mlir-hlo-opt',
     'mlir-interpreter-runner',
@@ -84,6 +102,7 @@ tool_names = [
     'mlir-translate',
     'odml-to-stablehlo-opt',
     'odml_to_stablehlo',
+    'stable-quant-opt',
     'tac-opt-all-backends',
     'tac-translate',
     'tf-mlir-translate',

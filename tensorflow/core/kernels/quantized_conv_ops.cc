@@ -561,12 +561,12 @@ class QuantizedConv2DOp : public OpKernel {
     const int stride = strides_[1];
 
     int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_rows, filter_rows, stride,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_cols, filter_cols, stride,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                input_rows, filter_rows, /*dilation_rate=*/1,
+                                stride, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                input_cols, filter_cols, /*dilation_rate=*/1,
+                                stride, padding_, &out_cols, &pad_cols));
     CHECK_GT(batch, 0);
     CHECK_GT(out_rows, 0);
     CHECK_GT(out_cols, 0);

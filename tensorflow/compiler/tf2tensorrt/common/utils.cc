@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
+#include <tuple>
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"

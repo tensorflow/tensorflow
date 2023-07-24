@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -106,6 +108,8 @@ class BatchResourceBase : public ResourceBase {
     // this task's processing costs.
     RequestCost* request_cost = nullptr;
 
+    tsl::criticality::Criticality criticality;
+
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
@@ -143,6 +147,12 @@ class BatchResourceBase : public ResourceBase {
         allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
         disable_padding_(batcher_queue_options.disable_padding) {}
 
+  void set_session_metadata(tensorflow::SessionMetadata session_metadata) {
+    session_metadata_ = std::move(session_metadata);
+  }
+
+  const SessionMetadata& session_metadata() const { return session_metadata_; }
+
   using CreateBatchTaskFn =
       std::function<StatusOr<std::unique_ptr<BatchTask>>()>;
 
@@ -158,6 +168,16 @@ class BatchResourceBase : public ResourceBase {
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting, bool disable_padding);
+
+  static BatcherT::QueueOptions GetBatcherQueueOptions(
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
+      bool enable_large_batch_splitting, bool disable_padding,
+      int32_t low_priority_max_batch_size,
+      int32_t low_priority_batch_timeout_micros,
+      int32_t low_priority_max_enqueued_batches,
+      const std::vector<int32>& low_priority_allowed_batch_sizes);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -244,6 +264,11 @@ class BatchResourceBase : public ResourceBase {
   // creates it.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
                                     BatcherQueueT** queue);
+
+  SessionMetadata session_metadata_;
+
+  absl::Mutex outstanding_batch_mu_;
+  int num_outstanding_batches_ = 0;
 
   // True if user specified a batch processing function for this resource.
   const bool has_process_batch_function_;

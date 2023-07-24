@@ -53,7 +53,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
       int64_t request_id) const override;
 
   int GetParallelismLevel() const override {
-    return tensorflow::port::MaxParallelism();
+    return inter_op_threadpool_->NumThreads();
   }
   std::string name() const override { return "TfThreadPoolWorkQueue"; }
 

@@ -31,8 +31,14 @@ class MiniBenchmarkTestHelper {
   // The constructor will check whether the testing environment supports to run
   // the mini benchmark. If yes, it will do additional testing setup
   // accordingly.
-  MiniBenchmarkTestHelper();
-  ~MiniBenchmarkTestHelper() {}
+  explicit MiniBenchmarkTestHelper(
+#ifdef __ANDROID__
+      bool should_load_entrypoint_dynamically = true
+#else   // !__ANDROID__
+      bool should_load_entrypoint_dynamically = false
+#endif  // __ANDROID__
+  );
+  ~MiniBenchmarkTestHelper() = default;
   bool should_perform_test() const { return should_perform_test_; }
 
  private:

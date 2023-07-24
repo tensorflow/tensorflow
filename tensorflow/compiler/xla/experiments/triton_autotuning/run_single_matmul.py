@@ -23,7 +23,9 @@ from matmul_lib import benchmark_cublas
 from matmul_lib import benchmark_matmul
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiling
+from matmul_lib import MatrixLayout
 from matmul_lib import print_roofline_performance
+from matmul_lib import QuantizedInputType
 import torch
 import tqdm
 
@@ -31,16 +33,42 @@ import tqdm
 _M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
 _K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
 _N = flags.DEFINE_integer('n', 64, 'Size of second matrix')
-_QUANTIZED_LHS = flags.DEFINE_integer(
-    'quantized_lhs', 0, 'Whether LHS is in int8'
+_QUANTIZED_LHS = flags.DEFINE_enum_class(
+    'quantized_lhs',
+    QuantizedInputType.BFLOAT16,
+    QuantizedInputType,
+    'Type to use for LHS quantization',
+)
+_QUANTIZED_RHS = flags.DEFINE_enum_class(
+    'quantized_rhs',
+    QuantizedInputType.BFLOAT16,
+    QuantizedInputType,
+    'Type to use for RHS quantization',
 )
 
 _BLOCK_M = flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
 _BLOCK_N = flags.DEFINE_integer('block_n', 16, 'Tiling in N-dimension')
 _BLOCK_K = flags.DEFINE_integer('block_k', 16, 'Tiling in K-dimension')
-
 _SPLIT_K = flags.DEFINE_integer(
     'split_k', 1, 'Number of splits for contracting dimension'
+)
+_LHS_LAYOUT = flags.DEFINE_enum_class(
+    'lhs_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for LHS',
+)
+_RHS_LAYOUT = flags.DEFINE_enum_class(
+    'rhs_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for RHS',
+)
+_RESULT_LAYOUT = flags.DEFINE_enum_class(
+    'result_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for the result',
 )
 _NUM_STAGES = flags.DEFINE_integer(
     'num_stages', 1, 'Number of pipelining stages'
@@ -48,13 +76,20 @@ _NUM_STAGES = flags.DEFINE_integer(
 _NUM_WARPS = flags.DEFINE_integer(
     'num_warps', 4, 'Number of warps to allocate in a given block'
 )
+
 _DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
 
 
 def main():
   s = torch.cuda.Stream()
-  pbar = tqdm.tqdm()
-  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  pbar = tqdm.tqdm(ncols=0)
+  dims = MatmulSize(
+      M=_M.value,
+      N=_N.value,
+      K=_K.value,
+      quantized_lhs=_QUANTIZED_LHS.value,
+      quantized_rhs=_QUANTIZED_RHS.value,
+  )
   timing = benchmark_matmul(
       dims=dims,
       pbar=pbar,
@@ -65,6 +100,9 @@ def main():
               _BLOCK_N.value,
               _BLOCK_K.value,
               _SPLIT_K.value,
+              _LHS_LAYOUT.value,
+              _RHS_LAYOUT.value,
+              _RESULT_LAYOUT.value,
               _NUM_STAGES.value,
               _NUM_WARPS.value,
           )

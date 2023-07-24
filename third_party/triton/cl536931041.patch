@@ -2,7 +2,7 @@ diff --git triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp trito
 index 32605e605..07901f06f 100644
 --- triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
 +++ triton/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
-@@ -163,7 +163,8 @@ public:
+@@ -333,7 +333,8 @@ public:
  
      mlir::RewritePatternSet patterns(context);
      patterns.add<ConvertTransConvert>(context);

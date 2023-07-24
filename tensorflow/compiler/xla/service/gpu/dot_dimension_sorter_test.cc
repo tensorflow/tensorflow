@@ -48,7 +48,7 @@ ENTRY e {
 )";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: transpose(%param_
+; CHECK: transpose
 )");
 }
 

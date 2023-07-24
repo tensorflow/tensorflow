@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/tsl/lib/hash/crc32c.h"
+
+#include <string>
+
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"

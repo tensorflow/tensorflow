@@ -235,15 +235,19 @@ REGISTER_OP("_MklFusedConv2D")
 REGISTER_OP("_MklNativeFusedConv2D")
     .Input("input: T")
     .Input("filter: T")
-    .Input("args: num_args * T")
+    .Input("args: TArgs")
+    .Input("host_args : num_host_args * float")
     .Output("output: T")
     .Attr("T: {bfloat16, float}")
+    .Attr("TArgs: list(type)")
     .Attr("num_args: int >= 0")
+    .Attr("num_host_args: int >=0 = 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrStringWithExplicit())
-    .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetFilterFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
@@ -1260,6 +1264,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1293,6 +1298,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1328,6 +1334,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1363,6 +1370,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndDequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1398,6 +1406,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;

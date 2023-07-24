@@ -78,11 +78,6 @@ class TpuExecutableInterface : public Executable {
       const std::vector<uint32_t>& cross_program_prefetch_offsets) = 0;
 
   virtual absl::string_view fingerprint() const = 0;
-
- protected:
-  virtual Shape HostShapeToDeviceShape(const Shape& host_shape) = 0;
-
-  virtual int64_t ShapeSize(const Shape& shape) = 0;
 };
 
 }  // namespace xla

@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
@@ -115,7 +116,7 @@ def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
   def f(x1, x2):
     if x1.dtype == dtypes.bool:
       assert x2.dtype == dtypes.bool
-      float_ = np_dtypes.default_float_type()
+      float_ = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_)
       x2 = math_ops.cast(x2, float_)
     if not np_dtypes.is_allow_float64():
@@ -373,7 +374,7 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
 
   y = _bin_op(f, x1, x2)
   if not np.issubdtype(y.dtype.as_numpy_dtype, np.inexact):
-    y = y.astype(np_dtypes.default_float_type())
+    y = y.astype(np_utils.result_type(float))
   return y
 
 
@@ -586,17 +587,17 @@ def _scalar(tf_fn, x, promote_to_float=False):
     tf_fn: function that takes a single Tensor argument.
     x: array_like. Could be an ndarray, a Tensor or any object that can be
       converted to a Tensor using `ops.convert_to_tensor`.
-    promote_to_float: whether to cast the argument to a float dtype
-      (`np_dtypes.default_float_type`) if it is not already.
+    promote_to_float: whether to cast the argument to a float dtype if it is not
+      already.
 
   Returns:
     An ndarray with the same shape as `x`. The default output dtype is
-    determined by `np_dtypes.default_float_type`, unless x is an ndarray with a
+    determined by `np_utils.result_type(float)`, unless x is an ndarray with a
     floating point type, in which case the output type is same as x.dtype.
   """
   x = np_array_ops.asarray(x)
   if promote_to_float and not np.issubdtype(x.dtype.as_numpy_dtype, np.inexact):
-    x = x.astype(np_dtypes.default_float_type())
+    x = x.astype(np_utils.result_type(float))
   return tf_fn(x)
 
 
@@ -867,17 +868,23 @@ def isfinite(x):
 
 @np_utils.np_doc('isinf')
 def isinf(x):
-  return _scalar(math_ops.is_inf, x, True)
+  if x.dtype.is_floating:
+    return _scalar(math_ops.is_inf, x, True)
+  return False
 
 
 @np_utils.np_doc('isneginf')
 def isneginf(x):
-  return x == np_array_ops.full_like(x, -np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, -np.inf)
+  return False
 
 
 @np_utils.np_doc('isposinf')
 def isposinf(x):
-  return x == np_array_ops.full_like(x, np.inf)
+  if x.dtype.is_floating:
+    return x == np_array_ops.full_like(x, np.inf)
+  return False
 
 
 @np_utils.np_doc('log2')
@@ -1194,7 +1201,10 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
       math_ops.equal(array_ops.rank(a), 0), lambda: constant_op.constant([0]),
       lambda: _argsort(a, axis, stable))
 
-  return np_array_ops.array(tf_ans, dtype=np.intp)
+  if ops.is_auto_dtype_conversion_enabled():
+    return np_array_ops.array(tf_ans, dtype=int)
+  else:
+    return np_array_ops.array(tf_ans, dtype=np.intp)
 
 
 @np_utils.np_doc('sort')
@@ -1250,10 +1260,10 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     raise ValueError('Argument `axis` must be an integer. '
                      f'Received axis={axis} (of type {type(axis)})')
   a = np_array_ops.array(a)
+  default_float_type = np_utils.result_type(float)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
-      a = a.astype(
-          np_utils.result_type(a.dtype, np_dtypes.default_float_type()))
+      a = a.astype(np_utils.result_type(a.dtype, default_float_type))
     avg = math_ops.reduce_mean(a, axis=axis)
     if returned:
       if axis is None:
@@ -1265,8 +1275,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     if np.issubdtype(a.dtype.as_numpy_dtype, np.inexact):
       out_dtype = np_utils.result_type(a.dtype, weights)
     else:
-      out_dtype = np_utils.result_type(a.dtype, weights,
-                                       np_dtypes.default_float_type())
+      out_dtype = np_utils.result_type(a.dtype, weights, default_float_type)
     a = np_array_ops.array(a, out_dtype)
     weights = np_array_ops.array(weights, out_dtype)
 
@@ -1405,39 +1414,44 @@ def _tensor_size(self):
 
 
 def _tensor_tolist(self):
-  if isinstance(self, ops.EagerTensor):
-    return self._numpy().tolist()  # pylint: disable=protected-access
+  if ops.is_symbolic_tensor(self):
+    raise ValueError('Symbolic Tensors do not support the tolist API.')
 
-  raise ValueError('Symbolic Tensors do not support the tolist API.')
+  return self._numpy().tolist()  # pylint: disable=protected-access
+
+
+def _enable_numpy_methods(tensor_class):
+  """A helper method for adding additional NumPy methods."""
+  t = property(_tensor_t)
+  setattr(tensor_class, 'T', t)
+
+  ndim = property(_tensor_ndim)
+  setattr(tensor_class, 'ndim', ndim)
+
+  size = property(_tensor_size)
+  setattr(tensor_class, 'size', size)
+
+  setattr(tensor_class, '__pos__', _tensor_pos)
+  setattr(tensor_class, 'tolist', _tensor_tolist)
+
+  # TODO(b/178540516): Make a custom `setattr` that changes the method's
+  #   docstring to the TF one.
+  setattr(tensor_class, 'transpose', np_array_ops.transpose)
+  setattr(tensor_class, 'flatten', np_array_ops.flatten)
+  setattr(tensor_class, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
+  setattr(tensor_class, 'ravel', np_array_ops.ravel)
+  setattr(tensor_class, 'clip', clip)
+  setattr(tensor_class, 'astype', math_ops.cast)
+  setattr(tensor_class, '__round__', np_array_ops.around)
+  setattr(tensor_class, 'max', np_array_ops.amax)
+  setattr(tensor_class, 'mean', np_array_ops.mean)
+  setattr(tensor_class, 'min', np_array_ops.amin)
+
+  # TODO(wangpeng): Remove `data` when all uses of it are removed
+  data = property(lambda self: self)
+  setattr(tensor_class, 'data', data)
 
 
 def enable_numpy_methods_on_tensor():
   """Adds additional NumPy methods on tf.Tensor class."""
-  t = property(_tensor_t)
-  setattr(ops.Tensor, 'T', t)
-
-  ndim = property(_tensor_ndim)
-  setattr(ops.Tensor, 'ndim', ndim)
-
-  size = property(_tensor_size)
-  setattr(ops.Tensor, 'size', size)
-
-  setattr(ops.Tensor, '__pos__', _tensor_pos)
-  setattr(ops.Tensor, 'tolist', _tensor_tolist)
-
-  # TODO(b/178540516): Make a custom `setattr` that changes the method's
-  #   docstring to the TF one.
-  setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
-  setattr(ops.Tensor, 'flatten', np_array_ops.flatten)
-  setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
-  setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
-  setattr(ops.Tensor, 'clip', clip)
-  setattr(ops.Tensor, 'astype', math_ops.cast)
-  setattr(ops.Tensor, '__round__', np_array_ops.around)
-  setattr(ops.Tensor, 'max', np_array_ops.amax)
-  setattr(ops.Tensor, 'mean', np_array_ops.mean)
-  setattr(ops.Tensor, 'min', np_array_ops.amin)
-
-  # TODO(wangpeng): Remove `data` when all uses of it are removed
-  data = property(lambda self: self)
-  setattr(ops.Tensor, 'data', data)
+  _enable_numpy_methods(tensor.Tensor)

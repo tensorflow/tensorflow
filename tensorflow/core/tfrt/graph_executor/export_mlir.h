@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -29,9 +28,8 @@ class XsymbolUploader {
  public:
   virtual ~XsymbolUploader() = default;
 
-  virtual tensorflow::StatusOr<std::string> MaybeUploadMlirToXsymbol(
-      mlir::ModuleOp module) {
-    return absl::UnimplementedError("Not supported in OSS.");
+  virtual std::string MaybeUploadMlirToXsymbol(mlir::ModuleOp module) {
+    return "";
   }
 };
 
@@ -55,8 +53,7 @@ inline XsymbolUploaderRegistry &GetGlobalXsymbolUploaderRegistry() {
   return *registry;
 }
 
-inline tensorflow::StatusOr<std::string> MaybeUploadMlirToXsymbol(
-    mlir::ModuleOp module) {
+inline std::string MaybeUploadMlirToXsymbol(mlir::ModuleOp module) {
   return GetGlobalXsymbolUploaderRegistry().Get().MaybeUploadMlirToXsymbol(
       module);
 }

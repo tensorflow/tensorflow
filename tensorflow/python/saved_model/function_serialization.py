@@ -186,12 +186,12 @@ def wrap_cached_variables(concrete_function):
   if not mapped_captures:
     return concrete_function
 
-  inner_concrete = defun.ConcreteFunction(
-      concrete_function.graph, function_type=concrete_function.function_type
+  inner_concrete = defun.ConcreteFunction.from_func_graph(
+      concrete_function.graph, concrete_function.function_type, {}
   )
 
   def wrap_function(*args):
-    return inner_concrete._call_flat(args, inner_concrete.captured_inputs)  # pylint:disable=protected-access
+    return inner_concrete._call_flat(list(args), inner_concrete.captured_inputs)  # pylint:disable=protected-access
 
   args = nest.flatten(concrete_function.structured_input_signature,
                       expand_composites=True)
@@ -202,8 +202,8 @@ def wrap_cached_variables(concrete_function):
   # Create concrete function, and copy the attributes necessary to serialize
   # the function.
   # pylint: disable=protected-access
-  fn = defun.ConcreteFunction(
-      outer_graph, function_type=concrete_function.function_type
+  fn = defun.ConcreteFunction.from_func_graph(
+      outer_graph, concrete_function.function_type, {}
   )
   fn._arg_keywords = concrete_function._arg_keywords
   fn._num_positional_args = concrete_function._num_positional_args

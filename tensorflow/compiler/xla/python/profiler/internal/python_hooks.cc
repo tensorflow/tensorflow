@@ -200,7 +200,7 @@ void PythonHookContext::CollectData(tensorflow::profiler::XPlane* raw_plane) {
   }
   tsl::profiler::XPlaneBuilder plane(raw_plane);
   for (auto& it : entries_) {
-    uint64_t thread_id = it.first;
+    uint32_t thread_id = it.first;
     auto& thread_events = it.second;
     VLOG(1) << "Collecting " << thread_events.completed.size() << ":"
             << thread_events.active.size() << " events on thread " << thread_id;
@@ -281,7 +281,7 @@ void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
                                     PyObject* arg) {
-  const int64_t thread_id = tsl::Env::Default()->GetCurrentThreadId();
+  const uint32_t thread_id = tsl::Env::Default()->GetCurrentThreadId();
   uint64_t now = tsl::profiler::GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 

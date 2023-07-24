@@ -109,6 +109,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@ml_dtypes//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
@@ -229,6 +230,14 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -559,6 +568,15 @@ config_setting(
         "cpu": "k8",
         "copt": "-mno-sse4.2",
     },
+    visibility = ["//visibility:public"],
+)
+
+# This condition takes precedence over :linux_x86_64
+# TODO(b/290533709): Remove this with PJRT build rule cleanup.
+config_setting(
+    name = "linux_x86_64_with_weightwatcher",
+    define_values = {"tensorflow_weightwatcher": "true"},
+    values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
@@ -1020,6 +1038,7 @@ package_group(
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
         "//learning/serving/experimental/remote_predict/...",
+        "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
@@ -1098,7 +1117,6 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@com_github_grpc_grpc//:grpc_unsecure"],
         "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
     }),
 )
@@ -1107,7 +1125,6 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
@@ -1458,7 +1475,6 @@ check_deps(
             "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
             "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
             "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
             "//tensorflow/compiler/xla/stream_executor:cuda_platform",
         ],
     ),
@@ -1705,6 +1721,8 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
+        "@pypi_keras_nightly//:pkg",
+        "@pypi_tb_nightly//:pkg",
     ],
 )
 # copybara:comment_end

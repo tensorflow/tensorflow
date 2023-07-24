@@ -52,7 +52,7 @@ namespace {
 // Handles custom_call ops during evaluation by routing them through the global
 // CPU registry used by other CPU-based backends.
 StatusOr<Literal> HandleEvaluatorCustomCall(
-    HloInstruction* custom_call, absl::Span<const Literal*> operands) {
+    const HloInstruction* custom_call, absl::Span<const Literal*> operands) {
   // Find the target C function in the global registry.
   auto* registry = CustomCallTargetRegistry::Global();
   void* target_fn = registry->Lookup(custom_call->custom_call_target(), "Host");

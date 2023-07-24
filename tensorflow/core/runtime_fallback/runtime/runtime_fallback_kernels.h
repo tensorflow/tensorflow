@@ -34,10 +34,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
-// Injecting TF resources to TFRT GPU resource maps for tfrt::GpuOpHandler to
-// use.s
-Status InjectTfGpuResources();
-
 // Create an EagerOperation to run the op, taking tensorflow::TensorHandle and
 // returning tensorflow::AbstractTensorHandle*.
 Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,

@@ -88,7 +88,8 @@ class InterpreterBuilder {
   InterpreterBuilder(const ::tflite::Model* model,
                      const OpResolver& op_resolver,
                      ErrorReporter* error_reporter = DefaultErrorReporter(),
-                     const InterpreterOptions* options_experimental = nullptr);
+                     const InterpreterOptions* options_experimental = nullptr,
+                     const Allocation* allocation = nullptr);
   ~InterpreterBuilder();
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;

@@ -28,7 +28,7 @@ output: A Tensor.
   output = input + 1
 )doc");
 
-void AddOneKernelLauncher(const int* in, const int N, int* out);
+void AddOneKernelLauncher(const int* in, int N, int* out);
 
 class AddOneOp : public OpKernel {
  public:

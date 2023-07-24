@@ -56,7 +56,7 @@ class Tensor(object):
     pass
 
 
-# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `ops.Tensor`;
+# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `tensor.Tensor`;
 # care should be taken when performing `isinstance` checks on `Value`, e.g.:
 #
 # ```

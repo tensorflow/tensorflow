@@ -37,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -54,37 +55,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-template <typename Device, typename T>
-struct LaunchConvOp;
-
-template <typename T>
-struct LaunchConvOp<CPUDevice, T> {
-  static void launch(OpKernelContext* context, bool cudnn_use_autotune,
-                     const Tensor& input, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
-    OP_REQUIRES(context, data_format == FORMAT_NHWC,
-                errors::InvalidArgument("CPU implementation of Conv3D "
-                                        "currently only supports the NHWC "
-                                        "tensor format."));
-    OP_REQUIRES(context,
-                dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1,
-                errors::InvalidArgument("CPU implementation of Conv3D "
-                                        "currently only supports dilated rates "
-                                        "of 1."));
-    OP_REQUIRES(context, filter.dim_size(3) == input.dim_size(input.dims() - 1),
-                errors::InvalidArgument(
-                    "Number of channels in filter (", filter.dim_size(3),
-                    ") must match last dimension of input (",
-                    input.dim_size(input.dims() - 1), ")"));
-    functor::CuboidConvolution<CPUDevice, T>()(
-        context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
-        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
-        strides[0], BrainPadding2EigenPadding(padding));
-  }
-};
 
 template <typename Device, typename T>
 class Conv3DOp : public BinaryOp<T> {
@@ -194,9 +164,9 @@ class Conv3DOp : public BinaryOp<T> {
     // Return early if nothing to do.
     if (out_shape.num_elements() == 0) return;
 
-    LaunchConvOp<Device, T>::launch(context, cudnn_use_autotune_, input, filter,
-                                    dilations, strides, padding_, data_format_,
-                                    output);
+    LaunchConv3DOp<Device, T>::launch(context, cudnn_use_autotune_, input,
+                                      filter, dilations, strides, padding_,
+                                      data_format_, output);
   }
 
  private:
@@ -230,12 +200,12 @@ typedef AutotuneSingleton<Conv3dAutotuneGroup, ConvParameters,
 
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
 template <typename T>
-void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
-                      const Tensor& input_param, const Tensor& filter,
-                      const std::array<int64, 3>& dilations,
-                      const std::array<int64, 3>& strides,
-                      const Padding padding, TensorFormat data_format,
-                      Tensor* output) {
+void LaunchConv3DOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
+                        const Tensor& input_param, const Tensor& filter,
+                        const std::array<int64, 3>& dilations,
+                        const std::array<int64, 3>& strides,
+                        const Padding padding, TensorFormat data_format,
+                        Tensor* output) {
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -289,8 +259,7 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
     auto no_transpose = se::blas::Transpose::kNoTranspose;
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   } else if (!is_grouped_convolution && filter_planes == in_planes &&
              filter_rows == in_rows && filter_cols == in_cols &&
@@ -311,8 +280,7 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
     auto no_transpose = se::blas::Transpose::kNoTranspose;
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   }
 
@@ -537,19 +505,19 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
 }
 
 template <typename T>
-struct LaunchConvOp<GPUDevice, T> {
+struct LaunchConv3DOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
                      const std::array<int64, 3>& dilations,
                      const std::array<int64, 3>& strides, const Padding padding,
                      TensorFormat data_format, Tensor* output) {
-    LaunchConvOpImpl<T>(ctx, cudnn_use_autotune, input_param, filter, dilations,
-                        strides, padding, data_format, output);
+    LaunchConv3DOpImpl<T>(ctx, cudnn_use_autotune, input_param, filter,
+                          dilations, strides, padding, data_format, output);
   }
 };
 
 template <>
-struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
+struct LaunchConv3DOp<GPUDevice, Eigen::bfloat16> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
                      const std::array<int64, 3>& dilations,
@@ -581,9 +549,9 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DT_FLOAT, output->shape(), &casted_out));
 
-      LaunchConvOpImpl<float>(ctx, cudnn_use_autotune, casted_input,
-                              casted_filter, dilations, strides, padding,
-                              data_format, &casted_out);
+      LaunchConv3DOpImpl<float>(ctx, cudnn_use_autotune, casted_input,
+                                casted_filter, dilations, strides, padding,
+                                data_format, &casted_out);
 
       functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
       const Tensor& casted_out_const = casted_out;
@@ -592,9 +560,9 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
       return;
     }
 
-    LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, input_param,
-                                      filter, dilations, strides, padding,
-                                      data_format, output);
+    LaunchConv3DOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, input_param,
+                                        filter, dilations, strides, padding,
+                                        data_format, output);
   }
 };
 

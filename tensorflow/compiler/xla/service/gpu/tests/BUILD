@@ -80,26 +80,6 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "mlir_gpu_test_base",
-    testonly = True,
-    srcs = ["mlir_gpu_test_base.cc"],
-    hdrs = ["mlir_gpu_test_base.h"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:ir_emitter",
-        "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-    ],
-)
-
 xla_cc_test(
     name = "pred_arithmetic_test",
     srcs = ["pred_arithmetic_test.cc"],
@@ -112,60 +92,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "mlir_fft_test",
-    srcs = ["mlir_fft_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_test(
-    name = "mlir_gemm_test",
-    srcs = ["mlir_gemm_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "requires-gpu-sm80-only",
-    ]},
-    backends = [
-        "gpu",
-    ],
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_sorting_test",
-    srcs = ["mlir_sorting_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_gpu_compile_test",
-    srcs = ["mlir_gpu_compile_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":mlir_gpu_test_base",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
     name = "gpu_reduce_scatter_creator_test",
     srcs = ["gpu_reduce_scatter_creator_test.cc"],
     deps = [
@@ -173,13 +99,9 @@ xla_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service/gpu:gpu_reduce_scatter_creator",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -211,17 +133,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
     ],
@@ -547,10 +464,17 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm60-only",
+    ]},
+    backends = [
+        "gpu",
+        "gpu_p100",
+    ],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -658,6 +582,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
         "//tensorflow/compiler/xla/service/gpu:multi_output_fusion",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -789,7 +714,9 @@ xla_cc_binary(
     name = "hlo_to_llvm_ir",
     testonly = True,
     srcs = ["hlo_to_llvm_ir.cc"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "-DTENSORFLOW_USE_ROCM=1",
+    ]),
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -802,7 +729,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc_impl",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:logging",
@@ -810,26 +736,45 @@ xla_cc_binary(
         "//tensorflow/tsl/util:command_line_flags",
         "@llvm-project//llvm:Target",
     ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
-        "//tensorflow/tsl/platform:rocm_rocdl_path",
-        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_helpers",
+        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
+        "//tensorflow/tsl/platform:rocm_rocdl_path",
     ]),
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
-        "no_pip",
     ],
-    driver = "@llvm-project//mlir:run_lit.sh",
+    driver = "//tensorflow/compiler/xla:run_lit.sh",
     exclude = ["execute_memzero_thunk.mlir"],
+    features = if_cuda_is_configured([
+        "--param=PTX=PTX",
+        "--param=SUBST_TIDX=@llvm.nvvm.read.ptx.sreg.tid.x",
+        "--param=SUBST_CTAIDX=@llvm.nvvm.read.ptx.sreg.ctaid.x",
+        "--param=SUBST_BARRIER=@llvm.nvvm.barrier0",
+        "--param=SUBST_KERNEL_ANNOTATION=''",
+        "--param=SUBST_ADDRSPACE_ANNOTATION=''",
+    ]) + if_rocm_is_configured([
+        "--param=PTX=GCN",
+        "--param=SUBST_TIDX=@llvm.amdgcn.workitem.id.x",
+        "--param=SUBST_CTAIDX=@llvm.amdgcn.workgroup.id.x",
+        "--param=SUBST_BARRIER=@llvm.amdgcn.s.barrier",
+        "--param=SUBST_KERNEL_ANNOTATION=amdgpu_kernel[SPACE]",
+        "--param=SUBST_ADDRSPACE_ANNOTATION='addrspace(5)[SPACE]'",
+    ]),
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
+        "single_instruction.hlo": ["no_rocm"],
+        "reduce_unnested.hlo": ["no_rocm"],
     },
     test_file_exts = ["hlo"],
 )
@@ -841,6 +786,7 @@ filegroup(
     data = [
         ":hlo_to_llvm_ir",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//mlir:run_lit.sh",
     ],
 )
 
@@ -889,4 +835,53 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
     ]),
+)
+
+xla_test(
+    name = "tensor_float_32_global_var_test",
+    srcs = ["tensor_float_32_global_var_test.cc"],
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+        "requires-gpu-sm80-only",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/tsl/platform:tensor_float_32_utils",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_fused_mha_test",
+    srcs = ["gpu_fused_mha_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )

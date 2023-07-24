@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -88,6 +89,12 @@ class Iterator {
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
   Status Restore(const std::vector<Tensor>& saved_iterator);
+  // Returns the time it takes the pipeline associated with this iterator
+  // to process an element.
+  // Returns std::nullopt if there is not currently enough information to
+  // determine the processing time, e.g. because not enough data has been
+  // produced yet from the iterator.
+  std::optional<double> GetProcessingTimeNsec() const;
 
  private:
   friend class Dataset;

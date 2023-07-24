@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import collections
+import dataclasses
 import functools
 import itertools
 import multiprocessing.pool
@@ -52,8 +53,8 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -86,6 +87,7 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
+from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -110,7 +112,7 @@ def _spec_for_value(value):
   """Returns the (nested) TypeSpec for a value."""
   if nest.is_nested(value):
     return nest.map_structure(_spec_for_value, value)
-  elif isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
+  elif isinstance(value, (tensor_lib.Tensor, composite_tensor.CompositeTensor)):
     return type_spec.type_spec_from_value(value)
   else:
     return value
@@ -161,6 +163,84 @@ class FunctionBenchmark(test.Benchmark):
     duration = time.time() - start_time
 
     self.report_benchmark(iters=n_iters, wall_time=duration / float(n_iters))
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: ops.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, leaves):
+    mask = metadata[0]
+    value = leaves[0]
+    return MaskedTensor(mask=mask, value=value)
+
+  def __tf_tracing_type__(self, signature_context):
+    del signature_context
+    return MaskedTensorTraceType(
+        mask=self.mask,
+        value_spec=tensor_lib.TensorSpec.from_tensor(self.value),
+    )
+
+
+class MaskedTensorTraceType(trace.TraceType):
+
+  def __init__(self, mask, value_spec):
+    self.mask = mask
+    self.value_spec = value_spec
+
+  def is_subtype_of(self, other):
+    if not isinstance(other, MaskedTensorTraceType):
+      return False
+
+    return self.value_spec.is_subtype_of(other.value_spec)
+
+  def most_specific_common_supertype(self, others):
+    if not all(isinstance(other, MaskedTensorTraceType) for other in others):
+      return None
+
+    if not all(self.mask == other.mask for other in others):
+      return None
+
+    supertyped_value = self.value_spec.most_specific_common_supertype(
+        [other.value_spec for other in others]
+    )
+    return MaskedTensorTraceType(self.mask, supertyped_value)
+
+  def __eq__(self, other):
+    if not isinstance(other, MaskedTensorTraceType):
+      return False
+
+    return self.mask == other.mask and self.value_spec == other.value_spec
+
+  def __hash__(self):
+    return hash((self.mask, self.value_spec))
+
+  def __repr__(self):
+    return (
+        f'{self.__class__.__name__}(mask={self.mask},'
+        f' value_spec={self.value_spec})'
+    )
+
+  def placeholder_value(self, placeholder_context):
+    return MaskedTensor(
+        self.mask, self.value_spec.placeholder_value(placeholder_context)
+    )
+
+  def _to_tensors(self, value):
+    assert isinstance(value, MaskedTensor)
+    return self.value_spec._to_tensors(value.value)
+
+  def _from_tensors(self, tensors):
+    return MaskedTensor(self.mask, self.value_spec._from_tensors(tensors))
+
+  def _flatten(self):
+    return [self.value_spec]
 
 
 # TODO(mdan): Organize these tests.
@@ -408,8 +488,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     v = polymorphic_function.function(
         experimental_implements='func')(lambda x, y: x + y)
     v = v.get_concrete_function(
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32))
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32))
     x = v(1., 2.)
     self.assertEqual(x.numpy(), 3.)
 
@@ -546,21 +626,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'a': [1]}),
         structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
-            fields={'a': tensor_spec.TensorSpec((1,), dtypes.int32)}, rank=0))
+            fields={'a': tensor_lib.TensorSpec((1,), dtypes.int32)}, rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'b': [1]}),
         structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
-            fields={'b': tensor_spec.TensorSpec((1,), dtypes.int32)}, rank=0))
+            fields={'b': tensor_lib.TensorSpec((1,), dtypes.int32)}, rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'c': [1]}),
         structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
-            fields={'c': tensor_spec.TensorSpec((1,), dtypes.int32)}, rank=0))
+            fields={'c': tensor_lib.TensorSpec((1,), dtypes.int32)}, rank=0))
 
     # But if we call again with only shape different, then do relax:
     check_trace(  # relax & retrace
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
         structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
-            fields={'a': tensor_spec.TensorSpec((None,), dtypes.int32)},
+            fields={'a': tensor_lib.TensorSpec((None,), dtypes.int32)},
             rank=0))
     check_trace(  # use relaxed graph
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3]}), None)
@@ -593,13 +673,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     check_trace(  # shape=[1, 2]: retrace
         dataset_ops.make_one_shot_iterator(ds_1_2),
         iterator_ops.IteratorSpec(
-            tensor_spec.TensorSpec([1, 2], dtypes.float32)))
+            tensor_lib.TensorSpec([1, 2], dtypes.float32)))
     check_trace(  # shape=[1, 2]: no retrace (use the [1, 2] graph)
         dataset_ops.make_one_shot_iterator(ds_1_2), None)
     check_trace(  # shape=[2, 2]: relax to [None, 2] and retrace
         dataset_ops.make_one_shot_iterator(ds_2_2),
         iterator_ops.IteratorSpec(
-            tensor_spec.TensorSpec([None, 2], dtypes.float32)))
+            tensor_lib.TensorSpec([None, 2], dtypes.float32)))
     check_trace(  # shape=[3, 2]: no retrace (use the [None, 2] graph)
         dataset_ops.make_one_shot_iterator(ds_3_2), None)
     check_trace(  # shape=[4, 2]: no retrace (use the [None, 2] graph)
@@ -607,7 +687,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     check_trace(  # shape=[2, 1]: relax to [None, None] and retrace
         dataset_ops.make_one_shot_iterator(ds_2_1),
         iterator_ops.IteratorSpec(
-            tensor_spec.TensorSpec([None, None], dtypes.float32)))
+            tensor_lib.TensorSpec([None, None], dtypes.float32)))
 
   def testCapturesVariables(self):
     a = variables.Variable(1.0, trainable=False)
@@ -787,7 +867,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return matmul(a, a)
 
     sq_op = sq.get_concrete_function(
-        tensor_spec.TensorSpec((None, None), dtypes.float32))
+        tensor_lib.TensorSpec((None, None), dtypes.float32))
     self.assertEqual([None, None], sq_op.output_shapes.as_list())
 
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -806,18 +886,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       ((a, b),) = mats
       return matmul(a, b)
 
-    sq_op_autonamed = sq.get_concrete_function([(tensor_spec.TensorSpec(
-        (None, None),
-        dtypes.float32), tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    sq_op_autonamed = sq.get_concrete_function([(
+        tensor_lib.TensorSpec((None, None), dtypes.float32),
+        tensor_lib.TensorSpec((None, None), dtypes.float32),
+    )])
     self.assertEqual([None, None], sq_op_autonamed.output_shapes.as_list())
 
-    sq_op = sq.get_concrete_function([(tensor_spec.TensorSpec((None, None),
-                                                              dtypes.float32,
-                                                              name='first_mat'),
-                                       tensor_spec.TensorSpec(
-                                           (None, None),
-                                           dtypes.float32,
-                                           name='second_mat'))])
+    sq_op = sq.get_concrete_function([(
+        tensor_lib.TensorSpec((None, None), dtypes.float32, name='first_mat'),
+        tensor_lib.TensorSpec((None, None), dtypes.float32, name='second_mat'),
+    )])
     self.assertEqual([None, None], sq_op.output_shapes.as_list())
 
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -892,7 +970,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     cpu = '/device:CPU:0'
 
-    signature = [tensor_spec.TensorSpec([], dtypes.int32)]
+    signature = [tensor_lib.TensorSpec([], dtypes.int32)]
 
     @polymorphic_function.function
     def send():
@@ -960,8 +1038,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq_op = a_times_b.get_concrete_function(
         pair(
-            dict(a=tensor_spec.TensorSpec([2, 2], dtypes.float32, 'a')),
-            dict(b=tensor_spec.TensorSpec([2, 2], dtypes.float32, 'b'))))
+            dict(a=tensor_lib.TensorSpec([2, 2], dtypes.float32, 'a')),
+            dict(b=tensor_lib.TensorSpec([2, 2], dtypes.float32, 'b'))))
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(a=t, b=t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
@@ -1116,7 +1194,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(a):
       return array_ops.reshape(a, [-1, 3])
 
-    signature = [tensor_spec.TensorSpec(None, dtypes.float32)]
+    signature = [tensor_lib.TensorSpec(None, dtypes.float32)]
     compiled = polymorphic_function.function(f, input_signature=signature)
 
     @polymorphic_function.function
@@ -1435,7 +1513,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           1.0,  # epsilon,
           [1.0, 1.0, 1.0],  # grad
           False)  # use_locking
-      return None
+      return 1
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -1522,7 +1600,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def foo(x):
       return {'input': x, 'capture': y}
 
-    cf = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+    cf = foo.get_concrete_function(tensor_lib.TensorSpec([], dtypes.int32))
     x = constant_op.constant(2)
     output = cf(x)
     self.assertEqual(set(output.keys()), {'input', 'capture'})
@@ -1534,12 +1612,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(parameters[0].name, 'x')
     self.assertEqual(
         parameters[0].type_constraint,
-        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_lib.TensorSpec([], dtypes.int32),
     )
 
     captures = cf.function_type.captures
     self.assertLen(captures, 1)
-    self.assertEqual(captures[id(y)], tensor_spec.TensorSpec([], dtypes.int32))
+    self.assertEqual(captures[id(y)], tensor_lib.TensorSpec([], dtypes.int32))
 
     output = cf.function_type.output
     self.assertEqual(output, trace_type.from_value({'input': x, 'capture': y}))
@@ -1551,8 +1629,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
     for t in clipped_list:
-      self.assertIsInstance(t, ops.Tensor)
-    self.assertIsInstance(global_norm, ops.Tensor)
+      self.assertIsInstance(t, tensor_lib.Tensor)
+    self.assertIsInstance(global_norm, tensor_lib.Tensor)
 
   def testNestedSequenceInputs(self):
 
@@ -1690,7 +1768,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       del b
 
     # Signatures must consist exclusively of `TensorSpec` objects.
-    signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
+    signature = [(2, 3), tensor_lib.TensorSpec([2, 3], dtypes.float32)]
     with self.assertRaisesRegex(TypeError, 'input_signature.*nested sequence'):
       polymorphic_function.function(foo, input_signature=signature)
 
@@ -1700,7 +1778,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def foo(a):
       return a
 
-    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    signature = [tensor_lib.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = polymorphic_function.function(foo, input_signature=signature)
 
     # Valid call
@@ -1708,11 +1786,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Invalid shapes.
     with self.assertRaisesRegex(
-        TypeError,
-        (
-            'Tensor conversion requested dtype float32 for Tensor with dtype'
-            ' int32.*'
-        ),
+        TypeError, r'Can not cast .*dtype=tf.int32.* to .*dtype=tf.float32.*'
     ):
       defined(array_ops.ones([3], dtype=dtypes.int32))
 
@@ -1733,7 +1807,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         TypeError, r'Can not cast .*shape=\(3,\).* to .*shape=\(2,\).*'
     ):
       defined.get_concrete_function(
-          tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
+          tensor_lib.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
   def testMismatchedConcreteSignatureRaisesError(self):
 
@@ -1765,8 +1839,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return -1.0 * a
 
     signature = [
-        tensor_spec.TensorSpec([], dtypes.float32),
-        tensor_spec.TensorSpec([], dtypes.bool),
+        tensor_lib.TensorSpec([], dtypes.float32),
+        tensor_lib.TensorSpec([], dtypes.bool),
     ]
     defined = polymorphic_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
@@ -1864,8 +1938,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     py_add(array_ops.ones([]), array_ops.ones([]))
     add = py_add.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32))
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32))
 
     @polymorphic_function.function
     def py_composite(x, y):
@@ -1873,8 +1947,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     py_composite(array_ops.ones([]), array_ops.ones([]))
     composite = py_composite.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32))
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32))
 
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
@@ -2271,7 +2345,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'Can not cast TensorSpec\(shape=\(2,\).* to TensorSpec\(shape=\(1,\)',
+    ):
       g()
 
   @test_util.run_in_graph_and_eager_modes
@@ -2288,9 +2365,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return array_ops.reshape(y, [n, x_batch, -1])
 
     conc = _uses_symbolic_shapes.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32))
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32))
 
     @polymorphic_function.function
     def _call_concrete():
@@ -2483,7 +2560,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionMethodWithVarargs(self):
-    float32_scalar = tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+    float32_scalar = tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32)
 
     class MyModel(module.Module):
 
@@ -2610,8 +2687,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
           call_args=lambda: (ragged_factory_ops.constant([[1.0]]), 5),
           error=(
-              r'Binding inputs .* failed .* dtype int32 for Tensor with dtype'
-              r' float32:'
+              r'Binding inputs .* failed.*dtype=tf.float32.* to'
+              r' .*dtype=tf.int32.*'
           ),
       ),
       dict(
@@ -2809,8 +2886,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x * 10 + y
 
     conc = f.get_concrete_function(
-        x=tensor_spec.TensorSpec(None, dtypes.int32, name='y'),
-        y=tensor_spec.TensorSpec(None, dtypes.int32, name='x'))
+        x=tensor_lib.TensorSpec(None, dtypes.int32, name='y'),
+        y=tensor_lib.TensorSpec(None, dtypes.int32, name='x'))
 
     result = conc(x=constant_op.constant(5), y=constant_op.constant(6))
     self.assertAllEqual(result, 56)
@@ -2887,7 +2964,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testPrettyPrintedExplicitSignatureWithKeywordArg(self):
 
     @polymorphic_function.function(
-        input_signature=[tensor_spec.TensorSpec(None)])
+        input_signature=[tensor_lib.TensorSpec(None)])
     def fn(a, b=1):
       return a + b
 
@@ -3102,8 +3179,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testShapeInferencePropagateConstNestedStack(self):
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(x, s):
       old_shape = array_ops.shape(x)
@@ -3112,7 +3189,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return y
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+        tensor_lib.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
     ])
     def g(x):
       y = f(x, s=5)
@@ -3125,8 +3202,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testShapeInferencePropagateConstNestedUnstackStack(self):
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(x, s):
       s0, _ = array_ops_stack.unstack(array_ops.shape(x), axis=0)
@@ -3135,7 +3212,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return y
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+        tensor_lib.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
     ])
     def g(x):
       y = f(x, s=5)
@@ -3148,9 +3225,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testShapeInferencePropagateConstNestedConcat(self):
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(d1, d2, d3):
       new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
@@ -3168,9 +3245,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testShapeInferencePropagateConstDoubleNested(self):
 
     @polymorphic_function.function(input_signature=[
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
-        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
+        tensor_lib.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(d1, d2, d3):
       new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
@@ -3417,9 +3494,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMethodExtensionType(self):
 
-    class MaskedTensor(extension_type.ExtensionType):
-      values: ops.Tensor
-      mask: ops.Tensor
+    class MaskedTensorExtensionType(extension_type.ExtensionType):
+      values: tensor_lib.Tensor
+      mask: tensor_lib.Tensor
 
       @polymorphic_function.function
       def with_default(self, default_value):
@@ -3434,7 +3511,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             result += self.values[i]
         return result
 
-    mt = MaskedTensor([1, 2, 3], [True, False, True])
+    mt = MaskedTensorExtensionType([1, 2, 3], [True, False, True])
     self.assertAllEqual(mt.with_default(-1), [1, -1, 3])
     self.assertAllEqual(mt.sum(), 4)
 
@@ -3496,24 +3573,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def test_unspecified_default_argument(self):
     wrapped = polymorphic_function.function(
         lambda x, y=2: x + y,
-        input_signature=[tensor_spec.TensorSpec((), dtypes.int32)])
+        input_signature=[tensor_lib.TensorSpec((), dtypes.int32)])
     self.assertEqual(3, wrapped(constant_op.constant(1)).numpy())
 
   def test_concrete_function_from_signature(self):
 
     @polymorphic_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        input_signature=[tensor_lib.TensorSpec(None, dtypes.float32)])
     def compute(x):
       return 2. * x
 
     concrete = compute.get_concrete_function()
     self.assertAllClose(1., concrete(constant_op.constant(0.5)))
     concrete = compute.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32))
+        tensor_lib.TensorSpec(None, dtypes.float32))
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
     signature_args, _ = concrete.structured_input_signature
     self.assertEqual(signature_args,
-                     (tensor_spec.TensorSpec(
+                     (tensor_lib.TensorSpec(
                          None, dtypes.float32, name='x'),))
 
   def testInputSignatureMissingTensorSpecsMethod(self):
@@ -3540,7 +3617,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     m = MyModule()
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+        input_signature=(tensor_lib.TensorSpec([], dtypes.int32),))
     error_message = 'input_signature missing type constraint'
     with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(m.f1)(1, 2, 3)
@@ -3561,7 +3638,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testInputSignatureMissingTensorSpecsFunction(self):
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+        input_signature=(tensor_lib.TensorSpec([], dtypes.int32),))
     error_message = 'input_signature missing type constraint'
     # pylint: disable=unused-argument
     def f1(arg1, arg2, arg3):
@@ -3601,7 +3678,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testInputSignatureMissingTensorSpecsLambdaFunction(self):
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
+        input_signature=(tensor_lib.TensorSpec([], dtypes.int32),))
     error_message = 'input_signature missing type constraint'
     with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(lambda ar1, arg2, arg3: None)(1, 2, 3)
@@ -3639,7 +3716,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     error_message = 'input_signature missing type constraint'
     tf_func_dec = polymorphic_function.function(
-        input_signature=(tensor_spec.TensorSpec([], dtypes.int32),)
+        input_signature=(tensor_lib.TensorSpec([], dtypes.int32),)
     )
     with self.assertRaisesRegex(TypeError, error_message):
       tf_func_dec(functools.partial(f, 1))(2, 3)
@@ -3691,20 +3768,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     conc = f.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32, 'y'))
+        tensor_lib.TensorSpec(None, dtypes.float32, 'y'))
     conc(y=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
     # If name is not specified, the previously named one will be returned.
-    conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
+    conc = f.get_concrete_function(tensor_lib.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
     # New name will return updated signature.
     conc = f.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+        tensor_lib.TensorSpec(None, dtypes.float32, 'z')
     )
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
@@ -3715,7 +3792,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x[0]
 
     conc = g.get_concrete_function(
-        [tensor_spec.TensorSpec(None, dtypes.float32, 'z'), 2])
+        [tensor_lib.TensorSpec(None, dtypes.float32, 'z'), 2])
     conc(z=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
@@ -3757,10 +3834,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(
         signatures_args,
-        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32, name='x'),
-              tensor_spec.TensorSpec([1], dtypes.float32, name='y')),
-             (tensor_spec.TensorSpec([1, 3], dtypes.int32, name='x'),
-              tensor_spec.TensorSpec([1], dtypes.int32, name='y')))))
+        set(((tensor_lib.TensorSpec([1, 2], dtypes.float32, name='x'),
+              tensor_lib.TensorSpec([1], dtypes.float32, name='y')),
+             (tensor_lib.TensorSpec([1, 3], dtypes.int32, name='x'),
+              tensor_lib.TensorSpec([1], dtypes.int32, name='y')))))
 
   @test_util.assert_no_garbage_created
   def testFunctionReferenceCycles(self):
@@ -3839,10 +3916,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return a + b + c + d
 
     concrete = non_unique_arg_names.get_concrete_function(
-        (tensor_spec.TensorSpec(None, dtypes.float32),
-         tensor_spec.TensorSpec(None, dtypes.float32),
-         tensor_spec.TensorSpec(None, dtypes.float32)),
-        d=tensor_spec.TensorSpec(None, dtypes.float32))
+        (tensor_lib.TensorSpec(None, dtypes.float32),
+         tensor_lib.TensorSpec(None, dtypes.float32),
+         tensor_lib.TensorSpec(None, dtypes.float32)),
+        d=tensor_lib.TensorSpec(None, dtypes.float32))
     self.assertAllClose(
         10.,
         concrete(x=constant_op.constant(1.),
@@ -3950,9 +4027,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return 2 * x
 
     func_a = func.get_concrete_function(
-        tensor_spec.TensorSpec([None], dtypes.int32))
+        tensor_lib.TensorSpec([None], dtypes.int32))
     func_b = func.get_concrete_function(
-        tensor_spec.TensorSpec([None], dtypes.int32))
+        tensor_lib.TensorSpec([None], dtypes.int32))
 
     self.assertIs(func_a, func_b)
 
@@ -4050,7 +4127,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func().numpy(), 2)
 
   @parameterized.parameters(*itertools.product(
-      (None, (tensor_spec.TensorSpec([]),)),  # input_signature
+      (None, (tensor_lib.TensorSpec([]),)),  # input_signature
       (True, False),                          # autograph
       (None, converter.Feature.ALL),          # autograph_options
       (None, 'foo.bar'),                      # implements
@@ -4134,7 +4211,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEmpty(graph.captures)
 
   @parameterized.parameters(*itertools.product(
-      (None, (tensor_spec.TensorSpec([]),)),  # input_signature
+      (None, (tensor_lib.TensorSpec([]),)),  # input_signature
       (True, False),  # autograph
       (None, converter.Feature.ALL),  # autograph_options
       (None, 'foo.bar'),  # implements
@@ -4318,7 +4395,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     f_flexible = Foo()
     _ = f_flexible.__call__.get_concrete_function(
-        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.int32))
+        tensor_lib.TensorSpec(shape=[None], dtype=dtypes.int32))
     tmp_dir = self.create_tempdir()
     save(f_flexible, tmp_dir.full_path)
     restored_f_flexible = load(tmp_dir.full_path)
@@ -4387,14 +4464,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def test_tensor_shape_casted_to_specific(self):
     @polymorphic_function.function(
-        input_signature=[tensor_spec.TensorSpec([1])]
+        input_signature=[tensor_lib.TensorSpec([1])]
     )
     def specific(x):
       self.assertEqual(x.shape, [1])
       return x
 
     @polymorphic_function.function(
-        input_signature=[tensor_spec.TensorSpec(None)]
+        input_signature=[tensor_lib.TensorSpec(None)]
     )
     def general(x):
       return specific(x)
@@ -4573,7 +4650,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     concrete_fn.replace_capture_with_deferred_capture(
         concrete_fn.captured_inputs[1],
         closure,
-        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        spec=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
         placeholder=concrete_fn.inputs[1])
 
     self.assertAllEqual(concrete_fn(), 8.0)
@@ -4590,7 +4667,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     def fn():
       deferred_tensor = ops.get_default_graph().capture_call_time_value(
           lambda: value,
-          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+          tensor_lib.TensorSpec(shape=(1,), dtype=dtypes.float32))
       if bool_captured_tensor:
         return deferred_tensor
       else:
@@ -4616,13 +4693,13 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       concrete_fn.replace_capture_with_deferred_capture(
           bool_captured_tensor,
           float_closure,
-          spec=tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+          spec=tensor_lib.TensorSpec(shape=(1,), dtype=dtypes.float32))
 
     # Test replace without a placeholder
     concrete_fn.replace_capture_with_deferred_capture(
         bool_captured_tensor,
         bool_closure,
-        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+        spec=tensor_lib.TensorSpec(shape=(), dtype=dtypes.bool))
 
     self.assertAllEqual(concrete_fn(), [5.])
 
@@ -4634,7 +4711,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     def fn():
       deferred_tensor = ops.get_default_graph().capture_call_time_value(
           lambda: value,
-          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+          tensor_lib.TensorSpec(shape=(1,), dtype=dtypes.float32))
       return deferred_tensor + captured_tensor
 
     cf = fn.get_concrete_function()
@@ -4657,7 +4734,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     def fn():
       deferred_tensor = ops.get_default_graph().capture_call_time_value(
           lambda: value,
-          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+          tensor_lib.TensorSpec(shape=(1,), dtype=dtypes.float32))
       if bool_captured_tensor:
         return deferred_tensor
       else:
@@ -4674,7 +4751,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     concrete_fn.graph.replace_capture_with_deferred_capture(
         concrete_fn.captured_inputs[0],
         closure,
-        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool),
+        spec=tensor_lib.TensorSpec(shape=(), dtype=dtypes.bool),
         placeholder=concrete_fn.inputs[1])
 
     concrete_fn.set_external_captures([
@@ -4689,7 +4766,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def lazy_capture(x):
       y = ops.get_default_graph().capture_call_time_value(
-          lambda: value, tensor_spec.TensorSpec(None))
+          lambda: value, tensor_lib.TensorSpec(None))
       return x + y
 
     self.assertAllEqual(lazy_capture(2.0), 3.0)
@@ -4704,7 +4781,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def inner(x):
       y = ops.get_default_graph().capture_call_time_value(
-          lambda: value, tensor_spec.TensorSpec(None))
+          lambda: value, tensor_lib.TensorSpec(None))
       return x + y
 
     @polymorphic_function.function
@@ -4724,7 +4801,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def inner(x):
       y = ops.get_default_graph().capture_call_time_value(
-          lambda: value, tensor_spec.TensorSpec(None))
+          lambda: value, tensor_lib.TensorSpec(None))
       return x + y
 
     @polymorphic_function.function
@@ -4753,15 +4830,15 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def lazy_capture(x):
       w = ops.get_default_graph().capture_call_time_value(
-          lambda: value0, tensor_spec.TensorSpec(None), key=0)
+          lambda: value0, tensor_lib.TensorSpec(None), key=0)
       y = ops.get_default_graph().capture_call_time_value(
-          lambda: value1, tensor_spec.TensorSpec(None), key=1)
+          lambda: value1, tensor_lib.TensorSpec(None), key=1)
 
       def bad_closure():
         raise ValueError('Should not run')
 
       z = ops.get_default_graph().capture_call_time_value(
-          bad_closure, tensor_spec.TensorSpec(None), key=1)
+          bad_closure, tensor_lib.TensorSpec(None), key=1)
       return x + y + w + z
 
     self.assertAllEqual(lazy_capture(2.0), 7.0)
@@ -4775,19 +4852,19 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def lazy_capture(x):
       y = ops.get_default_graph().capture_call_time_value(
-          lambda: value, tensor_spec.TensorSpec(()))
+          lambda: value, tensor_lib.TensorSpec(()))
       return x + y
 
     self.assertAllEqual(lazy_capture(2.0), 3.0)
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegex(ValueError, 'Tensor conversion requested'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast Tensor'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegex(AssertionError, 'Can not cast'):
+    with self.assertRaisesRegex(TypeError, 'Can not cast'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):
@@ -4842,7 +4919,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     # Index dtype mismatch int32 vs. int64.
     value = indexed_slices.IndexedSlices(
         constant_op.constant([1, 2]), constant_op.constant([0, 1]))
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       lazy_capture()
 
   @parameterized.parameters(
@@ -4912,6 +4989,28 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, 'not found'):
       graph._remove_function(func_name)
+
+  def testInputAndOutputDataclass(self):
+    @polymorphic_function.function
+    def f(x):
+      return x
+
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
+    result = f(mt)
+    self.assertEqual(result.mask, mt.mask)
+    self.assertAllEqual(result.value, mt.value)
+
+  def testInputAndCreatNewDataclass(self):
+    @polymorphic_function.function
+    def f(x, y):
+      return MaskedTensor(mask=x.mask, value=y.value)
+
+    mt = MaskedTensor(mask=False, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2.0]))
+    result = f(mt, mt2)
+    self.assertEqual(result.mask, mt.mask)
+    self.assertAllEqual(result.value, mt2.value)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

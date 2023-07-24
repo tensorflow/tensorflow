@@ -66,7 +66,7 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
     if (absl::StrContains(call.getCalleeAttr().getValue(),
                           "xla.gpu.cuda.graph.launch")) {
       auto capture = call->getAttr("capture").cast<FlatSymbolRefAttr>();
-      std::string op_name = "cuda_graph: @" + capture.getValue().str();
+      std::string op_name = "cuda_graph/" + capture.getValue().str();
       auto annotation = HloTraceAttr::get(ctx, std::move(op_name));
       call->setAttr("rt.trace", annotation);
       return;

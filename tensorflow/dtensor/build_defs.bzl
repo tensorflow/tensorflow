@@ -1,6 +1,6 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 # LINT.IfChange
 ALL_BACKENDS = [

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -36,7 +35,7 @@ class StreamExecutorInterface;
 
 // The PluginRegistry is a singleton that maintains the set of registered
 // "support library" plugins. Currently, there are four kinds of plugins:
-// BLAS, DNN, FFT, and RNG. Each interface is defined in the corresponding
+// BLAS, DNN, and FFT. Each interface is defined in the corresponding
 // gpu_{kind}.h header.
 //
 // At runtime, a StreamExecutor object will query the singleton registry to
@@ -52,7 +51,6 @@ class PluginRegistry {
   typedef blas::BlasSupport* (*BlasFactory)(internal::StreamExecutorInterface*);
   typedef dnn::DnnSupport* (*DnnFactory)(internal::StreamExecutorInterface*);
   typedef fft::FftSupport* (*FftFactory)(internal::StreamExecutorInterface*);
-  typedef rng::RngSupport* (*RngFactory)(internal::StreamExecutorInterface*);
 
   // Gets (and creates, if necessary) the singleton PluginRegistry instance.
   static PluginRegistry* Instance();
@@ -107,14 +105,13 @@ class PluginRegistry {
     std::map<PluginId, BlasFactory> blas;
     std::map<PluginId, DnnFactory> dnn;
     std::map<PluginId, FftFactory> fft;
-    std::map<PluginId, RngFactory> rng;
   };
 
   // Simple structure to hold the currently configured default plugins (for a
   // particular Platform).
   struct DefaultFactories {
     DefaultFactories();
-    PluginId blas, dnn, fft, rng;
+    PluginId blas, dnn, fft;
   };
 
   PluginRegistry();
@@ -176,7 +173,6 @@ class PluginRegistry {
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
 DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
-DECLARE_PLUGIN_SPECIALIZATIONS(RngFactory);
 #undef DECL_PLUGIN_SPECIALIZATIONS
 
 }  // namespace stream_executor

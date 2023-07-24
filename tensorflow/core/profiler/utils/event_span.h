@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -103,8 +103,8 @@ enum GenericEventType {
 // Contains the type and timespan of an event.
 struct EventTypeSpan {
   EventType type;  // type of this event.
-  Timespan span;   // timespan of this event.
-  EventTypeSpan(EventType t, Timespan s) : type(t), span(s) {}
+  tsl::profiler::Timespan span;  // timespan of this event.
+  EventTypeSpan(EventType t, tsl::profiler::Timespan s) : type(t), span(s) {}
   // Equality test.
   bool operator==(const EventTypeSpan& other) const {
     return type == other.type && span == other.span;
@@ -131,9 +131,9 @@ struct StepMarker {
   StepMarkerType type;
   std::string event_name;  // name of this event.
   std::string step_name;
-  Timespan span;           // timespan of this event.
+  tsl::profiler::Timespan span;  // timespan of this event.
   StepMarker(StepMarkerType step_marker_type, absl::string_view name,
-             Timespan s)
+             tsl::profiler::Timespan s)
       : type(step_marker_type), event_name(name), span(s) {}
   // Equality test.
   bool operator==(const StepMarker& other) const {
@@ -159,7 +159,7 @@ class StepDetails {
     return device_memory_transfers_;
   }
   // Returns the step time.
-  Timespan StepTime() const;
+  tsl::profiler::Timespan StepTime() const;
   // Adds a step-marker to this step.
   void AddMarker(const StepMarker& m);
   // Adds an EventTypeSpan to this step.
@@ -170,7 +170,8 @@ class StepDetails {
   // Only event type of HOST_TO_DEVICE/DEVICE_TO_DEVICE/DEVICE_TO_HOST are
   // allowed.
   void AddDeviceMemoryTransferEvent(EventType event_type,
-                                    const Timespan& time_span, uint64 bytes);
+                                    const tsl::profiler::Timespan& time_span,
+                                    uint64 bytes);
   // Returns the step name.
   std::string StepName() const { return step_name_; }
   // Sets the name of this step.

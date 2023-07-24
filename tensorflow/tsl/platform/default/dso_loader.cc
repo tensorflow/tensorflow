@@ -42,7 +42,6 @@ string GetCuptiVersion() { return TF_CUPTI_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
-string GetCurandVersion() { return TF_CURAND_VERSION; }
 string GetCufftVersion() { return TF_CUFFT_VERSION; }
 string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
@@ -108,10 +107,6 @@ StatusOr<void*> GetCusparseDsoHandle() {
   return GetDsoHandle("cusparse", GetCusparseVersion());
 }
 
-StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCurandVersion());
-}
-
 StatusOr<void*> GetCuptiDsoHandle() {
   // Load specific version of CUPTI this is built.
   auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
@@ -166,6 +161,10 @@ StatusOr<void*> GetHipsparseDsoHandle() {
   return GetDsoHandle("hipsparse", "");
 }
 
+StatusOr<void*> GetHipblasltDsoHandle() {
+  return GetDsoHandle("hipblaslt", "");
+}
+
 StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
@@ -188,11 +187,6 @@ StatusOr<void*> GetCublasDsoHandle() {
 
 StatusOr<void*> GetCublasLtDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
-  return *result;
-}
-
-StatusOr<void*> GetCurandDsoHandle() {
-  static auto result = new auto(DsoLoader::GetCurandDsoHandle());
   return *result;
 }
 
@@ -260,6 +254,11 @@ StatusOr<void*> GetHipsolverDsoHandle() {
 
 StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
+  return *result;
+}
+
+StatusOr<void*> GetHipblasltDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipblasltDsoHandle());
   return *result;
 }
 

@@ -906,6 +906,26 @@ func.func @cancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf3
   // CHECK: return %arg0
 }
 
+// CHECK-LABEL: @nonCancellableTransposeCrossRegion
+func.func @nonCancellableTransposeCrossRegion(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
+  %0 = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %1 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+
+  %result = "tf_device.launch"() ({
+    %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+    tf_device.return %3: tensor<1x4x4x8xf32>
+  }) {device = "device"} : () -> tensor<1x4x4x8xf32>
+
+  func.return %result : tensor<1x4x4x8xf32>
+
+  // CHECK-DAG: %[[CONST1:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+  // CHECK-DAG: %[[CONST2:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
+  // CHECK: %[[TRANS1:.*]] = "tf.Transpose"(%arg0, %[[CONST1]]) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  // CHECK: %[[TRANS2:.*]] = "tf.Transpose"(%[[TRANS1]], %[[CONST2]]) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+  // CHECK: return %[[TRANS2]]
+}
+
 // CHECK-LABEL: @cancellableTransposeConst
 func.func @cancellableTransposeConst(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
   %0 = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>

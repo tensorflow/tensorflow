@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <Python.h>
+
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -285,6 +287,23 @@ int IsAttrsHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is an instance that implements the custom nest protocol.
+// Returns 0 otherwise.
+int IsCustomNestProtocolDefined(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    Safe_PyObjectPtr cls(PyObject_GetAttrString(to_check, "__class__"));
+    if (cls) {
+      return PyObject_HasAttrString(cls.get(), "__tf_flatten__") &
+             PyObject_HasAttrString(cls.get(), "__tf_unflatten__");
+    }
+
+    // PyObject_GetAttrString returns null on error
+    PyErr_Clear();
+    return 0;
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an object of type IndexedSlices.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -363,6 +382,7 @@ int IsNestedHelper(PyObject* o) {
   if (IsMappingHelper(o)) return true;
   if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
+  if (IsCustomNestProtocolDefined(o)) return true;
 
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
@@ -555,6 +575,32 @@ class AttrsValueIterator : public ValueIterator {
   Safe_PyObjectPtr iter_;
 };
 
+class CustomNestedIterator : public ValueIterator {
+ public:
+  explicit CustomNestedIterator(PyObject* nested) : nested_(nested) {
+    Py_INCREF(nested);
+    flattened_.reset(
+        PyObject_CallMethod(nested_.get(), "__tf_flatten__", nullptr));
+    if (flattened_) {
+      Safe_PyObjectPtr seq = make_safe(PySequence_GetItem(flattened_.get(), 1));
+      if (seq) {
+        iter_.reset(PyObject_GetIter(seq.get()));
+      }
+    }
+    if (!iter_ || PyErr_Occurred()) invalidate();
+  }
+
+  Safe_PyObjectPtr next() override {
+    Safe_PyObjectPtr result(PyIter_Next(iter_.get()));
+    return result;
+  }
+
+ private:
+  Safe_PyObjectPtr nested_;
+  Safe_PyObjectPtr flattened_;
+  Safe_PyObjectPtr iter_;
+};
+
 bool IsSparseTensorValueType(PyObject* o) {
   PyObject* sparse_tensor_value_type =
       GetRegisteredPyObject("SparseTensorValue");
@@ -620,6 +666,8 @@ ValueIteratorPtr GetValueIterator(PyObject* nested) {
     return absl::make_unique<MappingValueIterator>(nested);
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -635,6 +683,8 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
     return absl::make_unique<SingleValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }

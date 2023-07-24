@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -55,6 +56,11 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
   context->loadDialect<mlir::chlo::ChloDialect>();
   context->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context->appendDialectRegistry(registry);
+
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(str.data(), str.size()), context);
@@ -96,6 +102,10 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
+
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
   mlir::PassManager pm(&context);
@@ -223,17 +233,21 @@ void BuildMlirSubmodule(py::module& m) {
                   py::arg("mlir_module"));
   mlir_module.def(
       "refine_polymorphic_shapes",
-      [](std::string mlir_module) -> py::bytes {
+      [](std::string mlir_module, bool enable_shape_assertions,
+         bool validate_static_shapes) -> py::bytes {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
-        xla::ThrowIfError(RefinePolymorphicShapes(mlir_module, os));
+        xla::ThrowIfError(RefinePolymorphicShapes(
+            mlir_module, os, enable_shape_assertions, validate_static_shapes));
         return py::bytes(buffer);
       },
-      py::arg("mlir_module"),
+      py::arg("mlir_module"), py::arg("enable_shape_assertions") = true,
+      py::arg("validate_static_shapes") = true,
       R"(Refines the dynamic shapes for a module.
         The "main" function must have static shapes and all the
         intermediate dynamic shapes depend only on the input static
-        shapes.
+        shapes. Optionally, also validates that the resulting module has
+        only static shapes.
       )");
 }
 

@@ -23,8 +23,12 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 
 #if TF_ROCM_VERSION >= 40500
+#if TF_ROCM_VERSION >= 50600
+#include "rocm/include/hipsolver/hipsolver.h"
+#else
 
 #include "rocm/include/hipsolver.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -34,10 +38,10 @@ namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
 
-#define HIPSOLVER_API_WRAPPER(api_name)                        \
-  template <typename... Args>                                  \
-  auto api_name(Args... args)->decltype(::api_name(args...)) { \
-    return ::api_name(args...);                                \
+#define HIPSOLVER_API_WRAPPER(api_name)                          \
+  template <typename... Args>                                    \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) { \
+    return ::api_name(args...);                                  \
   }
 
 #else

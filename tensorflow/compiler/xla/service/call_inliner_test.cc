@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -241,5 +244,107 @@ TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
   EXPECT_THAT(*inst, op::Tuple());
 }
 
+// Tests whether the call inliner respects the execution thread filter.
+// The HLO module has four chained computations split in two threads:
+// entry_main_thread_outer -> main_thread_inner -> secondary_thread_outer ->
+//   secondary_thread_inner.
+// This test runs call inliner twice. First, across all threads with the
+// following expected result: entry_main_thread_outer -> secondary_thread_outer.
+// Second, on the secondary thread only with the following expected result:
+// entry_main_thread_outer -> main_thread_inner -> secondary_thread_outer.
+TEST_F(CallInlinerTest, InliningPerformedInsideSpecifiedThreadsOnly) {
+  const std::string hlo_string = R"(
+HloModule inline_specified_threads_only
+
+%secondary_inner () -> u32[] {
+  ROOT %co.2 = u32[] constant(2)
+}, execution_thread="secondary_thread"
+
+%secondary_outer () -> u32[] {
+  %co.1 = u32[] constant(1)
+  %call.1 = u32[] call(), to_apply=%secondary_inner
+  ROOT %add.1 = add(%co.1, %call.1)
+}, execution_thread="secondary_thread"
+
+%main_inner () -> u32[] {
+  %co.0 = u32[] constant(0)
+  %async-start = ((), u32[], u32[]) call-start(), async_execution_thread="secondary_thread", to_apply=secondary_outer
+  %async-done = u32[] call-done(((), u32[], u32[]) %async-start), async_execution_thread="secondary_thread", to_apply=secondary_outer
+  ROOT %add.2 = add(%co.0, %async-done)
+}
+
+ENTRY %main_outer (p0: u32[]) -> u32[] {
+  %p.0 = u32[] parameter(0)
+  %call.0 = u32[] call(), to_apply=%main_inner
+  ROOT %add.3 = add(%p.0, %call.0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto module_clone = module->Clone(/*suffix=*/"");
+
+  // When we don't restrict the CallInliner to any one thread, we expect that
+  // both the secondary and main thread calls are inlined.
+  {
+    VLOG(1) << "Module BEFORE CallInliner\n" << module->ToString();
+
+    CallInliner call_inliner;
+    TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+    VLOG(1) << "Module AFTER CallInliner\n" << module->ToString();
+    EXPECT_TRUE(mutated);
+
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        op::Add(op::Parameter(0),
+                op::Add(op::Constant(LiteralUtil::CreateR0<uint32_t>(0)),
+                        op::AsyncDone())));
+    EXPECT_THAT(module->entry_computation()
+                    ->root_instruction()
+                    ->operand(1)
+                    ->operand(1)
+                    ->async_wrapped_instruction()
+                    ->called_computations()
+                    .at(0)
+                    ->root_instruction(),
+                op::Add(op::Constant(LiteralUtil::CreateR0<uint32_t>(1)),
+                        op::Constant(LiteralUtil::CreateR0<uint32_t>(2))));
+  }
+  // When we restrict the CallInliner to the secondary thread, we expect that
+  // the secondary thread calls get inlined and main thread calls do not get
+  // inlined.
+  VLOG(1) << "Restricting CallInliner to the secondary thread.";
+  {
+    CallInliner call_inliner;
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool mutated,
+        call_inliner.Run(module_clone.get(), {"secondary_thread"}));
+    VLOG(1) << "Module AFTER CallInliner\n" << module_clone->ToString();
+    EXPECT_TRUE(mutated);
+
+    EXPECT_THAT(module_clone->entry_computation()->root_instruction(),
+                op::Add(op::Parameter(0), op::Call()));
+    EXPECT_THAT(module_clone->entry_computation()
+                    ->root_instruction()
+                    ->operand(1)
+                    ->called_computations()
+                    .at(0)
+                    ->root_instruction(),
+                op::Add(op::Constant(LiteralUtil::CreateR0<uint32_t>(0)),
+                        op::AsyncDone()));
+    EXPECT_THAT(module_clone->entry_computation()
+                    ->root_instruction()
+                    ->operand(1)
+                    ->called_computations()
+                    .at(0)
+                    ->root_instruction()
+                    ->operand(1)
+                    ->async_wrapped_instruction()
+                    ->called_computations()
+                    .at(0)
+                    ->root_instruction(),
+                op::Add(op::Constant(LiteralUtil::CreateR0<uint32_t>(1)),
+                        op::Constant(LiteralUtil::CreateR0<uint32_t>(2))));
+  }
+}
 }  // namespace
 }  // namespace xla

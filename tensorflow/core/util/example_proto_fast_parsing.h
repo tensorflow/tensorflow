@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
@@ -151,10 +152,10 @@ Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
 // (If batch=true, then this parses a single SequenceExample.)
 Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
-    const example::FastParseExampleConfig& feature_list_config,
+    const example::FastParseExampleConfig& sequence_config,
     gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
     thread::ThreadPool* thread_pool, example::Result* context_result,
-    example::Result* feature_list_result,
+    example::Result* sequence_result,
     std::vector<Tensor>* dense_feature_lengths, bool is_batch = true);
 
 // This function parses serialized Example and populates given example.

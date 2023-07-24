@@ -88,6 +88,8 @@ class TestDataServiceContext : public DataServiceContext {
               (override));
   MOCK_METHOD(void, RecordBufferDequeue, (const std::vector<Tensor>& element),
               (override));
+
+  double GetTargetProcessingTimeNsec() const override { return 1.0e6; }
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {

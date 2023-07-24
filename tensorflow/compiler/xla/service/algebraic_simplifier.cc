@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -393,6 +394,78 @@ bool ValidateTilingOfBitcast(
     }
   }
   return true;
+}
+
+// Constructs the maps that take dims of A and dims of B to dims of AB, mapping
+// to -1 for dimensions not present in AB. For an example, consider we are
+// computing a dot whose operands have shapes [m,n,p] and [n,q]. Assuming we
+// contract over n, this produces an array with shape [m,p,q]. This function
+// will return vectors map_a_ab = {0, -1, 1} and map_b_ab = {-1, 2}
+std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructToDotMaps(
+    DotDimensionNumbers dnums, const Shape& a_shape, const Shape& b_shape) {
+  std::vector<int64_t> map_a_ab(a_shape.rank(), -1),
+      map_b_ab(b_shape.rank(), -1);
+  int64_t ab_index = 0;
+  // Extract a and b contraction dimensions from dnums
+  auto a_batch_dims = dnums.lhs_batch_dimensions();
+  auto b_batch_dims = dnums.rhs_batch_dimensions();
+  auto a_contracting_dims = dnums.lhs_contracting_dimensions();
+  auto b_contracting_dims = dnums.rhs_contracting_dimensions();
+  // First add the batch dimensions
+  for (int64_t i = 0; i < a_batch_dims.size(); i++) {
+    map_a_ab[a_batch_dims[i]] = ab_index;
+    map_b_ab[b_batch_dims[i]] = ab_index;
+    ab_index++;
+  }
+  // Then add the free dimensions from a
+  for (int64_t a_index = 0; a_index < a_shape.rank(); a_index++) {
+    if (!absl::c_linear_search(a_contracting_dims, a_index) &&
+        !absl::c_linear_search(a_batch_dims, a_index)) {
+      map_a_ab[a_index] = ab_index;
+      ab_index++;
+    }
+  }
+  // Finally add the free dimensions from b
+  for (int64_t b_index = 0; b_index < b_shape.rank(); b_index++) {
+    if (!absl::c_linear_search(b_contracting_dims, b_index) &&
+        !absl::c_linear_search(b_batch_dims, b_index)) {
+      map_b_ab[b_index] = ab_index;
+      ab_index++;
+    }
+  }
+  return {map_a_ab, map_b_ab};
+}
+
+// Constructs the maps that take dims of AB to dims of A and dims of B mapping
+// to -1 for dimensions not present in A/B. For an example, consider we are
+// computing a dot whose operands have shapes [m,n,p] and [n,q]. Assuming we
+// contract over n, this produces an array with shape [m,p,q]. This function
+// will return vectors map_ab_a = {0,2,-1} and map_ab_b = {-1,-1,1}
+std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructFromDotMaps(
+    const HloInstruction* dot, const Shape& a_shape, const Shape& b_shape) {
+  // Reserve space for new maps
+  std::vector<int64_t> map_ab_a(dot->shape().rank(), -1),
+      map_ab_b(dot->shape().rank(), -1);
+  // Construct the maps going in the opposite direction
+  std::vector<int64_t> map_a_ab, map_b_ab;
+  std::tie(map_a_ab, map_b_ab) =
+      ConstructToDotMaps(dot->dot_dimension_numbers(), a_shape, b_shape);
+  // Construct these maps by inverting those above
+  int64_t a_index = 0;
+  for (auto ab_index : map_a_ab) {
+    if (ab_index != -1) {
+      map_ab_a[ab_index] = a_index;
+    }
+    a_index++;
+  }
+  int64_t b_index = 0;
+  for (auto ab_index : map_b_ab) {
+    if (ab_index != -1) {
+      map_ab_b[ab_index] = b_index;
+    }
+    b_index++;
+  }
+  return {map_ab_a, map_ab_b};
 }
 
 }  // namespace
@@ -1063,8 +1136,26 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
         ReplaceWithNewInstruction(bitcast, std::move(new_bitcast)));
     bitcast = new_bitcast_ptr;
   }
+
   // All bitcasts can be eliminated (assuming layout constraints are satisfied).
-  ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
+  HloInstruction* new_bitcast = bitcast->mutable_operand(0);
+  if (ReplaceInstructionIfCompatible(bitcast, new_bitcast)) {
+    bitcast = new_bitcast;
+  }
+
+  // Check whether we can potentially simplify the bitcast into a broadcast
+  // operand.
+  if (bitcast->opcode() == HloOpcode::kBitcast &&
+      bitcast->operand(0)->opcode() == HloOpcode::kBroadcast) {
+    // DeduceTransposeDimensionsForBitcast() checks whether the bitcast is a
+    // transpose and returns the dimensions attribute if it is.
+    auto dimensions = ShapeUtil::DeduceTransposeDimensionsForBitcast(
+        bitcast->operand(0)->shape(), bitcast->shape());
+    if (dimensions.has_value()) {
+      return SimplifyTransposeOfBroadcast(bitcast, dimensions.value());
+    }
+  }
+
   return OkStatus();
 }
 
@@ -1219,7 +1310,7 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
   for (int i = 0; i < result_shape.rank(); ++i) {
     if (result_shape.dimensions(i) == 1) {
       bitcast_pos++;
-      // Since there is a possiblity of over-incrementing bitcast_pos
+      // Since there is a possibility of over-incrementing bitcast_pos
       // we need such a check here also before accessing the vector.
       // Overincrementing is possible when the result's dimension is
       // smaller than the original dimension.
@@ -2165,6 +2256,84 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
   return true;
 }
 
+// transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the relative
+// order of the dimensions of `x` unchanged.
+//
+// To understand the permutations logic here, consider a simple case.
+//
+//  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
+//  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
+//
+// We want to transform this into
+//
+//  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
+Status AlgebraicSimplifierVisitor::SimplifyTransposeOfBroadcast(
+    HloInstruction* transpose, absl::Span<const int64_t> dimensions) {
+  HloInstruction* broadcast = transpose->mutable_operand(0);
+  if (broadcast->opcode() != HloOpcode::kBroadcast ||
+      !absl::c_is_sorted(broadcast->dimensions())) {
+    return OkStatus();
+  }
+
+  // The algorithm to compute bcast'.dimensions() is:
+  //
+  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
+  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
+  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
+  //    index 0 after the transpose.
+  //
+  // We also need to check that bcast'.dimensions() is "sorted the same" as
+  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
+  // broadcast op.  For now we cowardly refuse to consider broadcasts except
+  // where their dimensions() are sorted, so we need only check that
+  // bcast'.dimensions() is sorted.
+  //
+  // No one-user requirement on the transpose because having two different
+  // broadcasts of x should be cheap -- certainly cheaper than using the
+  // fully-materialized broadcasted+transposed value.
+
+  auto inv_perm = InversePermutation(dimensions);
+  absl::InlinedVector<int64_t, 8> new_bcast_dims;
+  for (int64_t dim : broadcast->dimensions()) {
+    new_bcast_dims.push_back(inv_perm[dim]);
+  }
+  if (!absl::c_is_sorted(new_bcast_dims)) {
+    return OkStatus();
+  }
+  // We don't want to create broadcasts that create implicit transposes. Check
+  // whether the relative order of the layout of the broadcasted dimensions is
+  // the same as the broadcast operand layout.
+  if (options_.is_layout_sensitive()) {
+    std::vector<int64_t> perm1(new_bcast_dims.size());
+    absl::c_iota(perm1, 0);
+    std::vector<int64_t> perm2 = perm1;
+    Layout operand_layout = broadcast->mutable_operand(0)->shape().layout();
+    absl::c_sort(perm1, [&](int a, int b) {
+      return operand_layout.minor_to_major(a) <
+             operand_layout.minor_to_major(b);
+    });
+    Layout transpose_layout = transpose->shape().layout();
+    // Extract the part of the layout that corresponds to the broadcasted
+    // dimensions.
+    std::vector<int64_t> extracted_layout;
+    extracted_layout.reserve(new_bcast_dims.size());
+    for (int64_t dim : transpose_layout.minor_to_major()) {
+      if (absl::c_binary_search(new_bcast_dims, dim)) {
+        extracted_layout.push_back(dim);
+      }
+    }
+    absl::c_sort(perm2, [&](int a, int b) {
+      return extracted_layout[a] < extracted_layout[b];
+    });
+    if (perm1 != perm2) {
+      return OkStatus();
+    }
+  }
+  return ReplaceInstruction(
+      transpose, MakeBroadcastHlo(broadcast->mutable_operand(0), new_bcast_dims,
+                                  transpose->shape()));
+}
+
 StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
     HloInstruction* dot) {
   const int64_t rank = dot->shape().rank();
@@ -2760,6 +2929,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   if (options_.is_layout_sensitive()) {
     return OkStatus();
   }
+
   // Replace a zero element dot with a broadcast of the constant 0.
   if (ShapeUtil::IsZeroElementArray(dot->shape()) ||
       ShapeUtil::IsZeroElementArray(lhs->shape()) ||
@@ -2814,6 +2984,166 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     dot->SetupDerivedInstruction(new_rhs);
     dot->SetupDerivedInstruction(new_instruction.get());
     return ReplaceWithNewInstruction(dot, std::move(new_instruction));
+  }
+
+  // Reorder nested dots with associativity using flops as a heuristic
+  if (options_.use_associative_reordering()) {
+    HloInstruction *a, *b, *c;
+    HloInstruction *old_inner, *old_outer, *new_inner, *new_outer;
+    DotDimensionNumbers ab_dnums, ac_dnums, bc_dnums;
+    // Here we extract the batch/contracting dimensions shared between A and B,
+    // A and C, and B and C, and use these to build up the dimension numbers for
+    // the reordered dot A(BC).
+    if (Match(dot, m::Dot(m::Dot(m::Op(&a), m::Op(&b)), m::Op(&c)))) {
+      // We already have the ab_dnums for free
+      ab_dnums = dot->operand(0)->dot_dimension_numbers();
+      // Get maps for converting AB dimensions to A and B
+      std::vector<int64_t> map_ab_a, map_ab_b;
+      std::tie(map_ab_a, map_ab_b) =
+          ConstructFromDotMaps(dot->operand(0), a->shape(), b->shape());
+      // Recover ac_dnums and bc_dnums from ab_c_dnums
+      DotDimensionNumbers ab_c_dnums = dot->dot_dimension_numbers();
+      for (int64_t i = 0; i < ab_c_dnums.lhs_batch_dimensions_size(); i++) {
+        auto ab_index = ab_c_dnums.lhs_batch_dimensions(i);
+        auto c_index = ab_c_dnums.rhs_batch_dimensions(i);
+        if (map_ab_b[ab_index] == -1) {
+          // This is a batch dimension between a and c
+          ac_dnums.add_lhs_batch_dimensions(map_ab_a[ab_index]);
+          ac_dnums.add_rhs_batch_dimensions(c_index);
+        } else {
+          // This is a batch dimension between b and c
+          bc_dnums.add_lhs_batch_dimensions(map_ab_b[ab_index]);
+          bc_dnums.add_rhs_batch_dimensions(c_index);
+        }
+      }
+      for (int64_t i = 0; i < ab_c_dnums.lhs_contracting_dimensions_size();
+           i++) {
+        auto ab_index = ab_c_dnums.lhs_contracting_dimensions(i);
+        auto c_index = ab_c_dnums.rhs_contracting_dimensions(i);
+        if (map_ab_b[ab_index] == -1) {
+          // This is a contraction dimension between a and c
+          ac_dnums.add_lhs_contracting_dimensions(map_ab_a[ab_index]);
+          ac_dnums.add_rhs_contracting_dimensions(c_index);
+        } else {
+          // This is a contraction dimension between b and c
+          bc_dnums.add_lhs_contracting_dimensions(map_ab_b[ab_index]);
+          bc_dnums.add_rhs_contracting_dimensions(c_index);
+        }
+      }
+
+      // Get maps for converting B and C dimensions to BC
+      std::vector<int64_t> map_b_bc, map_c_bc;
+      std::tie(map_b_bc, map_c_bc) =
+          ConstructToDotMaps(bc_dnums, b->shape(), c->shape());
+      // Now build a_bc_dnums from ab_dnums and bc_dnums
+      DotDimensionNumbers a_bc_dnums;
+      for (int64_t i = 0; i < ab_dnums.lhs_batch_dimensions_size(); i++) {
+        auto a_index = ab_dnums.lhs_batch_dimensions(i);
+        auto b_index = ab_dnums.rhs_batch_dimensions(i);
+        a_bc_dnums.add_lhs_batch_dimensions(a_index);
+        a_bc_dnums.add_rhs_batch_dimensions(map_b_bc[b_index]);
+      }
+      for (int64_t i = 0; i < ab_dnums.lhs_contracting_dimensions_size(); i++) {
+        auto a_index = ab_dnums.lhs_contracting_dimensions(i);
+        auto b_index = ab_dnums.rhs_contracting_dimensions(i);
+        a_bc_dnums.add_lhs_contracting_dimensions(a_index);
+        a_bc_dnums.add_rhs_contracting_dimensions(map_b_bc[b_index]);
+      }
+      for (int64_t i = 0; i < ac_dnums.lhs_batch_dimensions_size(); i++) {
+        auto a_index = ac_dnums.lhs_batch_dimensions(i);
+        auto c_index = ac_dnums.rhs_batch_dimensions(i);
+        a_bc_dnums.add_lhs_batch_dimensions(a_index);
+        a_bc_dnums.add_rhs_batch_dimensions(map_c_bc[c_index]);
+      }
+      for (int64_t i = 0; i < ac_dnums.lhs_contracting_dimensions_size(); i++) {
+        auto a_index = ac_dnums.lhs_contracting_dimensions(i);
+        auto c_index = ac_dnums.rhs_contracting_dimensions(i);
+        a_bc_dnums.add_lhs_contracting_dimensions(a_index);
+        a_bc_dnums.add_rhs_contracting_dimensions(map_c_bc[c_index]);
+      }
+
+      // Make Hlo for reordering dot
+      old_inner = lhs;
+      old_outer = dot;
+      TF_ASSIGN_OR_RETURN(new_inner,
+                          MakeDotHlo(b, c, bc_dnums, dot->precision_config(),
+                                     dot->shape().element_type()));
+      TF_ASSIGN_OR_RETURN(new_outer, MakeDotHlo(a, new_inner, a_bc_dnums,
+                                                dot->precision_config(),
+                                                dot->shape().element_type()));
+
+      // Use HloCostAnalysis to compute flops for both the original and
+      // reordered instructions, and reorder if doing so decreases flops by a
+      // factor of the reordering threshold.
+      const int64_t old_flops =
+          HloCostAnalysis::GetDotFlops(old_inner->operand(0)->shape(),
+                                       old_inner->shape(),
+                                       old_inner->dot_dimension_numbers()) +
+          HloCostAnalysis::GetDotFlops(old_outer->operand(0)->shape(),
+                                       old_outer->shape(),
+                                       old_outer->dot_dimension_numbers());
+      const int64_t new_flops =
+          HloCostAnalysis::GetDotFlops(new_inner->operand(0)->shape(),
+                                       new_inner->shape(),
+                                       new_inner->dot_dimension_numbers()) +
+          HloCostAnalysis::GetDotFlops(new_outer->operand(0)->shape(),
+                                       new_outer->shape(),
+                                       new_outer->dot_dimension_numbers());
+
+      if (old_flops / new_flops > options_.associative_reordering_threshold()) {
+        // Depending on the batch dimensions of the original instruction,
+        // reordering may permute the dimensions of the shape. To correct for
+        // this, we build a map from old_outer dimensions to new_outer
+        // dimensions and use it to transpose new_outer.
+        DimensionVector permutation(new_outer->shape().rank());
+
+        // Construct additional maps to make the permutation
+        std::vector<int64_t> map_old_outer_ab, map_old_outer_c;
+        std::tie(map_old_outer_ab, map_old_outer_c) =
+            ConstructFromDotMaps(old_outer, old_inner->shape(), c->shape());
+        std::vector<int64_t> map_a_new_outer, map_bc_new_outer;
+        std::tie(map_a_new_outer, map_bc_new_outer) =
+            ConstructToDotMaps(a_bc_dnums, a->shape(), new_inner->shape());
+
+        // Create permutation to do the transpose
+        bool add_transpose = false;
+        for (int64_t i = 0; i < old_outer->shape().rank(); i++) {
+          int64_t new_outer_index;
+          if (map_old_outer_c[i] == -1) {
+            int64_t ab_index = map_old_outer_ab[i];
+            if (map_ab_b[ab_index] == -1) {
+              // Dimension i in old_outer comes from a
+              int64_t a_index = map_ab_a[ab_index];
+              new_outer_index = map_a_new_outer[a_index];
+            } else {
+              // Dimension i in old_outer comes from b
+              int64_t b_index = map_ab_b[ab_index];
+              new_outer_index = map_bc_new_outer[map_b_bc[b_index]];
+            }
+          } else {
+            // Dimension i in old_outer comes from c
+            int64_t c_index = map_old_outer_c[i];
+            new_outer_index = map_bc_new_outer[map_c_bc[c_index]];
+          }
+          permutation[i] = new_outer_index;
+          if (i != new_outer_index) {
+            add_transpose = true;
+          }
+        }
+
+        if (add_transpose) {
+          HloInstruction* transposed_new_outer;
+          TF_ASSIGN_OR_RETURN(transposed_new_outer,
+                              MakeTransposeHlo(new_outer, permutation));
+          VLOG(10) << "Reordering with associativity and transpose";
+          return ReplaceInstruction(dot, transposed_new_outer);
+        } else {
+          VLOG(10) << "Reordering with associativity";
+          return ReplaceInstruction(dot, new_outer);
+        }
+      }
+    }
+    // TODO(b/289120301) Implement other direction after first looks good
   }
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
@@ -2928,7 +3258,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   if (removed_transposes) {
     return OkStatus();
   }
-
   return OkStatus();
 }
 
@@ -3192,6 +3521,18 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
       primitive_util::IsIntegralType(multiply->shape().element_type()) &&
       ReplaceInstructionIfCompatible(multiply, rhs)) {
     return OkStatus();
+  }
+
+  {
+    // Mul(Negate(A), Negate(B)) => Mul(A, B)
+    HloInstruction *a, *b;
+    if (Match(multiply,
+              m::Multiply(m::Negate(m::Op(&a)), m::Negate(m::Op(&b))))) {
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(0, a));
+      TF_RETURN_IF_ERROR(multiply->ReplaceOperandWith(1, b));
+      MarkAsChanged();
+      return OkStatus();
+    }
   }
 
   {
@@ -4341,8 +4682,8 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       std::optional<int64_t> max_val =
           OverflowSafeAdd(*divisor_val, iota_upper_bound);
-      if (max_val.has_value() &&
-          FitsInIntegralType(*max_val, iota->shape().element_type())) {
+      if (max_val.has_value() && primitive_util::FitsInIntegralType(
+                                     *max_val, iota->shape().element_type())) {
         return ReplaceWithNewInstruction(
             remainder,
             HloInstruction::CreateBinary(remainder->shape(),
@@ -5894,24 +6235,38 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
   // Convert Reduce(concat({a,b,...})) to
   //  map(reduce(a),map(reduce(b),...,))
+  // provided that the shapes of a,b,... have the same dimensions, or
+  // enable_unconditional_reduce_of_concat_replacement() is true.
   //
   // This should make fusion easier or use less memory bandwidth in the unfused
   // case.
   if (arg->opcode() == HloOpcode::kConcatenate &&
       absl::c_linear_search(reduce->dimensions(),
                             arg->concatenate_dimension())) {
-    HloInstruction* old_reduce = nullptr;
-    for (HloInstruction* operand : arg->operands()) {
-      HloInstruction* new_reduce = reduce->AddInstruction(
-          HloInstruction::CreateReduce(reduce_result_shape, operand, init_value,
-                                       reduce->dimensions(), function));
-      if (old_reduce != nullptr) {
-        new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
-            reduce_result_shape, {old_reduce, new_reduce}, function));
+    bool same_shapes = true;
+    for (int64_t i = 1; i < arg->operand_count(); ++i) {
+      if (!Shape::Equal().IgnoreLayout()(arg->operand(i)->shape(),
+                                         arg->operand(0)->shape())) {
+        same_shapes = false;
+        break;
       }
-      old_reduce = new_reduce;
     }
-    return ReplaceInstruction(reduce, old_reduce);
+    if (options_.enable_unconditional_reduce_of_concat_replacement() ||
+        same_shapes || reduce->shape().rank() == 0) {
+      HloInstruction* old_reduce = nullptr;
+      for (HloInstruction* operand : arg->operands()) {
+        HloInstruction* new_reduce =
+            reduce->AddInstruction(HloInstruction::CreateReduce(
+                reduce_result_shape, operand, init_value, reduce->dimensions(),
+                function));
+        if (old_reduce != nullptr) {
+          new_reduce = reduce->AddInstruction(HloInstruction::CreateMap(
+              reduce_result_shape, {old_reduce, new_reduce}, function));
+        }
+        old_reduce = new_reduce;
+      }
+      return ReplaceInstruction(reduce, old_reduce);
+    }
   }
 
   HloInstruction *dot, *lhs, *rhs;
@@ -6798,47 +7153,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     }
   }
 
-  // transpose(broadcast(x)) -> broadcast(x), if the transpose leaves the
-  // relative order of the dimensions of `x` unchanged.
-  //
-  // To understand the permutations logic here, consider a simple case.
-  //
-  //  bcast = f32[1,2,3,4] broadcast(f32[2,4] x), dimensions={1,3}
-  //  trans = f32[2,3,1,4] transpose(f32[1,2,3,4] bcast), dimensions={1,2,0,3}
-  //
-  // We want to transform this into
-  //
-  //  bcast' = f32[2,3,1,4] broadcast(f32[2,4] x), dimensions={0,3}
-  //
-  // The algorithm to compute bcast'.dimensions() is:
-  //
-  //  * Let p' be the inverse of trans.dimensions(); in the example, {2,0,1,3}.
-  //  * bcast'.dimensions() is [p'[dim] for dim in bcast.dimensions()].  In the
-  //    example, p'[1] = 0, meaning that broadcast dim 1 (size 2) ends up at
-  //    index 0 after the transpose.
-  //
-  // We also need to check that bcast'.dimensions() is "sorted the same" as
-  // bcast.dimensions() -- otherwise, we're simply moving the transpose into the
-  // broadcast op.  For now we cowardly refuse to consider broadcasts except
-  // where their dimensions() are sorted, so we need only check that
-  // bcast'.dimensions() is sorted.
-  //
-  // No one-user requirement on the transpose because having two different
-  // broadcasts of x should be cheap -- certainly cheaper than using the
-  // fully-materialized broadcasted+transposed value.
-  if (operand->opcode() == HloOpcode::kBroadcast &&
-      absl::c_is_sorted(operand->dimensions())) {
-    auto inv_perm = InversePermutation(transpose->dimensions());
-    absl::InlinedVector<int64_t, 8> new_bcast_dims;
-    for (int64_t dim : operand->dimensions()) {
-      new_bcast_dims.push_back(inv_perm[dim]);
-    }
-    if (absl::c_is_sorted(new_bcast_dims)) {
-      return ReplaceInstruction(
-          transpose, MakeBroadcastHlo(operand->mutable_operand(0),
-                                      new_bcast_dims, transpose->shape()));
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      SimplifyTransposeOfBroadcast(transpose, transpose->dimensions()));
 
   return OkStatus();
 }

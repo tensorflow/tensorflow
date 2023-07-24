@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <limits>
+#include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "absl/container/node_hash_map.h"
 #include "llvm/ADT/DenseMap.h"

@@ -1649,10 +1649,8 @@ TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
       0 /* matching paths cache max entries */, kTestRetryConfig,
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(fs.FileExists("gs://bucket2/", nullptr)));
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(fs.FileExists("gs://bucket2", nullptr)));
+  EXPECT_TRUE(absl::IsNotFound(fs.FileExists("gs://bucket2/", nullptr)));
+  EXPECT_TRUE(absl::IsNotFound(fs.FileExists("gs://bucket2", nullptr)));
 }
 
 TEST(GcsFileSystemTest, FileExists_StatCache) {

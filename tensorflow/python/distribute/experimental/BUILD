@@ -8,7 +8,10 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/brain/distribute/python/benchmark:__subpackages__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],
 )
 
@@ -19,12 +22,8 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/distribute:central_storage_strategy",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
-        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        ":mirrored_strategy",
+        ":multi_worker_mirrored_strategy",
     ],
 )
 
@@ -54,10 +53,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:mesh_util",
         "//tensorflow/dtensor/python/tests:test_util",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
@@ -66,6 +61,10 @@ dtensor_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:variables",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -79,9 +78,6 @@ py_strict_library(
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:input_util",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
@@ -91,6 +87,9 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
     ],
 )
 
@@ -124,11 +123,11 @@ py_strict_library(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:input_util",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/util:nest",
     ],
 )
@@ -175,10 +174,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python/tests:multi_client_test_util",
         "//tensorflow/dtensor/python/tests:test_util",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
@@ -188,6 +183,10 @@ dtensor_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",

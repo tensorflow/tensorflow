@@ -33,9 +33,11 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -278,6 +280,13 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     self._output_shapes = []
     for feature in nest.flatten(feature_config):
       self._output_shapes.append(feature.output_shape)
+
+    device_assignment = getattr(
+        self._strategy.extended, "_device_assignment", None
+    )
+    self._num_cores_per_replica = (
+        device_assignment.num_cores_per_replica if device_assignment else None
+    )
 
     # The TPU embedding ops are slightly inconsistent with how they refer to
     # tables:
@@ -585,14 +594,23 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
+    num_replica = self._strategy.num_replicas_in_sync
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     config_proto.num_hosts = self._strategy.extended.num_hosts
-    config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
+    config_proto.num_tensor_cores = num_replica * num_cores_per_replica
 
     # TODO(bfontain): Allow users to pick MOD for the host sharding.
     config_proto.sharding_strategy = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.DIV_DEFAULT)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
+
+    if self._num_cores_per_replica:
+      config_proto.spmd_sharding.enabled = True
+      config_proto.spmd_sharding.num_cores_per_replica = (
+          self._num_cores_per_replica
+      )
 
     return config_proto
 
@@ -660,13 +678,17 @@ class TPUEmbedding(autotrackable.AutoTrackable):
                          "object. Please either call enqueue first or manually "
                          "call the build method.")
 
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     nest.assert_same_structure(self._feature_config, gradients)
     updated_gradients = []
     for (path, gradient), feature, output_shape in zip(
         nest.flatten_with_joined_string_paths(gradients),
         nest.flatten(self._feature_config), self._output_shapes):
-      full_output_shape = list(output_shape) + [feature.table.dim]
-      if gradient is not None and not isinstance(gradient, ops.Tensor):
+      full_output_shape = [x * num_cores_per_replica for x in output_shape] + [
+          feature.table.dim
+      ]
+      if gradient is not None and not isinstance(gradient, tensor_lib.Tensor):
         raise ValueError(
             f"found non-tensor type: {type(gradient)} at path {path}.")
       if gradient is not None:
@@ -971,7 +993,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
-      if isinstance(inp, ops.Tensor):
+      if isinstance(inp, tensor_lib.Tensor):
         self._add_data_for_tensor(inp, weight, indices_or_row_splits, values,
                                   weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
@@ -1232,7 +1254,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
             "ensure build() was called with output shapes to initialize "
             "the TPU for embeddings.")
     else:
-      input_shapes = self._get_input_shapes(features, in_tpu_context)
+      per_replica = device is None
+      input_shapes = self._get_input_shapes(
+          features, per_replica, in_tpu_context
+      )
 
       self._maybe_build(input_shapes)
       # If is already built, we still need to check if the output shapes matches
@@ -1282,26 +1307,59 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       # We rely here on the fact that the devices in the PerReplica value occur
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
+
+      def _split_fn(ts, idx):
+        if ts is None:
+          return None
+        elif isinstance(ts, tensor_lib.Tensor):
+          return array_ops.split(
+              ts,
+              num_or_size_splits=self._num_cores_per_replica,
+              axis=0)[idx]
+        elif isinstance(ts, sparse_tensor.SparseTensor):
+          return sparse_ops.sparse_split_v2(
+              sp_input=ts,
+              num_split=self._num_cores_per_replica,
+              axis=0)[idx]
+        else:
+          raise ValueError("SPMD does not support raggedTensor yet.")
+
+      def _maybe_split(ts_inputs, core_id):
+        if self._num_cores_per_replica is None:
+          return ts_inputs
+        else:
+          splitter = functools.partial(_split_fn, idx=core_id)
+          return nest.map_structure(splitter, ts_inputs)
+
       for replica_id in range(self._strategy.num_replicas_in_sync):
         replica_inputs = distribute_utils.select_replica(replica_id,
                                                          flat_inputs)
         replica_weights = distribute_utils.select_replica(replica_id,
                                                           flat_weights)
-        tpu_device = self._strategy.extended.worker_devices[replica_id]
+
+        if self._num_cores_per_replica:
+          tpu_devices = self._strategy.extended._tpu_devices[replica_id]   # pylint: disable=protected-access
+        else:
+          tpu_devices = [self._strategy.extended.worker_devices[replica_id]]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
-        device_ordinal = (
-            tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-        with ops.device(device_util.get_host_for_device(tpu_device)):
-          enqueue_op = self._generate_enqueue_op(
-              replica_inputs, replica_weights, flat_features,
-              device_ordinal=device_ordinal, mode_override=mode_override)
+        for core_id in range(self._num_cores_per_replica or 1):
+          tpu_device = tpu_devices[core_id]
+          device_ordinal = (
+              tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-          # Apply the name tag to the op.
-          if name is not None:
-            _add_key_attr(enqueue_op, name)
-          enqueue_ops.append(enqueue_op)
+          with ops.device(device_util.get_host_for_device(tpu_device)):
+            enqueue_op = self._generate_enqueue_op(
+                _maybe_split(replica_inputs, core_id),
+                _maybe_split(replica_weights, core_id),
+                flat_features,
+                device_ordinal=device_ordinal, mode_override=mode_override)
+
+            # Apply the name tag to the op.
+            if name is not None:
+              _add_key_attr(enqueue_op, name)
+            enqueue_ops.append(enqueue_op)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1319,8 +1377,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-  def _get_input_shapes(self, tensors,
-                        in_tpu_context: bool) -> List[TensorShape]:
+  def _get_input_shapes(
+      self, tensors, per_replica: bool, in_tpu_context: bool
+  ) -> List[TensorShape]:
     """Get the input shapes from the input tensor."""
     input_shapes = []
     for (path, maybe_tensor), feature in zip(
@@ -1331,18 +1390,27 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         tensor = maybe_tensor
 
-      if isinstance(tensor, ops.Tensor):
+      if isinstance(tensor, tensor_lib.Tensor):
         input_shapes.append(
-            self._get_input_shape_for_tensor(tensor, feature, path))
+            self._get_input_shape_for_tensor(tensor, feature, per_replica, path)
+        )
       elif isinstance(tensor, sparse_tensor.SparseTensor):
         input_shapes.append(
-            self._get_input_shape_for_sparse_tensor(tensor, feature, path))
+            self._get_input_shape_for_sparse_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
       elif isinstance(tensor, ragged_tensor.RaggedTensor):
         input_shapes.append(
-            self._get_input_shape_for_ragged_tensor(tensor, feature, path))
+            self._get_input_shape_for_ragged_tensor(
+                tensor, feature, per_replica, path
+            )
+        )
     return input_shapes
 
-  def _get_input_shape_for_tensor(self, tensor, feature, path) -> TensorShape:
+  def _get_input_shape_for_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the dense tensor."""
     shape = tensor.shape.as_list()
     if len(shape) < 1:
@@ -1354,10 +1422,15 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Rank 2 or above dense tensor should have last dimension as 1 "
           "as the last dimension will always be reduced. "
           "Instead got dense tensor as shape {}".format(shape))
+
+    if self._num_cores_per_replica and per_replica:
+      shape[0] = shape[0] // self._num_cores_per_replica
+
     return TensorShape(shape)
 
-  def _get_input_shape_for_sparse_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_sparse_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the sparse tensor."""
     shape = tensor.shape.as_list()
     # Only 2 and above rank sparse tensor is supported.
@@ -1374,11 +1447,16 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # we need to add one dimension to the input feature.
         shape.insert(len(shape) - 1, feature.max_sequence_length)
 
+    if self._num_cores_per_replica and per_replica and shape[0]:
+      shape[0] = shape[0] // self._num_cores_per_replica
+
     return TensorShape(shape)
 
-  def _get_input_shape_for_ragged_tensor(self, tensor, feature,
-                                         path) -> TensorShape:
+  def _get_input_shape_for_ragged_tensor(
+      self, tensor, feature, per_replica, path
+  ) -> TensorShape:
     """Get the input shape for the ragged tensor."""
+    del per_replica  # unused.
     shape = tensor.shape.as_list()
     # Only rank 2 ragged tensor is supported.
     if len(shape) != 2:

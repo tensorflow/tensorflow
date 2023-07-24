@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -88,7 +89,7 @@ InitOnStartupMarker SPMDExpanderRegistry::RegisterPropagateFn(
 
 Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
                                               mlir::Operation** output) {
-  TF_ASSIGN_OR_RETURN(std::vector<absl::optional<Layout>> computed_layout,
+  TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> computed_layout,
                       ExtractLayoutFromOp(op));
 
   if (computed_layout.empty() && op->getNumResults() != 0) {
@@ -134,7 +135,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   TF_ASSIGN_OR_RETURN(*output, this->ExpandOp(op));
 
   // TODO(hthu): Use ToString() instead.
-  SetLayoutOnOp(*output, absl::Span<absl::optional<Layout>>(
+  SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
                              computed_layout.data(), computed_layout.size()));
 
   // Verify the local shape of the expanded operation matches the shape expected
@@ -187,6 +188,17 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
     const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.IsSingleDevice()) {
+    TF_ASSIGN_OR_RETURN(
+        Layout layout,
+        Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh));
+    auto layouts = llvm::DenseMap<int, Layout>{};
+    for (int i = 0; i < op->getNumResults(); ++i) {
+      layouts.insert({i, layout});
+    }
+    return layouts;
+  }
   return ComputeLayoutForward(op, input_layouts);
 }
 
@@ -199,6 +211,17 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
     const llvm::DenseMap<int, Layout>& output_layouts) {
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.IsSingleDevice()) {
+    TF_ASSIGN_OR_RETURN(
+        Layout layout,
+        Layout::GetLayout(Layout::LayoutType::kSingleDevice, {}, mesh));
+    auto layouts = llvm::DenseMap<int, Layout>{};
+    for (int i = 0; i < op->getNumOperands(); ++i) {
+      layouts.insert({i, layout});
+    }
+    return layouts;
+  }
   return ComputeLayoutBackward(op, output_layouts);
 }
 

@@ -79,10 +79,35 @@ TfLiteStatus SignatureRunner::Invoke() {
   TF_LITE_ENSURE_STATUS(subgraph_->Invoke());
 
   // Makes sure output tensors are readable.
-  for (int tensor_index : subgraph_->outputs()) {
-    TF_LITE_ENSURE_STATUS(subgraph_->EnsureTensorDataIsReadable(tensor_index));
+  if (!allow_buffer_handle_output_) {
+    for (int tensor_index : subgraph_->outputs()) {
+      TF_LITE_ENSURE_STATUS(
+          subgraph_->EnsureTensorDataIsReadable(tensor_index));
+    }
   }
   return kTfLiteOk;
+}
+
+TfLiteStatus SignatureRunner::SetCustomAllocationForInputTensor(
+    const char* input_name, const TfLiteCustomAllocation& allocation,
+    int64_t flags) {
+  const auto& it = signature_def_->inputs.find(input_name);
+  if (it == signature_def_->inputs.end()) {
+    subgraph_->ReportError("Input name %s was not found", input_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetCustomAllocationForTensor(it->second, allocation, flags);
+}
+
+TfLiteStatus SignatureRunner::SetCustomAllocationForOutputTensor(
+    const char* output_name, const TfLiteCustomAllocation& allocation,
+    int64_t flags) {
+  const auto& it = signature_def_->outputs.find(output_name);
+  if (it == signature_def_->outputs.end()) {
+    subgraph_->ReportError("Output name %s was not found", output_name);
+    return kTfLiteError;
+  }
+  return subgraph_->SetCustomAllocationForTensor(it->second, allocation, flags);
 }
 
 }  // namespace tflite

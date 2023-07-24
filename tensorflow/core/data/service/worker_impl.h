@@ -113,7 +113,7 @@ class DataServiceWorkerImpl {
     // This is required to use it as a `flat_hash_map` key.
     template <typename H>
     friend H AbslHashValue(H h, const SnapshotTask& task) {
-      return H::combine(std::move(h), task.base_path, task.base_path);
+      return H::combine(std::move(h), task.base_path, task.stream_index);
     }
 
     friend bool operator==(const SnapshotTask& task1,
@@ -143,6 +143,11 @@ class DataServiceWorkerImpl {
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat();
+  // Returns the active tasks of this worker.
+  std::vector<ActiveTask> GetActiveTasks() const TF_LOCKS_EXCLUDED(mu_);
+  // Returns the task IDs of `active_tasks`.
+  std::vector<int64_t> GetTaskIds(
+      const std::vector<ActiveTask>& active_tasks) const;
   // Builds a heartbeat request.
   WorkerHeartbeatRequest BuildWorkerHeartbeatRequest() const
       TF_LOCKS_EXCLUDED(mu_);

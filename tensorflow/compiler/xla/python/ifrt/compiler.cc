@@ -18,8 +18,9 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char Program::ID = 0;
 char CompileOptions::ID = 0;
-char DeserializeOptions::ID = 0;
+char DeserializeExecutableOptions::ID = 0;
 char Compiler::ID = 0;
 
 }  // namespace ifrt

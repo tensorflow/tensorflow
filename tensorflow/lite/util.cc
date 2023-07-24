@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
@@ -46,16 +47,11 @@ bool IsFlexOp(const char* custom_name) {
 }
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
-  return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
-                                      input.data());
+  return BuildTfLiteArray(input).release();
 }
 
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
-  for (size_t i = 0; i < ndims; i++) {
-    output->data[i] = dims[i];
-  }
-  return output;
+  return BuildTfLiteArray(ndims, dims).release();
 }
 
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
@@ -221,17 +217,15 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   return kTfLiteOk;
 }
 
-IntArrayUniquePtr BuildTfLiteIntArray(const std::vector<int>& data) {
-  return IntArrayUniquePtr(ConvertVectorToTfLiteIntArray(data));
-}
-
 TensorUniquePtr BuildTfLiteTensor() {
-  return TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
+  auto tensor = TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
+  tensor->buffer_handle = kTfLiteNullBufferHandle;
+  return tensor;
 }
 
 TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,
                                   TfLiteAllocationType allocation_type) {
-  return BuildTfLiteTensor(type, BuildTfLiteIntArray(dims), allocation_type);
+  return BuildTfLiteTensor(type, BuildTfLiteArray(dims), allocation_type);
 }
 
 // Allocates an appropriate sized buffer underneath returned tensor

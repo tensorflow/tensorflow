@@ -57,7 +57,6 @@ typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
 typedef struct SE_Stream SE_Stream;
 typedef struct SE_Event SE_Event;
-typedef struct SE_Timer SE_Timer;
 
 typedef struct TpuSerializedProto {
   const char* bytes;
@@ -352,6 +351,14 @@ typedef void (*XLA_StatusCallbackFn)(void*, TF_Status*);
 typedef struct SE_TpuTopology SE_TpuTopology;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
+
+typedef void (*SE_TpuHostCommandHandler_Function)(
+    void* context, uint32_t command, int64_t program_stack_byte_offset);
+
+typedef struct SE_TpuHostCommandHandler {
+  SE_TpuHostCommandHandler_Function handler_func;
+  void* context;
+} SE_TpuHostCommandHandler;
 
 #ifdef __cplusplus
 }

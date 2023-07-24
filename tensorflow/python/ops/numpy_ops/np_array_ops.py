@@ -20,11 +20,13 @@ import enum
 import functools
 import math
 import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -149,7 +151,7 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   """Main implementation of np.array()."""
   result_t = val
 
-  if not isinstance(result_t, ops.Tensor):
+  if not isinstance(result_t, tensor_lib.Tensor):
     dtype = np_utils.result_type_unary(result_t, dtype)
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
@@ -522,16 +524,25 @@ def _reduce(tf_fn,
           width = np.iinfo(dtype).bits
         # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
         # should have the same bit width.
-        if width < np.iinfo(np.int_).bits:
-          if is_signed:
-            dtype = np.int_
-          else:
-            dtype = np.uint
-          a = math_ops.cast(a, dtype)
+        if ops.is_auto_dtype_conversion_enabled():
+          # We default to 32 bits when using auto dtype conversion semantics.
+          if width < np.iinfo(np.int32).bits:
+            if is_signed:
+              dtype = np.int32
+            else:
+              dtype = np.uint32
+        else:
+          if width < np.iinfo(np.int_).bits:
+            if is_signed:
+              dtype = np.int_
+            else:
+              dtype = np.uint
+        a = math_ops.cast(a, dtype)
       elif promote_int == _TO_FLOAT:
-        a = math_ops.cast(a, np_dtypes.default_float_type())
+        # Use a default float type.
+        a = math_ops.cast(a, np_utils.result_type(float))
 
-  if isinstance(axis, ops.Tensor) and axis.dtype not in (
+  if isinstance(axis, tensor_lib.Tensor) and axis.dtype not in (
       dtypes.int32, dtypes.int64):
     axis = math_ops.cast(axis, dtypes.int64)
 
@@ -731,7 +742,7 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   else:
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
-    float_dtype = np_dtypes.default_float_type()
+    float_dtype = np_utils.result_type(float)
     a = a.astype(float_dtype)
     factor = math_ops.cast(factor, float_dtype)
   a = math_ops.multiply(a, factor)
@@ -1062,7 +1073,7 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('stack')
 def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+  if isinstance(arrays, (np_arrays.ndarray, tensor_lib.Tensor)):
     arrays = asarray(arrays)
     if axis == 0:
       return arrays
@@ -1204,7 +1215,8 @@ def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-doc
   if dtype is not None:
     dtype = np_utils.result_type(dtype)
   else:
-    dtype = np_dtypes.default_float_type()
+    # Use a default float type.
+    dtype = np_utils.result_type(float)
 
   if k < 0:
     lower = -k - 1
@@ -1436,8 +1448,8 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
-  arr_shape_original = array_ops.shape(arr)
-  indices_shape_original = array_ops.shape(indices)
+  arr_shape_original = array_ops.shape(arr, out_type=indices.dtype)
+  indices_shape_original = array_ops.shape(indices, out_type=indices.dtype)
   arr_shape = array_ops.tensor_scatter_update(arr_shape_original, [[axis]], [1])
   indices_shape = array_ops.tensor_scatter_update(indices_shape_original,
                                                   [[axis]], [1])
@@ -1837,10 +1849,17 @@ def _as_spec_tuple(slice_spec):
 
 def _getitem(self, slice_spec):
   """Implementation of ndarray.__getitem__."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     return array_ops.boolean_mask(tensor=self, mask=slice_spec)
 
   if not isinstance(slice_spec, tuple):
@@ -1852,10 +1871,17 @@ def _getitem(self, slice_spec):
 
 def _with_index_update_helper(update_method, a, slice_spec, updates):
   """Implementation of ndarray._with_index_*."""
-  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
-                                       slice_spec.dtype == dtypes.bool) or
-      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool_)):
+  if (
+      isinstance(slice_spec, bool)
+      or (
+          isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool
+      )
+      or (
+          isinstance(slice_spec, (np.ndarray, np_arrays.ndarray))
+          and slice_spec.dtype == np.bool_
+      )
+  ):
     slice_spec = nonzero(slice_spec)
 
   if not isinstance(slice_spec, tuple):
