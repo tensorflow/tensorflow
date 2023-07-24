@@ -1,10 +1,35 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -293,6 +293,24 @@
- )
- 
- cc_library(
+@@ -227,20 +227,6 @@
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/integrations/python/mlir/dialects/ChloOps.td",
+     deps = [
+-        ":chlo_ops_py_td_files",
+-    ],
+-)
+-
+-td_library(
+-    name = "chlo_ops_py_td_files",
+-    srcs = [
+-        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+-    ],
+-    includes = [
+-        ".",
+-        "include",
+-    ],
+-    deps = [
+         ":chlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+     ],
+@@ -289,6 +275,24 @@
+         "@llvm-project//mlir:InferTypeOpInterface",
+         "@llvm-project//mlir:QuantOps",
+         "@llvm-project//mlir:TransformUtils",
++    ],
++)
++
++cc_library(
 +    name = "experimental_ops",
 +    srcs = [
 +        "stablehlo/dialect/ExperimentalOps.cpp",
@@ -19,14 +44,28 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 +        "@llvm-project//mlir:FuncDialect",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Support",
-+    ],
-+)
-+
-+cc_library(
-     name = "reference_axes",
-     srcs = [
-         "stablehlo/reference/Axes.cpp",
-@@ -702,6 +720,7 @@
+     ],
+ )
+ 
+@@ -635,17 +639,6 @@
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/integrations/python/mlir/dialects/StablehloOps.td",
+     deps = [
+-        ":stablehlo_ops_py_td_files",
+-    ],
+-)
+-
+-td_library(
+-    name = "stablehlo_ops_py_td_files",
+-    srcs = [
+-        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+-    ],
+-    includes = ["."],
+-    deps = [
+         ":stablehlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+     ],
+@@ -702,6 +695,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -34,6 +73,27 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
+@@ -1014,20 +1008,6 @@
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/integrations/python/mlir/dialects/VhloOps.td",
+     deps = [
+-        ":vhlo_ops_py_td_files",
+-    ],
+-)
+-
+-td_library(
+-    name = "vhlo_ops_py_td_files",
+-    srcs = [
+-        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
+-    ],
+-    includes = [
+-        ".",
+-        "include",
+-    ],
+-    deps = [
+         ":vhlo_ops_td_files",
+         "@llvm-project//mlir:OpBaseTdFiles",
+     ],
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
