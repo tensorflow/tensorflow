@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_reuse_cache.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 
@@ -388,15 +389,93 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
   }
 
   // NVPTX supports atomicMax and atomicMin only on integer types.
-  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
-    // max(integral, integral)
-    auto opcode = primitive_util::IsSignedIntegralType(element_type)
-                      ? llvm::AtomicRMWInst::Max
-                      : llvm::AtomicRMWInst::UMax;
-    builder->CreateAtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
-                             llvm::AtomicOrdering::SequentiallyConsistent,
-                             sync_scope);
-    return true;
+  // For float, we can convert to int and use atomicMax. This approach works
+  // correctly only when both operands are not -NANs. Currently, we care about
+  // this optimization for Scatter use cases.
+  if (root_opcode == HloOpcode::kMaximum) {
+    if (is_atomic_integral) {
+      // max(integral, integral)
+      auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                        ? llvm::AtomicRMWInst::Max
+                        : llvm::AtomicRMWInst::UMax;
+      builder->CreateAtomicRMW(
+          opcode, output_address, source, llvm::MaybeAlign(),
+          llvm::AtomicOrdering::SequentiallyConsistent, sync_scope);
+      return true;
+    } else if (element_type == F32) {
+      // max(float, float) via AtomicMax and AtomicMin on int
+      // We use AtomicMax when the update value is positive.
+      // We use AtomicMin when the value is negative to produce correct results.
+      // The snippet below expresses the emitted code
+      // if (!signbit(val)) {
+      //   atomicMax((int*)address, __float_as_int(val));
+      // } else {
+      //   atomicMin((unsigned int*)address, __float_as_uint(val));
+      // }
+
+      KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
+
+      llvm::PointerType* output_address_type =
+          llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+      llvm::Type* atomic_address_type = builder->getFloatTy()->getPointerTo(
+          output_address_type->getPointerAddressSpace());
+      llvm::Value* atomic_memory_address =
+          builder->CreatePointerBitCastOrAddrSpaceCast(output_address,
+                                                       atomic_address_type);
+      llvm::Value* old_output = builder->CreateLoad(
+          builder->getFloatTy(), atomic_memory_address, "old_output");
+      auto is_nan_output = builder->CreateFCmpUNO(old_output, old_output);
+      ksl.If(
+          "is_nan_output", is_nan_output,
+          [&]() {
+            // Do nothing
+          },
+          [&]() {
+            // Evaluating floating max using integer atomics has the limitation
+            // of not propagating -NaNs. To handle this, we check if the update
+            // value is -NaN and convert it to a positive one by dropping the
+            // sign-bit.
+            auto is_nan_source = builder->CreateFCmpUNO(source, source);
+            llvm::Value* no_negative_nan_source = builder->CreateSelect(
+                is_nan_source, llvm::ConstantFP::getNaN(source->getType()),
+                source);
+
+            llvm::Value* old_less_than =
+                builder->CreateFCmpULT(old_output, no_negative_nan_source);
+
+            // This check allows us to skip the atomic update all-together at
+            // the expense of reading the value in memory for every update.
+            // Evaluated against Waymo's benchmarks, adding the check achieves
+            // better overall performance.
+            ksl.If("need_update", old_less_than, [&]() {
+              llvm::Value* is_not_negative = builder->CreateFCmpUGE(
+                  no_negative_nan_source,
+                  llvm::ConstantFP::get(no_negative_nan_source->getType(), 0));
+              llvm::Value* source_float_as_int = builder->CreateBitCast(
+                  no_negative_nan_source, builder->getInt32Ty());
+              ksl.If(
+                  "not_negative", is_not_negative,
+                  [&]() {
+                    // atomicMax((int *)address, __float_as_int(val))
+                    builder->CreateAtomicRMW(
+                        llvm::AtomicRMWInst::Max, output_address,
+                        source_float_as_int, llvm::MaybeAlign(),
+                        llvm::AtomicOrdering::SequentiallyConsistent,
+                        sync_scope);
+                  },
+                  [&]() {
+                    // atomicMin((unsigned int *)address, __float_as_uint(val))
+                    builder->CreateAtomicRMW(
+                        llvm::AtomicRMWInst::UMin, output_address,
+                        source_float_as_int, llvm::MaybeAlign(),
+                        llvm::AtomicOrdering::SequentiallyConsistent,
+                        sync_scope);
+                  });
+            });
+          });
+      return true;
+    }
+    return false;
   }
 
   if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
