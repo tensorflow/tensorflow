@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,11 +24,13 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 
 namespace xla {
 namespace gpu {
@@ -45,6 +49,8 @@ class StreamAssignmentPass
     : public impl::StreamAssignmentPassBase<StreamAssignmentPass> {
   void runOnOperation() override;
 };
+
+static constexpr int kNumStreams = 10;
 
 //===----------------------------------------------------------------------===//
 
@@ -125,7 +131,76 @@ std::vector<size_t> AssignStreams(const DataflowGraph& graph, int num_streams) {
     assign_stream_to_dependency_chain(unassigned_node, assigned_stream);
   }
 
+  // next: Assign all non parallelizable ops to stream 0.
+
   return stream_assignment;
+}
+
+std::optional<int> GetAssignedStream(Operation* op) {
+  if (op->hasAttr("stream")) {
+    return op->getAttrOfType<mlir::IntegerAttr>("stream").getInt();
+  }
+  return std::nullopt;
+}
+
+//
+// Add synchronizations between assigned streams. The added custom call
+// xla.streams.await() {from = A, to = [B, C, ...]} makes future work submitted
+// to A wait for work that are already submitted to streams B, C, ...
+//
+// Pseudo code:
+// For each node in the dependency graph
+//   If the node has a stream A assigned
+//     parents = A's parents
+//     to_streams = the assigned streams of its parents
+//     add xla.streams.await() {from = A, to = to_streams} before node
+//
+// TODO(anlunx): Handle the case where the cuda graph contains non
+// parallelizable ops (cuBLAS, cuDNN).
+//
+void AddSynchronization(runtime::CustomCallDeclarations custom_calls,
+                        const DataflowGraph& graph) {
+  for (const Node& node : graph) {
+    Operation* op = node.operation;
+    std::optional<int> op_stream = GetAssignedStream(op);
+    if (!op_stream.has_value()) {
+      continue;
+    }
+    int from_stream = op_stream.value();
+
+    std::array<bool, kNumStreams> dependent_streams;
+    dependent_streams.fill(false);
+    for (int i = 0; i < node.index; i++) {
+      if (std::find(graph[i].children.begin(), graph[i].children.end(),
+                    node.index) != graph[i].children.end()) {
+        if (std::optional<int> to_stream =
+                GetAssignedStream(graph[i].operation)) {
+          if (to_stream.value() != from_stream) {
+            dependent_streams[to_stream.value()] = true;
+          }
+        }
+      }
+    }
+
+    ImplicitLocOpBuilder b(op->getLoc(), custom_calls.sym_table().getOp());
+    llvm::SmallVector<Attribute> to_streams;
+    for (int i = 0; i < kNumStreams; i++) {
+      if (dependent_streams[i]) {
+        to_streams.push_back(b.getI64IntegerAttr(i));
+      }
+    }
+
+    if (to_streams.empty()) {
+      continue;
+    }
+
+    func::FuncOp await_op = custom_calls.GetOrCreate(b, "xla.streams.await",
+                                                     TypeRange(), TypeRange());
+    b.setInsertionPoint(op);
+    auto call = b.create<func::CallOp>(await_op.getName(), TypeRange());
+    call->setAttr(b.getStringAttr("from"), b.getI64IntegerAttr(from_stream));
+    call->setAttr(b.getStringAttr("to"), b.getArrayAttr(to_streams));
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -139,19 +214,22 @@ void StreamAssignmentPass::runOnOperation() {
   }
 
   SymbolTable sym_table(func_op->getParentOfType<mlir::ModuleOp>());
-  ImplicitLocOpBuilder b(func_op->getLoc(), sym_table.getOp());
 
   DataflowAnalysis dataflow_analysis(func_op);
   DataflowGraph graph = dataflow_analysis.GetDataflowGraph(func_op);
-  std::vector<size_t> stream_assignment = AssignStreams(graph, 10);
+  std::vector<size_t> stream_assignment = AssignStreams(graph, kNumStreams);
 
   for (auto [index, stream] : llvm::enumerate(stream_assignment)) {
     Node node = graph[index];
     Operation* op = node.operation;
+    ImplicitLocOpBuilder b(op->getLoc(), sym_table.getOp());
     if (stream != -1) {
       op->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(stream));
     }
   }
+
+  runtime::CustomCallDeclarations custom_calls(std::move(sym_table));
+  AddSynchronization(custom_calls, graph);
 }
 
 }  // namespace

@@ -287,8 +287,8 @@ def StreamAssignmentPass:
       call @xla.gpu.launch.func3 {stream = 2 : i64}
 
       // Add explicit synchronization to wait for stream 1 to finish executing
-      // func2. 
-      xla.stream.await {from = 0, to = 1}
+      // func2.
+      call @xla.stream.await {from = 0 : i64, to = [1]}
       call @xla.gpu.launch.func {stream = 0: i64}
       func.return
     }
