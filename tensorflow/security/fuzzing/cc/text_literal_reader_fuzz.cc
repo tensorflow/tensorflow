@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/text_literal_reader.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -43,5 +44,13 @@ void FuzzFileRead(std::string data) {
 }
 FUZZ_TEST(TextReaderFuzzer, FuzzFileRead);
 
+void FuzzHLOParseUnverified(std::string data) {
+  auto result = xla::ParseAndReturnUnverifiedModule(data);
+  if (OkStatus() == result.status()) {
+    return;
+  }
+  return;
+}
+FUZZ_TEST(TextReaderFuzzer, FuzzHLOParseUnverified);
 }  // namespace
 }  // namespace xla
