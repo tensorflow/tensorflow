@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
@@ -410,10 +412,11 @@ tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
     tensorflow::profiler::ProfiledInstructionsProto& profile,
     const std::string& fingerprint) {
   tensorflow::profiler::ProfiledInstructionsProto result;
+  bool merge_remat_clones = false;
   for (const auto& cost : profile.costs()) {
-    std::string cost_name = cost.name();
-    std::string new_cost_name = cost_name;
-    std::string cost_sep = "::";
+    absl::string_view cost_name = cost.name();
+    std::string new_cost_name = cost.name();
+    absl::string_view cost_sep = "::";
     if (absl::StrContains(cost_name, cost_sep)) {
       std::vector<std::string> split_names =
           absl::StrSplit(cost_name, cost_sep);
@@ -423,12 +426,54 @@ tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
       new_cost_name = split_names[1];
     }
 
+    // Check if we see instructions that have ".rematX" suffix. These are clones
+    // of original instructions created by HLO rematerialization pass. We will
+    // average the costs of the remat clones and the original instruction and
+    // use that as the new cost of the original one.
+    merge_remat_clones |= absl::StrContains(new_cost_name, ".remat");
     auto* new_cost = result.add_costs();
     new_cost->set_cost_us(cost.cost_us());
     new_cost->set_name(new_cost_name);
   }
 
-  return result;
+  if (!merge_remat_clones) {
+    return result;
+  }
+
+  auto strip_remat_suffix = [](absl::string_view name) -> absl::string_view {
+    absl::string_view suffix = ".remat";
+    size_t index = name.rfind(suffix);
+    if (index == std::string::npos) {
+      return name;
+    }
+    auto after_suffix = name.substr(index + suffix.size());
+    // Everything after ".remat" should be a digit or empty. If yes, strip the
+    // .rematN suffix.
+    int64_t numeric_suffix;
+    if (after_suffix.empty() ||
+        absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
+      return name.substr(0, index);
+    }
+    return name;
+  };
+
+  // Map from stripped name -> pair<accumulated cost, count>
+  absl::flat_hash_map<absl::string_view, std::pair<double, int64_t>> costs;
+  for (const auto& cost : result.costs()) {
+    std::pair<double, int64_t>& data = costs[strip_remat_suffix(cost.name())];
+    data.first += cost.cost_us();
+    data.second++;
+  }
+
+  tensorflow::profiler::ProfiledInstructionsProto merged_result;
+  for (const auto& cost : costs) {
+    auto* new_cost = merged_result.add_costs();
+    double average = cost.second.first / cost.second.second;
+    new_cost->set_cost_us(average);
+    new_cost->set_name(std::string(cost.first));
+  }
+
+  return merged_result;
 }
 
 std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
