@@ -584,14 +584,8 @@ StatusOr<bool> InstructionFusion::Run(
           should_fuse = ShouldFuse(instruction, i);
           if (should_fuse && consume_fuel()) {
             if (dump_fusion) {
-              RegisterFusionState(
-                  *computation,
-                  absl::StrCat("About to fuse |", operand->name(), "| into |",
-                               instruction->name(),
-                               "| inside InstructionFusion with may_duplicate=",
-                               may_duplicate_),
-                  /*consumer=*/*instruction,
-                  /*producer=*/operand);
+              DumpPreFusionState(computation, /*consumer=*/instruction,
+                                 /*producer=*/operand);
             }
 
             fusion_queue->PreFusion(operand, instruction);
@@ -611,14 +605,8 @@ StatusOr<bool> InstructionFusion::Run(
           if (can_fuse_mof) {
             if (consume_fuel()) {
               if (dump_fusion) {
-                RegisterFusionState(
-                    *computation,
-                    absl::StrCat(
-                        "About to MOF-fuse |", operand->name(), "| into |",
-                        instruction->name(),
-                        "| inside InstructionFusion with may_duplicate=",
-                        may_duplicate_),
-                    /*consumer=*/*instruction, /*producer=*/operand);
+                DumpPreFusionState(computation, /*consumer=*/instruction,
+                                   /*producer=*/operand, /*is_mof=*/true);
               }
 
               fusion_queue->PreFusion(operand, instruction);
@@ -636,17 +624,9 @@ StatusOr<bool> InstructionFusion::Run(
                     << instruction->ToShortString() << "| as "
                     << should_fuse.Explain();
 
-            // Readability optimizations: lack of fusion for tuple accesses
-            // generates a lot of noise.
-            if (operand->opcode() != HloOpcode::kGetTupleElement &&
-                instruction->opcode() != HloOpcode::kGetTupleElement) {
-              RegisterFusionState(*computation,
-                                  absl::StrCat("Not fusing |", operand->name(),
-                                               "| into |", instruction->name(),
-                                               "| as ", should_fuse.Explain()),
-                                  /*consumer=*/*instruction,
-                                  /*producer=*/operand);
-            }
+            DumpNotFusingState(computation,
+                               /*consumer=*/instruction,
+                               /*producer=*/operand, /*decision=*/should_fuse);
           }
 
           fusion_queue->NotFusingInstruction(operand, instruction);
@@ -669,13 +649,7 @@ StatusOr<bool> InstructionFusion::Run(
         }
 
         if (dump_fusion) {
-          RegisterFusionState(
-              *computation,
-              absl::StrCat("Fused |", producer_name, "| into |",
-                           fusion_instruction->name(),
-                           "| inside InstructionFusion with may_duplicate=",
-                           may_duplicate_),
-              *fusion_instruction);
+          DumpStateAfterFusion(computation, fusion_instruction, producer_name);
         }
 
         if (fusion_instruction != instruction) {
@@ -1078,6 +1052,48 @@ bool InstructionFusion::ReusesOperandElements(const HloInstruction* consumer,
                                               int64_t operand_index) {
   auto operand = consumer->operand(operand_index);
   return ReusedOperandsOf(consumer).contains(operand);
+}
+
+void InstructionFusion::DumpPreFusionState(HloComputation* computation,
+                                           HloInstruction* consumer,
+                                           HloInstruction* producer,
+                                           bool is_mof) {
+  RegisterFusionState(
+      *computation,
+      absl::StrCat(
+          "About to ", is_mof ? "MOF-fuse" : "fuse", " |", producer->name(),
+          "| into |", consumer->name(),
+          "| inside InstructionFusion with may_duplicate=", may_duplicate_),
+      *consumer, producer);
+}
+
+void InstructionFusion::DumpNotFusingState(HloComputation* computation,
+                                           HloInstruction* consumer,
+                                           HloInstruction* producer,
+                                           FusionDecision decision) {
+  // Readability optimizations: lack of fusion for tuple accesses
+  // generates a lot of noise.
+  if (producer->opcode() == HloOpcode::kGetTupleElement ||
+      consumer->opcode() == HloOpcode::kGetTupleElement) {
+    return;
+  }
+
+  RegisterFusionState(
+      *computation,
+      absl::StrCat("Not fusing |", producer->name(), "| into |",
+                   consumer->name(), "| as ", decision.Explain()),
+      *consumer, producer);
+}
+
+void InstructionFusion::DumpStateAfterFusion(HloComputation* computation,
+                                             HloInstruction* fusion_instruction,
+                                             const std::string& producer_name) {
+  RegisterFusionState(
+      *computation,
+      absl::StrCat(
+          "Fused |", producer_name, "| into |", fusion_instruction->name(),
+          "| inside InstructionFusion with may_duplicate=", may_duplicate_),
+      *fusion_instruction);
 }
 
 }  // namespace xla
