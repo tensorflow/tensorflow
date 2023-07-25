@@ -563,11 +563,9 @@ static absl::Status LaunchGraph(
 
   // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
   // back on regular execution if we detect tracing activity.
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 12000
-  bool is_profiling = false;
-#else
+  // HLO ops profiling can't capture individual kernels when cuda graphs are
+  // enabled, so we want to make sure they are disabled when profiling.
   bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
-#endif
 
   if (count < num_runs_to_instantiate || is_profiling) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
