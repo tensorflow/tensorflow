@@ -1,35 +1,10 @@
 diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 --- stablehlo/BUILD.bazel
 +++ stablehlo/BUILD.bazel
-@@ -227,20 +227,6 @@
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/integrations/python/mlir/dialects/ChloOps.td",
-     deps = [
--        ":chlo_ops_py_td_files",
--    ],
--)
--
--td_library(
--    name = "chlo_ops_py_td_files",
--    srcs = [
--        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
--    ],
--    includes = [
--        ".",
--        "include",
--    ],
--    deps = [
-         ":chlo_ops_td_files",
-         "@llvm-project//mlir:OpBaseTdFiles",
-     ],
-@@ -289,6 +275,24 @@
-         "@llvm-project//mlir:InferTypeOpInterface",
-         "@llvm-project//mlir:QuantOps",
-         "@llvm-project//mlir:TransformUtils",
-+    ],
-+)
-+
-+cc_library(
+@@ -279,6 +279,24 @@
+ )
+ 
+ cc_library(
 +    name = "experimental_ops",
 +    srcs = [
 +        "stablehlo/dialect/ExperimentalOps.cpp",
@@ -44,28 +19,14 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 +        "@llvm-project//mlir:FuncDialect",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Support",
-     ],
- )
- 
-@@ -635,17 +639,6 @@
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/integrations/python/mlir/dialects/StablehloOps.td",
-     deps = [
--        ":stablehlo_ops_py_td_files",
--    ],
--)
--
--td_library(
--    name = "stablehlo_ops_py_td_files",
--    srcs = [
--        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
--    ],
--    includes = ["."],
--    deps = [
-         ":stablehlo_ops_td_files",
-         "@llvm-project//mlir:OpBaseTdFiles",
-     ],
-@@ -702,6 +695,7 @@
++    ],
++)
++
++cc_library(
+     name = "reference_axes",
+     srcs = [
+         "stablehlo/reference/Axes.cpp",
+@@ -677,6 +695,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -73,27 +34,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -1014,20 +1008,6 @@
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/integrations/python/mlir/dialects/VhloOps.td",
-     deps = [
--        ":vhlo_ops_py_td_files",
--    ],
--)
--
--td_library(
--    name = "vhlo_ops_py_td_files",
--    srcs = [
--        "@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td",
--    ],
--    includes = [
--        ".",
--        "include",
--    ],
--    deps = [
-         ":vhlo_ops_td_files",
-         "@llvm-project//mlir:OpBaseTdFiles",
-     ],
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -879,28 +819,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
---- stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
-+++ stablehlo/stablehlo/integrations/python/mlir/dialects/ChloOps.td
-@@ -17,7 +17,6 @@
- #ifndef STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
- #define STABLEHLO_INTEGRATIONS_PYTHON_CHLO_OPS
- 
--include "mlir/Bindings/Python/Attributes.td"
- include "stablehlo/dialect/ChloOps.td"
- 
- #endif
-diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td b/stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
---- stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
-+++ stablehlo/stablehlo/integrations/python/mlir/dialects/StablehloOps.td
-@@ -17,7 +17,6 @@
- #ifndef STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
- #define STABLEHLO_INTEGRATIONS_PYTHON_STABLEHLO_OPS
- 
--include "mlir/Bindings/Python/Attributes.td"
- include "stablehlo/dialect/StablehloOps.td"
- 
- #endif
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
