@@ -233,7 +233,6 @@ void AsyncWhileOp::OnPredicateReady(
               std::move(final_promise).SetError(status);
             }
           });
-          execution_context.Fail(status);
           return;
         }
 
