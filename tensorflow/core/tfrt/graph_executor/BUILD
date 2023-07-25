@@ -180,6 +180,15 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "config_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":config_proto"],
+# )
+# copybara:uncomment_end
+
 tf_proto_library(
     name = "test_config_proto",
     testonly = True,
