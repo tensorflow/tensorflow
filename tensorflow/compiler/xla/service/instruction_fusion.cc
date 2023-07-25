@@ -515,13 +515,7 @@ StatusOr<bool> InstructionFusion::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t fuse_count = 0;
-  std::vector<std::vector<bool>>* fusion_config = nullptr;
-  HloModuleConfig module_config;
-  if (config_collection_mode_ != FusionConfigCollection::kOff) {
-    module_config = module->config();
-    fusion_config = module_config.mutable_fusion_config();
-    fusion_config->clear();
-  }
+  std::vector<std::vector<bool>> fusion_config;
 
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
@@ -695,23 +689,22 @@ StatusOr<bool> InstructionFusion::Run(
       const std::vector<bool>* comp_fusion_config =
           fusion_queue->FusionConfiguration();
       if (comp_fusion_config && !comp_fusion_config->empty()) {
-        fusion_config->push_back(*comp_fusion_config);
+        fusion_config.push_back(*comp_fusion_config);
       }
     }
   }
 
   if (config_collection_mode_ != FusionConfigCollection::kOff) {
-    int64_t fused_count = 0;
-    for (auto& config_per_computation : *fusion_config) {
-      for (auto edge : config_per_computation) {
-        if (edge) {
-          ++fused_count;
-        }
+    if (VLOG_IS_ON(1)) {
+      int64_t fused_count = 0;
+      for (auto& config_per_computation : fusion_config) {
+        fused_count += std::count(config_per_computation.begin(),
+                                  config_per_computation.end(), true);
       }
+      VLOG(1) << "There are " << fused_count << " fused bits that cause "
+              << fuse_count << " fusion actions.";
     }
-    VLOG(1) << "There are " << fused_count << " fused bits that cause "
-            << fuse_count << " fusion actions.";
-    module->set_config(module_config);
+    *module->config().mutable_fusion_config() = std::move(fusion_config);
   }
 
   VLOG(1) << "Fusion count: " << fuse_count;
