@@ -271,6 +271,9 @@ populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
 populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
 populate_tflite_source_vars("delegates" TFLITE_DELEGATES_SRCS)
+populate_tflite_source_vars("core/async/interop/c" TFLITE_CORE_ASYNC_INTEROP_C_SRCS)
+populate_tflite_source_vars("delegates/utils" TFLITE_DELEGATES_UTILS_SRCS)
+populate_tflite_source_vars("async" TFLITE_ASYNC_SRCS)
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
@@ -592,6 +595,9 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
   ${TFLITE_PROFILER_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
+  ${TFLITE_DELEGATES_UTILS_SRCS}
+  ${TFLITE_ASYNC_SRCS}
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
