@@ -2945,7 +2945,8 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
 #define TEMPLATE_ARGS(CPUDevice, input_type, bias_type, output_type, \
                       summand_type, is_depthwise, legacy_fused_ops,  \
                       num_fused_ops)                                 \
-<CPUDevice, input_type, bias_type, output_type, summand_type, is_depthwise, legacy_fused_ops, num_fused_ops>
+<CPUDevice, input_type, bias_type, output_type, summand_type, is_depthwise, \
+    legacy_fused_ops, num_fused_ops>
 #define BIAS_TYPE_CONSTRAINT(bias_type)
 #define SUMMAND_TYPE_CONSTRAINT(summand_type)
 #define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
