@@ -71,18 +71,14 @@ static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   return res;
 }
 
-static OpFoldResult multiplyDims(OpBuilder& builder,
-                                 Location loc,
-                                 OpFoldResult lhs,
-                                 OpFoldResult rhs) {
-  auto val_x = getValueOrCreateConstantIndexOp(builder, loc, lhs);
-  auto val_y = getValueOrCreateConstantIndexOp(builder, loc, rhs);
-  return getAsOpFoldResult(
-    builder.createOrFold<arith::MulIOp>(loc, val_x, val_y));
+static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
+                                 OpFoldResult lhs, OpFoldResult rhs) {
+  auto val_x = getValueOrCreateConstantIndexOp(builder, builder.getLoc(), lhs);
+  auto val_y = getValueOrCreateConstantIndexOp(builder, builder.getLoc(), rhs);
+  return getAsOpFoldResult(builder.createOrFold<arith::MulIOp>(val_x, val_y));
 }
 
-static OpFoldResult multiplyDims(OpBuilder& builder,
-                                 Location loc,
+static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
                                  ArrayRef<OpFoldResult> dims) {
   if (dims.size() == 0) {
     return OpFoldResult{builder.getIndexAttr(1)};
@@ -92,9 +88,9 @@ static OpFoldResult multiplyDims(OpBuilder& builder,
   auto init = dims.front();
   dims = dims.drop_front();
 
-  return std::accumulate(dims.begin(), dims.end(), init, [&](auto lhs, auto rhs) {
-    return multiplyDims(builder, loc, lhs, rhs);
-  });
+  return std::accumulate(
+      dims.begin(), dims.end(), init,
+      [&](auto lhs, auto rhs) { return multiplyDims(builder, lhs, rhs); });
 }
 
 // Try to extract the known integer value for the given OpFoldResult
@@ -108,26 +104,25 @@ static int64_t extractStaticDimension(OpFoldResult value) {
 // shape parameter. Attempts to use tosa.reshape when at most one value is
 // dynamic, otherwise generates a full tensor.reshape operation using a runtime
 // representation of the desired shape.
-static Value buildReshape(PatternRewriter& rewriter,
-                          Location loc, Value value,
+static Value buildReshape(ImplicitLocOpBuilder& builder, Value value,
                           ArrayRef<OpFoldResult> shape) {
   auto staticShape = llvm::map_to_vector(shape, extractStaticDimension);
   auto elementType = getElementTypeOrSelf(value.getType());
 
   if (llvm::count_if(staticShape, ShapedType::isDynamic) > 1) {
-      auto runtimeShape = rewriter.create<tensor::FromElementsOp>(
-          loc, getValueOrCreateConstantIndexOp(rewriter, loc, shape));
+    auto runtimeShape = builder.create<tensor::FromElementsOp>(
+        getValueOrCreateConstantIndexOp(builder, builder.getLoc(), shape));
 
-      return rewriter.create<tensor::ReshapeOp>(
-          loc, tensorflow::GetTypeFromTFTensorShape(staticShape, elementType),
-          value, runtimeShape);
+    return builder.create<tensor::ReshapeOp>(
+        tensorflow::GetTypeFromTFTensorShape(staticShape, elementType), value,
+        runtimeShape);
   }
 
   return CreateOpAndInfer<tosa::ReshapeOp>(
-    rewriter, loc,
-    tensorflow::GetTypeFromTFTensorShape(staticShape, elementType), value,
-    rewriter.getDenseI64ArrayAttr(
-      tensorflow::ConvertMlirShapeToTF(staticShape)));
+      builder, tensorflow::GetTypeFromTFTensorShape(staticShape, elementType),
+      value,
+      builder.getDenseI64ArrayAttr(
+          tensorflow::ConvertMlirShapeToTF(staticShape)));
 }
 
 namespace {
@@ -4045,13 +4040,14 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   auto indicesMid =
     llvm::ArrayRef(indices_shape).slice(batch_dims, indices_rank - batch_dims);
 
-  OpFoldResult lowProduct = multiplyDims(rewriter, op->getLoc(), paramsMid);
-  OpFoldResult highProduct = multiplyDims(rewriter, op->getLoc(), paramsHigh);
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  OpFoldResult lowProduct = multiplyDims(builder, paramsMid);
+  OpFoldResult highProduct = multiplyDims(builder, paramsHigh);
 
-  OpFoldResult N = multiplyDims(rewriter, op->getLoc(), paramsLow);
-  OpFoldResult W = multiplyDims(rewriter, op->getLoc(), indicesMid);
+  OpFoldResult N = multiplyDims(builder, paramsLow);
+  OpFoldResult W = multiplyDims(builder, indicesMid);
   OpFoldResult K = params_shape[axis];
-  OpFoldResult C = multiplyDims(rewriter, op->getLoc(), lowProduct, highProduct);
+  OpFoldResult C = multiplyDims(builder, lowProduct, highProduct);
 
   /////////////////////////////////////////////
   // Build up the params transpose operator
@@ -4137,32 +4133,31 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
 
   auto params_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, op->getLoc(),
+      builder,
       tensorflow::GetTypeFromTFTensorShape(params_transpose_shape,
                                            params_type.getElementType()),
       params_value, params_transpose_perm_val.value());
 
-  Value tosa_values_reshape_op = buildReshape(
-      rewriter, op->getLoc(), params_transpose_op, {N, K, C});
+  Value tosa_values_reshape_op =
+      buildReshape(builder, params_transpose_op, {N, K, C});
 
-  Value tosa_indices_reshape_op =
-      buildReshape(rewriter, op->getLoc(), indices_value, {N, W});
+  Value tosa_indices_reshape_op = buildReshape(builder, indices_value, {N, W});
 
   auto tosa_gather_static_shape =
     llvm::map_to_vector(tosa_gather_result_shape, extractStaticDimension);
 
   auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
-      rewriter, op->getLoc(),
+      builder,
       tensorflow::GetTypeFromTFTensorShape(tosa_gather_static_shape,
                                            result_type.getElementType()),
       tosa_values_reshape_op, tosa_indices_reshape_op);
 
-  Value tosa_result_reshape_op = buildReshape(
-      rewriter, op->getLoc(), tosa_gather_op, result_reshape_shape);
+  Value tosa_result_reshape_op =
+      buildReshape(builder, tosa_gather_op, result_reshape_shape);
 
-  return CreateOpAndInfer<tosa::TransposeOp>(
-             rewriter, op->getLoc(), result_type,
-             tosa_result_reshape_op, result_transpose_perm_val.value())
+  return CreateOpAndInfer<tosa::TransposeOp>(builder, result_type,
+                                             tosa_result_reshape_op,
+                                             result_transpose_perm_val.value())
       .getResult();
 }
 
