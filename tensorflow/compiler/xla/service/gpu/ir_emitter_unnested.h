@@ -317,28 +317,6 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const KernelArgument> arguments,
       const LaunchDimensions& launch_dimensions);
 
-  // Helper for writing extra outputs from inside a reduce kernel.
-  Status EmitExtraOutputsForReduce(const Shape& reduction_operand_shape,
-                                   const ReductionOutputMap& result_ir_arrays,
-                                   const llvm_ir::IrArray::Index& index,
-                                   const ReductionCodegenInfo& reduction_info,
-                                   const ExtraOutputGensMap& extra_output_gens);
-
-  // Generates code for input-fusible slices.
-  //
-  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
-  // of all ROOT slices need to be the same while their output shapes can be
-  // different. On the other hand, the input ranges of slices can be
-  // overlapping. Further generalization/specialization when the needs are seen
-  // in the future.
-  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op,
-                                          HloFusionAnalysis& fusion_analysis);
-
-  Status EmitElementForInputFusibleSlices(
-      const HloComputation* fused_computation,
-      absl::Span<const llvm_ir::IrArray> ir_arrays,
-      const llvm_ir::IrArray::Index& index);
-
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates
   // from `updates_gen`. The output buffer is expected to have the operand
@@ -374,13 +352,6 @@ class IrEmitterUnnested : public IrEmitter {
   // description.
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
-
-  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
-                           const HloComputation* fusion_hlo,
-                           absl::Span<const llvm_ir::IrArray> operand_arrays,
-                           absl::Span<const llvm_ir::IrArray> output_arrays,
-                           const TilingScheme& tiling_scheme,
-                           const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation,
