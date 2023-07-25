@@ -575,58 +575,58 @@ StatusOr<bool> InstructionFusion::Run(
 
         HloInstruction* fusion_instruction = nullptr;
 
-        FusionDecision should_fuse(do_not_duplicate.count(operand) == 0,
-                                   "operand can not be duplicated");
-
         // Try "regular" fusion if the operand may be duplicated. Otherwise,
         // perform multi-output fusion, unless this creates a cycle.
-        if (should_fuse) {
-          should_fuse = ShouldFuse(instruction, i);
-          if (should_fuse && consume_fuel()) {
-            if (dump_fusion) {
-              DumpPreFusionState(computation, /*consumer=*/instruction,
-                                 /*producer=*/operand);
-            }
-
-            fusion_queue->PreFusion(operand, instruction);
-            fusion_instruction = Fuse(operand, instruction, computation);
-          }
+        FusionDecision use_regular_fusion(do_not_duplicate.count(operand) == 0,
+                                          "operand can not be duplicated");
+        if (use_regular_fusion) {
+          use_regular_fusion =
+              use_regular_fusion.And(ShouldFuse(instruction, i));
         }
 
-        if (!should_fuse) {
-          FusionDecision can_fuse_mof =
-              ShouldFuseIntoMultiOutput(instruction, i);
-          if (can_fuse_mof) {
-            can_fuse_mof = can_fuse_mof.And(
+        if (use_regular_fusion && consume_fuel()) {
+          if (dump_fusion) {
+            DumpPreFusionState(computation, /*consumer=*/instruction,
+                               /*producer=*/operand);
+          }
+
+          fusion_queue->PreFusion(operand, instruction);
+          fusion_instruction = Fuse(operand, instruction, computation);
+        }
+
+        FusionDecision use_mof;
+        if (!use_regular_fusion) {
+          use_mof = ShouldFuseIntoMultiOutput(instruction, i);
+          if (use_mof) {
+            use_mof = use_mof.And(
                 FusionDecision{!MultiOutputFusionCreatesCycle(
                                    operand, instruction, *reachability),
                                "multi-output fusion creates a cycle"});
           }
-          if (can_fuse_mof) {
-            if (consume_fuel()) {
-              if (dump_fusion) {
-                DumpPreFusionState(computation, /*consumer=*/instruction,
-                                   /*producer=*/operand, /*is_mof=*/true);
-              }
-
-              fusion_queue->PreFusion(operand, instruction);
-              fusion_instruction =
-                  FuseIntoMultiOutput(operand, instruction, computation);
+          if (use_mof && consume_fuel()) {
+            if (dump_fusion) {
+              DumpPreFusionState(computation, /*consumer=*/instruction,
+                                 /*producer=*/operand, /*is_mof=*/true);
             }
+
+            fusion_queue->PreFusion(operand, instruction);
+            fusion_instruction =
+                FuseIntoMultiOutput(operand, instruction, computation);
           }
-          should_fuse = should_fuse.Or(can_fuse_mof);
         }
 
         if (fusion_instruction == nullptr) {
-          CHECK(!should_fuse.CanFuse());
+          FusionDecision fusion_decision = use_regular_fusion.Or(use_mof);
+          CHECK(!fusion_decision.CanFuse());
           if (dump_fusion) {
             VLOG(2) << "Not fusing " << operand->ToShortString() << "| into |"
                     << instruction->ToShortString() << "| as "
-                    << should_fuse.Explain();
+                    << fusion_decision.Explain();
 
             DumpNotFusingState(computation,
                                /*consumer=*/instruction,
-                               /*producer=*/operand, /*decision=*/should_fuse);
+                               /*producer=*/operand,
+                               /*decision=*/fusion_decision);
           }
 
           fusion_queue->NotFusingInstruction(operand, instruction);
