@@ -205,7 +205,7 @@ class MockTfLiteContext : public TfLiteContext {
   // For simplicity, the mocked graph has only type of node and one
   // registration.
   TfLiteNode node_;
-  TfLiteRegistration registration_;
+  TfLiteRegistration registration_{};
 
   // The TfLiteDelegateParams object that's manually populated inside the mocked
   // TfLiteContext::PreviewDelegatePartitioning.

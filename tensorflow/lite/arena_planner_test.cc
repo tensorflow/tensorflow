@@ -59,7 +59,7 @@ class TestOp {
       : inputs_(inputs),
         outputs_(outputs),
         temporaries_(temporaries),
-        registration_(TfLiteRegistration()) {
+        registration_{} {
     registration_.builtin_code = builtin_code;
     registration_.inplace_operator = inplace_operator;
   }
