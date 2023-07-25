@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -124,9 +126,9 @@ Status TensorShapeToBoundedXLAShape(DataType dtype,
   }
 
   if (tensor_shape.dims() != bound.dims()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "`tensor_shape` and `bound` have different ranks. tensor_shape=",
-        tensor_shape.dims(), "vs bound=", bound.dims());
+        tensor_shape.dims(), "vs bound=", bound.dims()));
   }
 
   int rank = tensor_shape.dims();
@@ -134,8 +136,14 @@ Status TensorShapeToBoundedXLAShape(DataType dtype,
   std::vector<int64_t> layout(rank);
   for (int d = 0; d < rank; ++d) {
     if (bound.dim_size(d) < 0) {
-      return errors::InvalidArgument("Bound dimension ", d,
-                                     " has unknown size.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Bound dimension ", d, " has unknown size."));
+    }
+    if (tensor_shape.dim_size(d) > 0 &&
+        bound.dim_size(d) != tensor_shape.dim_size(d)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Bounding shape does not match dynamic shape for known dimension ", d,
+          tensor_shape.dim_size(d), " vs ", bound.dim_size(d)));
     }
     dimensions[d] = bound.dim_size(d);
   }
