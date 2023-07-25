@@ -9,8 +9,6 @@ load(
     "tf_cc_test",
 )
 
-load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -267,8 +265,3 @@ filegroup(
 )
 
 exports_files(["run_lit.sh"])
-
-refresh_compile_commands(
-    name = "tf_opt_compile_commands",
-    targets = {"//tensorflow/compiler/mlir:tf-opt": ""}
-)
