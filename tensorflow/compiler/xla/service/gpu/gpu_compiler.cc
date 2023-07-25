@@ -1417,7 +1417,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     HloCostAnalysis::Options cost_analysis_options{ShapeSizeBytesFunction()};
     cost_analysis_options.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
-    GpuHloCostAnalysis cost_analysis(cost_analysis_options);
+    GpuHloCostAnalysis cost_analysis(cost_analysis_options, &gpu_device_info);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     if (!options.is_autotuning_compilation) {
       VLOG(1) << "HLO memory read+written: "

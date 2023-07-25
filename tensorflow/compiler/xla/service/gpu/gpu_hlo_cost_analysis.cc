@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_op_profile.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_op_profiles.h"
 
 namespace xla {
 namespace gpu {
@@ -270,95 +276,52 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
-  const HloOpcode opcode = hlo->opcode();
-  const auto& shape = hlo->shape();
-  const PrimitiveType type = shape.element_type();
+using profiles_nested_map = absl::flat_hash_map<
+    std::string,  // Device name.
+    absl::flat_hash_map<PrimitiveType,
+                        absl::flat_hash_map<HloOpcode, int64_t>>>;
 
-  // These are clock cycle estimates of some of the most common expensive
-  // operations. They most likely vary a lot from GPU to GPU but should
-  // at least provide reasonable comparisons for the computation cost analysis.
-  // HLOs used to measure these can be found in gpu_performance_model_test.cc
-  // This list is far from complete yet.
-  // TODO(b/256570878): Make a tool to measure these numbers and store them
-  // separately from the code where possible.
+const profiles_nested_map* LoadOpProfiles() {
+  static profiles_nested_map* profiles = [] {
+    profiles_nested_map* ret = new profiles_nested_map;
+    DeviceHloInstructionProfiles all_device_profiles;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        std::string(kDeviceHloOpProfiles), &all_device_profiles));
+    for (const auto& device_profile : all_device_profiles.entries()) {
+      for (const auto& entry : device_profile.second.entries()) {
+        (*ret)[device_profile.first][entry.instruction().shape().element_type()]
+              [StringToHloOpcode(entry.instruction().opcode()).value()] =
+                  entry.clock_cycles();
+      }
+    }
+    return ret;
+  }();
+  return profiles;
+}
 
-  // Typical elementwise instructions take about 3 clock cycles.
-  int64_t flop_per_element = 3;
-  switch (opcode) {
-    case HloOpcode::kTanh:
-      if (type == F32) {
-        flop_per_element = 30;
-      } else if (type == F64) {
-        flop_per_element = 2000;
-      }
-      break;
-    case HloOpcode::kDivide:
-      if (type == S32) {
-        flop_per_element = 80;
-      } else if (type == F64) {
-        flop_per_element = 3200;
-      } else if (type == C128) {
-        flop_per_element = 20000;
-      }
-      break;
-    // Expands to multiple instructions.
-    case HloOpcode::kExp:
-      if (type == F64) {
-        flop_per_element = 2200;
-      }
-      break;
-    case HloOpcode::kSqrt:
-      if (type == F64) {
-        flop_per_element = 1100;
-      } else if (type == C128) {
-        flop_per_element = 25000;
-      }
-      break;
-    case HloOpcode::kRsqrt:
-      if (type == F64) {
-        flop_per_element = 900;
-      }
-      break;
-    case HloOpcode::kAdd:
-      if (type == F64) {
-        flop_per_element = 120;
-      } else if (type == C128) {
-        flop_per_element = 240;
-      }
-      break;
-    case HloOpcode::kMultiply:
-      if (type == F64) {
-        flop_per_element = 120;
-      } else if (type == C128) {
-        flop_per_element = 650;
-      }
-      break;
-    case HloOpcode::kPower:
-      if (type == F64) {
-        flop_per_element = 11000;
-      } else if (type == C128) {
-        flop_per_element = 28000;
-      }
-      break;
-    case HloOpcode::kLog:
-      if (type == F32) {
-        flop_per_element = 45;
-      } else if (type == F64) {
-        flop_per_element = 1000;
-      }
-      break;
-    default:
-      // Raise default cost of all unlisted F64 and C128 ops.
-      if (type == F64) {
-        flop_per_element = 10;
-      } else if (type == C128) {
-        flop_per_element = 20;
-      }
-      break;
+// Elementwise instructions typically take at least a few clock cycles.
+constexpr int64_t kDefaultFlopsPerElement = 3;
+
+constexpr absl::string_view kDefaultDeviceName = "NVIDIA RTX A6000";
+
+int64_t FlopsPerElement(const absl::string_view device_name,
+                        const PrimitiveType type, const HloOpcode opcode) {
+  const profiles_nested_map* all_profiles = LoadOpProfiles();
+  auto device_profiles = FindOrDefault(*all_profiles, std::string(device_name),
+                                       all_profiles->at(kDefaultDeviceName));
+  auto dtype_profiles = MaybeFind(device_profiles, type);
+  if (!dtype_profiles.ok()) {
+    return kDefaultFlopsPerElement;
   }
+  return FindOrDefault(dtype_profiles->get(), opcode, kDefaultFlopsPerElement);
+}
+
+Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
+  int64_t flop_per_element =
+      FlopsPerElement(device_info_ ? device_info_->name : kDefaultDeviceName,
+                      hlo->shape().element_type(), hlo->opcode());
   current_properties_[kFlopsKey] =
-      flop_per_element * ShapeUtil::ElementsInRecursive(shape);
+      flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
   return OkStatus();
 }
 
@@ -372,7 +335,7 @@ Status GpuHloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
 
 std::unique_ptr<HloCostAnalysis>
 GpuHloCostAnalysis::CreateNestedCostAnalysis() {
-  return std::make_unique<GpuHloCostAnalysis>(options_);
+  return std::make_unique<GpuHloCostAnalysis>(options_, device_info_);
 }
 
 bool GpuHloCostAnalysis::KeyToCopyFromSubcomputation(
