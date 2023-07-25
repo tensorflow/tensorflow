@@ -815,24 +815,20 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       break;
     }
     if (!IsPreemptedError(s)) {
-      std::string data_transfer_protocol =
-          !params_.data_transfer_protocol.empty()
-              ? params_.data_transfer_protocol
-              : DefaultDataTransferProtocol();
-      if (data_transfer_protocol == kGrpcTransferProtocol ||
-          data_transfer_protocol == kLocalTransferProtocol) {
+      if (task->worker->GetDataTransferProtocol() == kGrpcTransferProtocol ||
+          task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
         return s;
       }
+      LOG(ERROR) << "failed to use alternative data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol()
+                 << "'; falling back to grpc. Original error: " << s;
+      metrics::RecordTFDataServiceDataTransferProtocolError(
+          task->worker->GetDataTransferProtocol(),
+          static_cast<error::Code>(s.raw_code()), std::string(s.message()));
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
                           CreateGrpcWorkerClient(task->info));
       task->worker = std::move(worker);
-      LOG(ERROR) << "failed to use alternative data transfer protocol '"
-                 << data_transfer_protocol << "'; falling back to grpc. "
-                 << "Original error: " << s;
-      metrics::RecordTFDataServiceDataTransferProtocolError(
-          DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
-          std::string(s.message()));
       continue;
     }
     {
