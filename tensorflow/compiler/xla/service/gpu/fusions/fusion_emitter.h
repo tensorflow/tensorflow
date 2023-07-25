@@ -80,15 +80,6 @@ class KernelFusionEmitterBase : public FusionInterface {
   const HloFusionInstruction& fusion_;
 };
 
-std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
-           std::vector<llvm_ir::IrArray>>
-BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
-                     const std::string& suggested_name,
-                     absl::Span<const KernelArgument> arguments,
-                     size_t num_inputs,
-                     const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilder<>* builder);
-
 }  // namespace gpu
 }  // namespace xla
 
