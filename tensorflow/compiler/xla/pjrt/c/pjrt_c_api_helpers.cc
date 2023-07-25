@@ -539,9 +539,14 @@ PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected_size,
                                       size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions.");
+  std::string error_msg = absl::StrCat(
+      "Unexpected ", struct_name, " size: expected ", expected_size, ", got ",
+      actual_size, ". Check installed software versions.");
+#if defined(PJRT_API_MAJOR)
+  absl::StrAppend(&error_msg, " The framework PJRT API version is ",
+                  PJRT_API_MAJOR, ".", PJRT_API_MINOR, ".");
+#endif  // PJRT_API_MAJOR
+  return error_msg;
 }
 
 xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
