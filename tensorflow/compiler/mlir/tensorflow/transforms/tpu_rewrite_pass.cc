@@ -264,9 +264,9 @@ LogicalResult SetMetadataProtoArgs(
     // Populate set_is_same_data_across_replicas
     // Note: this information is duplicated and can be removed from the proto
     // and here once MLIR bridge phase 2 doesn't fallback to the old bridge.
-    mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
+    auto attr = op.getFuncOp().getArgAttrOfType<mlir::BoolAttr>(
         index, replication_attr_name);
-    arg->set_is_same_data_across_replicas(attr != nullptr);
+    arg->set_is_same_data_across_replicas(attr != nullptr && attr.getValue());
 
     // Currently only support first dimension to be bounded dynamic.
     arg->mutable_is_bounded_dynamic_dim()->Add(
