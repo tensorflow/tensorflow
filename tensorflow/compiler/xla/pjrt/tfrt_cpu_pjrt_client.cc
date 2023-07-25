@@ -383,6 +383,10 @@ Status TfrtCpuDevice::TransferFromOutfeed(MutableBorrowingLiteral literal) {
   return TransferLiteralFromOutfeedOnCpu(local_hardware_id(), literal);
 }
 
+StatusOr<PjRtMemorySpace*> TfrtCpuDevice::default_memory_space() const {
+  return Unimplemented("default_memory_space is not supported");
+}
+
 static int CpuDeviceCount() {
   // By default we fix the number of devices to one.  However we do let the user
   // override this behavior to help run tests on the host that run models in

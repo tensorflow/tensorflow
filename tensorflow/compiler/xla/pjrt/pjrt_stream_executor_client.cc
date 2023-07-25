@@ -1140,6 +1140,11 @@ Status PjRtStreamExecutorDevice::TransferFromOutfeed(
       local_device->device_ordinal(), literal);
 }
 
+StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::default_memory_space()
+    const {
+  return Unimplemented("default_memory_space is not supported.");
+}
+
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
     int local_hardware_id) const {
   for (auto* device : addressable_devices_) {

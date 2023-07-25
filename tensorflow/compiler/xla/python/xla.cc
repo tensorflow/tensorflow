@@ -232,6 +232,13 @@ PYBIND11_MODULE(xla_extension, m) {
             return jax::GetMemory(device, kind);
           },
           py::arg("kind"))
+      // Returns the default memory of a device.
+      .def("default_memory",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             auto* memory_space =
+                 xla::ValueOrThrow(device->default_memory_space());
+             return WrapWithClient(device.client(), memory_space);
+           })
       // Returns all the memories that a device can address.
       .def("addressable_memories",
            [](const ClientAndPtr<PjRtDevice>& device) {

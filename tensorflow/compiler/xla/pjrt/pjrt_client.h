@@ -176,6 +176,9 @@ class PjRtDevice {
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
     return {};
   }
+
+  // Returns the default memory space attached to this device.
+  virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
 };
 
 // Forward declaration.

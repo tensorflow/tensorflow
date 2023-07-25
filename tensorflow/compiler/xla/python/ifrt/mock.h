@@ -176,6 +176,8 @@ class MockDevice final : public Device {
   MOCK_METHOD(Status, TransferToInfeed, (const LiteralSlice& literal), (final));
   MOCK_METHOD(Status, TransferFromOutfeed, (MutableBorrowingLiteral literal),
               (final));
+  MOCK_METHOD(StatusOr<xla::PjRtMemorySpace*>, default_memory_space, (),
+              (const, final));
   MOCK_METHOD(StatusOr<tsl::AllocatorStats>, GetAllocatorStats, (),
               (const, final));
   MOCK_METHOD(absl::Span<xla::PjRtMemorySpace* const>, memory_spaces, (),

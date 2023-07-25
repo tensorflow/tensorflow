@@ -79,6 +79,10 @@ class PjRtCApiDevice : public PjRtDevice {
     return Unimplemented("PJRT C API does not support TransferFromOutfeed");
   }
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return Unimplemented("PJRT C API does not support default_memory_space");
+  }
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     LOG(FATAL) << "PJRT C API does not support CreateAsyncTrackingEvent";

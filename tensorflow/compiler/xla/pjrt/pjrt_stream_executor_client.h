@@ -157,6 +157,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;

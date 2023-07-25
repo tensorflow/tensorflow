@@ -113,6 +113,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
   // Returns a semaphore for admission control on inflight computations.
   Semaphore& max_inflight_computations_semaphore() {
     return max_inflight_computations_semaphore_;
