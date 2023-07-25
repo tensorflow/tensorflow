@@ -20,7 +20,7 @@
 set -euxo pipefail
 
 cd $1
-for wheel in build/*.whl; do
+for wheel in *.whl; do
   echo "Checking and renaming $wheel..."
   time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir build 2>&1 | tee check.txt
 
