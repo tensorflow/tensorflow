@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -553,13 +554,6 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       options.shape_inference_on_tfe_dialect_import;
   optimization_options.debug_filename_prefix = function_name;
 
-  if (cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
-    // Forward to the optimisation pass number of intra threads that are used to
-    // parallelise operations.
-    session_options.config.set_intra_op_parallelism_threads(
-        cpu_device->tensorflow_cpu_worker_threads()->num_threads);
-  }
-
   DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
                                  "before_pre_placement_passes", graph.get(),
                                  &reachable_lib_def, false);
@@ -747,7 +741,8 @@ PreprocessAndPartitionGraph(
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
-    const std::vector<CompositeDevice*>& composite_devices, Env* env) {
+    const std::vector<CompositeDevice*>& composite_devices, Env* env,
+    Device* cpu_device) {
   std::unique_ptr<Graph>& graph = input_optimized_graph.function_graph;
 
   // Expand the nodes assigned to a CompositeDevice before graph partition to
@@ -790,12 +785,25 @@ PreprocessAndPartitionGraph(
 
   // Doing post-partitioning passes.
   GraphOptimizationPassOptions optimization_options;
+  SessionOptions session_options;
+  session_options.env = env;
+  session_options.config = options.config_proto;
+  optimization_options.session_options = &session_options;
   optimization_options.flib_def = &(input_optimized_graph.lib_def);
   optimization_options.is_function_graph = true;
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = device_name_to_subgraphs.get();
   optimization_options.debug_filename_prefix = function_name;
+
+  // As not all devices might set number of threads for intra op
+  // parallelisation we restrict this only to local device which does.
+  if (cpu_device && dynamic_cast<LocalDevice*>(cpu_device)) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    session_options.config.set_intra_op_parallelism_threads(
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads);
+  }
 
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we

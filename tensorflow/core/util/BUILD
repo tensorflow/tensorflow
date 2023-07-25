@@ -10,8 +10,8 @@ load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
-    "tf_cc_tests",
     "tf_cc_test_mkl",
+    "tf_cc_tests",    
     "tf_copts",
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
@@ -966,11 +966,11 @@ tf_cc_test_mkl(
     srcs = ["mkl_heuristics_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
+        "//tensorflow/core:framework",    
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",	
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:framework",
         "//tensorflow/core/kernels:ops_testutil",
     ],
 )

@@ -93,7 +93,8 @@ PreprocessAndPartitionGraph(
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
-    const std::vector<CompositeDevice*>& composite_devices, Env* env);
+    const std::vector<CompositeDevice*>& composite_devices, Env* env,
+    Device* cpu_device);
 
 }  // namespace tensorflow
 

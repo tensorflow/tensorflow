@@ -22,8 +22,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace tensorflow {
