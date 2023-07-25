@@ -31,6 +31,10 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "//tensorflow/tsl/mkl:build_defs.bzl",
+    "onednn_v3_define",
+)
+load(
     "//third_party/compute_library:build_defs.bzl",
     "if_enable_acl",
 )
@@ -253,8 +257,9 @@ def tsl_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1", "-DENABLE_ONEDNN_V2=1"]) +
-        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP", "-DENABLE_ONEDNN_V2=1"]) +
+        onednn_v3_define() +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
