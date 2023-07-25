@@ -354,6 +354,11 @@ PyLoadedExecutable::HloModules() const {
   return ifrt_loaded_executable_->GetHloModules();
 }
 
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PyLoadedExecutable::GetOutputMemoryKinds() const {
+  return ifrt_loaded_executable_->GetOutputMemoryKinds();
+}
+
 std::optional<std::vector<OpSharding>>
 PyLoadedExecutable::GetParameterShardings() const {
   return ifrt_loaded_executable_->GetParameterShardings();

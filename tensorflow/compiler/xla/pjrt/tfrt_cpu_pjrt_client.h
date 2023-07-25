@@ -379,6 +379,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
         cpu_executable_->shared_module()};
   }
 
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return Unimplemented("GetOutputMemoryKinds is not supported.");
+  }
+
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
     memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();

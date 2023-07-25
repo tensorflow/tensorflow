@@ -2843,6 +2843,11 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
   return std::move(modules);
 }
 
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtStreamExecutorExecutable::GetOutputMemoryKinds() const {
+  return Unimplemented("GetOutputMemoryKinds is not supported.");
+}
+
 StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
 PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
   ExecutableExtras extras;
