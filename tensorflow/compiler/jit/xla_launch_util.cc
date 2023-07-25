@@ -770,10 +770,16 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 }
 
 xla::ExecuteOptions GetPjRtExecuteOptions(
+    const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
+  // TODO(b/293186653): investigate we should turn on strict shape checking for
+  // GPU.
+  if (device_type == DEVICE_GPU) {
+    options.strict_shape_checking = false;
+  }
   // Note: TF does not use PJRT host callbacks as of today. Setting this option
   // to true to workaround an ExecuteOptions check: [1].
   //
@@ -822,9 +828,10 @@ Status RunPjRtExecutable(
                                           ->tensorflow_accelerator_device_info()
                                           ->use_pjrt_tensor_buffer;
 
+  const DeviceType& device_type = GetDeviceType(ctx);
   TF_ASSIGN_OR_RETURN(const int pjrt_device_id,
                       tsl::GetDeviceIdFromDeviceParsedName(
-                          ctx->device()->parsed_name(), GetDeviceType(ctx)));
+                          ctx->device()->parsed_name(), device_type));
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client->LookupAddressableDevice(pjrt_device_id));
 
@@ -839,7 +846,8 @@ Status RunPjRtExecutable(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
       executable->ExecutePortable(
           executable_args, device,
-          GetPjRtExecuteOptions(std::move(non_donatable_input_indices))));
+          GetPjRtExecuteOptions(device_type,
+                                std::move(non_donatable_input_indices))));
 
   // We need to ensure the PjRtBuffers owned by `owned_executable_args` live
   // until execution is complete.
