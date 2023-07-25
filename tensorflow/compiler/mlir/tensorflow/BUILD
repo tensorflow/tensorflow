@@ -2355,6 +2355,12 @@ tf_gen_op_wrapper_py(
     name = "gen_mlir_passthrough_op_py",
     out = "gen_mlir_passthrough_op.py",
     compatible_with = [],
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
     py_lib_rule = py_strict_library,
     deps = [":mlir_passthrough_op"],
 )
