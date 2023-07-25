@@ -28,7 +28,6 @@ python_register_multi_toolchains(
     default_version = default_python_version,
     ignore_root_user_error = True,
     python_versions = [
-        "3.8",
         "3.9",
         "3.10",
         "3.11",
