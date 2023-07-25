@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -223,8 +224,14 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
     stream_priority = stream_executor::StreamPriority::Highest;
   }
 
-  StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+  // Create the needed streams to support NcclCollectiveThunk.
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
+  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+    StatusOr<StreamPool::Ptr> async_comms_stream =
+        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+    async_comms_streams.push_back(
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  }
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
@@ -247,12 +254,15 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
     VLOG(2) << "Executing the thunk for " << thunk->profile_annotation();
-    TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
-        << "`run_options` must have a stream borrower for async thunks.";
+    if (NeedsAsyncCommsStream(*thunk)) {
+      for (se::Stream* async_stream : async_comms_streams) {
+        TF_RET_CHECK(async_stream != nullptr)
+            << "`run_options` must have a stream borrower for async thunks.";
+      }
+    }
 
-    Thunk::ExecuteParams thunk_params{
-        *run_options, buffer_allocations, main_stream,
-        async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
+    Thunk::ExecuteParams thunk_params{*run_options, buffer_allocations,
+                                      main_stream, async_comms_streams};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
   }
   return MaybeSyncAndProfile(run_options, start_nanos,

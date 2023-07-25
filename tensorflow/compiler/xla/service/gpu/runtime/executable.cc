@@ -364,14 +364,19 @@ Status GpuRuntimeExecutable::Execute(
     stream_priority = se::StreamPriority::Highest;
   }
 
-  StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+  // Create the needed streams to support NcclCollectiveThunk.
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams;
+  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+    StatusOr<StreamPool::Ptr> async_comm_stream =
+        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+    async_comm_streams.push_back(
+        async_comm_stream.ok() ? async_comm_stream->get() : nullptr);
+  }
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
   // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
-  AsyncCollectivesSupport async_collectives(
-      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  AsyncCollectivesSupport async_collectives(async_comm_streams);
   SendRecvEvents send_recv_events;
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
@@ -428,7 +433,9 @@ Status GpuRuntimeExecutable::Execute(
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+      async_collectives.async_comm_stream(kAsyncStreamCollective)
+          ? &async_collectives
+          : nullptr);
 
   // Initialize state required for running functions from registered modules.
   auto state_ref = modules_state_.InitializeUserData(user_data);

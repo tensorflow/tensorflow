@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "@com_google_absl//absl/container:flat_hash_map",
