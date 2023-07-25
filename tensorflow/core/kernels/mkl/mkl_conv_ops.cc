@@ -1785,8 +1785,8 @@ class MklFusedConvOp
     Eigen::Tensor<Tinput, 1, Eigen::RowMajor> bn_rsqrt =
         (bn_var_tensor.flat<Tinput>() + static_cast<Tinput>(epsilon)).rsqrt();
     Tinput* bn_rsqrt_data = bn_rsqrt.data();
-    size_t num_elem = bn_var_tensor.shape().dim_size(0);
-    for (size_t i = 0; i < num_elem; i++) {
+    int64_t num_elem = bn_var_tensor.shape().dim_size(0);
+    for (int64_t i = 0; i < num_elem; i++) {
       scale_buf_ptr[i] = bn_rsqrt_data[i];
     }
     return;

@@ -537,8 +537,8 @@ class MklDnnQuantizedMatMulOp
       // compensated with B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 *
       // Wf32.
       if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-        int k = weight_tensor.dim_size(0);
-        int n = weight_tensor.dim_size(1);
+        int64_t k = weight_tensor.dim_size(0);
+        int64_t n = weight_tensor.dim_size(1);
         float* comp_bias = GetCompBiasBuffer(n);
 
         qint8* wt_buf = static_cast<qint8*>(
@@ -554,10 +554,10 @@ class MklDnnQuantizedMatMulOp
                      std::max(std::abs(max_weight), std::abs(min_weight)));
 
 #ifndef ENABLE_ONEDNN_OPENMP
-        auto parallel_func = [&](int64 start, int64 end) {
-          for (int64 j = start; j < end; j++) {
-            int x = 0;
-            for (int64 i = 0; i < k; ++i) {
+        auto parallel_func = [&](int64_t start, int64_t end) {
+          for (int64_t j = start; j < end; j++) {
+            int64_t x = 0;
+            for (int64_t i = 0; i < k; ++i) {
               x += wt_buf[i * n + j];
             }
             comp_bias[j] =
@@ -574,9 +574,9 @@ class MklDnnQuantizedMatMulOp
               parallel_func);
 #else
 #pragma omp parallel for schedule(static)
-        for (int j = 0; j < n; ++j) {
-          int x = 0;
-          for (int i = 0; i < k; ++i) {
+        for (int64_t j = 0; j < n; ++j) {
+          int64_t x = 0;
+          for (int64_t i = 0; i < k; ++i) {
             x += wt_buf[i * n + j];
           }
           comp_bias[j] =
