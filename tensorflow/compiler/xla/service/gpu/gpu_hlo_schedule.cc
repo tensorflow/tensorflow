@@ -245,14 +245,15 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
 
 // GPU specific resources for latency hiding scheduler.
 //
-// We use two resources to model collective operations: a resource for sending
-// data and a resource for receiving data. All collective operations require
-// both resources while the Send and Recv operations requires only the single
-// resource corresponding to the operation.
+// We use two different set of resources to model the scheduling of asynchronous
+// collective operations and P2P Send and Recv operations. This corresponds to
+// the fact that the runtime use a stream to run asynchronous collective
+// operations and another stream to run P2P Send and Recv operations.
 enum class GpuResourceType {
-  kGpuAsyncStreamSend = 0,  // The resource for sending data.
-  kGpuAsyncStreamRecv = 1,  // The resource for receiving data.
-  kNumTargetResources = 2,
+  kGpuAsyncStreamSend = 0,         // The resource for P2P Send operation.
+  kGpuAsyncStreamRecv = 1,         // The resource for P2P Recv operation.
+  kGpuAsyncStreamCollectives = 2,  // The resource for collective operations.
+  kNumTargetResources = 3,
 };
 
 // Base GPU async tracker that enables async tracking only for async collectives
@@ -301,11 +302,12 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
         resources.push_back(std::make_pair(gpu_stream_resource, usage));
       };
 
-      if (op.inner != HloOpcode::kRecv) {
+      if (op.inner == HloOpcode::kSend) {
         add_resource(GpuResourceType::kGpuAsyncStreamSend);
-      }
-      if (op.inner != HloOpcode::kSend) {
+      } else if (op.inner == HloOpcode::kRecv) {
         add_resource(GpuResourceType::kGpuAsyncStreamRecv);
+      } else {
+        add_resource(GpuResourceType::kGpuAsyncStreamCollectives);
       }
       return resources;
     }
@@ -346,11 +348,14 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     }
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
-    switch (resource_type - first_target_resource) {
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend):
+    switch (
+        static_cast<GpuResourceType>(resource_type - first_target_resource)) {
+      case GpuResourceType::kGpuAsyncStreamSend:
         return "kGpuAsyncStreamSend";
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamRecv):
+      case GpuResourceType::kGpuAsyncStreamRecv:
         return "kGpuAsyncStreamRecv";
+      case GpuResourceType::kGpuAsyncStreamCollectives:
+        return "kGpuAsyncStreamCollectives";
       default:
         return "kUnsupportedResource";
     }
