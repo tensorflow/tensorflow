@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 #include "tensorflow/tsl/util/onednn_threadpool.h"
@@ -1859,7 +1859,7 @@ class LRUCache {
   }
 
   T* GetOp(const string& key) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(lru_mu_);
 #endif
     auto it = cache_.find(key);
@@ -1875,7 +1875,7 @@ class LRUCache {
   }
 
   void SetOp(const string& key, T* op) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(lru_mu_);
 #endif
     if (lru_list_.size() >= capacity_) {
@@ -1886,7 +1886,7 @@ class LRUCache {
     lru_list_.push_front(key);
     Entry entry(op, lru_list_.begin());
     cache_.emplace(std::make_pair(key, std::move(entry)));
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     FinishedAllocation(key);
 #endif
   }
@@ -1899,7 +1899,7 @@ class LRUCache {
     lru_list_.clear();
   }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   bool IsAllocating(const string& key) {
     mutex_lock lock(in_flight_mu_);
     return in_flight_.find(key) != in_flight_.end();
@@ -1964,7 +1964,7 @@ class LRUCache {
   // entry, while the back of the list is the least recently accessed entry.
   std::list<string> lru_list_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   // Guards access to the cache and LRU list
   mutex lru_mu_;
 
@@ -1983,7 +1983,7 @@ class MklPrimitiveFactory {
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
-#ifndef DNNL_AARCH64_USE_ACL
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     return lru_cache.GetOp(key);
 #else
@@ -2019,7 +2019,7 @@ class MklPrimitiveFactory {
   }
 
   void SetOp(const string& key, MklPrimitive* op) {
-#ifndef DNNL_AARCH64_USE_ACL
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     lru_cache.SetOp(key, op);
 #else
@@ -2069,7 +2069,7 @@ class MklPrimitiveFactory {
  private:
   static inline LRUCache<MklPrimitive>& GetLRUCache() {
     static const int kCapacity = 1024;  // cache capacity
-#ifndef DNNL_AARCH64_USE_ACL
+#if !defined(DNNL_AARCH64_USE_ACL) || !defined(ENABLE_ONEDNN_OPENMP)
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
@@ -2077,7 +2077,7 @@ class MklPrimitiveFactory {
     return lru_cache_;
   }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_creation_mu_;
   condition_variable primitive_creation_cv_;
 #endif
