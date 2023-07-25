@@ -224,8 +224,10 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   find_library(ANDROID_LOG_LIB log)
+  find_library(ANDROID_ANDROID_LIB android)
   list(APPEND TFLITE_TARGET_DEPENDENCIES
-    log
+    ${ANDROID_LOG_LIB}
+    ${ANDROID_ANDROID_LIB}
   )
 endif()
 # Build a list of source files to compile into the TF Lite library.
