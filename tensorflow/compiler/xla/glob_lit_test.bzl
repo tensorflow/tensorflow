@@ -46,12 +46,13 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     """
 
     # Disable tests on windows for now, to enable testing rest of all xla and mlir.
+    xla_root_dir = "tensorflow/compiler/xla/"
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
         tags = tags + ["no_windows"],
         args = [
-            "xla/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
+            xla_root_dir + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,
         data = data + [
             "//tensorflow/compiler/xla:litfiles",
