@@ -427,10 +427,10 @@ StatusOr<mlir::Operation*> FFTSPMDExpander::ExpandOp(mlir::Operation* op) {
 
 StatusOr<llvm::DenseMap<int, Layout>> FFTSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  if (input_layouts.find(0) == input_layouts.end())
-    return llvm::DenseMap<int, Layout>();
+  auto iter = input_layouts.find(0);
+  if (iter == input_layouts.end()) return llvm::DenseMap<int, Layout>();
 
-  const Layout& input_layout = input_layouts.lookup(0);
+  const Layout& input_layout = iter->second;
   std::vector<std::string> sharding_specs = input_layout.sharding_spec_strs();
   if (sharding_specs.empty())
     return absl::FailedPreconditionError(
@@ -468,10 +468,10 @@ StatusOr<llvm::DenseMap<int, Layout>> FFTSPMDExpander::ComputeLayoutForward(
 
 StatusOr<llvm::DenseMap<int, Layout>> FFTSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  if (output_layouts.find(0) == output_layouts.end())
-    return llvm::DenseMap<int, Layout>();
+  auto iter = output_layouts.find(0);
+  if (iter == output_layouts.end()) return llvm::DenseMap<int, Layout>();
 
-  const Layout& output_layout = output_layouts.lookup(0);
+  const Layout& output_layout = iter->second;
   std::vector<std::string> sharding_specs = output_layout.sharding_spec_strs();
   if (sharding_specs.empty())
     return absl::FailedPreconditionError(
