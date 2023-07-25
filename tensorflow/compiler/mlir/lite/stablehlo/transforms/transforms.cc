@@ -70,7 +70,6 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 void AddMhloOptimizationPasses(OpPassManager& pm) {
   pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
-  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
   pm.addPass(mlir::createCanonicalizerPass());
 }
@@ -83,6 +82,9 @@ void AddStablehloOptimizationPasses(OpPassManager& pm) {
   // this happen.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   AddMhloOptimizationPasses(pm);
+  // TODO(b/293149194) Add `createFoldBroadcastPass` back to
+  // `AddMhloOptimizationPasses`
+  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
 
