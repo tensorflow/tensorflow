@@ -16,7 +16,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
-    "if_rocm_hipblaslt",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
@@ -984,7 +983,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/tsl/platform:random",
     ]),
 )
 

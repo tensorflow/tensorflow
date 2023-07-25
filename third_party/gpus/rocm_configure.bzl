@@ -659,7 +659,6 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["rocm:build_defs.bzl"],
         {
             "%{rocm_is_configured}": "True",
-            "%{rocm_hipblaslt}": "True" if "hipblaslt" in rocm_libs else "False",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
                 repository_ctx,
                 rocm_config.amdgpu_targets,
