@@ -4513,6 +4513,15 @@ test {
       Layout({1, 0, 2, 3}));
 }
 
+TEST_F(HloParserTest, ParseComputationNameClosingBrace) {
+  const std::string original = R"(
+test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+} // test
+)";
+  EXPECT_TRUE(ParseAndReturnUnverifiedModule(original).ok());
+}
+
 TEST_F(HloParserTest, ParseSingleEntryComputation) {
   const std::string original = R"(
 ENTRY test {
