@@ -832,7 +832,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
       "orange",
       "orangered",
       "orchid",
-      "palegoldenrod"
+      "palegoldenrod",
       "palegreen",
       "paleturquoise",
       "palevioletred",
