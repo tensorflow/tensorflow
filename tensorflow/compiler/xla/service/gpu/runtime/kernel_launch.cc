@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
-#endif  // #if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -79,7 +79,7 @@ static absl::Status LaunchImpl(
       }));
   assert((*kernel)->name() == name && "unexpected loaded kernel");
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(bool is_capturing, se::gpu::IsStreamCapturing(stream));
 #else
   bool is_capturing = false;
@@ -88,10 +88,10 @@ static absl::Status LaunchImpl(
   if (is_capturing) {
     if (region_status->IsInConcurrentRegion()) {
       VLOG(3) << "Launching " << (*kernel)->name()
-              << "in a concurrent region during CUDA graph capture";
+              << "in a concurrent region during GPU graph capture";
     } else {
       VLOG(3) << "Launching " << (*kernel)->name()
-              << "during CUDA graph capture";
+              << "during GPU graph capture";
     }
   } else {
     VLOG(3) << "Launching " << (*kernel)->name();
@@ -117,7 +117,7 @@ static absl::Status LaunchImpl(
   // Always add temporary buffer as the last kernel argument.
   buffer_args.back() = *temp_buffer;
 
-  // If we are capturing a concurrent region in a CUDA graph, then use the
+  // If we are capturing a concurrent region in a GPU graph, then use the
   // stream provided by ConcurrentRegionStatus to execute the kernel.
   se::Stream* execution_stream = stream;
   if (region_status->IsInConcurrentRegion()) {

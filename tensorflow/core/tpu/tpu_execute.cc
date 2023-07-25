@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -51,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
@@ -448,7 +448,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
+  TF_ASSIGN_OR_RETURN(tpu::HostCommandHandler host_command_handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
@@ -539,7 +539,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   }
 
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
-      tpu_program, std::move(module), /*host_command_handler=*/handler);
+      tpu_program, std::move(module), host_command_handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();
   CancellationToken token;

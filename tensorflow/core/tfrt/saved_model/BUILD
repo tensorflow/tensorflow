@@ -141,7 +141,6 @@ cc_library(
 cc_library(
     name = "saved_model",
     hdrs = ["saved_model.h"],
-    tags = ["no_oss"],
     deps = [
         ":saved_model_lib",
         "@com_google_absl//absl/container:flat_hash_map",

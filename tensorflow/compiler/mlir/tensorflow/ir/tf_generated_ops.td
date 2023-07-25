@@ -22775,7 +22775,7 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF__XlaRunOp : TF_Op<"_XlaRun", []> {
+def TF__XlaRunOp : TF_Op<"_XlaRun", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "XLA Run Op. For use by the XLA JIT only.";
 
   let description = [{

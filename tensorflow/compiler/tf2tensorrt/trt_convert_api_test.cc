@@ -76,7 +76,6 @@ class TrtConverterTest
   GraphDef GetGraphWithFunction(PartialTensorShape input_shape) {
     using ::tensorflow::test::function::GDef;
     using ::tensorflow::test::function::NDef;
-    GraphConstructorOptions opts;
     const Tensor kOne = test::AsScalar<float>(1.0f);
     TensorShapeProto value_shape_proto;
     kOne.shape().AsProto(&value_shape_proto);

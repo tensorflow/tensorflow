@@ -91,17 +91,6 @@ Status CheckOperandCount(const HloInstruction* hlo, int expected) {
   return OkStatus();
 }
 
-Status CheckParameterCount(const HloInstruction* calling_instruction,
-                           const HloComputation* computation, int expected) {
-  if (computation->num_parameters() != expected) {
-    return InternalError(
-        "Expected computation %s called from %s to have %d parameters, has %d",
-        computation->name(), calling_instruction->name(), expected,
-        computation->num_parameters());
-  }
-  return OkStatus();
-}
-
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
@@ -148,6 +137,18 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
   return OkStatus();
 }
 }  // namespace
+
+/*static*/ Status ShapeVerifier::CheckParameterCount(
+    const HloInstruction* calling_instruction,
+    const HloComputation* computation, int expected) {
+  if (computation->num_parameters() != expected) {
+    return InternalError(
+        "Expected computation %s called from %s to have %d parameters, has %d",
+        computation->name(), calling_instruction->name(), expected,
+        computation->num_parameters());
+  }
+  return OkStatus();
+}
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {

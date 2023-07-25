@@ -869,7 +869,26 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
+  virtual const Layout& layout() const {
+    CHECK(on_device_shape().has_layout());
+    return on_device_shape().layout();
+  }
+
+  // PjRtBuffers can either represent a single array buffer or a tuple of array
+  // buffers. Returns true if this buffer represents a tuple, false if an array.
+  virtual bool IsTuple() const { return on_device_shape().IsTuple(); }
+
   virtual const Shape& on_device_shape() const = 0;
+
+  virtual bool has_dynamic_dimensions() const {
+    return on_device_shape().is_dynamic();
+  }
+
+  // Each returned element is true if the corresponding dimensions is dynamic,
+  // false if static.
+  virtual absl::Span<const bool> is_dynamic_dimension() const {
+    return on_device_shape().dynamic_dimensions();
+  }
 
   // Same as dimensions() when the shape is static. When the shape is dynamic,
   // it gathers the metadata from the device and returns a static shape
@@ -954,9 +973,28 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    Shape device_shape = on_device_shape();
-    if (device_shape.is_dynamic()) {
-      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    Shape device_shape;
+    if (!IsTuple()) {
+      absl::Span<const int64_t> literal_dims;
+      std::optional<std::vector<int64_t>> logical_dims_storage;
+      if (has_dynamic_dimensions()) {
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+        literal_dims = *logical_dims_storage;
+      } else {
+        literal_dims = dimensions();
+      }
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      *device_shape.mutable_layout() = layout();
+    } else {
+      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+      // to use the above non-tuple code path where possible.
+      device_shape = on_device_shape();
+      if (device_shape.is_dynamic()) {
+        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+      }
     }
     auto literal = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(device_shape));

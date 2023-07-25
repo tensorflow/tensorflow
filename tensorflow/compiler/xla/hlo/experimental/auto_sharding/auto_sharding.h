@@ -170,6 +170,11 @@ struct AutoShardingOption {
   // Static estimate for iteration count of a while loop, used in the cost model
   int64_t loop_iteration_count_estimate = 100;
 
+  // Whether or not to generate replicated strategies for dot/conv
+  // ops. Generating these seems to be beneficial for LLM serving models, but
+  // can increase the search space, so this feature is exposed as an option.
+  bool allow_replicated_strategy_for_dot_and_conv = true;
+
   std::vector<int64_t> strategy_vector;
   // If greater than zero, tensors with size smaller than or equal to this limit
   // will always be replicated if they don't have a different user-specified

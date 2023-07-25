@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
@@ -148,12 +149,13 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
-  if (tensorflow::GetBuildXlaOpsPassFlags()
-          ->tf_xla_disable_full_embedding_pipelining) {
-    pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
-  } else {
-    pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
-  }
+  // Only one of EmbeddingSequencing and EmbeddingPipelining will actually
+  // run and the logic is in EmbeddingPipeliningPass. If the pipelining pass
+  // runs, embedding attributes are stripped and the sequencing pass will have
+  // no effect. If the pipelining pass doesn't run, embedding attributes are
+  // preserved and the sequencing rewrite will trigger.
+  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
+  pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
@@ -290,6 +292,10 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
+  VLOG(2)
+      << "TPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
@@ -313,6 +319,10 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   return status;
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
+  VLOG(2)
+      << "TPU V1 Compat Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
     CreateTPUBridgePipelineV1(pm);
     // Add set of passes to lower back to graph (from tf_executor).
@@ -487,6 +497,10 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
+  VLOG(2)
+      << "CPU/GPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
   Status status = mlir::TFTPU::RunTFXLABridge(
       module,
       [](OpPassManager &pm) {

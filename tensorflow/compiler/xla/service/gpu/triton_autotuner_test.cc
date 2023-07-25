@@ -177,6 +177,35 @@ class TritonAutotunerTest : public HloTestBase {
                    0);
         });
   }
+
+  void CheckTritonAutotuningDeviceless(absl::string_view hlo) {
+    HloPassPipeline pipeline("gemm_rewrite_deviceless");
+    pipeline.AddPass<GemmRewriterTriton>(backend()
+                                             .default_stream_executor()
+                                             ->GetDeviceDescription()
+                                             .cuda_compute_capability());
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
+                                        tsl::port::MaxParallelism());
+    DebugOptions opts;
+    pipeline.AddPass<TritonAutotuner>(
+        AutotuneConfig{DevicelessConfig{backend()
+                                            .default_stream_executor()
+                                            ->GetDeviceDescription()
+                                            .model_str(),
+                                        backend()
+                                            .default_stream_executor()
+                                            ->GetDeviceDescription()
+                                            .cuda_compute_capability()},
+                       opts},
+        &thread_pool);
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    auto status_or = HloTestBase::RunHloPass(&pipeline, module.get());
+    EXPECT_TRUE(tsl::errors::IsInternal(status_or.status()));
+    EXPECT_EQ("Expect autotune result cache hit for deviceless compilation.",
+              status_or.status().message());
+  }
 };
 
 class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
@@ -389,6 +418,21 @@ ENTRY e {
 // CHECK:   ROOT %triton_gemm_out = f16[16,16]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
 // CHECK-SAME: "block_m":
 )");
+}
+
+TEST_F(TritonAutotunerExhaustiveTest, Deviceless_CompileOnly) {
+  const std::string hlo = R"(
+HloModule module
+
+ENTRY e {
+  x = s8[16,16] parameter(0)
+  c = f16[16,16] convert(x)
+  y = f16[16,16] parameter(1)
+  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  CheckTritonAutotuningDeviceless(hlo);
 }
 
 }  // namespace

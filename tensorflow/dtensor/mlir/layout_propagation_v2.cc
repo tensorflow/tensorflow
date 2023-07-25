@@ -299,7 +299,10 @@ StatusOr<Layout> MergeLayouts(
     }
   }
   FilterkAnySpecs(proposed_specs);
-  return Layout::GetLayout(proposed_specs, mesh);
+  // Parted layout is propagated from producer side to consumer side, so when
+  // merging the layout with producer layout, take the producer layout type into
+  // account.
+  return Layout::GetLayout(producer->type(), proposed_specs, mesh);
 }
 
 mlir::LogicalResult InsertLayoutsForDTensorLayout(

@@ -1147,11 +1147,11 @@ REGISTER_OP("Dilation2D")
       int64_t output_rows, output_cols;
       int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_rows, filter_rows_eff, stride_rows, padding, &output_rows,
-          &padding_before, &padding_after));
+          in_rows, filter_rows_eff, /*dilation_rate=*/1, stride_rows, padding,
+          &output_rows, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_cols, filter_cols_eff, stride_cols, padding, &output_cols,
-          &padding_before, &padding_after));
+          in_cols, filter_cols_eff, /*dilation_rate=*/1, stride_cols, padding,
+          &output_cols, &padding_before, &padding_after));
 
       ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});

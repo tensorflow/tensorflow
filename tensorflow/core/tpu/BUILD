@@ -12,7 +12,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
-        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
@@ -259,6 +258,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:host_command_handler",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",

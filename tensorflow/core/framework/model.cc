@@ -2007,7 +2007,12 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->processing_time_.store(processing_time_);
     {
       mutex_lock l2(cloned_current->mu_);
-      cloned_current->parameters_ = parameters_;
+      cloned_current->parameters_ =
+          absl::flat_hash_map<string, std::shared_ptr<Parameter>>();
+      for (const auto& [parameter_name, parameter_ptr] : parameters_) {
+        cloned_current->parameters_[parameter_name] =
+            std::make_shared<Parameter>(parameter_ptr);
+      }
       cloned_current->previous_processing_time_ = previous_processing_time_;
       cloned_current->processing_time_ema_ = processing_time_ema_;
     }
@@ -2601,14 +2606,17 @@ double Model::ComputeTargetTimeNsec() {
          1.0e3;
 }
 
-double Model::ComputeProcessingTimeNsec() const {
-  const std::shared_ptr<Node> root = output();
-  if (root == nullptr) {
-    return 0.0;
+double Model::ComputeSnapshotProcessingTimeNsec() const {
+  std::unique_ptr<ModelTiming> model_timing = nullptr;
+  {
+    tf_shared_lock l(mu_);
+    if (snapshot_ == nullptr) {
+      return 0.0;
+    }
+    model_timing = std::make_unique<ModelTiming>(snapshot_);
   }
 
-  ModelTiming model_timing(root);
-  ModelTimingPriorityQueue priority_queue(model_timing);
+  ModelTimingPriorityQueue priority_queue(*model_timing);
   StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {

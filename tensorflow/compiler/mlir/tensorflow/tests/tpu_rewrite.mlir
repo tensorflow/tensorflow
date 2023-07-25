@@ -666,10 +666,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      metadata
     // CHECK-SAME: is_same_data_across_replicas: true
-    // CHECK-SAME: mhlo.is_same_data_across_replicas
+    // CHECK-SAME: mhlo.is_same_data_across_replicas = true
     func.return %0: tensor<8xi32>
   }
-  func.func @tpu0_func(%arg0: tensor<8xi32> {mhlo.is_same_data_across_replicas}) -> tensor<8xi32> {
+  func.func @tpu0_func(%arg0: tensor<8xi32> {mhlo.is_same_data_across_replicas = true}) -> tensor<8xi32> {
     func.return %arg0 : tensor<8xi32>
   }
 }

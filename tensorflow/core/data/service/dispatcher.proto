@@ -7,7 +7,14 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
 
-// Next tag: 8
+// Next tag: 3
+message ActiveTask {
+  int64 task_id = 1;
+  // Estimated time it takes this Task to produce an element, in nanoseconds.
+  double processing_time_nsec = 2;
+}
+
+// Next tag: 9
 message WorkerHeartbeatRequest {
   string worker_address = 1;
   repeated DataTransferServerInfo transfer_servers = 7;
@@ -18,6 +25,8 @@ message WorkerHeartbeatRequest {
   // The status of any active snapshot tasks, keyed by snapshot path.
   map<string, SnapshotTaskProgress> snapshot_task_progress = 6;
   reserved 3;
+  // TODO(armandouv): Deprecate current_tasks and extract task ids from here.
+  repeated ActiveTask active_tasks = 8;
 }
 
 // Next tag: 4

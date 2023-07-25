@@ -15,7 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 setup_file() {
-    cd $TFCI_GIT_DIR
     bazel version  # Start the bazel server
 }
 

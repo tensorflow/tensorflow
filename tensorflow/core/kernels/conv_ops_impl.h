@@ -294,7 +294,7 @@ class ConvOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context,
                 data_format_str == "CHANNELS_LAST" ||
-                    data_format_str == " CHANNELS_FIRST",
+                    data_format_str == "CHANNELS_FIRST",
                 absl::InvalidArgumentError(
                     absl::StrCat("Unknown data format: ", data_format_str)));
     data_format_ =
@@ -331,6 +331,11 @@ class ConvOp : public BinaryOp<T> {
                 absl::InvalidArgumentError(absl::StrCat(
                     "The input must have 2 or 3 spatial dimensions but got ",
                     spatial_dims)));
+
+    OP_REQUIRES(
+        context, filter.NumElements() > 0,
+        absl::InvalidArgumentError("filter must not have zero elements "
+                                   "(i.e. all dimensions must be non-zero)"));
 
     // Flatten tensor for computation.
     Tensor input_flat;
@@ -479,7 +484,7 @@ class ConvOp : public BinaryOp<T> {
     // Compute windowed output sizes for spatial dimensions.
     std::vector<int64_t> out_dims(spatial_dims);
     for (int i = 0; i < spatial_dims; ++i) {
-      OP_REQUIRES_OK(context, GetWindowedOutputSizeVerboseV2(
+      OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                   input_dims[i], filter_dims[i],
                                   dilation_dims[i], stride_dims[i], padding_,
                                   &out_dims[i], &pad_before[i], &pad_after[i]));
@@ -843,16 +848,16 @@ void LaunchConv2DOpImpl(OpKernelContext* ctx, bool use_cudnn,
                              &padding_right);
   }
   int64_t out_rows_check, out_cols_check;
-  Status status = GetWindowedOutputSizeVerboseV2(
+  Status status = GetWindowedOutputSizeVerbose(
       in_rows, patch_rows, row_dilation, row_stride, padding, &out_rows_check,
       &padding_top, &padding_bottom);
   // The status is guaranteed to be OK because we checked the output and padding
   // was valid earlier.
   TF_CHECK_OK(status);
   DCHECK_EQ(out_rows, out_rows_check);
-  status = GetWindowedOutputSizeVerboseV2(in_cols, patch_cols, col_dilation,
-                                          col_stride, padding, &out_cols_check,
-                                          &padding_left, &padding_right);
+  status = GetWindowedOutputSizeVerbose(in_cols, patch_cols, col_dilation,
+                                        col_stride, padding, &out_cols_check,
+                                        &padding_left, &padding_right);
   TF_CHECK_OK(status);
   DCHECK_EQ(out_cols, out_cols_check);
 

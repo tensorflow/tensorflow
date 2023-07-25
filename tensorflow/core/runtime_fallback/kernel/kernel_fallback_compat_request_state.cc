@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
@@ -158,7 +159,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     std::function<void(std::function<void()>)>* runner,
     tfrt_stub::CostRecorder* cost_recorder,
     tfrt::ResourceContext* client_graph_resource_context,
-    tensorflow::CancellationManager* cancellation_manager) {
+    tensorflow::CancellationManager* cancellation_manager,
+    const tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
@@ -175,6 +177,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
   fallback_request_state.set_cancellation_manager(cancellation_manager);
+  fallback_request_state.set_runtime_config(runtime_config);
 
   return OkStatus();
 }

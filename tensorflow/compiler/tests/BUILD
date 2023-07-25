@@ -540,6 +540,7 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/ops:array_ops",
@@ -747,6 +748,10 @@ tf_xla_py_strict_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/287111047): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -1115,6 +1120,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:nn_ops",
@@ -1783,6 +1789,10 @@ tf_xla_py_strict_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/291130193): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -1932,6 +1942,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -2872,5 +2883,23 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "mean_op_test",
+    size = "small",
+    srcs = ["mean_op_test.py"],
+    disable_experimental = False,
+    disable_mlir_bridge = False,
+    deps = [
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

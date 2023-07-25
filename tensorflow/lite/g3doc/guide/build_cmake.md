@@ -290,6 +290,9 @@ cmake --build . -j
 
 This command generates the following shared library in the current directory.
 
+**Note:** On Windows system, you can find the `tensorflowlite_c.dll` under
+`debug` directory.
+
 Platform | Library name
 -------- | ---------------------------
 Linux    | `libtensorflowlite_c.so`

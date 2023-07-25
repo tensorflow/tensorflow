@@ -35,7 +35,14 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
-#endif  // GOOGLE_CUDA
+
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if TF_HIPBLASLT
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#endif  // TF_HIPBLASLT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -111,6 +118,42 @@ struct GemmConfig {
       double alpha_imag, double beta, std::optional<int64_t> algorithm,
       int64_t compute_precision);
 
+  template <typename CublasLtMatmulMaybeF8Op,
+            typename = std::enable_if<
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
+  static StatusOr<GemmConfig> For(CublasLtMatmulMaybeF8Op op) {
+    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+
+    int64_t compute_precision = 0;  // Default
+    if (op.getPrecisionConfig().has_value()) {
+      auto precision_config = op.getPrecisionConfig();
+      for (auto attr : precision_config.value()) {
+        int64_t value = static_cast<int64_t>(
+            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+        if (value > compute_precision) {
+          compute_precision = value;
+        }
+      }
+    }
+
+    Shape bias_shape;
+    if (op.getBias() != nullptr) {
+      bias_shape = GetShape(op.getBias());
+    }
+    return GemmConfig::For(
+        GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+        dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+        dot_dims.getRhsBatchingDimensions(),
+        dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+        op.getBias() == nullptr ? nullptr : &bias_shape, GetShape(op.getD()),
+        op.getAlphaReal().convertToDouble(),
+        op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
+        op.getAlgorithm(), compute_precision);
+  }
+
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
   MatrixLayout c_layout;
@@ -153,59 +196,17 @@ StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue);
 
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace cublas_lt {
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
 
 class MatmulPlan {
  public:
-  template <typename CublasLtMatmulMaybeF8Op,
-            typename = std::enable_if<
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
-  static StatusOr<MatmulPlan> For(CublasLtMatmulMaybeF8Op op) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-    int64_t compute_precision = 0;  // Default
-    if (op.getPrecisionConfig().has_value()) {
-      auto precision_config = op.getPrecisionConfig();
-      for (auto attr : precision_config.value()) {
-        int64_t value = static_cast<int64_t>(
-            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-        if (value > compute_precision) {
-          compute_precision = value;
-        }
-      }
-    }
-
-    Shape bias_shape;
-    if (op.getBias() != nullptr) {
-      bias_shape = GetShape(op.getBias());
-    }
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig config,
-        GemmConfig::For(
-            GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-            dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-            dot_dims.getRhsBatchingDimensions(),
-            dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
-            op.getBias() == nullptr ? nullptr : &bias_shape,
-            GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
-            op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
-            op.getAlgorithm(), compute_precision));
-
-    TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
-                        AsBlasLtEpilogue(op.getEpilogue()));
-    return From(config, epilogue);
-  }
-
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
-                                   se::cuda::BlasLt::Epilogue epilogue);
+                                   se::gpu::BlasLt::Epilogue epilogue);
 
   Status ExecuteOnStream(
       se::Stream* stream, se::DeviceMemoryBase a_buffer,
@@ -216,15 +217,15 @@ class MatmulPlan {
       se::DeviceMemoryBase a_scale_buffer, se::DeviceMemoryBase b_scale_buffer,
       se::DeviceMemoryBase c_scale_buffer, se::DeviceMemoryBase d_scale_buffer,
       se::DeviceMemoryBase d_amax_buffer,
-      const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+      const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
       se::ScratchAllocator& scratch_allocator,
       se::blas::ProfileResult* profile_result = nullptr) const;
 
-  StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
+  StatusOr<std::vector<se::gpu::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       se::Stream* stream) const;
 
  private:
-  MatmulPlan(se::cuda::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
+  MatmulPlan(se::gpu::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
              bool must_swap_operands)
       : plan_(std::move(plan)),
         alpha_(alpha),
@@ -241,11 +242,11 @@ class MatmulPlan {
                   se::DeviceMemoryBase a_scale, se::DeviceMemoryBase b_scale,
                   se::DeviceMemoryBase c_scale, se::DeviceMemoryBase d_scale,
                   se::DeviceMemoryBase d_amax,
-                  const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                  const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
                   se::blas::ProfileResult* profile_result) const;
 
-  se::cuda::BlasLt::MatmulPlan plan_;
+  se::gpu::BlasLt::MatmulPlan plan_;
   complex128 alpha_;
   double beta_;
   bool must_swap_operands_;
@@ -253,7 +254,7 @@ class MatmulPlan {
 
 }  // namespace cublas_lt
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 }  // namespace gpu
 }  // namespace xla

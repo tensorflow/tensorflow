@@ -100,11 +100,6 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, target GPU compiler passes."),
       llvm::cl::init(false)};
 
-  // TODO(b/260915352): Remove the flag and default to using bridge.
-  Option<bool> use_bridge_for_gpu{
-      *this, "use-bridge-for-gpu",
-      llvm::cl::desc("If true, GPU bridge is used."), llvm::cl::init(false)};
-
   Option<bool> func_use_fallback_tensor{
       *this, "func-use-fallback-tensor",
       llvm::cl::desc(

@@ -29,11 +29,13 @@ load(
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
+    "if_tensorrt_exec",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
     "if_cuda",
+    "if_cuda_exec",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -463,6 +465,16 @@ def tf_copts(
         })
     )
 
+def tf_copts_exec(
+        android_optimization_level_override = "-O2",
+        is_external = False,
+        allow_exceptions = False):
+    return tf_copts(
+        android_optimization_level_override,
+        is_external,
+        allow_exceptions,
+    ) + if_cuda_exec(["-DGOOGLE_CUDA=1"]) + if_tensorrt_exec(["-DGOOGLE_TENSORRT=1"])
+
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
@@ -555,7 +567,7 @@ def tf_gen_op_libs(
     for n in op_lib_names:
         cc_library(
             name = n + "_op_lib",
-            copts = tf_copts(is_external = is_external),
+            copts = tf_copts_exec(is_external = is_external),
             features = features,
             srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
@@ -1389,7 +1401,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        copts = copts + tf_copts(),
+        copts = copts + tf_copts_exec(),
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
@@ -2971,7 +2983,7 @@ def pybind_library(
 def pybind_extension_opensource(
         name,
         srcs,
-        module_name = None,
+        module_name = None,  # Unused.
         hdrs = [],
         dynamic_deps = [],
         static_deps = [],
@@ -2982,6 +2994,7 @@ def pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -2994,7 +3007,7 @@ def pybind_extension_opensource(
         visibility = None,
         win_def_file = None):
     """Builds a generic Python extension module."""
-    _ignore = [module_name]
+    _ignore = [enable_stub_generation, module_name]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3261,12 +3274,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
-        "@python_x86_64-pc-windows-msvc//:__subpackages__",
-        "@python_x86_64-apple-darwin//:__subpackages__",
-        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
-        "@python_aarch64-apple-darwin//:__subpackages__",
-        "@pypi_numpy//:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [

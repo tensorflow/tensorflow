@@ -17,20 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/autotune_results.pb.h"
-#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -41,9 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
@@ -56,34 +46,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-struct CompilationKey {
-  template <typename H>
-  friend H AbslHashValue(H h, const CompilationKey& k) {
-    return H::combine(std::move(h), k.autotune_key, k.res.SerializeAsString());
-  }
-
-  bool operator==(const CompilationKey& k) const {
-    return res.SerializeAsString() == k.res.SerializeAsString() &&
-           autotune_key == k.autotune_key;
-  }
-
-  std::string ToString() const {
-    return absl::StrFormat("<key=%s, res=%s>", autotune_key.ToString(),
-                           res.DebugString());
-  }
-
-  AutotuneCacheKey autotune_key;
-  AutotuneResult res;
-};
-
-static absl::Mutex executable_cache_mutex(absl::kConstInit);
-// The key is the "standard" AutotuneCacheKey, which encompasses both the device
-// type and the code of the HLO. We need this because TritonAutotuner may be
-// called with different device types, and an executable compiled for one device
-// type may not run on another.
-static auto& ABSL_GUARDED_BY(executable_cache_mutex) executable_cache =
-    *new absl::node_hash_map<CompilationKey, std::unique_ptr<Executable>>();
 
 std::vector<ExecutionInput> ExecutionInputsFromBuffers(
     Executable* executable, absl::Span<se::DeviceMemoryBase const> buffers) {
@@ -123,20 +85,15 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   // Avoid using another thread pool.
   opts_.set_xla_gpu_force_compilation_parallelism(1);
   // Avoid using GPU graphs as we don't want to measure graph construction time.
-  opts_.set_xla_gpu_cuda_graph_level(0);
+  opts_.set_xla_gpu_graph_level(0);
+  // Disable experimental OpenXLA runtime.
+  opts_.set_xla_gpu_enable_openxla_runtime(false);
 }
 
-StatusOr<std::optional<absl::Duration>>
-AutotunerCompileUtil::GenerateAndProfileExecutable(
-    const AutotuneResult& config, const AutotuneCacheKey& cache_key,
-    se::Stream* stream, absl::Span<se::DeviceMemoryBase const> input_buffers,
-    ShapedBuffer output_buffer, GenerateModuleFn extractor) {
-  TF_ASSIGN_OR_RETURN(Executable * executable,
-                      Compile(config, cache_key, std::move(extractor)));
-
-  if (!executable) {
-    return {std::nullopt};
-  }
+StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>
+AutotunerCompileUtil::ProfileExecutable(
+    Executable* executable, se::Stream* stream,
+    absl::Span<se::DeviceMemoryBase const> input_buffers) {
   {
     std::vector<ExecutionInput> execution_inputs =
         ExecutionInputsFromBuffers(executable, input_buffers);
@@ -154,50 +111,13 @@ AutotunerCompileUtil::GenerateAndProfileExecutable(
                       Execute(*executable, std::move(execution_inputs)));
   TF_ASSIGN_OR_RETURN(absl::Duration timer_duration,
                       timer.GetElapsedDuration());
-  ScopedShapedBuffer result = execution_output.ConsumeResult();
-
-  // TODO(cheshire): Copying should not be required. Instead, we can add a new
-  // aliased parameter.
-  Shape shape = result.on_device_shape();
-  TF_RET_CHECK(shape == output_buffer.on_device_shape());
-  if (shape.IsTuple()) {
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      TF_RET_CHECK(!shape.tuple_shapes(i).IsTuple());
-      stream->ThenMemcpy(output_buffer.buffers().mutable_element(ShapeIndex{i}),
-                         result.buffer(ShapeIndex{i}),
-                         ShapeUtil::ByteSizeOf(shape.tuple_shapes(i)));
-    }
-  } else {
-    stream->ThenMemcpy(output_buffer.buffers().mutable_element(ShapeIndex{}),
-                       result.buffer(ShapeIndex{}),
-                       ShapeUtil::ByteSizeOf(shape));
-  }
-  return std::make_optional(timer_duration);
+  return std::make_optional<ProfilingOutput>(
+      timer_duration, execution_output.Commit().ConsumeResult());
 }
 
-StatusOr<Executable*> AutotunerCompileUtil::Compile(
-    const AutotuneResult& res, const AutotuneCacheKey& cache_key,
+StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     GenerateModuleFn extractor) {
-  CompilationKey key{cache_key, res};
-  {
-    absl::MutexLock lock(&executable_cache_mutex);
-    auto it = executable_cache.find(key);
-    if (it != executable_cache.end()) {
-      VLOG(4) << "Compilation cache hit";
-      return it->second.get();
-    }
-  }
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      CompileNoCache(std::move(extractor)));
-  absl::MutexLock lock(&executable_cache_mutex);
-  auto [it, inserted] = executable_cache.emplace(key, std::move(executable));
-  return it->second.get();
-}
-
-StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
-    GenerateModuleFn module_extractor) {
-  StatusOr<std::unique_ptr<HloModule>> new_hlo_module = module_extractor();
+  StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor();
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an expected failure.
     return std::unique_ptr<Executable>();
@@ -207,7 +127,10 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::CompileNoCache(
   (*new_hlo_module)->config().set_debug_options(opts_);
 
   StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
-      std::move(*new_hlo_module), &stream_executor_, &allocator_);
+      std::move(*new_hlo_module), &stream_executor_,
+      Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
+                               /*layout_canonicalization_callback=*/{},
+                               /*is_autotuning_compilation=*/true});
   if (out.status().code() == absl::StatusCode::kResourceExhausted) {
     // Being out of shared memory budget is an expected failure.
     return std::unique_ptr<Executable>();
@@ -247,11 +170,6 @@ StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
                           &service_run_options, std::move(arguments)));
 
   return std::move(output);
-}
-
-/*static*/ void AutotunerCompileUtil::ClearCompilationCache() {
-  absl::MutexLock lock(&executable_cache_mutex);
-  executable_cache.clear();
 }
 
 }  // namespace gpu

@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -78,6 +80,20 @@ void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
     testing::GTEST_FLAG(filter) = custom_filter;
   }
 #endif
+}
+
+absl::StatusOr<DeviceList> GetDevices(Client* client,
+                                      absl::Span<const int> device_indices) {
+  DeviceList::Devices devices;
+  devices.reserve(device_indices.size());
+  for (int device_index : device_indices) {
+    if (device_index < 0 || device_index >= client->devices().size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Out of range device index: ", device_index));
+    }
+    devices.push_back(client->devices()[device_index]);
+  }
+  return DeviceList(std::move(devices));
 }
 
 }  // namespace test_util

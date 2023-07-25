@@ -37,7 +37,8 @@ class XlaCallModuleLoader {
       mlir::MLIRContext* context, int version, std::string module_str,
       std::vector<std::string> dim_args_spec,
       std::vector<std::string> disabled_checks,
-      std::vector<std::string> platforms, std::string loading_platform);
+      std::vector<std::string> platforms, std::string loading_platform,
+      int num_invocation_args, bool main_has_token_input_output);
 
   int nr_outputs() { return main_.getNumResults(); }
   mlir::TypeRange output_types() { return main_.getResultTypes(); }
@@ -57,6 +58,11 @@ class XlaCallModuleLoader {
 
   // Validates that the module only contains ops from valid dialects.
   tsl::Status ValidateDialect();
+
+  // Validates that the module represents a statically-shaped StableHLO program,
+  // otherwise all sorts of weirdness might happen in the HLO exporter which is
+  // much easier to detect here.
+  absl::Status ValidateStaticShapes();
 
   // Lowers the StableHLO module to MHLO in place.
   absl::Status LowerModuleToMhlo();
@@ -79,7 +85,9 @@ class XlaCallModuleLoader {
                                       std::vector<std::string> dim_args_spec,
                                       std::vector<std::string> disabled_checks,
                                       std::vector<std::string> platforms,
-                                      std::string loading_platform);
+                                      std::string loading_platform,
+                                      int num_invocation_args,
+                                      bool main_has_token_input_output);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.

@@ -425,6 +425,22 @@ Status Exporter::GetControlRetNodes(
   return OkStatus();
 }
 
+// After conversion from MLIR the input names are all blank which causes
+// graph compilation to fail. This uses the edges to fix up the input names.
+void FixupInputNamesFromEdges(Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    if (n->IsOp()) {
+      NodeDef* node_def = n->mutable_def();
+      node_def->clear_input();
+      for (const Edge* e : n->in_edges()) {
+        Node* src = e->src();
+        if (src->IsOp()) {
+          Graph::AddInput(node_def, src->name(), e->src_output());
+        }
+      }
+    }
+  }
+}
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
     const SymbolTable& symbol_table, FuncOp function, FunctionDefLibrary* flib,
@@ -583,6 +599,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Fixes the edges between the inserted nodes and special "_SOURCE" and
   // "_SINK".
   FixupSourceAndSinkEdges(graph.get());
+
+  FixupInputNamesFromEdges(graph.get());
 
   TF_RETURN_IF_ERROR(
       exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));

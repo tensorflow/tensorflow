@@ -169,10 +169,16 @@ class XlaCallModuleOp : public XlaOpKernel {
                       "Unexpected device type ", loading_device_type)));
     }
     VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
+    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
+             .ok()) {
+      module_has_token_input_output_ = false;
+    }
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(dim_args_spec),
-          std::move(disabled_checks), std::move(platforms), loading_platform);
+          std::move(disabled_checks), std::move(platforms), loading_platform,
+          /*num_invocation_args=*/ctx->num_inputs(),
+          module_has_token_input_output_);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
@@ -182,10 +188,6 @@ class XlaCallModuleOp : public XlaOpKernel {
       function_list_.clear();
     }
 
-    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
-             .ok()) {
-      module_has_token_input_output_ = false;
-    }
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
       token_input_nodes_.clear();
       op_has_token_input_output_ = false;
@@ -217,6 +219,7 @@ class XlaCallModuleOp : public XlaOpKernel {
       input_shapes.push_back(*std::move(shape));
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
+    OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
     OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));

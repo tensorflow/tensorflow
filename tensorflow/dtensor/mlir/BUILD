@@ -291,6 +291,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
 )
@@ -481,6 +482,7 @@ cc_library(
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
         ":value_utils",
+        "//tensorflow/cc:ops",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",

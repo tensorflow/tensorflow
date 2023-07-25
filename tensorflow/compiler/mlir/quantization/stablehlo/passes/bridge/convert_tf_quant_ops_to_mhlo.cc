@@ -58,6 +58,9 @@ namespace mlir {
 namespace stablehlo {
 namespace {
 
+#define GEN_PASS_DEF_CONVERTTFQUANTOPSTOMHLO
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
+
 FailureOr<IntegerType> GetStorageType(Operation *op,
                                       Type original_output_element_type,
                                       PatternRewriter &rewriter) {
@@ -638,37 +641,17 @@ class ConvertUniformQuantizedClipByValueOp
   }
 };
 
-class ConvertTFQuantOpsToMHLOPass
-    : public PassWrapper<ConvertTFQuantOpsToMHLOPass,
-                         OperationPass<func::FuncOp>> {
+class ConvertTFQuantOpsToMHLO
+    : public impl::ConvertTFQuantOpsToMHLOBase<ConvertTFQuantOpsToMHLO> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTFQuantOpsToMHLOPass)
+  ConvertTFQuantOpsToMHLO() = default;
+  ConvertTFQuantOpsToMHLO(const ConvertTFQuantOpsToMHLO &) = default;
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "quant-convert-tf-quant-ops-to-mhlo";
-  }
-
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Convert TF Quant ops to MHLO quantization";
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect>();
-    registry.insert<mhlo::MhloDialect>();
-    registry.insert<chlo::ChloDialect>();
-    registry.insert<tf_type::TFTypeDialect>();
-    registry.insert<quant::QuantizationDialect>();
-  }
-
+  // Performs conversion of MHLO quant ops to primitive ops.
   void runOnOperation() override;
 };
 
-static PassRegistration<ConvertTFQuantOpsToMHLOPass> pass;
-
-void ConvertTFQuantOpsToMHLOPass::runOnOperation() {
+void ConvertTFQuantOpsToMHLO::runOnOperation() {
   MLIRContext *ctx = &getContext();
   func::FuncOp func = getOperation();
   ConversionTarget target(*ctx);
@@ -703,7 +686,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertTFQuantOpsToMHLOPass() {
-  return std::make_unique<ConvertTFQuantOpsToMHLOPass>();
+  return std::make_unique<ConvertTFQuantOpsToMHLO>();
 }
 
 }  // namespace stablehlo

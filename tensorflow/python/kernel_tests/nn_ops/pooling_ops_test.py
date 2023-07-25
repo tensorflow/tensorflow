@@ -2333,6 +2333,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         data_format=data_format,
         use_gpu=use_gpu)
 
+  @test_util.disable_xla("Xla does not raise error on out of bounds access")
   def testAvgPoolGradOutputMemoryOutOfBounds(self):
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,

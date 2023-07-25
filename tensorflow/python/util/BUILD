@@ -253,6 +253,7 @@ tf_py_strict_test(
         ":tf_inspect",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
@@ -645,6 +646,7 @@ py_strict_library(
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
+        "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's

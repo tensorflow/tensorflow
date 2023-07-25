@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include <deque>
 #include <memory>
 #include <queue>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -187,7 +191,6 @@ bool CallGraph::Dominates(const HloComputation* a,
 }
 
 namespace {
-
 // Returns the call context of a computation which is called from contexts 'a'
 // and 'b'.
 CallContext UnionContexts(CallContext a, CallContext b) {
@@ -460,6 +463,144 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
     b_ancestor = next_caller(b_ancestor);
   }
   return {nullptr, nullptr};
+}
+
+template <typename T>
+absl::flat_hash_set<const T*> CallGraph::NearestCommonAncestorsHelper(
+    std::vector<const T*>& starting_nodes) {
+  // Check if T is either HloInstruction or HloComputation.
+  CHECK(
+      (std::is_same_v<T, HloInstruction> || std::is_same_v<T, HloComputation>));
+
+  if (starting_nodes.empty()) {
+    return absl::flat_hash_set<const T*>();
+  }
+  if (starting_nodes.size() == 1) {
+    return absl::flat_hash_set<const T*>({starting_nodes[0]});
+  }
+
+  // There could be multiple nearest common ancestors in a DAG.
+  absl::flat_hash_set<const T*> nearest_common_ancestors;
+
+  // Initialize `visited_ancestors` for each provided nodes.
+  std::vector<absl::flat_hash_set<const T*>> visited_ancestors;
+  visited_ancestors.reserve(starting_nodes.size());
+  for (int idx = 0; idx < starting_nodes.size(); ++idx) {
+    visited_ancestors.push_back(
+        absl::flat_hash_set<const T*>({starting_nodes[idx]}));
+  }
+
+  // Initialize BFS queue for each provided nodes.
+  std::vector<std::deque<const T*>> bfs_queues;
+  bfs_queues.reserve(starting_nodes.size());
+  for (int idx = 0; idx < starting_nodes.size(); ++idx) {
+    bfs_queues.push_back(std::deque<const T*>({starting_nodes[idx]}));
+  }
+
+  // Lambda to check if the BFS has finished (i.e., all queues in `bfs_queues`
+  // are empty).
+  auto is_bfs_finished = [&bfs_queues]() -> bool {
+    return absl::c_all_of(
+        bfs_queues, [](std::deque<const T*> queue) { return queue.empty(); });
+  };
+
+  // Lambda to check if there are common nodes in all the
+  // `visited_ancestors`. Save results in `nearest_common_ancestors`. Return
+  // true if they are found, otherwise return false.
+  auto find_common_nodes = [&visited_ancestors,
+                            &nearest_common_ancestors]() -> bool {
+    absl::flat_hash_set<const T*> common_nodes(visited_ancestors[0]);
+    for (int idx = 1; idx < visited_ancestors.size(); ++idx) {
+      absl::erase_if(common_nodes, [&](auto k) {
+        return !visited_ancestors[idx].contains(k);
+      });
+    }
+    nearest_common_ancestors = common_nodes;
+    return !nearest_common_ancestors.empty();
+  };
+
+  // BFS body.
+  // For each BFS step, we check if there is a common node in all the visited
+  // ancestors (`find_common_nodes()`), and if yes, that common node is the
+  // nearest ancestor we are looking for. Otherwise, we conduct BFS from each
+  // bfs_queue, and update `bfs_queues` and `visited_ancestors` accordingly.
+  while (!is_bfs_finished() && !find_common_nodes()) {
+    for (int idx = 0; idx < bfs_queues.size(); ++idx) {
+      auto cur_queue = bfs_queues[idx];
+      std::deque<const T*> next_queue;
+      auto& visited_ancestor = visited_ancestors[idx];
+
+      while (!cur_queue.empty()) {
+        const T* node = cur_queue.back();
+        cur_queue.pop_back();
+
+        // Identify ancestor of node.
+        std::vector<T*> ancestors_to_visit;
+        if constexpr (std::is_same_v<T, HloInstruction>) {
+          // For instruction, the ancestors are its users and
+          // control_successors.
+          ancestors_to_visit = node->users();
+          ancestors_to_visit.insert(ancestors_to_visit.end(),
+                                    node->control_successors().begin(),
+                                    node->control_successors().end());
+        } else if constexpr (std::is_same_v<T, HloComputation>) {
+          // For computation, the ancestors are its caller computations.
+          for (auto caller_instruction : GetComputationCallers(node)) {
+            ancestors_to_visit.push_back(caller_instruction->parent());
+          }
+        }
+
+        for (auto ancestor : ancestors_to_visit) {
+          if (!visited_ancestor.contains(ancestor)) {
+            next_queue.push_back(ancestor);
+            visited_ancestor.insert(ancestor);
+          }
+        }
+      }
+
+      bfs_queues[idx] = next_queue;
+    }
+  }
+
+  CHECK(!nearest_common_ancestors.empty())
+      << "At least one nearest_common_ancestor";
+
+  // If one of the computed nearest common ancestors is inside
+  // `starting_nodes`, we would only return the ones that are inside
+  // `starting_nodes`.
+  if (absl::c_any_of(starting_nodes, [&nearest_common_ancestors](const T* nca) {
+        return nearest_common_ancestors.contains(nca);
+      })) {
+    absl::erase_if(nearest_common_ancestors, [&starting_nodes](const T* nca) {
+      return std::find(starting_nodes.begin(), starting_nodes.end(), nca) ==
+             starting_nodes.end();
+    });
+  }
+
+  return nearest_common_ancestors;
+}
+
+absl::flat_hash_set<const HloComputation*>
+CallGraph::NearestCommonAncestorComputations(
+    std::vector<const HloComputation*> computations) {
+  return NearestCommonAncestorsHelper<HloComputation>(computations);
+}
+
+absl::flat_hash_set<const HloInstruction*>
+CallGraph::NearestCommonAncestorInstructions(
+    std::vector<const HloInstruction*> instructions) {
+  if (instructions.empty()) {
+    return absl::flat_hash_set<const HloInstruction*>();
+  }
+
+  // Check if all the instructions belong to the same computation.
+  auto computation = instructions[0]->parent();
+  CHECK(absl::c_all_of(instructions, [&computation](
+                                         const HloInstruction* instruction) {
+    return instruction->parent() == computation;
+  })) << "All provided instructions should be in the same computation";
+
+  return NearestCommonAncestorsHelper<HloInstruction>(instructions);
 }
 
 std::string CallGraph::ToString() const {

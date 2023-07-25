@@ -465,7 +465,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.depthwise_conv2d_grad_filter,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
          CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.dequantize, mkl_op_registry::GetMklOpName(csinfo_.dequantize),
          CopyAttrsAll, DequantizeRewrite, kRewriteForOpNameChange});
@@ -500,7 +499,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_batch_norm_ex,
                       CopyAttrsAll, FusedBatchNormExRewrite,
                       GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.fused_conv2d,
                       native_fmt ? csinfo_.mkl_native_fused_conv2d
                                  : csinfo_.mkl_fused_conv2d,
@@ -573,13 +571,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_pad_with_fused_conv2d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
                       GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
                       CopyAttrsAll, ConcatV2Rewrite, kRewriteForOpNameChange});
+#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
@@ -621,9 +619,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
+#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantized_max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_max_pool),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_sum_and_relu,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_bias_sum_and_relu),
@@ -2832,6 +2832,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
   nb->Attr("is_weight_const", filter_node->IsConstant());
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
@@ -2845,12 +2848,15 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
 
   Node* weight_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &weight_node));
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
 
   // Add attributes to new node.
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 
   // Requantization attr Tbias
   DataType Tbias;

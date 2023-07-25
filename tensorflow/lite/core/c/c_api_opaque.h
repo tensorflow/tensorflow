@@ -113,6 +113,64 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
     const TfLiteOpaqueTensor* opaque_tensor, void* output_data,
     size_t output_data_size);
 
+// Returns the number of strings stored in the provided 'tensor'.  Returns -1 in
+// case of failure.
+int TfLiteOpaqueTensorGetStringCount(const TfLiteOpaqueTensor* tensor);
+
+// Stores the address of the n-th (denoted by the provided 'index') string
+// contained in the provided 'tensor' in the provided '*str' pointer.  Stores
+// the length of the string in the provided '*len' argument.
+//
+// Returns 'kTfLiteOk' if '*str' and '*len' have been set successfully.  Any
+// other return value indicates a failure, which leaves '*str' and '*len' in an
+// unspecified state.
+//
+// The range of valid indices is defined by the half open interval [0, N),
+// where N == TfLiteOpaqueTensorGetStringCount(tensor).
+//
+// Note that 'str' is not guaranteed to be null-terminated. Also note that this
+// function will not create a copy of the underlying string data.  The data is
+// owned by the 'tensor'.
+TfLiteStatus TfLiteOpaqueTensorGetString(const TfLiteOpaqueTensor* tensor,
+                                         int index, const char** str, int* len);
+
+// Writes the array of strings specified by 'str_array' into
+// the specified 'tensor'.  The strings provided via the 'str_array' are being
+// copied into the 'tensor'. Returns 'kTfLiteOk' in case of success.  Any other
+// return value indicates a failure.
+//
+// The provided 'str_array_len' must denote the length of 'str_array'
+// and 'str_n_len[i]' must denote the length of the i-th string.
+//
+// The provided strings don't need to be null terminated and may contain
+// embedded null characters.  The amount of bytes copied into the 'tensor' is
+// entirely determined by 'str_n_len[i]' and it is the caller's responsibility
+// to set this value correctly to avoid undefined behavior.
+//
+// Also note that calling 'TfLiteOpaqueTensorWriteStrings' deallocates any
+// previously stored data in the 'tensor'.
+TfLiteStatus TfLiteOpaqueTensorWriteStrings(TfLiteOpaqueTensor* tensor,
+                                            const char* const* str_array,
+                                            int str_array_len,
+                                            const int* str_n_len);
+
+// Writes the string pointed to by the provided 'str' pointer of length 'len'
+// into the provided 'tensor'.  The string provided via 'str' is
+// copied into the 'tensor'.  Returns 'kTfLiteOk' in case of success.  Any
+// other return value indicates a failure.
+//
+// Note that calling 'TfLiteOpaqueTensorWriteString' deallocates any
+// previously stored data in the 'tensor'.  E.g. suppose 't' denotes a
+// 'TfLiteOpaqueTensor*', then calling 'TfLiteOpaqueTensorWriteString(t, "AB",
+// 2)' followed by a call to 'TfLiteOpaqueTensorWriteString(t, "CD", 2)' will
+// lead to 't' containing 'CD', not 'ABCD'.
+//
+// 'TfLiteOpaqueTensorWriteString' is a convenience function for the use case
+// of writing a single string to a tensor and its effects are identical to
+// calling 'TfLiteOpaqueTensorWriteStrings' with an array of a single string.
+TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
+                                           const char* str, int len);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
 

@@ -697,5 +697,34 @@ void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_StatusOrFactoryFailLongMsg);
 
+#if defined(PLATFORM_GOOGLE)
+
+StatusOr<int> GetError() {
+  return absl::InvalidArgumentError("An invalid argument error");
+}
+
+StatusOr<int> PropagateError() {
+  TF_ASSIGN_OR_RETURN(int a, GetError());
+  return a;
+}
+
+StatusOr<int> PropagateError2() {
+  TF_ASSIGN_OR_RETURN(int a, PropagateError());
+  return a;
+}
+
+TEST(Status, StackTracePropagation) {
+  StatusOr<int> s = PropagateError2();
+  auto sources = s.status().GetSourceLocations();
+  ASSERT_EQ(sources.size(), 3);
+
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_EQ(sources[i].file_name(),
+              "third_party/tensorflow/tsl/platform/statusor_test.cc");
+  }
+}
+
+#endif
+
 }  // namespace
 }  // namespace tsl

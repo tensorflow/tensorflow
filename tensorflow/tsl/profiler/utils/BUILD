@@ -376,6 +376,10 @@ cc_library(
     name = "file_system_utils",
     hdrs = ["file_system_utils.h"],
     copts = tf_profiler_copts(),
+    visibility = set_external_visibility([
+        "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ]),
     deps = [
         "//tensorflow/tsl/platform",
         "@com_google_absl//absl/strings",

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
@@ -116,14 +117,30 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
-  opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
-  opts.min_graph_size = debug_options.xla_gpu_cuda_graph_min_graph_size();
+  opts.gpu_graph_level = debug_options.xla_gpu_graph_level();
+  opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
   opts.enable_concurrent_region =
-      debug_options.xla_gpu_cuda_graph_enable_concurrent_region();
+      debug_options.xla_gpu_graph_enable_concurrent_region();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
     return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+  }
+
+  return OkStatus();
+}
+
+// Lowers MLIR module to the OpenXla runtime (aka IREE input dialects).
+static Status LowerToOpenXlaRuntime(mlir::ModuleOp module,
+                                    llvm::StringRef entry_function_name,
+                                    llvm::ArrayRef<int64_t> buffer_sizes,
+                                    ThunkSequence* thunk_sequence,
+                                    const DebugOptions& debug_options) {
+  mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
+  populateOpenXlaRuntimePasses(pm, thunk_sequence);
+
+  if (pm.run(module).failed()) {
+    return InternalError("Failed to lower LMHLO to OpenXLA input dialects.");
   }
 
   return OkStatus();
@@ -162,23 +179,24 @@ std::optional<bool> DummyCanShareBufferFunction(const HloInstruction*,
   return std::nullopt;
 }
 
-static StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
+static void ForwardCollectiveAttrs(mlir::ModuleOp module,
+                                   llvm::StringRef entry_function_name,
+                                   const HloModuleConfig& config) {
+  mlir::OpBuilder b(module.getContext());
+  auto func = module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
+  func->setAttr("replica_count", b.getI64IntegerAttr(config.replica_count()));
+  func->setAttr("num_partitions", b.getI64IntegerAttr(config.num_partitions()));
+}
+
+StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
     const HloModule* hlo_module_for_dump) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
-  mlir::OpBuilder builder(mlir_module.getContext());
-  mlir::IntegerAttr replica_count_attr =
-      builder.getI64IntegerAttr(module_config.replica_count());
-  mlir::IntegerAttr num_partitions_attr =
-      builder.getI64IntegerAttr(module_config.num_partitions());
-  mlir::func::FuncOp func =
-      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
-  func->setAttr("replica_count", replica_count_attr);
-  func->setAttr("num_partitions", num_partitions_attr);
+  ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
-  // Lower LMHLO operations to the JitRt compatible custom calls.
+  // Lower LMHLO operations to the XLA:GPU runtime custom calls.
   TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
       mlir_module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
@@ -195,6 +213,32 @@ static StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
   return std::make_unique<GpuRuntimeProgram>(
       entry_function_name.str(), std::move(module_str), buffer_sizes.vec(),
       module_config.debug_options());
+}
+
+StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
+    std::unique_ptr<mlir::MLIRContext> ctx,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    llvm::StringRef entry_function_name, llvm::ArrayRef<int64_t> buffer_sizes,
+    const HloModuleConfig& module_config,
+    std::unique_ptr<ThunkSequence> thunk_sequence,
+    const HloModule* hlo_module_for_dump) {
+  // Forward collective (NCCL) attributes for use by the lowering pipeline.
+  ForwardCollectiveAttrs(*module, entry_function_name, module_config);
+
+  // Lower LMHLO operations to the OpenXLA compiler input dialects.
+  TF_RETURN_IF_ERROR(LowerToOpenXlaRuntime(
+      *module, {entry_function_name.data(), entry_function_name.size()},
+      buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
+
+  if (hlo_module_for_dump != nullptr) {
+    std::string module_str = llvm_ir::DumpToString(*module);
+    DumpToFileInDirOrStdout(*hlo_module_for_dump, "gpu_rt_host", "mlir",
+                            module_str);
+  }
+
+  return std::make_unique<OpenXlaRuntimeProgram>(
+      std::move(ctx), std::move(module), entry_function_name.str(),
+      buffer_sizes.vec(), module_config.debug_options());
 }
 
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
@@ -327,7 +371,6 @@ Status CompileModuleToLlvmIrImpl(
         },
         // Assume 75% of the total device memory is available for XLA.
         /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
-        HloRematerialization::RematerializationPass::kPostFusion,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         /*compact_shape_function=*/nullptr,
         HloRematerialization::RematerializationMode::kRecomputeAndCompress);
@@ -370,10 +413,10 @@ Status CompileModuleToLlvmIrImpl(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);
-  mlir::MLIRContext mlir_context(registry);
-  mlir_context.getDiagEngine().registerHandler(DiagnosticHandler);
+  auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
+  mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
+      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
 
   TF_RETURN_IF_ERROR(
       HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
@@ -393,15 +436,13 @@ Status CompileModuleToLlvmIrImpl(
       &results->output_shape, &results->entry_func_attrs));
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
-      &mlir_context, results->llvm_module.get());
+      hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
+      cuda_compute_capability, rocm_compute_capability, mlir_context.get(),
+      results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter,
-      IrEmitterUnnested::Create(hlo_module->config(), &ir_emitter_context));
+  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
 
   {
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -428,19 +469,31 @@ Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
+  // Sizes of all buffers required for running XLA module.
+  std::vector<int64_t> buffer_sizes;
+  llvm::transform(
+      results->allocations, std::back_inserter(buffer_sizes),
+      [](const BufferAllocation& allocation) { return allocation.size(); });
+
   // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
   // is submitted. Currently we can't emit LLVM IR with fp8 types.
   if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
       !HasFp8(*hlo_module)) {
-    std::vector<int64_t> buffer_sizes;
-    llvm::transform(
-        results->allocations, std::back_inserter(buffer_sizes),
-        [](const BufferAllocation& allocation) { return allocation.size(); });
     TF_ASSIGN_OR_RETURN(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
                      /*hlo_module_for_dump=*/hlo_module));
+    return OkStatus();
+  }
+
+  if (IsOpenXlaRuntimeEnabled(hlo_module->config())) {
+    TF_ASSIGN_OR_RETURN(
+        results->executable,
+        LowerToOpenXla(std::move(mlir_context), std::move(mlir_module),
+                       entry_function.getName(), buffer_sizes,
+                       hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
+                       /*hlo_module_for_dump=*/hlo_module));
     return OkStatus();
   }
 

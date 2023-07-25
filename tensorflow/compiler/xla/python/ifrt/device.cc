@@ -24,12 +24,12 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-StatusOr<DeviceList> DeviceList::FromProto(Client* client,
+StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
                                            const DeviceListProto& proto) {
   DeviceList::Devices devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {
-    TF_ASSIGN_OR_RETURN(Device * device, client->LookupDevice(device_id));
+    TF_ASSIGN_OR_RETURN(Device * device, lookup_device(device_id));
     devices.push_back(device);
   }
   return DeviceList(std::move(devices));

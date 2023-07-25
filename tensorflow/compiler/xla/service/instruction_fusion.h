@@ -314,6 +314,20 @@ class InstructionFusion : public HloModulePass {
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;
 
+  // Dumps the state of computation before fusion.
+  void DumpPreFusionState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, bool is_mof = false);
+
+  // Dumps the state of computation and the reason why the fusion was not
+  // performed.
+  void DumpNotFusingState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, FusionDecision decision);
+
+  // Dumps the state of computation after fusion happened.
+  void DumpStateAfterFusion(HloComputation* computation,
+                            HloInstruction* fusion_instruction,
+                            const std::string& producer_name);
+
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;
 

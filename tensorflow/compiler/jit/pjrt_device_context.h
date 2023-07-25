@@ -52,6 +52,13 @@ class PjRtDeviceContext : public DeviceContext {
   bool use_pjrt_tensor_buffer_;
 };
 
+void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
+                            DeviceContext* recv_dev_context, Device* src,
+                            Device* dst, AllocatorAttributes src_alloc_attr,
+                            AllocatorAttributes dst_alloc_attr,
+                            const Tensor* input, Tensor* output,
+                            int dev_to_dev_stream_index, StatusCallback done);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_PJRT_DEVICE_CONTEXT_H_

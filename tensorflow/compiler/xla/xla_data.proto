@@ -415,6 +415,10 @@ message OpMetadata {
   // Whether to preserve the layout of the HLO op.
   bool preserve_layout = 13;
 
+  // 1-based position of the frame in frames flat array.
+  // Ids are 1-based to keep 0 value as representation of non-set property.
+  int32 stack_frame_id = 15;
+
   reserved 14;
 }
 
@@ -757,6 +761,23 @@ message CholeskyOptions {
 // the Python frontend to the XLA backend.
 message FrontendAttributes {
   map<string, string> map = 1;
+}
+
+// Represents a single statistic to track.
+message Statistic {
+  // Must be a single word consisting of any alphanumeric characters
+  string stat_name = 1;
+  // Must be within a range of [0, 100], in order for the graph dumper to
+  // properly render the statistic onto the graph.
+  double stat_val = 2;
+}
+
+// Represents the information needed to visualize propagation statistics when
+// rendering an HLO graph. This includes an array of statistics as well as the
+// index of the statistic to render.
+message StatisticsViz {
+  int64 stat_index_to_visualize = 1;
+  repeated Statistic statistics = 2;
 }
 
 // LINT.IfChange

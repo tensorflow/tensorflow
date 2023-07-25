@@ -41,8 +41,8 @@ namespace xla {
 
 namespace {
 
-constexpr absl::string_view shapeAssertionName = "shape_assertion";
-constexpr absl::string_view errorMessageAttrName = "error_message";
+constexpr llvm::StringRef shapeAssertionName = "shape_assertion";
+constexpr llvm::StringRef errorMessageAttrName = "error_message";
 // We bound the number of error_message_inputs for using llvm::formatv
 constexpr int maxErrorMessageInputs = 4;
 
@@ -271,12 +271,13 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
         absl::StrCat("Module shape refinement failed: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
-  return ValidateStaticShapes(module);
+  return absl::OkStatus();
 }
 
 absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
                                      llvm::raw_ostream &os,
-                                     bool enable_shape_assertions) {
+                                     bool enable_shape_assertions,
+                                     bool validate_static_shapes) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   context.loadDialect<mlir::func::FuncDialect>();
@@ -294,10 +295,10 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
     return absl::InvalidArgumentError("Cannot parse module.");
   }
   TF_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
+  if (validate_static_shapes) TF_RETURN_IF_ERROR(ValidateStaticShapes(*module));
   if (mlir::failed(mlir::writeBytecodeToFile(*module, os))) {
     return absl::InternalError("Cannot serialize module.");
   }
-
   return absl::OkStatus();
 }
 

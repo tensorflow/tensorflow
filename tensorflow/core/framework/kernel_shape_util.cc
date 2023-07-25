@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
+#include <algorithm>
+#include <array>
+
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
-Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
-                                      int64_t dilation_rate, int64_t stride,
-                                      Padding padding_type,
-                                      int64_t* output_size,
-                                      int64_t* padding_before,
-                                      int64_t* padding_after) {
+Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
+                                    int64_t dilation_rate, int64_t stride,
+                                    Padding padding_type, int64_t* output_size,
+                                    int64_t* padding_before,
+                                    int64_t* padding_after) {
   if (stride <= 0) {
     return errors::InvalidArgument("Stride must be > 0, but got ", stride);
   }
@@ -64,17 +66,6 @@ Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
   return OkStatus();
 }
 
-Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
-                                    int64_t stride, Padding padding_type,
-                                    int64_t* output_size,
-                                    int64_t* padding_before,
-                                    int64_t* padding_after) {
-  return GetWindowedOutputSizeVerboseV2(input_size, filter_size,
-                                        /*dilation_rate=*/1, stride,
-                                        padding_type, output_size,
-                                        padding_before, padding_after);
-}
-
 Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
                              int dilation_rate, int64_t stride,
                              Padding padding_type, int64_t* output_size,
@@ -82,12 +73,12 @@ Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
   if (padding_type == Padding::EXPLICIT) {
     return errors::Internal(
         "GetWindowedOutputSize does not handle EXPLICIT padding; call "
-        "GetWindowedOutputSizeVerboseV2 instead");
+        "GetWindowedOutputSizeVerbose instead");
   }
   int64_t padding_after_unused;
-  return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
-                                        stride, padding_type, output_size,
-                                        padding_size, &padding_after_unused);
+  return GetWindowedOutputSizeVerbose(input_size, filter_size, dilation_rate,
+                                      stride, padding_type, output_size,
+                                      padding_size, &padding_after_unused);
 }
 
 Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,

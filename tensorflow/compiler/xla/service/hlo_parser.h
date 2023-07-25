@@ -57,6 +57,11 @@ StatusOr<HloSharding> ParseSharding(absl::string_view str);
 // "{attr_a=a,attr_b=b}".
 StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str);
 
+// Parses statistics viz from str. str is supposed to contain the body of the
+// statistics visualization, i.e. just the rhs of the "statistics={...}"
+// attribute string, e.g., "{visualizing_index=1,nan_percent=50}".
+StatusOr<StatisticsViz> ParseStatisticsViz(absl::string_view str);
+
 // Parses parameter replication from str. str is supposed to contain the body of
 // the parameter replication, i.e. just the rhs of the
 // "parameter_replication={...}" attribute string, e.g., "{true, false}".

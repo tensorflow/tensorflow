@@ -29,14 +29,12 @@ limitations under the License.
 #include <ostream>
 #include <set>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -48,18 +46,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/iterator_range.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -1835,6 +1827,27 @@ class HloInstruction {
     return frontend_attributes_;
   }
 
+  void add_single_statistic(Statistic statistic) {
+    *statistics_viz_.add_statistics() = std::move(statistic);
+  }
+
+  void set_stat_index_to_visualize(int64_t index) {
+    statistics_viz_.set_stat_index_to_visualize(index);
+  }
+
+  bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+
+  const Statistic& statistic_to_visualize() const {
+    return statistics_viz_.statistics().at(
+        statistics_viz_.stat_index_to_visualize());
+  }
+
+  void set_statistics_viz(StatisticsViz statistics_viz) {
+    statistics_viz_ = std::move(statistics_viz);
+  }
+
+  const StatisticsViz& statistics_viz() const { return statistics_viz_; }
+
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
@@ -2018,11 +2031,11 @@ class HloInstruction {
   HloInstruction* fused_expression_root() const;
 
   // Delegates to HloFusionInstruction::fused_instructions.
-  const tsl::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
   fused_instructions() const;
 
-  const tsl::gtl::iterator_range<
+  tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
   fused_instructions();
 
@@ -2037,7 +2050,7 @@ class HloInstruction {
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
-  const bool IsMultiOutputFusion() const;
+  bool IsMultiOutputFusion() const;
 
   // Delegates to HloFusionInstruction::fusion_kind.
   FusionKind fusion_kind() const;
@@ -2434,6 +2447,10 @@ class HloInstruction {
   //    z' = const(20), frontend_attributes={?}
   FrontendAttributes frontend_attributes_;
 
+  // Used to render an HLO graph when tracking the propagation desired values
+  // through it.
+  StatisticsViz statistics_viz_;
+
   // String identifier for instruction.
   std::string name_;
 
@@ -2468,6 +2485,7 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 std::string PaddingConfigToString(const PaddingConfig& padding);
 std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
+std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);

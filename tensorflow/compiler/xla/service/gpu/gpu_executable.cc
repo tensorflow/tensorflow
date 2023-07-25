@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
+#include "tensorflow/compiler/xla/service/gpu/openxla/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -70,8 +71,17 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// If OpenXLA runtime is enabled, it automatically disables "classic" XLA
+// runtime which is enabled by default.
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
-  return config.debug_options().xla_gpu_enable_xla_runtime_executable();
+  bool runtime = config.debug_options().xla_gpu_enable_xla_runtime_executable();
+  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
+  return runtime && !openxla;
+}
+
+bool IsOpenXlaRuntimeEnabled(const HloModuleConfig& config) {
+  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
+  return openxla;
 }
 
 namespace {
@@ -102,8 +112,18 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
 
   if (std::holds_alternative<OwnedGpuRuntimeProgram>(executable)) {
     auto& program = std::get<OwnedGpuRuntimeProgram>(executable);
-    TF_ASSIGN_OR_RETURN(result->gpu_runtime_executable_,
-                        GpuRuntimeExecutable::Create(std::move(program)));
+    TF_ASSIGN_OR_RETURN(
+        result->gpu_runtime_executable_,
+        GpuRuntimeExecutable::Create(result->module_name_, std::move(program)));
+    return result;
+  }
+
+  if (std::holds_alternative<OwnedOpenXlaRuntimeProgram>(executable)) {
+    auto& program = std::get<OwnedOpenXlaRuntimeProgram>(executable);
+    TF_ASSIGN_OR_RETURN(
+        result->openxla_executable_,
+        OpenXlaRuntimeExecutable::Create(std::move(program), result->text(),
+                                         result->binary()));
     return result;
   }
 
@@ -126,7 +146,8 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       verbose_buffer_assignment_string_dumper_(
           params.verbose_buffer_assignment_string_dumper),
       constants_(std::move(params.constants)),
-      output_info_(std::move(params.output_info)) {
+      output_info_(std::move(params.output_info)),
+      enable_debug_info_manager_(params.enable_debug_info_manager) {
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
@@ -134,14 +155,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
   *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
 #endif
-  if (has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(
-        module().unique_id(), shared_module(), debug_buffer_assignment_);
+  if (has_module() && enable_debug_info_manager_) {
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
   }
 }
 
 GpuExecutable::~GpuExecutable() {
-  if (has_module()) {
+  if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
 
@@ -509,6 +530,36 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
+static Status ExecuteOpenXlaRuntime(
+    const std::string& module_name, ModuleIdentifier module_id,
+    OpenXlaRuntimeExecutable& openxla_executable,
+    const ServiceExecutableRunOptions* run_options,
+    const BufferAllocations& buffer_allocations,
+    const BufferAllocation* temp_buffer, bool block_host_until_done) {
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+
+  tsl::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
+      tsl::profiler::TraceMeLevel::kInfo);
+
+  ScopedAnnotationAlways annotation([&] {
+    std::string module_id_str;
+    if (module_id >= 0) {
+      module_id_str = absl::StrFormat(",program_id=%d", module_id);
+    }
+    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
+                           module_id_str);
+  });
+
+  auto executed =
+      openxla_executable.Execute(run_options, buffer_allocations, temp_buffer);
+  if (!executed.ok()) return executed;
+
+  return MaybeSyncAndProfile(
+      run_options, start_nanos,
+      block_host_until_done ? run_options->stream() : nullptr);
+}
+
 Status GpuExecutable::PopulatePersistentTempBuffers(
     se::StreamExecutor* executor) {
   auto search = persistent_temp_buffers_.find(executor);
@@ -759,19 +810,26 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                      : false);
   }
 
-  if (gpu_runtime_executable_) {
-    // Match IrEmitter's temp buffer allocation for kernel launches. See
-    // IrEmitterUnnested::BuildKernelThunkImpl().
-    const BufferAllocation* temp_buffer = nullptr;
-    for (const BufferAllocation& alloc : allocations_) {
-      if (alloc.IsPreallocatedTempBuffer()) {
-        // Retrieve the first seen temp buffer.
-        if (temp_buffer == nullptr) temp_buffer = &alloc;
-      }
+  // Match IrEmitter's temp buffer allocation for kernel launches. See
+  // IrEmitterUnnested::BuildKernelThunkImpl().
+  const BufferAllocation* temp_buffer = nullptr;
+  for (const BufferAllocation& alloc : allocations_) {
+    if (alloc.IsPreallocatedTempBuffer()) {
+      // Retrieve the first seen temp buffer.
+      if (temp_buffer == nullptr) temp_buffer = &alloc;
     }
+  }
+
+  if (gpu_runtime_executable_) {
     return ExecuteXlaRuntime(module_name_, unique_id, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
                              temp_buffer, block_host_until_done, gpu_lock);
+  }
+
+  if (openxla_executable_) {
+    return ExecuteOpenXlaRuntime(module_name_, unique_id, *openxla_executable_,
+                                 run_options, buffer_allocations, temp_buffer,
+                                 block_host_until_done);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");
@@ -925,9 +983,12 @@ GpuExecutable::GpuExecutable(
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
       constants_(std::move(constants)),
-      output_info_(std::move(output_info)) {
-  XlaDebugInfoManager::Get()->RegisterModule(
-      module().unique_id(), shared_module(), debug_buffer_assignment_);
+      output_info_(std::move(output_info)),
+      enable_debug_info_manager_(true) {
+  if (has_module()) {
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               debug_buffer_assignment_);
+  }
 }
 
 // Returns a list of functions exported from the `module` that should be loaded
@@ -1054,10 +1115,10 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
                          executable.status().message());
 
   // Move runtime::Executable ownership to the GpuRuntimeExecutable.
-  TF_ASSIGN_OR_RETURN(
-      auto gpu_runtime_executable,
-      GpuRuntimeExecutable::Create(buffer_sizes, std::move(*executable),
-                                   std::move(debug_options)));
+  TF_ASSIGN_OR_RETURN(auto gpu_runtime_executable,
+                      GpuRuntimeExecutable::Create(
+                          hlo_module->name(), buffer_sizes,
+                          std::move(*executable), std::move(debug_options)));
 
   // Construct GpuExecutable for the loaded XLA Runtime executable.
   std::string name = hlo_module->name();

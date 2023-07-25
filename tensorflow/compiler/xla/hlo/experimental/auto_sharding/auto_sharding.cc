@@ -1142,18 +1142,15 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                               resharding_costs, input_shardings}));
       }
       CHECK_EQ(strategies->leaf_vector.size(), 1);
-      {
-        // If there is only one option for resharding, and the cost
-        // computed for that option is kInfinityCost, set the cost to
-        // zero. This is okay because there is only one option anyway, and
-        // having the costs set to kInfinityCost is problematic for the
-        // solver.
-        for (auto& operand_resharding_costs :
-             strategies->leaf_vector[0].resharding_costs) {
-          if (operand_resharding_costs.size() == 1 &&
-              operand_resharding_costs[0] >= kInfinityCost) {
-            operand_resharding_costs[0] = 0;
-          }
+      // If there is only one option for resharding, and the cost computed for
+      // that option is kInfinityCost, set the cost to zero. This is okay
+      // because there is only one option anyway, and having the costs set to
+      // kInfinityCost is problematic for the solver.
+      for (auto& operand_resharding_costs :
+           strategies->leaf_vector[0].resharding_costs) {
+        if (operand_resharding_costs.size() == 1 &&
+            operand_resharding_costs[0] >= kInfinityCost) {
+          operand_resharding_costs[0] = 0;
         }
       }
     } else if (!strategies->following) {
@@ -1891,12 +1888,20 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         TF_RETURN_IF_ERROR(HandleDot(strategies, leaf_strategies, strategy_map,
                                      ins, instruction_id, cluster_env,
                                      batch_dim_map, solver_option));
+        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, 0);
+        }
         break;
       }
       case HloOpcode::kConvolution: {
         TF_RETURN_IF_ERROR(HandleConv(strategies, leaf_strategies, strategy_map,
                                       ins, instruction_id, cluster_env,
                                       batch_dim_map, solver_option));
+        if (solver_option.allow_replicated_strategy_for_dot_and_conv) {
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, 0);
+        }
         break;
       }
       case HloOpcode::kRngGetAndUpdateState: {
@@ -1963,6 +1968,46 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kCustomCall: {
+        auto generate_non_following_strategies = [&](bool only_replicated) {
+          if (ins->shape().IsTuple()) {
+            if (only_replicated) {
+              strategies = CreateTupleStrategyVector(instruction_id);
+              strategies->childs.reserve(ins->shape().tuple_shapes_size());
+              for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+                std::unique_ptr<StrategyVector> child_strategies =
+                    CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                             leaf_strategies);
+                AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
+                                      cluster_env, strategy_map,
+                                      child_strategies, replicated_penalty);
+                strategies->childs.push_back(std::move(child_strategies));
+              }
+            } else {
+              strategies = CreateAllStrategiesVector(
+                               ins, ins->shape(), instruction_id,
+                               leaf_strategies, cluster_env, strategy_map,
+                               solver_option, replicated_penalty, batch_dim_map,
+                               call_graph, only_allow_divisible, true)
+                               .value();
+            }
+          } else {
+            if (only_replicated) {
+              strategies = CreateLeafStrategyVector(
+                  instruction_id, ins, strategy_map, leaf_strategies);
+              AddReplicatedStrategy(ins, ins->shape(), cluster_env,
+                                    strategy_map, strategies,
+                                    replicated_penalty);
+            } else {
+              strategies = CreateAllStrategiesVector(
+                               ins, ins->shape(), instruction_id,
+                               leaf_strategies, cluster_env, strategy_map,
+                               solver_option, replicated_penalty, batch_dim_map,
+                               call_graph, only_allow_divisible, true)
+                               .value();
+            }
+          }
+        };
+
         if (IsCustomCallMarker(ins)) {
           const HloInstruction* operand = ins->operand(0);
           const StrategyVector* src_strategies = strategy_map.at(operand).get();
@@ -1972,12 +2017,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
               pretrimmed_strategy_map);
         } else if (ins->has_sharding()) {
-          if (ins->shape().IsTuple()) {
-            strategies = CreateTupleStrategyVector(instruction_id);
-          } else {
-            strategies = CreateLeafStrategyVector(
-                instruction_id, ins, strategy_map, leaf_strategies);
-          }
+          generate_non_following_strategies(false);
         } else if (OutputInputSameShapes(ins)) {
           auto* partitioner =
               GetCustomCallPartitioner(ins->custom_call_target());
@@ -1994,24 +2034,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           }
         } else {
           // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
-          if (ins->shape().IsTuple()) {
-            strategies = CreateTupleStrategyVector(instruction_id);
-            strategies->childs.reserve(ins->shape().tuple_shapes_size());
-            for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
-              std::unique_ptr<StrategyVector> child_strategies =
-                  CreateLeafStrategyVector(instruction_id, ins, strategy_map,
-                                           leaf_strategies);
-              AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i),
-                                    cluster_env, strategy_map, child_strategies,
-                                    replicated_penalty);
-              strategies->childs.push_back(std::move(child_strategies));
-            }
-          } else {
-            strategies = CreateLeafStrategyVector(
-                instruction_id, ins, strategy_map, leaf_strategies);
-            AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                  strategies, replicated_penalty);
-          }
+          generate_non_following_strategies(true);
         }
         break;
       }
@@ -2262,24 +2285,14 @@ AutoShardingSolverResult CallSolver(
   // Serialize liveness_set
   request.live.resize(liveness_set.size());
   for (size_t t = 0; t < liveness_set.size(); ++t) {
-    std::vector<int>& current_liveness_set_indices = request.live[t];
-    std::function<void(const StrategyVector*, const ShapeIndex&)>
-        traverse_live_instructions;
-    traverse_live_instructions = [&](const StrategyVector* strategies,
-                                     const ShapeIndex& index) {
-      if (!index.empty()) {
-        current_liveness_set_indices.push_back(
-            strategies->childs.at(index.front())->id);
-      } else {
-        current_liveness_set_indices.push_back(strategies->id);
-      }
-    };
     for (const HloValue* value : liveness_set[t]) {
-      if (value->instruction()->shape().IsTuple() && value->index().empty()) {
-        continue;
-      }
-      traverse_live_instructions(strategy_map.at(value->instruction()).get(),
-                                 value->index());
+      const HloInstruction* instruction = value->instruction();
+      const ShapeIndex& index = value->index();
+      if (instruction->shape().IsTuple() && index.empty()) continue;
+      const StrategyVector* strategies = strategy_map.at(instruction).get();
+      const int id = index.empty() ? strategies->id
+                                   : strategies->childs.at(index.front())->id;
+      request.live[t].push_back(id);
     }
   }
   const AutoShardingSolverResult result = CallORToolsSolver(request);
@@ -3738,6 +3751,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.only_allow_divisible_input_output = true;
   solver_option.only_allow_divisible_intermediate = false;
   solver_option.nd_sharding_iteratively_strict_search_space = false;
+  solver_option.allow_replicated_strategy_for_dot_and_conv =
+      option_.allow_replicated_strategy_for_dot_and_conv;
 
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(

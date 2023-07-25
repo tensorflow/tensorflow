@@ -813,10 +813,8 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
           "buffers.");
     }
 
-    const xla::Shape& shape = buffer.on_device_shape();
-
     const char* format =
-        PEP3118FormatDescriptorForPrimitiveType(shape.element_type());
+        PEP3118FormatDescriptorForPrimitiveType(buffer.element_type());
     // It isn't an option for us to export unknown types as, say, bytes. When
     // converting an object to an ndarray, NumPy tries the buffer protocol
     // first. We very much want NumPy to fail and fall back to using
@@ -824,14 +822,14 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (!format) {
       return InvalidArgument(
           "Buffers of type %s are not supported by the Python buffer protocol.",
-          PrimitiveType_Name(shape.element_type()));
+          PrimitiveType_Name(buffer.element_type()));
     }
 
     // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
     // Additionally we call BlockHostUntilReady() below, which may block.
     py::gil_scoped_release gil_release;
 
-    if (!shape.IsArray()) {
+    if (buffer.IsTuple()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for array buffers.");
     }
@@ -847,14 +845,14 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
 
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+        !LayoutUtil::IsMonotonicWithDim0Major(buffer.layout())) {
       return InvalidArgument("Buffer is not in C-contiguous layout.");
     } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Minor(buffer.layout())) {
       return InvalidArgument("Buffer is not in F-contiguous layout.");
     } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(shape.layout()) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Major(buffer.layout()) &&
+               !LayoutUtil::IsMonotonicWithDim0Minor(buffer.layout())) {
       return InvalidArgument("Buffer is not in contiguous layout.");
     }
     std::memset(view, 0, sizeof(Py_buffer));
@@ -863,21 +861,22 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     view->buf = const_cast<void*>(root_ptr);
     auto extra = std::make_unique<ExtraBufferInfo>(
         buffers.front(), std::move(external_reference_hold));
-    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-    view->len = ShapeUtil::ByteSizeOf(shape);
+    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(buffer.element_type());
+    TF_ASSIGN_OR_RETURN(view->len, buffer.GetOnDeviceSizeInBytes());
     view->readonly = 1;
     if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
       view->format = const_cast<char*>(format);
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
-      view->ndim = shape.dimensions_size();
+      view->ndim = buffer.dimensions().size();
       static_assert(sizeof(int64_t) == sizeof(Py_ssize_t),
                     "Py_ssize_t must be 64 bits");
       if (view->ndim != 0) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64_t*>(shape.dimensions().data()));
+            const_cast<int64_t*>(buffer.dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(shape);
+          extra->strides = ByteStridesForShape(
+              buffer.element_type(), buffer.dimensions(), buffer.layout());
           view->strides = extra->strides.data();
         }
       }

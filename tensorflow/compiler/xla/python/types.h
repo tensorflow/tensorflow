@@ -84,6 +84,12 @@ PrimitiveType Squash64BitTypes(PrimitiveType type);
 
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
+std::vector<ssize_t> ByteStridesForShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         const xla::Layout& layout);
+std::vector<ssize_t> StridesForShape(PrimitiveType element_type,
+                                     absl::Span<const int64_t> dimensions,
+                                     const xla::Layout& layout);
 std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.

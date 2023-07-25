@@ -18,17 +18,18 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 
 namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
-    ModuleIdentifier module_id, std::shared_ptr<const HloModule> hlo_module,
+    std::shared_ptr<const HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  CHECK(hlo_module != nullptr && module_id == hlo_module->unique_id());
+  CHECK(hlo_module != nullptr);
   absl::MutexLock lock(&mutex_);
-  auto result = modules_.try_emplace(module_id);
+  auto result = modules_.try_emplace(hlo_module->unique_id());
   CHECK(result.second);
   XlaModuleEntry& m = result.first->second;
   m.hlo_module = std::move(hlo_module);
@@ -69,12 +70,12 @@ void XlaDebugInfoManager::StopTracing(
     modules_to_serialize.reserve(modules_.size());
     for (auto it = modules_.begin(); it != modules_.end();) {
       auto& m = it->second;
+      auto cur_it = it++;
       if (!m.active) {
         modules_to_serialize.emplace_back(std::move(m));
-        modules_.erase(it++);
+        modules_.erase(cur_it);
       } else {
         modules_to_serialize.emplace_back(m);
-        ++it;
       }
     }
   }
@@ -92,6 +93,11 @@ void XlaDebugInfoManager::StopTracing(
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }
+}
+
+bool XlaDebugInfoManager::TracksModule(ModuleIdentifier module_id) const {
+  absl::MutexLock lock(&mutex_);
+  return modules_.find(module_id) != modules_.end();
 }
 
 }  // namespace xla

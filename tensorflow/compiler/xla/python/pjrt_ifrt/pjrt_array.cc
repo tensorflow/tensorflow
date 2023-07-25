@@ -120,9 +120,8 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  TF_ASSIGN_OR_RETURN(auto dtype,
-                      ToDType(pjrt_buffer->on_device_shape().element_type()));
-  Shape shape(pjrt_buffer->on_device_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
+  Shape shape(pjrt_buffer->dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding),
@@ -152,9 +151,8 @@ std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
 
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
-  TF_ASSIGN_OR_RETURN(
-      auto dtype, xla::ifrt::ToDType(
-                      pjrt_buffers.front()->on_device_shape().element_type()));
+  TF_ASSIGN_OR_RETURN(auto dtype,
+                      xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
   DeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
   std::vector<Shape> shapes;
@@ -162,7 +160,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
   for (const auto& pjrt_buffer : pjrt_buffers) {
     devices.push_back(pjrt_buffer->device());
-    shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
+    shapes.push_back(Shape(pjrt_buffer->dimensions()));
   }
   auto sharding =
       ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),

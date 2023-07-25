@@ -299,7 +299,9 @@ StatusOr<mlir::Value> EmitRelayout(
 
   mlir::OpBuilder builder(input.getContext());
   TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
-  if (src_layout.IsEquivalent(tgt_layout)) {
+  // If two layouts are the same, or the only difference is layout type, then
+  // there is no need to actually relayout data.
+  if (src_layout.IsEquivalentIgnoringType(tgt_layout)) {
     mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
         input.getLoc(), input.getType(), input);
     if (newly_created_ops != nullptr) newly_created_ops->insert(op);
@@ -348,9 +350,9 @@ StatusOr<mlir::Value> EmitRelayout(
     else
       intermediate_specs_1[i] = src_layout.sharding_spec(i);
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_1,
-      Layout::GetLayout(intermediate_specs_1, src_layout.mesh()));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_1,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_1,
+                                        src_layout.mesh()));
 
   llvm::SmallPtrSet<mlir::Operation*, 4> local_newly_created_ops;
   TF_ASSIGN_OR_RETURN(mlir::Value split_result,
@@ -365,9 +367,9 @@ StatusOr<mlir::Value> EmitRelayout(
     else
       intermediate_specs_2[i] = intermediate_specs_1[i];
   }
-  TF_ASSIGN_OR_RETURN(
-      Layout intermediate_layout_2,
-      Layout::GetLayout(intermediate_specs_2, src_layout.mesh()));
+  TF_ASSIGN_OR_RETURN(Layout intermediate_layout_2,
+                      Layout::GetLayout(tgt_layout.type(), intermediate_specs_2,
+                                        src_layout.mesh()));
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value concat_result,
@@ -382,6 +384,30 @@ StatusOr<mlir::Value> EmitRelayout(
   if (!all_scatter.ok()) return all_scatter;
   return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
+                                 const mlir::Location& loc, mlir::Value input,
+                                 std::vector<int64_t>& perm_arr) {
+  auto tr_input_type = input.getType().cast<mlir::ShapedType>();
+  auto shape = tr_input_type.getShape();
+
+  auto perm_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(perm_arr.size())}, builder.getIntegerType(64));
+
+  auto constant_attr = builder.getI64TensorAttr(perm_arr);
+  auto perm_op =
+      builder.create<mlir::TF::ConstOp>(loc, perm_type, constant_attr);
+
+  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  for (int i = 0; i < shape.size(); i++) {
+    transposed_shape[i] = shape[perm_arr[i]];
+  }
+  auto transposed_type = mlir::RankedTensorType::get(
+      transposed_shape, tr_input_type.getElementType());
+
+  return builder.create<mlir::TF::TransposeOp>(loc, transposed_type, input,
+                                               perm_op);
 }
 
 StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
