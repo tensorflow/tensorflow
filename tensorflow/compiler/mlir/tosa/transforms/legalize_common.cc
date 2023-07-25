@@ -81,8 +81,9 @@ static OpFoldResult multiplyDims(OpBuilder& builder,
     builder.createOrFold<arith::MulIOp>(loc, val_x, val_y));
 }
 
-static OpFoldResult multiplyDims(ArrayRef<OpFoldResult> dims,
-                                 OpBuilder& builder, Location loc) {
+static OpFoldResult multiplyDims(OpBuilder& builder,
+                                 Location loc,
+                                 ArrayRef<OpFoldResult> dims) {
   if (dims.size() == 0) {
     return OpFoldResult{builder.getIndexAttr(1)};
   }
@@ -108,8 +109,8 @@ static int64_t extractStaticDimension(OpFoldResult value) {
 // dynamic, otherwise generates a full tensor.reshape operation using a runtime
 // representation of the desired shape.
 static Value buildReshape(PatternRewriter& rewriter,
-                                         Location loc, Value value,
-                                         ArrayRef<OpFoldResult> shape) {
+                          Location loc, Value value,
+                          ArrayRef<OpFoldResult> shape) {
   auto staticShape = llvm::map_to_vector(shape, extractStaticDimension);
   auto elementType = getElementTypeOrSelf(value.getType());
 
@@ -4044,11 +4045,11 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   auto indicesMid =
     llvm::ArrayRef(indices_shape).slice(batch_dims, indices_rank - batch_dims);
 
-  OpFoldResult lowProduct = multiplyDims(paramsMid, rewriter, op->getLoc());
-  OpFoldResult highProduct = multiplyDims(paramsHigh, rewriter, op->getLoc());
+  OpFoldResult lowProduct = multiplyDims(rewriter, op->getLoc(), paramsMid);
+  OpFoldResult highProduct = multiplyDims(rewriter, op->getLoc(), paramsHigh);
 
-  OpFoldResult N = multiplyDims(paramsLow, rewriter, op->getLoc());
-  OpFoldResult W = multiplyDims(indicesMid, rewriter, op->getLoc());
+  OpFoldResult N = multiplyDims(rewriter, op->getLoc(), paramsLow);
+  OpFoldResult W = multiplyDims(rewriter, op->getLoc(), indicesMid);
   OpFoldResult K = params_shape[axis];
   OpFoldResult C = multiplyDims(rewriter, op->getLoc(), lowProduct, highProduct);
 
