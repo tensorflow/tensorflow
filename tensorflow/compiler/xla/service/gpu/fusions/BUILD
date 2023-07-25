@@ -60,7 +60,6 @@ cc_library(
         ":copy",
         ":fusion_emitter",
         ":in_place_dynamic_update_slice",
-        ":input_slices",
         ":loop",
         ":reduction",
         ":transpose",
@@ -167,23 +166,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
-    name = "input_slices",
-    srcs = ["input_slices.cc"],
-    hdrs = ["input_slices.h"],
-    deps = [
-        ":fusion_emitter",
-        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
-        "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
-        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
-        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
-        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
-        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:ir_headers",
     ],

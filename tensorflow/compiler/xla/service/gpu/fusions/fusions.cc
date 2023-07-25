@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/copy.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
-#include "tensorflow/compiler/xla/service/gpu/fusions/input_slices.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/loop.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/reduction.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/transpose.h"
@@ -52,9 +51,6 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) {
   switch (analysis.GetEmitterFusionKind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return std::make_unique<InputSlicesFusion>(
-          ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
       return std::make_unique<ReductionFusion>(
           ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
