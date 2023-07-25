@@ -74,8 +74,6 @@ void AnnotateKernelLaunchDimensions(const LaunchDimensions& launch_dims,
   }
 }
 
-}  // namespace
-
 std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
            std::vector<llvm_ir::IrArray>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
@@ -172,6 +170,8 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
   return {kernel, std::move(inputs), std::move(outputs)};
 }
+
+}  // namespace
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {

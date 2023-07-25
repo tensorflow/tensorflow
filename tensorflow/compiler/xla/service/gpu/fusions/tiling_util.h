@@ -138,11 +138,6 @@ StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty, const TileElementGenerator& tile_element_generator);
 
-llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* builder,
-    absl::Span<const int64_t> dims_in_elems);
-
 }  // namespace gpu
 }  // namespace xla
 
