@@ -1936,6 +1936,30 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
       subshape().element_type());
 }
 
+int64_t Literal::Piece::CountAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape())) << scalar.shape().ToString();
+  if (!subshape().IsArray()) {
+    return 0;
+  }
+
+  CHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+      [&](auto primitive_type_constant) -> int64_t {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return absl::c_count_if(
+              this->data<NativeT>(), [&](NativeT elem) -> bool {
+                return EqualIncludingNan(elem,
+                                         scalar.GetFirstElement<NativeT>());
+              });
+        }
+        return 0;
+      },
+      subshape().element_type());
+}
+
 bool LiteralBase::IsAll(const Literal& scalar) const {
   return root_piece().IsAll(scalar);
 }
