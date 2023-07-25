@@ -62,6 +62,7 @@ cc_library(
         ":in_place_dynamic_update_slice",
         ":loop",
         ":reduction",
+        ":transpose",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
@@ -145,5 +146,27 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+    ],
+)
+
+cc_library(
+    name = "transpose",
+    srcs = ["transpose.cc"],
+    hdrs = ["transpose.h"],
+    deps = [
+        ":fusion_emitter",
+        ":tiling_util",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter_context",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
