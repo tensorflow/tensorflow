@@ -92,9 +92,9 @@ class MeshTest(test_util.DTensorBaseTest, parameterized.TestCase):
     mesh = layout.Mesh([_MESH_DIM_BATCH, _MESH_DIM_X], device_ids,
                        np.ravel(device_ids).tolist(),
                        test_util.create_device_list((4, 2), 'CPU'))
-    self.assertIn(
-        '<Mesh object with dims=[(\'batch\', 4), (\'x\', 2)], '
-        'device_type="CPU", num_local_devices=8), size=8', repr(mesh))
+    self.assertIn('batch=4,x=2', repr(mesh))
+    self.assertIn('CPU:0', repr(mesh))
+    self.assertIn('CPU:7', repr(mesh))
 
   def test_mesh_contains_dim(self):
     self.assertTrue(_2D_MESH.contains_dim('batch'))
@@ -364,8 +364,7 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
   def test_layout_repr(self):
     tensor_layout = layout.Layout.batch_sharded(
         _2D_MESH, _MESH_DIM_BATCH, rank=2)
-    self.assertIn('Layout(sharding_specs=[\'batch\', \'unsharded\'], mesh=',
-                  repr(tensor_layout))
+    self.assertIn('batch,unsharded', repr(tensor_layout))
 
   def test_throws_for_non_mesh(self):
     with self.assertRaisesRegex(ValueError, 'mesh is not a valid Mesh object'):
