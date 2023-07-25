@@ -2351,6 +2351,33 @@ void TPUExecuteOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// _XlaRunOp
+//===----------------------------------------------------------------------===//
+
+void _XlaRunOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(2 * getArgs().size() + 1);
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::_XlaRun::get());
+
+  for (Value value : getArgs()) {
+    if (value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>()) {
+      // Conservatively mark resource handles as read and write, as without
+      // analyzing _XlaCompile, there is not sufficient information to determine
+      // effects on resources.
+      effects.emplace_back(MemoryEffects::Read::get(), value,
+                           ResourceEffects::Variable::get());
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // WriteTrainingPredictions
 //===----------------------------------------------------------------------===//
 
