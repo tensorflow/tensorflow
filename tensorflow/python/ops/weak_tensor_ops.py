@@ -479,19 +479,11 @@ gen_math_ops._pow = weak_tensor_binary_op_wrapper(gen_math_ops._pow)
 # ==============================================================================
 # Update old op references.
 # ==============================================================================
-math_ops.mod = gen_math_ops.floor_mod
 math_ops.realdiv = gen_math_ops.real_div
 math_ops.truncatediv = gen_math_ops.truncate_div
 math_ops.floor_div = gen_math_ops.floor_div
 math_ops.truncatemod = gen_math_ops.truncate_mod
 math_ops.floormod = gen_math_ops.floor_mod
-
-# Update Tensor dunder methods.
-# Rest of the dunder methods call the updated op because those ops have
-# Python wrapper functions that call the patched op. (e.g. __add__ =
-# _add_dispatch and _add_dispatch calls the updated math_ops.add).
-tensor.Tensor.__mod__ = gen_math_ops.floor_mod
-tensor.Tensor.__rmod__ = weak_tensor_binary_op_wrapper(tensor.Tensor.__rmod__)
 
 # Set WeakTensor dunder methods.
 # Tensor unary ops do not need WeakTensor support.

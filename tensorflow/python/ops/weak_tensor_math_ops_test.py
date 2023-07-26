@@ -475,11 +475,20 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       def __radd__(self, other):
         return True
 
+      def __rmod__(self, other):
+        return False
+
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
     a = _get_weak_tensor(5, dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
+
+    a = array_ops.ones([1], dtype=dtypes.float32) % RHSReturnsTrue()
+    self.assertEqual(a, False)
+
+    a = _get_weak_tensor(5, dtype=dtypes.float32) % RHSReturnsTrue()
+    self.assertEqual(a, False)
 
     class RHSRaisesError:
 
