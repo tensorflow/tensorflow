@@ -12,22 +12,13 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_framework_friends", "tf_python_pybind_extension")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
 
-visibility = [
-    "//tensorflow:__subpackages__",
-    "//tensorflow/dtensor:dtensor-internal",
-    "//learning/brain/tfrt:__subpackages__",
-    "//third_party/py/tensorflow_numerics:__subpackages__",
-    "//tensorflow_models/google:__subpackages__",
-    "//learning/brain/google/data:__subpackages__",
-    "//learning/brain/experimental/tfq:__subpackages__",
-    "//learning/brain/google/python/ops:__subpackages__",
-]
+visibility = tf_python_framework_friends()
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

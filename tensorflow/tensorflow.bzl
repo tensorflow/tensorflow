@@ -3531,3 +3531,6 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
         "//tensorflow:ios": [portable_tf_lib],
         "//conditions:default": non_portable_tf_deps,
     })
+
+def tf_python_framework_friends():
+    return ["//tensorflow:__subpackages__"]
