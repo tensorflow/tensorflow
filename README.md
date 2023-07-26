@@ -33,11 +33,11 @@ used in other areas as well.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
-non-guaranteed backward compatible API for
+non-guaranteed backward-compatible API for
 [other languages](https://www.tensorflow.org/api_docs).
 
 Keep up-to-date with release announcements and security updates by subscribing
-to
+to:
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
@@ -114,7 +114,7 @@ apply fixes to bugs or security vulnerabilities:
 
 *   Clone the TensorFlow repo and switch to the corresponding branch for your
     desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
+*   Apply (that is, cherry-pick) the desired changes and resolve any code
     conflicts.
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
