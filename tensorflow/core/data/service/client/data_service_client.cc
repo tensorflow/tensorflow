@@ -378,8 +378,6 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
-    LOG(INFO)
-        << "This task is participating in the \"data_transfer\" experiment.";
     StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
