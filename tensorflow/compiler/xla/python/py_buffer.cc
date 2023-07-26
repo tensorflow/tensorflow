@@ -65,7 +65,7 @@ std::optional<std::vector<int64_t>> ByteStridesOrDefaultForShapeInt64(
   if (!shape.has_layout() || HasMajorToMinorLayout(shape)) {
     return std::nullopt;
   }
-  return ByteStridesForShapeInt64(shape);
+  return ByteStridesForShape(shape);
 }
 
 }  // namespace

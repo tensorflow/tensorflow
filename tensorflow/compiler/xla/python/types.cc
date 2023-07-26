@@ -342,21 +342,21 @@ PrimitiveType Squash64BitTypes(PrimitiveType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
-  std::vector<ssize_t> strides;
+std::vector<int64_t> ByteStridesForShape(const Shape& shape) {
+  std::vector<int64_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
   return ByteStridesForShape(shape.element_type(), shape.dimensions(),
                              shape.layout());
 }
 
-static std::vector<ssize_t> StridesForShapeHelper(
+static std::vector<int64_t> StridesForShapeHelper(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    const xla::Layout& layout, ssize_t innermost_stride_size) {
+    const xla::Layout& layout, int64_t innermost_stride_size) {
   CHECK_EQ(dimensions.size(), layout.minor_to_major().size());
-  std::vector<ssize_t> strides;
+  std::vector<int64_t> strides;
   strides.resize(dimensions.size());
-  ssize_t stride = innermost_stride_size;
+  int64_t stride = innermost_stride_size;
   for (int i : layout.minor_to_major()) {
     strides[i] = stride;
     stride *= dimensions[i];
@@ -364,7 +364,7 @@ static std::vector<ssize_t> StridesForShapeHelper(
   return strides;
 }
 
-std::vector<ssize_t> ByteStridesForShape(PrimitiveType element_type,
+std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
                                          absl::Span<const int64_t> dimensions,
                                          const xla::Layout& layout) {
   return StridesForShapeHelper(
@@ -372,25 +372,11 @@ std::vector<ssize_t> ByteStridesForShape(PrimitiveType element_type,
       ShapeUtil::ByteSizeOfPrimitiveType(element_type));
 }
 
-std::vector<ssize_t> StridesForShape(PrimitiveType element_type,
+std::vector<int64_t> StridesForShape(PrimitiveType element_type,
                                      absl::Span<const int64_t> dimensions,
                                      const xla::Layout& layout) {
   return StridesForShapeHelper(element_type, dimensions, layout,
                                /*innermost_stride_size=*/1);
-}
-
-std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape) {
-  std::vector<int64_t> strides;
-  CHECK(shape.IsArray());
-  CHECK(shape.has_layout());
-
-  strides.resize(shape.dimensions_size());
-  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-  for (int i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= shape.dimensions(i);
-  }
-  return strides;
 }
 
 StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
