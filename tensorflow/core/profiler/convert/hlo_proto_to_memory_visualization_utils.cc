@@ -295,13 +295,8 @@ class HloProtoBufferWrapper {
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto& instruction_name =
-            logical_buffer->defined_at().instruction_name();
         const auto* instruction =
-            instruction_name.empty()
-                ? unique_id_to_hlo.at(
-                      logical_buffer->defined_at().instruction_id())
-                : name_to_hlo.at(instruction_name);
+            unique_id_to_hlo.at(logical_buffer->defined_at().instruction_id());
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
             *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
