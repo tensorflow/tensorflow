@@ -37,3 +37,39 @@ compile_pip_requirements_3_11(
     requirements_in = "requirements.in",
     requirements_txt = "requirements_lock_3_11.txt",
 )
+
+compile_pip_requirements_3_9(
+    name = "requirements_3_9_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+        "-P tf-estimator-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_9.txt",
+)
+
+compile_pip_requirements_3_10(
+    name = "requirements_3_10_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+        "-P tf-estimator-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_10.txt",
+)
+
+compile_pip_requirements_3_11(
+    name = "requirements_3_11_release",
+    extra_args = [
+        "--allow-unsafe",
+        "-P keras-nightly",
+        "-P tb-nightly",
+        "-P tf-estimator-nightly",
+    ],
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_lock_3_11.txt",
+)
