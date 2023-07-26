@@ -75,7 +75,12 @@ func.func @main(
   %arg4: tensor<*x!tf_type.resource<tensor<4x8xf32>>>) {
     // CHECK:        "tf_device.cluster"
     // CHECK-NEXT:       %[[RESOURCE:.*]] = "tf.DTensorLayout"(%arg4)
-    // CHECK-NEXT:       %[[RECV:.*]] = "tf.DTensorRecv"() {key = "communication_key_sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>, shape = #tf_type.shape<4x8>} : () -> tensor<4x8xf32>
+    // CHECK-NEXT:       %[[RECV:.*]] = "tf.DTensorRecv"() {
+    // CHECK-SAME:       key = "communication_key_|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1"
+    // CHECK-SAME:       mesh = #dtensor.mesh<|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>
+    // CHECK-SAME:       shape = #tf_type.shape<4x8>
+    // CHECK-SAME:       source_layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:CPU|x=2|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1>
+    // CHECK-SAME:       () -> tensor<4x8xf32>
     // CHECK-NEXT:       %[[RECV_DL:.*]] = "tf.DTensorLayout"(%[[RECV]])
     // CHECK-NEXT:       %[[IDENTITY:.*]] = "tf.Identity"(%[[RECV_DL]]) : (tensor<4x8xf32>) -> tensor<4x8xf32>
     // CHECK-NEXT:       %[[IDENTITY_DL:.*]] = "tf.DTensorLayout"(%[[IDENTITY]])
@@ -83,7 +88,7 @@ func.func @main(
     // CHECK-NEXT:       tf_device.return
     "tf_device.cluster"() ({
       %4 = "tf.DTensorLayout"(%arg4) {global_shape = #tf_type.shape<4x8>, layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1>} : (tensor<*x!tf_type.resource<tensor<4x8xf32>>>) -> tensor<*x!tf_type.resource<tensor<4x8xf32>>>
-      %5 = "tf.DTensorRecv"() {key = "communication_key_sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>, shape = #tf_type.shape<*>} : () -> tensor<*xf32>
+      %5 = "tf.DTensorRecv"() {key = "communication_key_|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", mesh = #dtensor.mesh<|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>, shape = #tf_type.shape<*>} : () -> tensor<*xf32>
       %6 = "tf.Identity"(%5) : (tensor<*xf32>) -> tensor<*xf32>
       "tf.AssignVariableOp"(%4, %6) {validate_shape = true} : (tensor<*x!tf_type.resource<tensor<4x8xf32>>>, tensor<*xf32>) -> ()
       tf_device.return
@@ -102,7 +107,7 @@ func.func @main(
       %1 = "tf.DTensorLayout"(%arg2) {global_shape = #tf_type.shape<>, layout = #dtensor.layout<sharding_specs: mesh:|x=2|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1>} : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
       %2 = "tf.DTensorLayout"(%arg3) {global_shape = #tf_type.shape<>, layout = #dtensor.layout<sharding_specs: mesh:|x=2|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1>} : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
       %3 = "tf.RestoreV2"(%0, %1, %2) {} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> (tensor<*xf32>)
-      "tf.DTensorSend"(%3) {key = "communication_key_sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", target_layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>} : (tensor<*xf32>) -> ()
+      "tf.DTensorSend"(%3) {key = "communication_key_|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1", target_mesh = #dtensor.mesh<|x=2|0,1|0,1|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1>} : (tensor<*xf32>) -> ()
       tf_device.return
     }) {_mesh="CPU|x=2|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1"} : () -> (tensor<i32>)
     func.return

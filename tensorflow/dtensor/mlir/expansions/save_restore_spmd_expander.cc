@@ -821,6 +821,7 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
       // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
       // these ops first.
       while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::RelayoutOp, mlir::TF::DTensorLayout,
                        mlir::TF::DTensorSend>(consuming_op)) {
         if (auto send_op =
                 mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
