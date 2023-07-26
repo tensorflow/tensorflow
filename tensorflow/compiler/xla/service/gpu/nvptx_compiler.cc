@@ -102,6 +102,11 @@ class ConvBfloat16Support : public FloatSupport {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
   }
 
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    // Skip all HLOs other than convolutions.
+    return (hlo.opcode() != HloOpcode::kConvolution);
+  }
+
  private:
   bool is_conv_bf16_supported_;
 };

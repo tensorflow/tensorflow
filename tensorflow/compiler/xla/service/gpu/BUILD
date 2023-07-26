@@ -3266,6 +3266,21 @@ xla_cc_test(
     ],
 )
 
+xla_test(
+    name = "float_support_test",
+    srcs = ["float_support_test.cc"],
+    backend_tags = {"gpu": [
+        "requires-gpu-sm80",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 xla_cc_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
