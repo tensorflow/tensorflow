@@ -441,12 +441,6 @@ def IsRankLessThanEqualTo : Constraint<CPred<
   "$0.getType().cast<ShapedType>().getRank() <= "
   "$1.getType().cast<ShapedType>().getRank()">>;
 
-// Constraint check to test if the rank of an element in a ValueRange($0)
-// is equal to the value($1)
-class IsValueArrayElementRankEqualTo<int index> : Constraint<CPred<
-  "$0.getType()["#index#"].cast<ShapedType>().getRank() == "
-  "$1.getType().cast<ShapedType>().getRank()">>;
-
 def Flatten : NativeCodeCall<
   "$0.cast<DenseElementsAttr>()"
     ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
@@ -1511,24 +1505,4 @@ def FuseTransposeIntoBatchMatMulLHS: Pat<
   (TFL_BatchMatMulOp $input, $rhs, ConstBoolAttrTrue, $adj_y, $asymmetric_quantize_inputs),
   [(AreLastTwoDimsTransposed $perm_value),
    (IsBoolAttrEqual<"false"> $adj_x)]>;
-
-// Fuse redundant TFL_TransposeOp into TFL_FullyConnecedOp to form TFL_BatchMatMulOp
-def FuseTransposeIntoFullyConnectedRHS: Pat<
-  (TFL_FullyConnectedOp:$output $lhs,
-    (TFL_TransposeOp $input, (Arith_ConstantOp:$perm_value $p0)),
-    $bias,
-    TFL_AF_None,
-    TFL_FCWO_Default,
-    $keep_num_dims,
-    $asymmetric_quantize_inputs),
-  (TFL_BatchMatMulOp $lhs, $input,
-    ConstBoolAttrFalse, ConstBoolAttrFalse, $asymmetric_quantize_inputs),
-  [(IsNoneType $bias),
-   //if the output rank is less-than the input rank, it means keep_num_dims has
-   //reduced the output. The right thing to do here will be to apply the pattern
-   //only if keep_num_dims==True. But checking for rank will improve the
-   //coverage. This pattern will now work for all the transpose->fc patterns
-   //where the fc has not done imlicit reshape of the output
-   (IsValueArrayElementRankEqualTo<0> $output, $lhs),
-   (AreLastTwoDimsTransposed $perm_value)]>;
 

@@ -686,34 +686,6 @@ func.func @FuseTransposeIntoBMM_RHS2(%arg0: tensor<?x?x40xf32>,  %arg1: tensor<?
   // CHECK: return %0 : tensor<?x?x?xf32>
 }
 
-// CHECK-LABEL: @FuseTransposeIntoFC_RHS
-func.func @FuseTransposeIntoFC_RHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<256x1440xf32>) -> tensor<1x4x1440x1440xf32> {
-  %cst = "tfl.no_value"() {value} : () -> none
-  %cst_1 = arith.constant dense<[1, 0]> : tensor<2xi32>
-  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<256x1440xf32>, tensor<2xi32>) -> tensor<1440x256xf32>
-  %33 = "tfl.fully_connected"(%arg0, %32, %cst) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<1x4x1440x256xf32>, tensor<1440x256xf32>, none) -> tensor<1x4x1440x1440xf32>
-  return %33 : tensor<1x4x1440x1440xf32>
-  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x4x1440x256xf32>, tensor<256x1440xf32>) -> tensor<1x4x1440x1440xf32>
-  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
-}
-
-// CHECK-LABEL: @FuseTransposeIntoFC_RHS1
-func.func @FuseTransposeIntoFC_RHS1(%arg0: tensor<1x384x64x!quant.uniform<i8:f32, 1.0674915392883122E-4>>, %arg1: tensor<1x64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>> {
-  %cst = "tfl.no_value"() {value} : () -> none
-  %cst_6 = arith.constant dense<[1, 0]> : tensor<2xi32>
-  %cst_7 = arith.constant dense<[64, 384]> : tensor<2xi32>
-  %cst_8 = arith.constant dense<[1, 384, 384]> : tensor<3xi32>
-  %46 = "tfl.reshape"(%arg1, %cst_7) : (tensor<1x64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>, tensor<2xi32>) -> tensor<64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>
-  %53 = "tfl.transpose"(%46, %cst_6) : (tensor<64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>, tensor<2xi32>) -> tensor<384x64x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>
-  %33 = "tfl.fully_connected"(%arg0, %53, %cst) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x384x64x!quant.uniform<i8:f32, 1.0674915392883122E-4>>, tensor<384x64x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>, none) -> tensor<384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>
-  %34 = "tfl.reshape"(%33, %cst_8) : (tensor<384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>, tensor<3xi32>) -> tensor<1x384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>
-  return %34 : tensor<1x384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>
-  // CHECK: %cst = arith.constant dense<[64, 384]> : tensor<2xi32>
-  // CHECK: %0 = "tfl.reshape"(%arg1, %cst) : (tensor<1x64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>, tensor<2xi32>) -> tensor<64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>
-  // CHECK: %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<1x384x64x!quant.uniform<i8:f32, 1.0674915392883122E-4>>, tensor<64x384x!quant.uniform<i8:f32, 1.2775270988640841E-5:-1>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>
-  // CHECK: return %1 : tensor<1x384x384x!quant.uniform<i8:f32, 9.9999999747524271E-7>>
-}
-
 // CHECK-LABEL: @FuseTransposeIntoBMM_LHS
 func.func @FuseTransposeIntoBMM_LHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x256x256xf32> {
   %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
