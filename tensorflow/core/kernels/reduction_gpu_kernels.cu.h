@@ -348,20 +348,8 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
   value_type sum = initVal;
   if (row < num_rows && col < num_cols) sum = in[row * num_cols + col];
 
-    // 1D array necessary due to bug in CUDA 9 compiler.
-    // TODO(nluehr) revert to 2D array when compiler is ready.
-    // This is to mimic the following, but without constructors:
-    //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE *
-    //     (TF_RED_WARPSIZE + 1)];
-#if GOOGLE_CUDA
-  __shared__ __align__(alignof(value_type)) char
-      partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1) *
-                       sizeof(value_type)];
-  value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
-#elif TENSORFLOW_USE_ROCM
-  __shared__ storage_type<value_type>
+__shared__ storage_type<value_type>
       partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE + 1)];
-#endif
 
   row += gridDim.y * blockDim.y;
 
@@ -389,7 +377,7 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  -         =
     //            =
     const int numRowsThisBlock =
-        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
+        min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];
