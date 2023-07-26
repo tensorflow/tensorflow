@@ -121,7 +121,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 #else
       memory::dims dilations;
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides, &dilations,
-#endif  // ENABLE_ONEDNN_V3
+#endif  // !ENABLE_ONEDNN_V3
                              &padding_left, &padding_right, is_pool2d);
 
       // Get a pooling op from the cached pool
@@ -458,7 +458,6 @@ TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
 TF_CALL_float(REGISTER_MKL_MAXPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL_KERNELS);
 
-#ifndef ENABLE_ONEDNN_V3
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
@@ -477,7 +476,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_QuantizedMaxPool3D").Device(DEVICE_CPU).TypeConstraint<qint8>("T"),
     MklMaxPoolingOp<CPUDevice, qint8, true>);
-#endif  // !ENABLE_ONEDNN_V3
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

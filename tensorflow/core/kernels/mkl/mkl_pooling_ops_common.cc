@@ -141,10 +141,8 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
 template class MklPoolingFwdPrimitive<float>;
 template class MklPoolingFwdPrimitive<bfloat16>;
 
-#ifndef ENABLE_ONEDNN_V3
 template class MklPoolingFwdPrimitive<quint8>;
 template class MklPoolingFwdPrimitive<qint8>;
-#endif  // !ENABLE_ONEDNN_V3
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
