@@ -433,48 +433,23 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
+    HloInstruction* input_fusion;
     if (consumer_for_fusion->opcode() == HloOpcode::kFusion) {
+      input_fusion = consumer_for_fusion;
       VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
               << consumer_for_fusion->name();
-      DumpFusionState(
-          *consumer_for_fusion,
-          absl::StrCat("About to fuse producer |", producer_name,
-                       "| into consumer |", consumer_for_fusion->name(),
-                       "| inside GPU multi-output fusion"),
-          /*producer=*/producer);
-      if (producer->opcode() == HloOpcode::kFusion) {
-        consumer_for_fusion->MergeFusionInstructionIntoMultiOutput(producer);
-      } else {
-        consumer_for_fusion->FuseInstructionIntoMultiOutput(producer);
-        CHECK_EQ(0, producer->user_count());
-        TF_CHECK_OK(computation_->RemoveInstruction(producer));
-      }
-      TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(consumer_for_fusion));
-
-      DumpFusionState(
-          *consumer_for_fusion,
-          absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
-                       consumer_for_fusion->name(),
-                       "| inside GPU multi-output fusion"));
-      RecomputeReachability();
-      GpuPerformanceModel::RecordEstimatedRunTime(consumer_for_fusion,
-                                                  &cost_analysis);
-      continue;
+    } else {
+      input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
+          consumer_for_fusion->shape(),
+          ChooseFusionKind(*producer, *consumer_for_fusion),
+          consumer_for_fusion));
+      VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
+              << consumer_for_fusion->name() << " into "
+              << input_fusion->name();
+      TF_CHECK_OK(
+          computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     }
-    HloInstruction* input_fusion =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer_for_fusion->shape(),
-            ChooseFusionKind(*producer, *consumer_for_fusion),
-            consumer_for_fusion));
-    VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
-            << consumer_for_fusion->name() << " into " << input_fusion->name();
-    DumpFusionState(
-        *input_fusion,
-        absl::StrCat("About to fuse |", producer_name, "| into consumer |",
-                     input_fusion->name(), "| inside GPU multi-output fusion"),
-        /*producer=*/input_fusion);
-    TF_CHECK_OK(
-        computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
+
     if (producer->opcode() == HloOpcode::kFusion) {
       input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
     } else {
