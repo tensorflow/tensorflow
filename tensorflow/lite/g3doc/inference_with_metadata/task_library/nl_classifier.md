@@ -94,7 +94,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
+  pod 'TensorFlowLiteTaskText', '~> 0.4.3'
 end
 ```
 

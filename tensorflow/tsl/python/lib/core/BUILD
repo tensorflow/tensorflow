@@ -10,7 +10,7 @@ package(
         "//visibility:public",
     ],
     features = [
-        # For bfloat16.so (see b/259896740)
+        # For ml_dtypes.so (see b/259896740)
         "windows_export_all_symbols",
     ],
     licenses = ["notice"],
@@ -29,119 +29,81 @@ filegroup(
 )
 
 cc_library(
-    name = "bfloat16_lib",
+    name = "ml_dtypes_lib",
     srcs = [
-        "bfloat16.cc",
+        "ml_dtypes.cc",
     ],
+    hdrs = [
+        "ml_dtypes.h",
+    ],
+    # Requires data dependency in order to load py module from C++.
+    data = [
+        "@ml_dtypes",
+    ],
+    deps = [
+        "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@pybind11",
+    ],
+)
+
+# Deprecated, use ml_dtypes_lib.
+cc_library(
+    name = "bfloat16_lib",
     hdrs = [
         "bfloat16.h",
     ],
+    deprecation = "Please use ml_dtypes_lib",
     deps = [
-        ":custom_float",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
+        ":ml_dtypes_lib",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+    ],
+)
+
+# Deprecated, use ml_dtypes_lib.
+cc_library(
+    name = "float8_lib",
+    hdrs = [
+        "float8.h",
+    ],
+    deprecation = "Please use ml_dtypes_lib",
+    deps = [
+        ":ml_dtypes_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ],
 )
 
 cc_shared_library(
-    name = "bfloat16.so",
-    roots = [":bfloat16_lib"],
-    # TODO(tlongeri): If this is not explicitly specified, dependent DLLs will expect "bfloat16.so"
-    # and we will generate "bfloat16.so.dll", for some reason
-    shared_lib_name = if_windows("bfloat16.so", None),
+    name = "ml_dtypes.so",
+    roots = [":ml_dtypes_lib"],
+    # TODO(tlongeri): If this is not explicitly specified, dependent DLLs will expect "ml_dtypes.so"
+    # and we will generate "ml_dtypes.so.dll", for some reason
+    shared_lib_name = if_windows("ml_dtypes.so", None),
     static_deps = [
         # TODO(ddunleavy): If cc_shared_library is ever not a noop in g3, change
         # this to be more specific.
         "//:__subpackages__",
         "@//:__subpackages__",
         "@com_google_absl//:__subpackages__",
-        # TODO(tlongeri): Ugly work-around to avoid reverse copybara check breaking. Change to
-        # just "//third_party/eigen3" after OSS TF removes //third_party/eigen3 in favor of
-        # @eigen_archive
-        "@" + "eigen_archive//:__subpackages__",
-        "//third_party/" + "eigen3:__subpackages__",
         "@local_config_python//:__subpackages__",
+        "@pybind11//:__subpackages__",
         "@nsync//:__subpackages__",
     ],
 )
 
 tsl_pybind_extension(
-    name = "pywrap_bfloat16",
-    srcs = ["bfloat16_wrapper.cc"],
-    dynamic_deps = [":bfloat16.so"],
+    name = "pywrap_ml_dtypes",
+    srcs = ["ml_dtypes_wrapper.cc"],
+    dynamic_deps = [":ml_dtypes.so"],
     static_deps = [
+        "@//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@local_config_python//:__subpackages__",
     ],
     deps = [
-        ":bfloat16_lib",
+        ":ml_dtypes_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "custom_float",
-    hdrs = [
-        "custom_float.h",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "float8_hdr",
-    hdrs = [
-        "float8.h",
-    ],
-    deps = [
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "float8_lib",
-    srcs = [
-        "float8.cc",
-    ],
-    hdrs = [
-        "float8.h",
-    ],
-    deps = [
-        ":custom_float",
-        ":numpy",
-        "//tensorflow/tsl/platform:float8",
-        "//tensorflow/tsl/platform:types",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "custom_casts_lib",
-    srcs = ["custom_casts.cc"],
-    hdrs = ["custom_casts.h"],
-    deps = [
-        ":bfloat16_lib",
-        ":float8_lib",
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/python/lib/core:numpy",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "custom_casts_hdr",
-    hdrs = [
-        "custom_casts.h",
     ],
 )
 
@@ -159,9 +121,7 @@ cc_library(
 cc_library(
     name = "core",
     deps = [
-        ":bfloat16_lib",
-        ":custom_casts_lib",
-        ":float8_lib",
+        ":ml_dtypes_lib",
         ":numpy",
     ],
 )

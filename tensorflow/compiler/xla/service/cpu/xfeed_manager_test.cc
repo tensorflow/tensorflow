@@ -49,6 +49,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
         << "want " << ShapeUtil::HumanString(shape_) << " "
         << (expect_shape_match_ ? "==" : "!=") << " "
         << ShapeUtil::HumanString(shape.value());
+    delete this;
   }
 
   const Shape& shape() const { return shape_; }

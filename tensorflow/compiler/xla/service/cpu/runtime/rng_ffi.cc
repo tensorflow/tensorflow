@@ -30,19 +30,20 @@ namespace {
 
 using ::xla::runtime::FlatMemrefView;
 
+// Converts an ffi::FlatBufferArg to an xla::runtime::FlatMemrefView.
+FlatMemrefView ToFlatMemrefView(const ffi::FlatBufferArg& view) {
+  auto dtype = static_cast<xla::PrimitiveType>(view.dtype);
+  return FlatMemrefView{dtype, view.data, view.size_in_bytes};
+}
+
 ffi::FfiStatus ThreeFryFfi(xla::ExecutableRunOptions* executable_run_options,
                            ffi::FlatBufferArg state_buffer,
                            ffi::FlatBufferArg state_out_buffer,
                            ffi::FlatBufferArg values_buffer) {
-  auto to_flat_memref_view = [](ffi::FlatBufferArg& view) -> FlatMemrefView& {
-    return *reinterpret_cast<FlatMemrefView*>(&view);
-  };
-
   xla::cpu::XlaThreeFry three_fry;
-  absl::Status status =
-      three_fry(executable_run_options, to_flat_memref_view(state_buffer),
-                to_flat_memref_view(state_out_buffer),
-                to_flat_memref_view(values_buffer));
+  absl::Status status = three_fry(
+      executable_run_options, ToFlatMemrefView(state_buffer),
+      ToFlatMemrefView(state_out_buffer), ToFlatMemrefView(values_buffer));
   return status.ok() ? ffi::FfiStatus::Ok() : ffi::FfiStatus::Internal("err");
 }
 
@@ -57,15 +58,10 @@ ffi::FfiStatus PhiloxFfi(xla::ExecutableRunOptions* executable_run_options,
                          ffi::FlatBufferArg state_buffer,
                          ffi::FlatBufferArg state_out_buffer,
                          ffi::FlatBufferArg values_buffer) {
-  auto to_flat_memref_view = [](ffi::FlatBufferArg& view) -> FlatMemrefView& {
-    return *reinterpret_cast<FlatMemrefView*>(&view);
-  };
-
   xla::cpu::XlaPhilox philox;
-  absl::Status status =
-      philox(executable_run_options, to_flat_memref_view(state_buffer),
-             to_flat_memref_view(state_out_buffer),
-             to_flat_memref_view(values_buffer));
+  absl::Status status = philox(
+      executable_run_options, ToFlatMemrefView(state_buffer),
+      ToFlatMemrefView(state_out_buffer), ToFlatMemrefView(values_buffer));
   return status.ok() ? ffi::FfiStatus::Ok() : ffi::FfiStatus::Internal("err");
 }
 

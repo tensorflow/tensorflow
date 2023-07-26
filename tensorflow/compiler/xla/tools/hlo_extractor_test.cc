@@ -94,6 +94,7 @@ ENTRY %entry {
     EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
                 op::Add(op::Parameter(0), op::Parameter(1)));
   }
+
   {
     auto extracted_module =
         ExtractModule(FindInstruction(hlo_module.get(), "add"), /*height=*/1);
@@ -101,6 +102,7 @@ ENTRY %entry {
                 op::Add(op::Negate(op::Parameter(0)),
                         op::Exp(op::Negate(op::Parameter(0)))));
   }
+
   {
     auto extracted_module =
         ExtractModule(FindInstruction(hlo_module.get(), "add"), /*height=*/2);
@@ -131,6 +133,7 @@ ENTRY %entry {
     EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
                 op::Add(op::Parameter(0), op::Parameter(1)));
   }
+
   {
     auto extracted_module =
         ExtractModule(FindInstruction(hlo_module.get(), "add"), /*height=*/1);
@@ -251,6 +254,22 @@ TEST_F(HloExtractorTest, HloSelector) {
 
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kBroadcast;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceConst;
+    };
+    auto extracted_module =
+        ExtractModule(inst, /*height=*/2, hlo_selector, replace_type_selector);
+    EXPECT_EQ(extracted_module->computation_count(), 1);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Subtract(op::Multiply(op::Constant(), op::Parameter()),
+                             op::Add(op::Parameter(), op::Parameter())));
+  }
+
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kAdd;
     };
     auto extracted_module = ExtractModule(inst, /*height=*/-1, hlo_selector);
@@ -259,6 +278,116 @@ TEST_F(HloExtractorTest, HloSelector) {
     EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
                 op::Subtract(op::Multiply(), op::Parameter()));
   }
+
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kSubtract;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceConst;
+    };
+    auto extracted_module =
+        ExtractModule(hlo_module->entry_computation()->root_instruction(),
+                      /*height=*/2, hlo_selector, replace_type_selector);
+    EXPECT_EQ(extracted_module->computation_count(), 1);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::Constant(), op::Parameter()));
+  }
+
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      if (hlo_inst->opcode() != HloOpcode::kBroadcast &&
+          hlo_inst->opcode() != HloOpcode::kAdd) {
+        return true;
+      }
+      return false;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      if (hlo_inst->opcode() == HloOpcode::kBroadcast) {
+        return ReplaceType::kReplaceConst;
+      }
+      return ReplaceType::kReplaceParam;
+    };
+    auto extracted_module =
+        ExtractModule(inst, /*height=*/2, hlo_selector, replace_type_selector);
+    EXPECT_EQ(extracted_module->computation_count(), 1);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Subtract(op::Multiply(op::Constant(), op::Parameter()),
+                             op::Parameter()));
+  }
 }
+
+TEST_F(HloExtractorTest, ReplaceTupleWithConstant) {
+  const std::string& hlo_string = R"(
+HloModule test
+
+ENTRY %entry {
+  param.0 = f32[4]{0} parameter(0)
+  tuple.0 = (f32[4]{0}, f32[4]{0}) rng-bit-generator(f32[4]{0} param.0), algorithm=rng_default
+  negate = f32[4]{0} negate(f32[4]{0} param.0)
+  tuple.1 = ((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple(tuple.0, negate)
+  element = f32[4]{0} get-tuple-element(((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple.1), index=1
+  ROOT add = f32[4]{0} add(element, param.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Testing kReplaceConst.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kTuple;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceConst;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::GetTupleElement(op::Constant()), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with a
+  // constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::Broadcast(), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with a
+  // constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kTuple;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(
+        extracted_module->entry_computation()->root_instruction(),
+        op::Add(op::GetTupleElement(op::Tuple(op::Tuple(), op::Broadcast())),
+                op::Parameter()));
+  }
+}
+
 }  // namespace
 }  // namespace xla

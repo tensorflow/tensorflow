@@ -27,6 +27,7 @@ from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
+from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
@@ -55,7 +56,9 @@ mlir_api_version: int
 bfloat16: Type[numpy.generic]
 float8_e4m3fn: Type[numpy.generic]
 float8_e4m3b11fnuz: Type[numpy.generic]
+float8_e4m3fnuz: Type[numpy.generic]
 float8_e5m2: Type[numpy.generic]
+float8_e5m2fnuz: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
@@ -84,6 +87,7 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
+    num_nodes: int = ...,
     platform_name: Optional[str] = ...,
     allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...
@@ -105,16 +109,16 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_c_api_client(plugin_name: str, options: Optional[_NameValueMapping] = None) -> Client:
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[DistributedRuntimeClient] = None) -> Client:
   ...
 
 def pjrt_plugin_loaded(plugin_name: str) -> bool:
   ...
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
-  ...
-
-def make_plugin_device_client() -> Client:
   ...
 
 class OpMetadata:

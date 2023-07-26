@@ -402,6 +402,8 @@ message DebugOptions {
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
+  bool xla_gpu_enable_cudnn_fmha = 218;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
@@ -442,15 +444,20 @@ message DebugOptions {
   // Only instantiates a CUDA graph after the captured function execution count
   // reaches the threshold. This constant is a heuristic to avoid creating a
   // large number of CUDA graph instances in memory.
-  int32 xla_gpu_cuda_graph_instantiation_threshold = 202;
+  int32 xla_gpu_cuda_graph_num_runs_to_instantiate = 202;
 
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a cuda
   // graph.
-  int32 xla_gpu_cuda_graph_capture_threshold = 208;
+  int32 xla_gpu_cuda_graph_min_graph_size = 208;
 
   // Identify concurrent regions in cuda graphs and execute them concurrently.
   bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
+
+  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
+  // instantiates new Gpu graphs, it evicts graphs that were not recently
+  // executed to free space on device.
+  int32 xla_gpu_cuda_graph_eviction_timeout_seconds = 230;
 
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
@@ -459,6 +466,16 @@ message DebugOptions {
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
+
+  // Amount of padding the redzone allocator will put on one side of each buffer
+  // it allocates.  (So the buffer's total size will be increased by 2x this
+  // value.)
+  //
+  // Higher values make it more likely that we'll catch an out-of-bounds read or
+  // write.  Smaller values consume less memory during autotuning.  Note that a
+  // fused cudnn conv has up to 6 total buffers (4 inputs, 1 output, and 1
+  // scratch), so this can be multiplied by quite a lot.
+  int64 xla_gpu_redzone_padding_bytes = 228;
 
   // Allows all floating-point conversions to be simplified, including those
   // that affect the numerics. The `FloatNormalization` pass inserts many
@@ -503,8 +520,12 @@ message DebugOptions {
   bool xla_cpu_enable_experimental_deallocation = 191;
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
+  bool xla_gpu_enable_pipelined_all_reduce = 217;
+  bool xla_gpu_enable_pipelined_all_gather = 227;
+  bool xla_gpu_enable_pipelined_reduce_scatter = 231;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -527,7 +548,39 @@ message DebugOptions {
   // kernel on GPU.
   bool xla_gpu_enable_experimental_block_size = 214;
 
-  // Next id: 216
+  bool xla_gpu_exhaustive_tiling_search = 219;
+
+  bool xla_gpu_enable_triton_softmax_fusion = 220;
+
+  bool xla_gpu_enable_priority_fusion = 221;
+
+  // File to write autotune results to. It will be a binary file unless the name
+  // ends with .txt or .textproto. Warning: The results are written at every
+  // compilation, possibly multiple times per process. This only works on CUDA.
+  string xla_gpu_dump_autotune_results_to = 222;
+
+  // File to load autotune results from. It will be considered a binary file
+  // unless the name ends with .txt or .textproto. At most one loading will
+  // happen during the lifetime of one process, even if the first one is
+  // unsuccessful or different file paths are passed here. This only works on
+  // CUDA.
+  string xla_gpu_load_autotune_results_from = 223;
+
+  // Memory budget in GB per device for AutoSharding.
+  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+
+  // See the definition of the
+  // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
+  // this field.
+  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+
+  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+
+  int32 xla_gpu_triton_fusion_level = 229;
+
+  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+
+  // Next id: 233
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -552,6 +605,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
+// Next id: 22.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -638,11 +692,17 @@ message ExecutionOptions {
 
   // The list of input/output pairs in the main program that could be sharded.
   repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 20;
+
+  // Profiling data for feedback directed optimizations. Note that this is not
+  // the only way to feed FDO data into the compiler and individual backends
+  // may choose to get FDO data by other means.
+  bytes fdo_profile = 21;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
+// Next id: 32.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -693,6 +753,7 @@ message HloModuleConfigProto {
   repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
+  bytes fdo_profile = 31;
 }
 
 message HloModuleProtoWithConfig {
@@ -916,18 +977,4 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
-}
-
-message ProfiledInstructionsProto {
-  message InstructionCost {
-    string name = 1;
-    double cost_us = 2;
-  }
-  message Latency {
-    string source = 1;
-    string target = 2;
-    double latency_us = 3;
-  }
-  repeated InstructionCost costs = 1;
-  repeated Latency latencies = 2;
 }

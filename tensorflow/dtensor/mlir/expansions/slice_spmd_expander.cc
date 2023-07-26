@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -76,17 +77,9 @@ StatusOr<Layout> VerifySliceLayout(
 
   auto num_shards = layout.num_shards();
 
-  LayoutProto proposed_proto;
-  TF_ASSIGN_OR_RETURN(*proposed_proto.mutable_mesh_config(),
-                      layout.mesh().ToProto());
-  for (int64_t i = 0; i < rank; ++i) {
-    // Slice performed on replicated dimension translates to local expansion.
-    if (num_shards[i] == 1) {
-      proposed_proto.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
-      continue;
-    }
+  std::vector<std::string> sharding_specs;
 
+  for (int64_t i = 0; i < rank; ++i) {
     const bool begins_starts_at_zero =
         (sizes[i] == shape[i]) || (!dynamic_begins && begins[i] == 0);
     const bool ends_at_full_size =
@@ -98,16 +91,14 @@ StatusOr<Layout> VerifySliceLayout(
       // need to rely in the sizes being static and equal to the global shape.
       // In particular sizes[i] == shape[i] implies begins[i] == 0.
       // A full slice over the any dimension can be performed locally.
-      proposed_proto.add_sharding_specs()->set_sharding_spec(
-          layout.sharding_spec(i));
+      sharding_specs.push_back(layout.sharding_spec(i));
     } else {
       // Slicing on sharded dim is not trivial. Propose an unsharded dim for
       // that.
-      proposed_proto.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
+      sharding_specs.push_back(Layout::kUnshardedDim);
     }
   }
-  return Layout::FromProto(proposed_proto);
+  return Layout::GetLayout(sharding_specs, layout.mesh());
 }
 
 }  // namespace

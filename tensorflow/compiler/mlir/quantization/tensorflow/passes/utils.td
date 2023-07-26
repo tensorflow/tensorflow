@@ -143,14 +143,6 @@ class AreIntSplatValuesEqual<string type> : Constraint<CPred<
 // Returns defining op of this value.
 def GetDefiningOp :  NativeCodeCall<"$0.getDefiningOp()">;
 
-// Checks if an Operation is foldable.
-def IsOperationFoldable : Constraint<
-  CPred<"succeeded(IsOperationFoldable($0.getDefiningOp()))">>;
-
-// Applies constant-folding to the given op if possible.
-def ConstantFoldOpIfPossible :
-  NativeCodeCall<"ConstantFoldOpIfPossible($0).front()">;
-
 // Clones an operation with new operands while keeping attributes.
 def CloneOpWithReplacedOperands : NativeCodeCall<
   "CloneOpWithReplacedOperands("

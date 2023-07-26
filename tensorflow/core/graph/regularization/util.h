@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_REGULARIZATION_UTIL_H_
 #define TENSORFLOW_CORE_GRAPH_REGULARIZATION_UTIL_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -26,7 +28,7 @@ namespace tensorflow::graph_regularization {
 uint64 ComputeHash(const GraphDef& graph_def);
 
 // Returns the suffix UID of `function_name`, returns an error if there is none.
-StatusOr<int> GetSuffixUID(absl::string_view function_name);
+StatusOr<int64_t> GetSuffixUID(absl::string_view function_name);
 
 }  // namespace tensorflow::graph_regularization
 

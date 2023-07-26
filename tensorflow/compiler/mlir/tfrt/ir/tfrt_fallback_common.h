@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

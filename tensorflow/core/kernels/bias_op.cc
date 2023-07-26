@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -481,28 +483,35 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       profiler::ScopedAnnotation trace("bias_grad_autotuning");
 
       BiasGradGPUProfileResult best_result;
+
       // Initialize the timer.
-      perftools::gputools::Timer timer(stream->parent());
-      stream->InitTimer(&timer);
-      stream->ThenStartTimer(&timer);
+      StatusOr<se::gpu::GpuTimer> timer =
+          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      OP_REQUIRES_OK(context, timer.status());
       ComputeWithCustomKernel(context, output_backprop, batch, width, height,
                               depth, channel, output);
-      stream->ThenStopTimer(&timer);
-      uint64 elapsed_microseconds = timer.Microseconds();
+      StatusOr<absl::Duration> bias_duration = timer->GetElapsedDuration();
+      OP_REQUIRES_OK(context, bias_duration.status());
+      int64_t elapsed_microseconds = absl::ToInt64Microseconds(*bias_duration);
+
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
-              << " Native algo latency: " << elapsed_microseconds;
+              << " Native algo latency: " << elapsed_microseconds << "us";
       if (elapsed_microseconds < best_result.elapsed_time()) {
         best_result.set_algorithm(BiasAddGradGPUMode::kNative);
         best_result.set_elapsed_time(elapsed_microseconds);
       }
 
       // Try reduction and profile.
-      stream->ThenStartTimer(&timer);
+      StatusOr<se::gpu::GpuTimer> reduction_timer =
+          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      OP_REQUIRES_OK(context, reduction_timer.status());
       ComputeWithReduceSum(context, output_backprop, batch, width, height,
                            depth, channel, output);
-      stream->ThenStopTimer(&timer);
+      StatusOr<absl::Duration> reduction_duration =
+          reduction_timer->GetElapsedDuration();
+      OP_REQUIRES_OK(context, reduction_duration.status());
 
-      elapsed_microseconds = timer.Microseconds();
+      elapsed_microseconds += absl::ToInt64Microseconds(*reduction_duration);
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
               << " Reduction algo latency: " << elapsed_microseconds;
       if (elapsed_microseconds < best_result.elapsed_time()) {

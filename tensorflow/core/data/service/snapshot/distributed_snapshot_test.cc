@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
-#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 #include "tensorflow/core/data/service/snapshot/test_utils.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"

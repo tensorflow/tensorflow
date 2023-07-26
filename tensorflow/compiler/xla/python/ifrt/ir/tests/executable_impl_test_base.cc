@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "tensorflow/compiler/xla/python/ifrt/test_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -39,6 +40,7 @@ IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
+  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
   mlir_context_.appendDialectRegistry(registry);
 }
 
@@ -53,6 +55,14 @@ IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
   return op_ref;
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
+  auto op_ref =
+      mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
+  TF_RET_CHECK(op_ref) << "Failed to parse MLIR file";
+  return op_ref;
+}
+
 absl::StatusOr<tsl::RCReference<Array>>
 IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
@@ -60,8 +70,9 @@ IfrtIrExecutableImplTestBase::CreateArray(
   TF_RET_CHECK(per_shard_data.size() == device_list.devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
       << " vs device_list " << device_list.devices().size();
-  TF_ASSIGN_OR_RETURN(auto sharding, ShardingParamSharding::Create(
-                                         sharding_param, device_list));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const Sharding> sharding,
+      ShardingParamSharding::Create(sharding_param, device_list));
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;

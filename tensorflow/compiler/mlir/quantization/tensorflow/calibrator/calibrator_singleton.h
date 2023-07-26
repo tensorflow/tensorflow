@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 

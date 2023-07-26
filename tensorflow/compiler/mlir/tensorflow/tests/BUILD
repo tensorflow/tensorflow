@@ -7,6 +7,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     size_override = {
@@ -15,6 +16,7 @@ glob_lit_tests(
         "layout_optimization_to_nhwc.mlir": "medium",
     },
     tags_override = {
+        "legalize_hlo.mlir": ["notsan"],  # b/28150957
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
         "tf-reduce-identity.mlir": ["no_windows"],

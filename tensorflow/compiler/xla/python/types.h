@@ -66,7 +66,9 @@ struct NumpyScalarTypes {
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
   std::optional<pybind11::object> np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e4m3fnuz;
   pybind11::object np_float8_e5m2;
+  pybind11::object np_float8_e5m2fnuz;
   pybind11::object np_float16;
   pybind11::object np_float32;
   pybind11::object np_float64;
@@ -82,6 +84,12 @@ PrimitiveType Squash64BitTypes(PrimitiveType type);
 
 // Returns the strides for `shape`.
 std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
+std::vector<ssize_t> ByteStridesForShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         const xla::Layout& layout);
+std::vector<ssize_t> StridesForShape(PrimitiveType element_type,
+                                     absl::Span<const int64_t> dimensions,
+                                     const xla::Layout& layout);
 std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.

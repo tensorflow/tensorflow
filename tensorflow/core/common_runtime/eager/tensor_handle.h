@@ -325,8 +325,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // then.
   std::unordered_map<string, RemoteTensorHandleData> resource_shape_mirrors_
       TF_GUARDED_BY(mu_);
-  // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
-  // a fixed size map.
   std::unordered_map<string, RemoteTensorHandleData> remote_mirrors_
       TF_GUARDED_BY(mu_);
 #endif

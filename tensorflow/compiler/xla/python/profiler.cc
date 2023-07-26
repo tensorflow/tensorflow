@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/xplane_to_profile_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/profiler/lib/profiler_session.h"
 #include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
@@ -120,6 +122,16 @@ void BuildProfilerSubmodule(py::module* m) {
            })
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
+
+  profiler.def(
+      "get_profiled_instructions_proto",
+      [](py::str tensorboard_dir) -> pybind11::bytes {
+        tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+        xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
+            tensorboard_dir, &profile_proto));
+        return profile_proto.SerializeAsString();
+      },
+      py::arg("tensorboard_dir"));
 }
 
 }  // namespace xla

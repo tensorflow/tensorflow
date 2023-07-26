@@ -57,8 +57,10 @@ class OutlineCudaGraphsPass
     : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
  public:
   OutlineCudaGraphsPass() = default;
-  explicit OutlineCudaGraphsPass(int cuda_graph_level)
-      : cuda_graph_level_(cuda_graph_level) {}
+  explicit OutlineCudaGraphsPass(int cuda_graph_level, int min_graph_size)
+      : cuda_graph_level_(cuda_graph_level) {
+    this->min_graph_size_ = min_graph_size;
+  }
 
   void runOnOperation() override;
 
@@ -326,16 +328,14 @@ static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
 // and replace them with an XLA Gpu runtime function call.
 static LogicalResult Outline(unsigned ordinal,
                              CustomCallDeclarations& custom_calls,
-                             CaptureSequence& seq) {
+                             CaptureSequence& seq, int min_graph_size) {
   // Only operations that have to be moved into the graph capture function
   // represent Gpu computations.
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
     return capture.second == OpCapturePattern::Capture::kMove;
   });
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  int32_t graph_capture_threshold =
-      debug_options.xla_gpu_cuda_graph_capture_threshold();
-  if (num_move_captures < graph_capture_threshold) return failure();
+  if (num_move_captures < min_graph_size) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
@@ -479,7 +479,8 @@ void OutlineCudaGraphsPass::runOnOperation() {
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
                                            getOperation(), patterns)) {
-    if (succeeded(Outline(ordinal, custom_calls, seq))) ordinal++;
+    if (succeeded(Outline(ordinal, custom_calls, seq, min_graph_size_)))
+      ordinal++;
   }
 }
 
@@ -488,8 +489,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass(
-    int cuda_graph_level) {
-  return std::make_unique<OutlineCudaGraphsPass>(cuda_graph_level);
+    int cuda_graph_level, int min_graph_size) {
+  return std::make_unique<OutlineCudaGraphsPass>(cuda_graph_level,
+                                                 min_graph_size);
 }
 
 }  // namespace gpu

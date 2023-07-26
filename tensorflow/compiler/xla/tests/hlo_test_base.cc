@@ -57,7 +57,8 @@ bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
     return false;
   }
   for (int i = 0; i < lhs.parameters_size(); i++) {
-    if (!ShapeUtil::Equal(lhs.parameters(i), rhs.parameters(i))) {
+    if (!Shape::Equal().IgnoreElementSizeInLayout()(lhs.parameters(i),
+                                                    rhs.parameters(i))) {
       return false;
     }
   }

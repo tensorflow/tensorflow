@@ -121,6 +121,7 @@ namespace wrap {
   __macro(hipModuleUnload)                          \
   __macro(hipPointerGetAttributes)                  \
   __macro(hipSetDevice)                             \
+  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamCreateWithFlags)                 \
   __macro(hipStreamCreateWithPriority)              \

@@ -23,17 +23,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
-#include "third_party/tensorflow_serving/apis/model.pb.h"
-#include "third_party/tensorflow_serving/apis/prediction_log.pb.h"
 
+#if defined(PLATFORM_GOOGLE)
 ABSL_FLAG(bool, enable_optimizer, true,
           "enable optimizations in CoreRT dialect (e.g., constant-folding)");
 ABSL_FLAG(std::string, force_data_format, "",
@@ -46,6 +42,7 @@ ABSL_FLAG(
 
 ABSL_FLAG(bool, enable_mlrt, false,
           "If true, the runtime will use MLRT interpreter for host execution.");
+#endif
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -58,14 +55,24 @@ std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
 }
 
 SavedModel::Options DefaultSavedModelOptions(
-    tensorflow::tfrt_stub::Runtime* runtime) {
+    tensorflow::tfrt_stub::Runtime* runtime,
+    std::optional<UserSavedModelOptions> user_options) {
   SavedModel::Options options(runtime);
+  auto& compile_options = options.graph_execution_options.compile_options;
+#if defined(PLATFORM_GOOGLE)
   options.graph_execution_options.enable_mlrt =
       absl::GetFlag(FLAGS_enable_mlrt);
-  auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);
   compile_options.force_data_format = absl::GetFlag(FLAGS_force_data_format);
+#endif
+
+  if (user_options) {
+    options.graph_execution_options.enable_mlrt = user_options->enable_mlrt;
+    compile_options.enable_optimizer = user_options->enable_optimizer;
+    compile_options.enable_grappler = user_options->enable_grappler;
+    compile_options.force_data_format = user_options->force_data_format;
+  }
   return options;
 }
 
@@ -173,9 +180,10 @@ SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
+#if defined(PLATFORM_GOOGLE)
   options.graph_execution_options.enable_mlrt =
       absl::GetFlag(FLAGS_enable_mlrt);
-
+#endif
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -188,82 +196,6 @@ SavedModel::Options DefaultTpuModelOptions(
       1024;  // Servo currently uses 1024 as threshold for TPU models
 
   return options;
-}
-
-namespace {
-
-constexpr absl::string_view kWarmupRequestsRelativePath =
-    "/assets.extra/tf_serving_warmup_requests";
-
-}
-
-tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
-GetWarmupRequests(absl::string_view saved_model_dir) {
-  std::vector<tensorflow::serving::PredictRequest> requests;
-  const std::string kWarmupRequestPath =
-      absl::StrCat(saved_model_dir, kWarmupRequestsRelativePath);
-  std::unique_ptr<tensorflow::RandomAccessFile> tf_record_file;
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->NewRandomAccessFile(
-      kWarmupRequestPath, &tf_record_file));
-  auto tf_record_file_reader =
-      std::make_unique<tensorflow::io::SequentialRecordReader>(
-          tf_record_file.get());
-  tensorflow::tstring record;
-  while (tf_record_file_reader->ReadRecord(&record).ok()) {
-    tensorflow::serving::PredictionLog log;
-    TF_RET_CHECK(log.ParseFromArray(record.data(), record.size()));
-    TF_RET_CHECK(log.has_predict_log());
-    requests.push_back(
-        std::move(*(log.mutable_predict_log()->mutable_request())));
-  }
-  return requests;
-}
-
-namespace {
-
-tensorflow::Tensor CreateTensorFromTensorProto(
-    const tensorflow::TensorProto& proto) {
-  tensorflow::Tensor tensor;
-  CHECK(tensor.FromProto(proto));
-  return tensor;
-}
-
-}  // namespace
-
-void ProcessPredictRequestsAndMaybeProfile(
-    const std::vector<tensorflow::serving::PredictRequest>& requests,
-    SavedModel* saved_model, const bool profile, const int32_t num_steps) {
-  std::vector<tensorflow::Tensor> outputs;
-  for (size_t i = 0; i < requests.size(); ++i) {
-    const tensorflow::serving::PredictRequest& request = requests.at(i);
-    const auto& input_map = request.inputs();
-    std::vector<tensorflow::Tensor> inputs;
-    const std::string& signature = request.model_spec().signature_name().empty()
-                                       ? "serving_default"
-                                       : request.model_spec().signature_name();
-    auto func_metadata = saved_model->GetFunctionMetadata(signature);
-    if (func_metadata.has_value()) {
-      LOG(INFO) << "Running requests for model signature " << signature;
-      for (const std::string& key : func_metadata->GetInputNames()) {
-        const tensorflow::TensorProto& tensor_proto = input_map.at(key);
-        inputs.push_back(CreateTensorFromTensorProto(tensor_proto));
-      }
-
-      for (int32_t step = 0; step < num_steps; ++step) {
-        if (profile) {
-          tensorflow::profiler::TraceMe t([i, step]() {
-            return absl::StrCat("Request_", i, "_step_", step);
-          });
-          TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
-        } else {
-          TF_CHECK_OK(saved_model->Run({}, signature, inputs, &outputs));
-        }
-      }
-    } else {
-      LOG(ERROR) << "Model signature defined in the request is not found, "
-                 << signature;
-    }
-  }
 }
 
 }  // namespace tfrt_stub

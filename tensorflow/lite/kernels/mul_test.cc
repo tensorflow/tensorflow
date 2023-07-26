@@ -167,6 +167,38 @@ class QuantizedMulOpModel : public SingleOpModel {
 
 using MulOpTest = testing::TestWithParam<bool>;
 
+TEST(MulOpTest, NoActivationFloatInplaceInput0) {
+  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput1) {
+  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST_P(MulOpTest, NoActivationFloat) {
   const bool constant_tensors = GetParam();
   if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {

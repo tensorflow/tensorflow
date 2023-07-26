@@ -294,7 +294,7 @@ class XlaSplitNDOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testRanked(self, graph_fn, rank):
     num_splits = [2] * rank
     num_outputs = 2 << (rank - 1)
-    input_value = np.reshape(np.arange(np.product(num_splits)), num_splits)
+    input_value = np.reshape(np.arange(np.prod(num_splits)), num_splits)
     for dtype in self.numeric_types:
       with self.session() as sess, self.device_scope():
         split = graph_fn(

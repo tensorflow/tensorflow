@@ -213,6 +213,7 @@ struct FusedMHASoftmaxOp {
     const MatmulTensorDescriptor& bmm2_rhs_descriptor;
     const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
     const TensorDescriptor& output_descriptor;
+    std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
   };
@@ -225,7 +226,7 @@ struct FusedMHASoftmaxOp {
         desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.dropout_rate, config.seed);
+        config.activation_descriptor, config.dropout_rate, config.seed);
   }
 };
 
@@ -241,6 +242,7 @@ struct FusedMHAScaleMaskSoftmaxOp {
     const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
     const TensorDescriptor& output_descriptor;
     const TensorDescriptor& mask_descriptor;
+    std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
   };
@@ -252,7 +254,8 @@ struct FusedMHAScaleMaskSoftmaxOp {
         desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.mask_descriptor, config.scale, config.dropout_rate, config.seed);
+        config.activation_descriptor, config.mask_descriptor, config.scale,
+        config.dropout_rate, config.seed);
   }
 };
 
@@ -268,6 +271,7 @@ struct FusedMHAScaleBiasMaskSoftmaxOp {
     const TensorDescriptor& output_descriptor;
     const TensorDescriptor& bias_descriptor;
     const TensorDescriptor& mask_descriptor;
+    std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
   };
@@ -280,8 +284,8 @@ struct FusedMHAScaleBiasMaskSoftmaxOp {
         desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.mask_descriptor, config.bias_descriptor, config.scale,
-        config.dropout_rate, config.seed);
+        config.activation_descriptor, config.mask_descriptor,
+        config.bias_descriptor, config.scale, config.dropout_rate, config.seed);
   }
 };
 
@@ -296,6 +300,7 @@ struct FusedMHAScaleBiasSoftmaxOp {
     const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
     const TensorDescriptor& output_descriptor;
     const TensorDescriptor& bias_descriptor;
+    std::optional<TensorDescriptor> activation_descriptor;
     std::optional<double> dropout_rate;
     std::optional<int64_t> seed;
   };
@@ -307,7 +312,81 @@ struct FusedMHAScaleBiasSoftmaxOp {
         desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
-        config.bias_descriptor, config.scale, config.dropout_rate, config.seed);
+        config.activation_descriptor, config.bias_descriptor, config.scale,
+        config.dropout_rate, config.seed);
+  }
+};
+
+struct FusedMHASoftmaxBackwardOp {
+  using Signature = FusedMHASoftmaxBackwardSignature;
+
+  struct Config {
+    FusedMHAKind kind;
+    double scale;
+    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor;
+    const MatmulTensorDescriptor& d_output_descriptor;
+    const TensorDescriptor& d_bmm1_lhs_descriptor;
+    const TensorDescriptor& d_bmm1_rhs_descriptor;
+    const TensorDescriptor& d_bmm2_rhs_descriptor;
+    const TensorDescriptor& d_s_descriptor;
+    std::optional<TensorDescriptor> d_bias_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<
+      std::unique_ptr<const OpRunner<FusedMHASoftmaxBackwardSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHASoftmaxBackwardRunnerFromDesc(
+        desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
+        config.bmm1_grad_gemm2_rhs_descriptor,
+        config.bmm2_grad_gemm1_lhs_descriptor,
+        config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
+        config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
+        config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
+        config.d_bias_descriptor, config.scale, config.dropout_rate,
+        config.seed);
+  }
+};
+
+struct FusedMHAScaleMaskSoftmaxBackwardOp {
+  using Signature = FusedMHAMaskBackwardSignature;
+
+  struct Config {
+    FusedMHAKind kind;
+    double scale;
+    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor;
+    const MatmulTensorDescriptor& d_output_descriptor;
+    const TensorDescriptor& d_bmm1_lhs_descriptor;
+    const TensorDescriptor& d_bmm1_rhs_descriptor;
+    const TensorDescriptor& d_bmm2_rhs_descriptor;
+    const TensorDescriptor& d_s_descriptor;
+    const TensorDescriptor& mask_descriptor;
+    std::optional<TensorDescriptor> d_bias_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<
+      std::unique_ptr<const OpRunner<FusedMHAMaskBackwardSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+        desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
+        config.bmm1_grad_gemm2_rhs_descriptor,
+        config.bmm2_grad_gemm1_lhs_descriptor,
+        config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
+        config.d_bmm1_lhs_descriptor, config.d_bmm1_rhs_descriptor,
+        config.d_bmm2_rhs_descriptor, config.d_s_descriptor,
+        config.mask_descriptor, config.d_bias_descriptor, config.scale,
+        config.dropout_rate, config.seed);
   }
 };
 

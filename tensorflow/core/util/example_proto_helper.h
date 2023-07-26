@@ -75,11 +75,11 @@ struct VarLenFeature {
 // CopyIntoSparseTensor can be used to copy from the temporary vector
 // into the final allocated tensors.
 Status SingleExampleProtoToTensors(
-    const Example& example, const string& name, const int batch_index,
+    const Example& example, const string& name, int batch_index,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features,
-    std::vector<Tensor*>* dense_values,
-    std::vector<std::vector<Tensor>>* sparse_values_temporary_vector);
+    std::vector<Tensor*>* output_dense_values_tensor,
+    std::vector<std::vector<Tensor>>* output_sparse_values_tmp);
 
 // The shape of the indices and values tensors associated with a SparseTensor
 // are dependent on the contents of the batch.
@@ -94,7 +94,7 @@ struct VarLenFeatureBatchShapes {
 // are actually filled.
 Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
                              const std::vector<Tensor>& sparse_values_tmp,
-                             const int batch_size,
+                             int batch_size,
                              VarLenFeatureBatchShapes* output_shapes);
 
 // A method to convert a batch of tensorflow::Example protos into output
@@ -128,7 +128,7 @@ Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
 
 // For a single Example, copy a dense feature value into an output
 // dense value tensor Out at the provided out_index offset.
-Status FeatureDenseCopy(const std::size_t out_index, const string& name,
+Status FeatureDenseCopy(std::size_t out_index, const string& name,
                         const string& key, const DataType& dtype,
                         const TensorShape& shape, const Feature& feature,
                         Tensor* out);
@@ -140,16 +140,15 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
 
 // For a single Example, and given sparse feature return a temporary output
 // Tensor suitable for being collected in the temporary sparse value vector.
-Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
+Tensor FeatureSparseCopy(std::size_t batch, const string& key,
                          const DataType& dtype, const Feature& feature);
 
 // Copy a temporary Tensor into the final sparse indices and values
 // tensor at a given batch index and element offset. This method
 // assumes that the indices/values Tensors have been properly allocated
 // for the batch.
-int64_t CopyIntoSparseTensor(const Tensor& in, const int batch,
-                             const int64_t offset, Tensor* indices,
-                             Tensor* values);
+int64_t CopyIntoSparseTensor(const Tensor& in, int batch, int64_t offset,
+                             Tensor* indices, Tensor* values);
 
 // Check that each dense_shape has known rank and inner dimensions; and
 // update variable_length (whether the outer dimension is None) and

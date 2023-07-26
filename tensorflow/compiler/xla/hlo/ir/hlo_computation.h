@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_COMPUTATION_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_COMPUTATION_H_
 
-#include <functional>
 #include <list>
 #include <memory>
 #include <optional>
@@ -34,15 +33,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -102,6 +99,15 @@ class HloComputation {
       return AddInstruction(std::move(instruction));
     }
 
+    StatusOr<HloInstruction*> AddParameter(
+        std::unique_ptr<HloInstruction> parameter) {
+      if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
+        return InternalError("Duplicate parameter number %d",
+                             parameter->parameter_number());
+      }
+      return AddInstruction(std::move(parameter));
+    }
+
     Status ForEachInstruction(
         absl::FunctionRef<Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
@@ -118,6 +124,7 @@ class HloComputation {
     const std::string name_;
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
+    absl::flat_hash_set<int> parameter_numbers_;
 
     Builder(const Builder&) = delete;
     Builder& operator=(const Builder&) = delete;
@@ -340,6 +347,10 @@ class HloComputation {
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+  // Same as MakeInstructionPostOrder but starting at any instruction in the
+  // computation, not just the root. Describes the corresponding subgraph.
+  std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
+      HloInstruction&) const;
   std::vector<HloInstruction*> MakeInstructionPostOrder(
       const ChannelDependencies& channel_dependencies) const;
 
@@ -383,11 +394,13 @@ class HloComputation {
   // present, `async_execution_thread` will be attached to the
   // async-start/update/done instructions as well as wrapped computations.
   // If `replace` is true, replace instruction with the async done instruction.
+  // If `override_names` is true, the clone on `instruction` and the async op
+  // created will get non-default names.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
       absl::string_view async_execution_thread =
           HloInstruction::kMainExecutionThread,
-      bool replace = true);
+      bool replace = true, bool override_names = false);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
@@ -555,6 +568,17 @@ class HloComputation {
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
+
+  // Like CloneWithReplacements(), but this is a const method and `context` must
+  // be specified.
+  std::unique_ptr<HloComputation> CloneInContext(
+      HloCloneContext& context,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements =
+          nullptr,
+      absl::Span<const HloInstruction* const> extra_parameters = {},
+      const std::string& suffix = "clone",
+      const HloInstruction* new_root = nullptr) const;
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //

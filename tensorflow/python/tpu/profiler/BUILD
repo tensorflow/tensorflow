@@ -35,9 +35,9 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:errors",
-        "//tensorflow/python:versions",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:versions",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",

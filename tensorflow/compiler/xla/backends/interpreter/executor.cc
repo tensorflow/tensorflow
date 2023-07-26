@@ -119,16 +119,6 @@ bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
   return false;
 }
 
-bool XlaInterpreterExecutor::StartTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
-  return true;
-}
-
-bool XlaInterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
-  return true;
-}
-
 tsl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -45,6 +46,8 @@ namespace {
 namespace py = pybind11;
 
 struct PjitCacheEntry {
+  explicit PjitCacheEntry(xla::PyTreeRegistry* registry)
+      : out_pytree_def(registry) {}
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   std::vector<py::object> in_shardings;
   std::vector<py::object> out_avals;
@@ -175,6 +178,7 @@ class PjitFunction {
                py::function cache_miss, std::vector<int> static_argnums,
                std::vector<py::str> static_argnames,
                std::vector<int> donate_argnums,
+               std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
                std::shared_ptr<PjitFunctionCache> cache);
   ~PjitFunction();
 
@@ -210,6 +214,9 @@ class PjitFunction {
   const std::string& function_name() const { return function_name_; }
   const std::optional<py::function>& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
+  const std::shared_ptr<xla::PyTreeRegistry>& pytree_registry() const {
+    return pytree_registry_;
+  }
 
   const std::vector<int>& static_argnums() const { return static_argnums_; }
   const std::vector<py::str>& static_argnames() const {
@@ -245,6 +252,8 @@ class PjitFunction {
   std::vector<int> static_argnums_;
   std::vector<py::str> static_argnames_;
   std::vector<int> donate_argnums_;
+
+  std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
   std::shared_ptr<PjitFunctionCache> cache_;
   std::shared_ptr<PjitFunctionCache::Cache> executables_;
 };
@@ -278,6 +287,7 @@ PjitFunction::PjitFunction(std::string function_name,
                            std::vector<int> static_argnums,
                            std::vector<py::str> static_argnames,
                            std::vector<int> donate_argnums,
+                           std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
                            std::shared_ptr<PjitFunctionCache> cache)
     : function_name_(std::move(function_name)),
       fun_(std::move(fun)),
@@ -285,6 +295,7 @@ PjitFunction::PjitFunction(std::string function_name,
       static_argnums_(std::move(static_argnums)),
       static_argnames_(std::move(static_argnames)),
       donate_argnums_(donate_argnums),
+      pytree_registry_(std::move(pytree_registry)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
   for (py::str& s : static_argnames_) {
@@ -417,14 +428,14 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
                           function_name_));
     }
     return py::reinterpret_steal<py::object>(
-        JAX_PyObject_Vectorcall(fun_.value().ptr(), args, nargs, kwnames));
+        PyObject_Vectorcall(fun_.value().ptr(), args, nargs, kwnames));
   }
 
   // Calls the cache_miss_ function. This just calls the Python function; it may
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {
     return py::reinterpret_steal<py::tuple>(
-        JAX_PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
+        PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
   };
 
   // Call the cache_miss() function, extracting the output data and ignoring
@@ -443,8 +454,9 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   absl::Span<PyObject* const> positional_args(args, num_positional_args);
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
-  auto status = ParseArguments(positional_args, keyword_args, kwnames,
-                               static_argnums_, static_argnames_, arguments);
+  auto status =
+      ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
+                     static_argnames_, pytree_registry_.get(), arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
@@ -488,9 +500,9 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   bool inserted = false;
   std::shared_ptr<PjitCacheEntry> cache_entry =
       executables_->GetOrCreateIfAbsent(
-          arguments.signature, [&inserted](const CallSignature& unused) {
+          arguments.signature, [this, &inserted](const CallSignature& unused) {
             inserted = true;
-            return std::make_shared<PjitCacheEntry>();
+            return std::make_shared<PjitCacheEntry>(pytree_registry_.get());
           });
 
   if (!cache_entry->compilation_complete.HasBeenNotified()) {
@@ -781,6 +793,7 @@ PyObject* PjitFunction_tp_new(PyTypeObject* subtype, PyObject* args,
 }
 
 void PjitFunction_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
   if (o->weakrefs) {
@@ -871,20 +884,21 @@ void InitializePjitFunction(
     PjitFunctionObject* fn_obj, std::string function_name,
     std::optional<py::function> fun, py::function cache_miss,
     std::vector<int> static_argnums, std::vector<py::str> static_argnames,
-    std::vector<int> donate_argnums, std::shared_ptr<PjitFunctionCache> cache) {
+    std::vector<int> donate_argnums,
+    std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
+    std::shared_ptr<PjitFunctionCache> cache) {
   new (&fn_obj->fun) PjitFunction(
       std::move(function_name), std::move(fun), std::move(cache_miss),
       std::move(static_argnums), std::move(static_argnames),
-      std::move(donate_argnums), std::move(cache));
+      std::move(donate_argnums), std::move(pytree_registry), std::move(cache));
 }
 
-py::object MakePjitFunction(std::string function_name,
-                            std::optional<py::function> fun,
-                            py::function cache_miss,
-                            std::vector<int> static_argnums,
-                            std::vector<py::str> static_argnames,
-                            std::vector<int> donate_argnums,
-                            std::shared_ptr<PjitFunctionCache> cache) {
+py::object MakePjitFunction(
+    std::string function_name, std::optional<py::function> fun,
+    py::function cache_miss, std::vector<int> static_argnums,
+    std::vector<py::str> static_argnames, std::vector<int> donate_argnums,
+    std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
+    std::shared_ptr<PjitFunctionCache> cache) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
@@ -895,7 +909,7 @@ py::object MakePjitFunction(std::string function_name,
   InitializePjitFunction(fn_obj, std::move(function_name), std::move(fun),
                          std::move(cache_miss), std::move(static_argnums),
                          std::move(static_argnames), std::move(donate_argnums),
-                         std::move(cache));
+                         std::move(pytree_registry), std::move(cache));
   return obj;
 }
 
@@ -954,7 +968,7 @@ void BuildPjitSubmodule(py::module& m) {
     type->tp_name = "PjitFunction";
     type->tp_basicsize = sizeof(PjitFunctionObject);
     type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE |
-                     Py_TPFLAGS_HAVE_GC | JAX_TPFLAGS_HAVE_VECTORCALL;
+                     Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_HAVE_VECTORCALL;
     type->tp_new = PjitFunction_tp_new;
     type->tp_dealloc = PjitFunction_tp_dealloc;
     type->tp_dictoffset = offsetof(PjitFunctionObject, dict);
@@ -989,6 +1003,7 @@ void BuildPjitSubmodule(py::module& m) {
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = fn->static_argnames();
         pickle["donate_argnums"] = fn->donate_argnums();
+        pickle["pytree_registry"] = fn->pytree_registry();
         pickle["cache"] = fn->cache();
         return pickle;
       },
@@ -1016,13 +1031,17 @@ void BuildPjitSubmodule(py::module& m) {
             py::cast<std::vector<py::str>>(pickle["static_argnames"]);
         std::vector<int> donate_argnums =
             py::cast<std::vector<int>>(pickle["donate_argnums"]);
+        std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
+            py::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+                pickle["pytree_registry"]);
         std::shared_ptr<PjitFunctionCache> cache =
             py::cast<std::shared_ptr<PjitFunctionCache>>(pickle["cache"]);
         InitializePjitFunction(
             reinterpret_cast<PjitFunctionObject*>(self.ptr()),
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(cache));
+            std::move(donate_argnums), std::move(pytree_registry),
+            std::move(cache));
       },
       py::is_method(cfun_type));
   cfun.attr("__signature__") =
@@ -1048,16 +1067,17 @@ void BuildPjitSubmodule(py::module& m) {
       [](std::string function_name, std::optional<py::function> fun,
          py::function cache_miss, std::vector<int> static_argnums,
          std::vector<py::str> static_argnames, std::vector<int> donate_argnums,
+         std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
          std::shared_ptr<PjitFunctionCache> cache) {
         return MakePjitFunction(
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(cache));
+            std::move(donate_argnums), std::move(pytree_registry),
+            std::move(cache));
       },
       py::arg("function_name"), py::arg("fun"), py::arg("cache_miss"),
-      py::arg("static_argnums"),
-      py::arg("static_argnames") = std::vector<py::str>(),
-      py::arg("donate_argnums") = std::vector<int>(),
+      py::arg("static_argnums"), py::arg("static_argnames"),
+      py::arg("donate_argnums"), py::arg("pytree_registry"),
       py::arg("cache") = nullptr);
 }
 

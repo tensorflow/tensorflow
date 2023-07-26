@@ -3,6 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -13,11 +14,15 @@ load(
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_cuda_cc_test", "tf_custom_op_py_library", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_cuda_cc_test", "tf_custom_op_py_strict_library", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
+)
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "cuda_rpath_flags",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
@@ -65,6 +70,7 @@ cc_library(
         "stub/nvinfer_stub.cc",
         "stub/nvinfer_plugin_stub.cc",
     ]),
+    linkopts = if_tensorrt(cuda_rpath_flags("tensorrt")),
     textual_hdrs = glob(["stub/*.inc"]),
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
@@ -431,21 +437,28 @@ tf_cuda_library(
 
 tf_gen_op_wrapper_py(
     name = "trt_ops",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         ":trt_engine_resource_ops_op_lib",
         ":trt_op_libs",
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "trt_ops_loader",
     srcs_version = "PY3",
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:resources",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:resources",
     ],
 )
 
@@ -831,6 +844,7 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        "notap",  # Fails w/ tensorrt 8.x
     ],
     deps = [
         ":testutils",
@@ -1026,10 +1040,10 @@ pybind_extension(
         "@llvm_zlib//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
-        "@local_config_python//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
+        "@ml_dtypes//:__subpackages__",
         "@nsync//:__subpackages__",
         "@platforms//:__subpackages__",
         "@pybind11//:__subpackages__",

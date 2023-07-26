@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.lite.benchmark.delegateperformance;
 
-import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
-import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkState;
+import static java.lang.Math.max;
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkNotNull;
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkState;
 
 import android.util.Log;
 import java.util.LinkedHashMap;
@@ -69,9 +70,16 @@ final class LatencyBenchmarkReport extends ModelBenchmarkReport {
     checkState(metrics.containsKey("inference_latency_average_us"));
     metrics.put(
         "startup_overhead_latency_us",
-        metrics.get("initialization_latency_us")
-            + metrics.get("warmup_latency_average_us")
-            - metrics.get("inference_latency_average_us"));
+        max(
+            metrics.get("initialization_latency_us")
+                + metrics.get("warmup_latency_average_us")
+                - metrics.get("inference_latency_average_us"),
+            // The average warmup latency is generally assumed to be greater than the average
+            // inference latency. Therefore, it is highly unusual for the sum of the initialization
+            // latency and the average warmup latency to be less than the average inference latency.
+            // In order to ensure that the regression is computed successfully, we keep the startup
+            // overhead latency at minimum 0.
+            0d));
     return RawDelegateMetricsEntry.create(
         entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics);
   }

@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -408,6 +409,11 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
       DCHECK_EQ(next_task_index_, 0);
     }
   }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng;
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
+  }
   return OkStatus();
 }
 
@@ -420,6 +426,11 @@ void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     if (round_robin_round_limit_.has_value()) {
       req.set_blocked_round(round_robin_round_limit_.value());
     }
+  }
+  {
+    mutex_lock l(mu_);
+    double target_processing_time_nsec = ctx_->GetTargetProcessingTimeNsec();
+    req.set_target_processing_time_nsec(target_processing_time_nsec);
   }
   ClientHeartbeatResponse resp;
   Status s = dispatcher_->ClientHeartbeat(req, resp);
@@ -793,9 +804,12 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                                      std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult get_element_result;
-  for (int num_retries = 0;; ++num_retries) {
+  while (true) {
     Status s = TryGetElement(*task, get_element_result);
-    if (s.ok()) break;
+    if (s.ok()) {
+      task->num_retries = 0;
+      break;
+    }
     if (!IsPreemptedError(s)) {
       std::string data_transfer_protocol =
           !params_.data_transfer_protocol.empty()
@@ -817,14 +831,6 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
           std::string(s.message()));
       continue;
     }
-    if (!IsCoordinatedRead()) {
-      mutex_lock l(mu_);
-      // Mark the result as skipped so that we try reading from a different
-      // task before returning to this one.
-      result->ready = true;
-      result->skip = true;
-      return OkStatus();
-    }
     {
       mutex_lock l(mu_);
       if (cancelled_) {
@@ -835,20 +841,28 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     if (now_micros > deadline_micros) {
       return s;
     }
-    if (IsCoordinatedRead() && num_retries > 0) {
+    if (IsCoordinatedRead() && task->num_retries > 0) {
       TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, *result));
       mutex_lock l(mu_);
       if (result->skip) {
         return OkStatus();
       }
     }
-    int64_t backoff_until = std::min(
-        deadline_micros,
-        now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
+    int64_t backoff_until =
+        std::min(deadline_micros,
+                 now_micros + ComputeBackoffMicroseconds(task->num_retries++));
     VLOG(1) << "Failed to get an element from worker "
             << task->info.worker_address() << ": " << s << ". Will retry in "
             << (backoff_until - now_micros) << " microseconds";
     Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
+    if (!IsCoordinatedRead()) {
+      mutex_lock l(mu_);
+      // Mark the result as skipped so that we try reading from a different
+      // task before returning to this one.
+      result->ready = true;
+      result->skip = true;
+      return OkStatus();
+    }
   }
   ProcessGetElementResponse(enqueue_result, get_element_result, result, *task);
   return OkStatus();

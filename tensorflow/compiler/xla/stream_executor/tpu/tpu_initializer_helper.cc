@@ -137,65 +137,78 @@ tsl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
-  // TODO(skyewm): use `absl::StrCat(getenv(name))` once we build with the
-  // fix for https://github.com/abseil/abseil-cpp/issues/1167.
-  std::string load_library_override;
-  const char* env_value = getenv("TPU_LOAD_LIBRARY");
-  if (env_value != nullptr) {
-    load_library_override = std::string(env_value);
-  }
+  std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
 
   if (load_library_override == "1") {
+    VLOG(1) << "TPU_LOAD_LIBRARY=1, force loading libtpu";
     return ::tsl::OkStatus();
   } else if (load_library_override == "0") {
     return tsl::errors::FailedPrecondition(
         "TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
 
-  // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
-  // we're using different chips in different processes and thus multiple
-  // libtpu loads are ok.
-  // TODO(skyewm): we could make per-chip lock files and look at
-  // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
-  std::string chips_per_process_bounds =
-      GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
   bool allow_multiple_libtpu_load =
       GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
-  // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
-  // deprecated
-  if (chips_per_process_bounds.empty()) {
-    chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
-  }
-  if ((chips_per_process_bounds.empty() ||
-       chips_per_process_bounds == "2,2,1") &&
-      !allow_multiple_libtpu_load) {
-    int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
-    // This lock is held until the process exits intentionally. The underlying
-    // TPU device will be held on until it quits.
-    if (lockf(fd, F_TLOCK, 0) != 0) {
-      auto pid = FindLibtpuProcess();
-      if (pid.ok()) {
-        return tsl::errors::Aborted(absl::StrCat(
-            "The TPU is already in use by process with pid ", pid.value(),
-            ". Not attempting to load libtpu.so in this process."));
-      } else {
-        return tsl::errors::Aborted(
-            "The TPU is already in use by another process probably owned by "
-            "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-            "which process is using the TPU. If you still get this message, "
-            "run \"$ sudo rm /tmp/libtpu_lockfile\".");
-      }
-    } else {
-      return ::tsl::OkStatus();
-    }
-  } else {
-    VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
-               "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
-               "therefore allowing multiple libtpu.so loads.";
+  if (allow_multiple_libtpu_load) {
+    VLOG(1) << "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
+               "allowing multiple concurrent libtpu.so loads.";
     return ::tsl::OkStatus();
   }
+
+  std::string chips_per_process_bounds =
+      GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
+  if (chips_per_process_bounds.empty()) {
+    // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
+    // deprecated
+    chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
+  }
+
+  // TODO(b/291278826): make per-chip lock files and look at TPU_VISIBLE_DEVICES
+  // to make TPU process mutex separation more accurate.
+  bool use_all_tpus =
+      chips_per_process_bounds.empty() || chips_per_process_bounds == "2,2,1";
+  if (!use_all_tpus) {
+    VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is a subset of host's TPU "
+               "devices, allowing multiple libtpu.so loads.";
+    return ::tsl::OkStatus();
+  }
+
+  static constexpr char libtpu_lockfn[] = "/tmp/libtpu_lockfile";
+
+  // Clean-up call to remove user owned libtpu lockfile on proc exit.
+  atexit([]() {
+    // Ignores any lockfile removal error at proc exit.
+    remove(libtpu_lockfn);
+  });
+
+  int fd = open(libtpu_lockfn, O_CREAT | O_RDWR, 0600);
+  if (fd == -1) {
+    // File open permission locks multi-user access by default.
+    return tsl::errors::Aborted(
+        "The TPU is already in use by another process probably owned by "
+        "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+        "which process is using the TPU. If you still get this message, "
+        "run \"$ sudo rm /tmp/libtpu_lockfile\".");
+  }
+
+  // lockf() holds the lock until the process exits to guard the underlying
+  // TPU devices throughout process lifetime.
+  if (lockf(fd, F_TLOCK, 0) != 0) {
+    auto pid = FindLibtpuProcess();
+    if (pid.ok()) {
+      return tsl::errors::Aborted(absl::StrCat(
+          "The TPU is already in use by process with pid ", pid.value(),
+          ". Not attempting to load libtpu.so in this process."));
+    } else {
+      return tsl::errors::Aborted(
+          "Internal error when accessing libtpu multi-process lockfile. "
+          "Run \"$ sudo rm /tmp/libtpu_lockfile\".");
+    }
+  }
+  return ::tsl::OkStatus();
 }
+
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 

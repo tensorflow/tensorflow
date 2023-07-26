@@ -25,7 +25,7 @@ cc_library(
     deps = [
         ":trace_events_filter_interface",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
-        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/utils:timespan",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
     ],
@@ -39,7 +39,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
-        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -65,8 +65,8 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:task_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
-        "//tensorflow/core/profiler/utils:timespan",
         "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/profiler/utils:timespan",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -90,8 +90,8 @@ cc_library(
     hdrs = ["trace_events_util.h"],
     deps = [
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
-        "//tensorflow/core/profiler/utils:timespan",
         "//tensorflow/core/profiler/utils:xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:timespan",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -109,8 +109,8 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:task_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
-        "//tensorflow/core/profiler/utils:timespan",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/utils:timespan",
         "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

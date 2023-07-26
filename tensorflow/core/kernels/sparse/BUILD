@@ -84,6 +84,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:gpu_prim_hdrs",
         "//tensorflow/core/kernels:scatter_nd_op",
         "//tensorflow/core/kernels:slice_op",
+        "//tensorflow/core/kernels:sparse_utils",
         "//tensorflow/core/kernels:transpose_functor",
         "//third_party/eigen3",
     ] + if_cuda_or_rocm([

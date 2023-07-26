@@ -230,15 +230,6 @@ Status CompileImpl(
   return OkStatus();
 }
 
-DataType MaybeConvertBF16ToF32(DataType const& dtype) {
-  if (dtype == DT_BFLOAT16) {
-    // We'll go through F32 to generate BF16.
-    // TODO(b/256243456): Generate BF16 directly from U16.
-    return DT_FLOAT;
-  }
-  return dtype;
-}
-
 class StatefulUniformOp : public XlaOpKernel {
  public:
   explicit StatefulUniformOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {

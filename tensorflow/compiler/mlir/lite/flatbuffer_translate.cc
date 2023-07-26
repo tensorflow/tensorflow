@@ -91,6 +91,7 @@ bool emit_custom_ops;
 bool emit_select_tf_ops;
 bool lower_tensor_list_ops;
 bool strip_debug_info;
+bool use_buffer_offset;
 
 // NOLINTNEXTLINE
 static opt<bool, true> emit_builtin_tflite_ops_flag(
@@ -122,6 +123,12 @@ static opt<bool, true> lower_tensor_list_ops_flag(
 static opt<bool, true> strip_debug_info_flag(
     "strip-debug-info", llvm::cl::desc("Strip debug info during export"),
     llvm::cl::location(strip_debug_info), llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static opt<bool, true> use_buffer_offset_flag(
+    "use-buffer-offset",
+    llvm::cl::desc("store constant buffers outside of Flatbuffers"),
+    llvm::cl::location(use_buffer_offset), llvm::cl::init(false));
 
 namespace mlir {
 namespace {
@@ -170,6 +177,7 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
   options.toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
   options.toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
   options.toco_flags.set_allow_custom_ops(emit_custom_ops);
+  options.toco_flags.set_use_buffer_offset(use_buffer_offset);
   options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
   if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
                                                  &serialized_flatbuffer))

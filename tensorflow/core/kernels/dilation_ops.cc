@@ -104,12 +104,12 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
 
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_rows, filter_rows_eff, *stride_rows,
-                                     padding, out_rows, pad_top));
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_cols, filter_cols_eff, *stride_cols,
-                                     padding, out_cols, pad_left));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_rows, filter_rows_eff, /*dilation_rate=*/1,
+                              *stride_rows, padding, out_rows, pad_top));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_cols, filter_cols_eff, /*dilation_rate=*/1,
+                              *stride_cols, padding, out_cols, pad_left));
 }
 
 template <typename Device, typename T>

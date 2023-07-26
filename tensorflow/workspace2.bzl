@@ -34,7 +34,9 @@ load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
+load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -73,11 +75,13 @@ def _initialize_third_party():
     jpeg()
     kissfft()
     libprotobuf_mutator()
+    ml_dtypes()
     nasm()
     opencl_headers()
     pasta()
     psimd()
     pybind11_abseil()
+    pybind11_bazel()
     ruy()
     sobol_data()
     stablehlo()
@@ -165,9 +169,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-3dc310302210c1891ffcfb12ae67b11a3ad3a150",
-        sha256 = "ba668f9f8ea5b4890309b7db1ed2e152aaaf98af6f9a8a63dbe1b75c04e52cb9",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/3dc310302210c1891ffcfb12ae67b11a3ad3a150.zip"),
+        strip_prefix = "cpuinfo-87d8234510367db49a65535021af5e1838a65ac2",
+        sha256 = "609fc42c47482c1fc125dccac65e843f640e792540162581c4b7eb6ff81c826a",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/87d8234510367db49a65535021af5e1838a65ac2.zip"),
     )
 
     tf_http_archive(
@@ -203,6 +207,8 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
         ],
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
@@ -803,12 +809,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "rules_python",
-        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "build_bazel_rules_android",
         sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
         strip_prefix = "rules_android-0.1.1",
@@ -862,9 +862,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.0.tar.gz"),
-        sha256 = "eacf582fa8f696227988d08cfc46121770823839fe9e301a20fbce67e7cd70ec",
-        strip_prefix = "pybind11-2.10.0",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.4.tar.gz"),
+        sha256 = "832e2f309c57da9c1e6d4542dedd34b24e4192ecb4d62f6f4866a737454c9970",
+        strip_prefix = "pybind11-2.10.4",
         build_file = "//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
@@ -955,6 +955,40 @@ def _tf_repositories():
         sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
         urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
         #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
+    )
+
+    # Riegeli is imported twice since there are two targets (third_party/riegeli and
+    # third_party/py/riegeli) that are used in TF.
+    tf_http_archive(
+        name = "riegeli",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    tf_http_archive(
+        name = "riegeli_py",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        patch_file = ["//third_party:riegeli_fix.patch"],
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "org_brotli",
+        sha256 = "84a9a68ada813a59db94d83ea10c54155f1d34399baf377842ff3ab9b3b3256e",
+        strip_prefix = "brotli-3914999fcc1fda92e750ef9190aa6db9bf7bdb07",
+        urls = tf_mirror_urls("https://github.com/google/brotli/archive/3914999fcc1fda92e750ef9190aa6db9bf7bdb07.zip"),  # 2022-11-17
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "net_zstd",
+        build_file = "//third_party:net_zstd.BUILD",
+        sha256 = "b6c537b53356a3af3ca3e621457751fa9a6ba96daf3aebb3526ae0f610863532",
+        strip_prefix = "zstd-1.4.5/lib",
+        urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.4.5.zip"),  # 2020-05-22
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

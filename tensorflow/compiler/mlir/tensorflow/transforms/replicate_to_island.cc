@@ -379,9 +379,9 @@ void ReplicateToIslandPass::runOnOperation() {
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
                                           replicate_op, legacy_graph_export_,
                                           replica_group_idx))) {
-      replica_group_idx++;
       return signalPassFailure();
     }
+    replica_group_idx++;
   }
 }
 }  // anonymous namespace

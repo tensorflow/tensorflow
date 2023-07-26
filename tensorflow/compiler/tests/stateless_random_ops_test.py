@@ -16,6 +16,7 @@
 
 import functools
 import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,6 +32,7 @@ random_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -107,16 +109,20 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       ('_%s_%s' % (op_id, alg_id), op, alg_group)  # pylint: disable=g-complex-comprehension
       for alg_id, alg_group in enumerate([
           [
-              stateless.Algorithm.PHILOX, stateless.Algorithm.PHILOX.value,
-              'philox'
+              random_ops_util.Algorithm.PHILOX,
+              random_ops_util.Algorithm.PHILOX.value,
+              'philox',
           ],
           [
-              stateless.Algorithm.THREEFRY, stateless.Algorithm.THREEFRY.value,
-              'threefry'
+              random_ops_util.Algorithm.THREEFRY,
+              random_ops_util.Algorithm.THREEFRY.value,
+              'threefry',
           ],
           [
-              stateless.Algorithm.AUTO_SELECT,
-              stateless.Algorithm.AUTO_SELECT.value, 'auto_select', None
+              random_ops_util.Algorithm.AUTO_SELECT,
+              random_ops_util.Algorithm.AUTO_SELECT.value,
+              'auto_select',
+              None,
           ],
       ])
       for op_id, op in enumerate([
@@ -126,14 +132,16 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
               stateless.stateless_random_uniform,
               dtype=dtypes.uint32,
               minval=None,
-              maxval=None),
+              maxval=None,
+          ),
           functools.partial(
-              stateless.stateless_random_uniform,
-              dtype=dtypes.int32,
-              maxval=100),
+              stateless.stateless_random_uniform, dtype=dtypes.int32, maxval=100
+          ),
           functools.partial(
-              stateless.stateless_random_uniform, dtype=dtypes.float32),
-      ]))
+              stateless.stateless_random_uniform, dtype=dtypes.float32
+          ),
+      ])
+  )
   @test_util.run_v2_only
   def testAlg(self, op, alg_group):
     """Tests all values of `alg`."""
@@ -214,11 +222,12 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       (f'_{alg.name}_{dtype.name}_{seed}', alg, dtype, seed)  # pylint: disable=g-complex-comprehension
       for seed in ([1, 2], [12, 23], [123, 456], [565656, 121212])
       for dtype in _allowed_types(include_int=True)
-      for alg in list(stateless.Algorithm))
+      for alg in list(random_ops_util.Algorithm)
+  )
   def testDistributionOfStatelessRandomUniform(self, alg, dtype, seed):
     """Use Pearson's Chi-squared test to test for uniformity."""
-    philox = stateless.Algorithm.PHILOX
-    auto_select = stateless.Algorithm.AUTO_SELECT
+    philox = random_ops_util.Algorithm.PHILOX
+    auto_select = random_ops_util.Algorithm.AUTO_SELECT
     device = xla_device()
     if 'CPU' in device.device_type:
       device_type = 'CPU'

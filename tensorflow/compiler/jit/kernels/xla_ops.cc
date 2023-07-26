@@ -179,6 +179,10 @@ using XlaExecutableClosure =
     ExecutableClosure<xla::LocalExecutable, xla::LocalClient>;
 using XlaExecutableClosureStore =
     ExecutableClosureStore<xla::LocalExecutable, xla::LocalClient>;
+using PjRtExecutableClosure =
+    ExecutableClosure<xla::PjRtLoadedExecutable, xla::PjRtClient>;
+using PjRtExecutableClosureStore =
+    ExecutableClosureStore<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 se::Stream* GetStream(OpKernelContext* ctx) {
   return ctx->op_device_context() ? ctx->op_device_context()->stream()
@@ -591,7 +595,6 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     auto run_pjrt_cluster = [ctx, pjrt_client, pjrt_executable,
                              compilation_result, done, inputs,
                              resources = resources_]() {
-      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
       // Separate scope so that VariableInfo locks are released before done() is
       // called.
       {
@@ -605,8 +608,8 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                              done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
-            RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
-                              *compilation_result, pjrt_executable, ctx),
+            RunPjRtExecutable(inputs, variable_infos, *compilation_result,
+                              pjrt_client, pjrt_executable, ctx),
             done);
       }
       VLOG(2) << "Done executing with PJRT.";
@@ -784,9 +787,11 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
 void XlaCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaCompileOp " << def().name()
           << (must_compile_ ? "(must-compile)" : "");
-  xla::LocalClient* client;
-  const XlaCompiler::CompilationResult* kernel;
-  xla::LocalExecutable* executable;
+  const XlaCompiler::CompilationResult* kernel = nullptr;
+  xla::LocalClient* client = nullptr;
+  xla::LocalExecutable* executable = nullptr;
+  xla::PjRtClient* pjrt_client = nullptr;
+  xla::PjRtLoadedExecutable* pjrt_executable = nullptr;
   ResourceVarsSnapshot variables_snapshot;
 
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
@@ -804,6 +809,11 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
                : DeviceCompileMode::kLazy;
   }();
 
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileAndRunForDevice(
+              platform_info_.device_type());
+
   if (GetXlaOpsCommonFlags()->tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
@@ -817,22 +827,33 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 
     // Do not alias resource updates as locking variables in XlaCompile and
     // unlocking them in XlaRun may lead to deadlocks.
-    const Status status = CompileToLocalExecutable(
-        ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
-        /*may_alias_resource_update=*/false, &client, &kernel, &executable);
+    Status status;
+    if (use_pjrt) {
+      VLOG(2) << "Using PJRT for compilation. Function name: "
+              << function_.name();
+      status = CompileToPjRtLoadedExecutable(
+          *ctx, platform_info_, function_, args, compile_mode, has_ref_vars_,
+          /*may_alias_resource_update=*/false, &kernel, &pjrt_client,
+          &pjrt_executable);
+    } else {
+      status = CompileToLocalExecutable(
+          ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
+          /*may_alias_resource_update=*/false, &client, &kernel, &executable);
+    }
     if (compile_mode != DeviceCompileMode::kLazy ||
         status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }
 
     if (status.code() == error::UNIMPLEMENTED) {
-      LOG(WARNING) << "Compilation failed:" << status.ToString()
+      LOG(WARNING) << "Compilation failed:" << status
                    << ".  Falling back to TF function call.";
 
       BroadcastOptimizationRemark(
           XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
           .IgnoreError();
       executable = nullptr;
+      pjrt_executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
       cannot_compile_cluster_ = true;
     }
@@ -844,28 +865,36 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   Allocator* cpu_allocator = ctx->device()->GetAllocator(host_alloc_attrs);
 
   // Async compilation returns nullptr executable without an error.
-  if (!executable) {
+  if (!executable && !pjrt_executable) {
     DCHECK(!must_compile_);
     Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
-
     Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
     compilation_successful.scalar<bool>()() = false;
-    ctx->set_output(0, Tensor(cpu_allocator, DT_STRING, TensorShape({})));
+    ctx->set_output(0, compilation_key);
     ctx->set_output(1, compilation_successful);
     return;
   }
 
-  // Each execution of an XlaCompile op creates a new XlaExecutableClosure, even
+  // Each execution of an XlaCompile op creates a new ExecutableClosure, even
   // if it didn't have to compile the cluster because of a compilation-cache
   // hit.  This is because we at least need new snapshots of the resource
   // variables.
-  XlaExecutableClosureStore::KeyT key =
-      XlaExecutableClosureStore::Global()->Produce(XlaExecutableClosure(
-          client, executable, kernel, std::move(variables_snapshot),
-          constants_.size()));
-
   Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
-  compilation_key.flat<tstring>()(0) = key;
+  if (use_pjrt) {
+    PjRtExecutableClosureStore::KeyT key =
+        PjRtExecutableClosureStore::Global()->Produce(PjRtExecutableClosure(
+            pjrt_client, pjrt_executable, kernel, std::move(variables_snapshot),
+            constants_.size()));
+    compilation_key.flat<tstring>()(0) = key;
+    VLOG(2) << "Compiled with PJRT. compilation_key: " << key;
+  } else {
+    XlaExecutableClosureStore::KeyT key =
+        XlaExecutableClosureStore::Global()->Produce(XlaExecutableClosure(
+            client, executable, kernel, std::move(variables_snapshot),
+            constants_.size()));
+    compilation_key.flat<tstring>()(0) = key;
+    VLOG(2) << "Compiled with XLA. compilation_key: " << key;
+  }
 
   Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
   compilation_successful.flat<bool>()(0) = true;
@@ -880,6 +909,48 @@ XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
   Tensor key_tensor = ctx->input(ctx->num_inputs() - 1);
+
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileAndRunForDevice(
+              platform_info_.device_type());
+
+  if (use_pjrt) {
+    const PjRtExecutableClosureStore::KeyT& key = key_tensor.flat<tstring>()(0);
+    PjRtExecutableClosure closure =
+        PjRtExecutableClosureStore::Global()->Consume(key);
+
+    // Fetch inputs from the OpKernelContext. Inputs are the same as the ones
+    // for XlaCompile, except that the must-be-constant inputs that appear in
+    // the beginning are stripped off and the closure key is appended as the
+    // last input. So the inputs look like: input tensors, resource variables,
+    // closure key tensor.
+    std::vector<const Tensor*> inputs = InputsFromContext(ctx);
+    absl::flat_hash_map<int, const Tensor*> variable_snapshots;
+    for (const auto& [variable_index, variable_tensor] :
+         closure.resource_var_snapshots()) {
+      variable_snapshots.emplace(variable_index, variable_tensor.has_value()
+                                                     ? &variable_tensor.value()
+                                                     : nullptr);
+    }
+
+    {
+      StatusOr<std::vector<VariableInfo>> updated_variables =
+          GatherVariableInfo(ctx, *closure.compilation_result(),
+                             closure.num_constant_args());
+      OP_REQUIRES_OK(ctx, updated_variables.status());
+      OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*updated_variables)));
+      OP_REQUIRES_OK(
+          ctx, RunPjRtExecutable(closure.num_constant_args(), inputs,
+                                 variable_snapshots, *updated_variables,
+                                 *closure.compilation_result(),
+                                 closure.client(), closure.executable(), ctx));
+    }
+
+    OP_REQUIRES_OK(ctx, OkStatus());
+    return;
+  }
+
   const XlaExecutableClosureStore::KeyT& key = key_tensor.flat<tstring>()(0);
 
   XlaExecutableClosure closure =

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
@@ -44,23 +47,313 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+
 using xla::runtime::Arguments;
 using xla::runtime::AsyncTaskRunner;
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+using xla::runtime::FunctionRef;
+using xla::runtime::FunctionType;
 using xla::runtime::MemrefDesc;
-using xla::runtime::ScalarArg;
+using xla::runtime::MemrefType;
 using xla::runtime::StridedMemrefView;
-using xla::runtime::success;
+
+#if GOOGLE_CUDA
+using se::gpu::OwnedCudaGraph;
+
+// Captures Gpu graph by running given function in capture mode.
+static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
+    CustomCall::UserData user_data);
+#endif  // GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
 // CUDA graphs caching.
 //===----------------------------------------------------------------------===//
 
-StreamExecutorGraphInstances* GraphInstances::operator()(
+struct GraphInstances::Impl {
+  struct State {
+    // A flag signalling if `InstantiateAllGraphs` was already called and we
+    // have all Gpu graph instantiated ahead of time.
+    bool instantiated = false;
+
+    // Last time graph instances were used by a particular stream executor.
+    uint64_t last_use_micros = 0;
+
+    std::shared_ptr<StreamExecutorGraphInstances> instances =
+        std::make_shared<StreamExecutorGraphInstances>();
+  };
+
+  // XLA module name that owns graph instances. We use it only to produce logs
+  // that can be attributed back to XLA executables.
+  std::string module_name;
+
+  // Number of graphs in the parent module.
+  int64_t num_graphs = 0;
+
+  mutable absl::Mutex mu;
+  absl::node_hash_map<se::StreamExecutor*, State> graphs ABSL_GUARDED_BY(mu);
+};
+
+// Keep track of instantiated graphs on each StreamExecutor, we use this
+// information in the graph eviction policy.
+using GraphInstancesState = absl::flat_hash_map<se::StreamExecutor*, int64_t>;
+
+static absl::Mutex* GetGraphInstancesStateMutex() {
+  static auto* mu = new absl::Mutex();
+  return mu;
+}
+
+static GraphInstancesState& GetGraphInstancesState() {
+  static auto* state = new GraphInstancesState();
+  return *state;
+}
+
+static int64_t NotifyGraphInstancesCreated(se::StreamExecutor* executor,
+                                           int64_t num_graphs) {
+  absl::MutexLock lock(GetGraphInstancesStateMutex());
+  return GetGraphInstancesState()[executor] += num_graphs;
+}
+
+static int64_t NotifyGraphInstancesDestroyed(se::StreamExecutor* executor,
+                                             int64_t num_graphs) {
+  absl::MutexLock lock(GetGraphInstancesStateMutex());
+  return GetGraphInstancesState()[executor] -= num_graphs;
+}
+
+// We keep track of all graph instances in the process, to implement graph
+// eviction on OOM. Graph instances owned by GpuExecutable, so we rely on
+// weak ptr to check if they are still alive.
+using GraphInstancesVec = std::vector<std::weak_ptr<GraphInstances::Impl>>;
+
+static absl::Mutex* GetGraphInstancesVecMutex() {
+  static auto* mu = new absl::Mutex();
+  return mu;
+}
+
+static GraphInstancesVec& GetGraphInstancesVec() {
+  static auto* vec = new GraphInstancesVec();
+  return *vec;
+}
+
+static void AddGraphInstances(std::weak_ptr<GraphInstances::Impl> impl) {
+  absl::MutexLock lock(GetGraphInstancesVecMutex());
+  GetGraphInstancesVec().push_back(std::move(impl));
+}
+
+// Evicts all graphs for a given executor in the current process.
+static void EvictAllGraphs(
+    se::StreamExecutor* executor,
+    std::optional<uint64_t> eviction_timeout_seconds = std::nullopt) {
+  // We WARN only when we evict all Gpu graphs because it happens when we
+  // recover from OOM. Eviction by time out is business as usual.
+  if (eviction_timeout_seconds.has_value()) {
+    VLOG(3) << "Evict timed out gpu graphs from executor " << executor;
+  } else {
+    LOG(WARNING) << "Evict all gpu graphs from executor " << executor;
+  }
+
+  TraceMe trace_instantiation([&] {
+    return TraceMeEncode("cuda.graph.evict_all_graphs",
+                         {{"device_ordinal", executor->device_ordinal()}});
+  });
+
+  absl::MutexLock lock(GetGraphInstancesVecMutex());
+  auto& vec = GetGraphInstancesVec();
+
+  // Erase all expired graph instances.
+  vec.erase(std::remove_if(vec.begin(), vec.end(),
+                           [](auto& weak_ptr) { return weak_ptr.expired(); }),
+            vec.end());
+
+  auto timed_out = [&](GraphInstances::Impl::State& state) -> bool {
+    auto diff = tsl::Env::Default()->NowMicros() - state.last_use_micros;
+    return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
+  };
+
+  for (auto& weak_ptr : vec) {
+    auto ptr = weak_ptr.lock();
+    if (!ptr) continue;
+
+    if (!ptr->mu.TryLock()) continue;
+
+    auto it = ptr->graphs.find(executor);
+    if (it == ptr->graphs.end()) {
+      ptr->mu.Unlock();
+      continue;
+    }
+
+    // If we have a timeout value, than check it first, otherwise always evict
+    // graphs for a given executor.
+    bool is_timed_out = timed_out(it->second);
+    if (eviction_timeout_seconds.has_value() && !is_timed_out) {
+      ptr->mu.Unlock();
+      continue;
+    }
+
+    if (ptr->num_graphs > 0) {
+      VLOG(3) << "Evict " << ptr->num_graphs << " graphs for: @"
+              << ptr->module_name << " at executor: " << executor
+              << " (timed_out = " << is_timed_out << ")."
+              << " Total remaining graphs at given executor: "
+              << NotifyGraphInstancesDestroyed(executor, ptr->num_graphs);
+    }
+    ptr->graphs.erase(it);
+    ptr->mu.Unlock();
+  }
+}
+
+GraphInstances::GraphInstances(std::string module_name, int64_t num_graphs)
+    : impl_(std::make_shared<Impl>()) {
+  impl_->module_name = std::move(module_name);
+  impl_->num_graphs = num_graphs;
+  if (impl_->num_graphs > 0) {
+    VLOG(3) << "Construct graph instances cache for: @" << impl_->module_name
+            << " (num_graphs = " << impl_->num_graphs << ")";
+  }
+  AddGraphInstances(impl_);
+}
+
+GraphInstances::~GraphInstances() {
+  if (impl_->num_graphs > 0) {
+    VLOG(3) << "Destroy graph instances cache for: @" << impl_->module_name
+            << " (num_graphs = " << impl_->num_graphs << ")";
+
+    absl::MutexLock lock(&impl_->mu);
+    for (auto& [executor, state] : impl_->graphs) {
+      VLOG(3) << "Destroy " << impl_->num_graphs << " graphs for: @"
+              << impl_->module_name << " at executor: " << executor
+              << ". Total remaining graphs at given executor: "
+              << NotifyGraphInstancesDestroyed(executor, impl_->num_graphs);
+    }
+  }
+}
+
+std::shared_ptr<StreamExecutorGraphInstances> GraphInstances::operator()(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mutex_);
-  return &graphs_[executor];
+  absl::MutexLock lock(&impl_->mu);
+
+  auto it = impl_->graphs.try_emplace(executor);
+  if (it.second && impl_->num_graphs > 0) {
+    VLOG(3) << "Instantiate " << impl_->num_graphs << " graphs for: @"
+            << impl_->module_name << " at executor: " << executor
+            << ". Total graphs at given executor: "
+            << NotifyGraphInstancesCreated(executor, impl_->num_graphs);
+  }
+
+  Impl::State& state = it.first->second;
+  state.last_use_micros = tsl::Env::Default()->NowMicros();
+  return state.instances;
+}
+
+bool GraphInstances::InstantiatedAllGraphs(
+    const ServiceExecutableRunOptions* run_options,
+    const Executable& executable) {
+  if (executable.num_functions() == 1) return true;
+
+  absl::MutexLock lock(&impl_->mu);
+  return impl_->graphs[run_options->stream()->parent()].instantiated;
+}
+
+Status GraphInstances::InstantiateAllGraphs(
+    const ServiceExecutableRunOptions* run_options,
+    const Executable& executable, const CustomCall::UserData& user_data,
+    void* ptr, std::optional<uint64_t> eviction_timeout_seconds) {
+  // We have only "main" function in the executable.
+  if (executable.num_functions() == 1) return OkStatus();
+
+  absl::MutexLock lock(&impl_->mu);
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  Impl::State& state = impl_->graphs[executor];
+
+  // All Gpu graphs are already instantiated for a given executor.
+  if (state.instantiated) return OkStatus();
+
+  TraceMe trace("cuda.graph.instantiate_all");
+
+  // Evict all timeout graphs before trying to instantiate new ones.
+  EvictAllGraphs(executor, eviction_timeout_seconds);
+
+  // We'll retry graph instantiation on OOM errors after evicting all graphs
+  // instantiated on `executor`.
+  int32_t num_retries = 0;
+
+  StreamExecutorGraphInstances::Snapshot instances =
+      state.instances->snapshot();
+
+  // Instantiate all Gpu graphs by calling graph capture functions with fake
+  // arguments. Once we'll execute them first time for real, they'll be updated
+  // with correct pointers.
+  for (unsigned ordinal = 1; ordinal < executable.num_functions(); ++ordinal) {
+    if (!absl::StartsWith(executable.function_name(ordinal),
+                          "xla.gpu.cuda.graph.capture"))
+      continue;
+
+    VLOG(3) << "Instantiate Gpu graph defined by capture function @"
+            << executable.function_name(ordinal) << " (ordinal = " << ordinal
+            << ")";
+
+    TraceMe trace_instantiation([&] {
+      return TraceMeEncode("cuda.graph.instantiate", {{"ordinal", ordinal}});
+    });
+
+    FunctionRef function_ref = executable.function_ref(ordinal);
+
+    const FunctionType& signature = executable.signature(ordinal);
+    assert(signature.num_results() == 0 && "unexpected number of results");
+    Arguments<MemrefDesc> args(signature.num_operands());
+
+    // Prepare arguments for the graph capture function.
+    for (size_t j = 0; j < signature.num_operands(); ++j) {
+      auto* memref = llvm::dyn_cast<MemrefType>(signature.operand(j));
+
+      if (!memref)
+        return absl::InternalError(absl::StrFormat(
+            "Unsupported capture function argument type #%d", j));
+
+      if (memref->sizes().size() != 1)
+        return absl::InternalError(
+            absl::StrFormat("Unsupported capture function memref rank #%d: %d",
+                            j, memref->sizes().size()));
+
+      std::array<int64_t, 1> sizes = {memref->size(0)};
+      std::array<int64_t, 1> strides = {1};
+
+      args.emplace_back<MemrefDesc>(memref->element_type(), ptr,
+                                    /*offset=*/0, sizes, strides);
+    }
+
+#if GOOGLE_CUDA
+    // Instantiate a Gpu graph with fake arguments.
+    auto instantiate = [&]() -> absl::StatusOr<GraphInstance> {
+      TF_ASSIGN_OR_RETURN(
+          auto g, CaptureGraph(run_options, function_ref, args, user_data));
+      TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+      return GraphInstance(0, std::move(e));
+    };
+
+    absl::StatusOr<GraphInstance*> instance =
+        instances.GetOrCreate(ordinal, instantiate);
+
+    // Retry on OOM error after evicting all graphs from executor.
+    if (instance.status().code() == absl::StatusCode::kResourceExhausted &&
+        num_retries++ == 0) {
+      EvictAllGraphs(executor);
+      --ordinal;  // we'll try to instantiate the same graph one more time
+      continue;
+    }
+
+    // Otherwise return an error to the caller.
+    if (!instance.ok()) return instance.status();
+#endif  // GOOGLE_CUDA
+  }
+
+  state.instantiated = true;
+  return OkStatus();
 }
 
 CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
@@ -96,8 +389,6 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 
 #if GOOGLE_CUDA
 
-using se::gpu::OwnedCudaGraph;
-
 static bool InDebugMode() {
 #ifdef NDEBUG
   return false;
@@ -105,9 +396,26 @@ static bool InDebugMode() {
   return true;
 }
 
+// Forwards custom call arguments to an arguments container that can be passed
+// to an executable function.
+static absl::Status ForwardArguments(CustomCall::RemainingArgs fwd_args,
+                                     Arguments<MemrefDesc>& args) {
+  for (size_t i = 0; i < fwd_args.size(); ++i) {
+    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
+      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
+                                    memref->sizes, memref->strides);
+      continue;
+    }
+
+    return absl::InvalidArgumentError("Unsupported argument type");
+  }
+
+  return OkStatus();
+}
+
 static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
-    runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
+    runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
     CustomCall::UserData user_data) {
   // We capture graph on a borrowed stream because we do not want to
   // accidentally record any concurrent kernel launches from other XLA
@@ -129,6 +437,11 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     return absl::InternalError(
         absl::StrFormat("Failed to borrow a stream for graph capture: %s",
                         capture_stream.status().message()));
+
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.capture",
+                         {{"ordinal", function_ref.ordinal()}});
+  });
 
   // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
   // via UserData to be able to detect when executing custom call in graph
@@ -154,29 +467,6 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // Graph capture function should not launch any async tasks.
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
-  // Graph capture functions can only have index arguments for launch
-  // dimensions, or memrefs for passing buffers. We need to re-package custom
-  // call arguments into a container that can be passed to an executable
-  // function.
-  Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
-
-  for (size_t i = 0; i < fwd_args.size(); ++i) {
-    // `index` argument passed as int64_t.
-    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
-      args.emplace_back<ScalarArg>(*idx);
-      continue;
-    }
-
-    // Pass `memref` argument as a MemrefDesc.
-    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
-      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
-                                    memref->sizes, memref->strides);
-      continue;
-    }
-
-    return absl::InvalidArgumentError("Unsupported argument type");
-  }
-
   // Create a graph from running the graph capture function.
   auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
     return function_ref(args, runtime::NoResultConverter{}, opts,
@@ -200,6 +490,11 @@ static absl::Status RunGraphWithoutCapture(
   Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
 
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.run_no_capture",
+                         {{"ordinal", function_ref.ordinal()}});
+  });
+
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
@@ -210,32 +505,15 @@ static absl::Status RunGraphWithoutCapture(
   // Graph capture function should not launch any async tasks.
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
-  Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
+  Arguments<MemrefDesc> args(fwd_args.size());
+  TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
 
-  for (size_t i = 0; i < fwd_args.size(); ++i) {
-    // `index` argument passed as int64_t.
-    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
-      args.emplace_back<ScalarArg>(*idx);
-      continue;
-    }
-
-    // Pass `memref` argument as a MemrefDesc.
-    if (auto memref = fwd_args.get<StridedMemrefView>(i); succeeded(memref)) {
-      args.emplace_back<MemrefDesc>(memref->dtype, memref->data, /*offset=*/0,
-                                    memref->sizes, memref->strides);
-      continue;
-    }
-
-    return absl::InvalidArgumentError("Unsupported argument type");
-  }
-
-  auto status =
-      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
-          .status();
-  if (!status.ok()) {
+  auto executed =
+      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
+  if (!executed.ok()) {
     return InternalError("RunGraphWithoutCapture failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
-                         status.ToString());
+                         executed.status().ToString());
   }
   return absl::OkStatus();
 }
@@ -259,7 +537,7 @@ static absl::Status LaunchGraph(
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
     CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
-  VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
+  VLOG(1) << "Launch Cuda Graph: ordinal = " << capture.ordinal;
 
   // Get a reference to exported function that captures the cuda graph.
   runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
@@ -274,16 +552,14 @@ static absl::Status LaunchGraph(
                                 gemm_config, gpu_lock, region_status);
   };
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<std::atomic<uint64_t>> * get_count,
-      counts->GetOrCreate(
-          capture.ordinal,
-          []() -> absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>> {
-            return std::make_unique<std::atomic<uint64_t>>(0);
-          }));
-  uint64_t count = (*get_count)->fetch_add(1);
-  uint64_t instantiation_threshold =
-      debug_options->xla_gpu_cuda_graph_instantiation_threshold();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<std::atomic<uint64_t>> * get_count,
+                      counts->GetOrCreate(capture.ordinal, [] {
+                        return std::make_unique<std::atomic<uint64_t>>(0);
+                      }));
+
+  int64_t count = (*get_count)->fetch_add(1);
+  int64_t num_runs_to_instantiate =
+      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate();
 
   // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
   // back on regular execution if we detect tracing activity.
@@ -293,23 +569,27 @@ static absl::Status LaunchGraph(
   bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
 #endif
 
-  if (count < instantiation_threshold || is_profiling) {
-    // Run captured graph directly.
+  if (count < num_runs_to_instantiate || is_profiling) {
+    VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphWithoutCapture(run_options, function_ref, fwd_args,
                                   user_data());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      GraphInstance * instance,
-      instances->GetOrCreate(
-          capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
-            TF_ASSIGN_OR_RETURN(auto g, CaptureGraph(run_options, function_ref,
-                                                     fwd_args, user_data()));
+  // Instantiate Gpu graph by running graph capture function.
+  auto instantiate = [&]() -> absl::StatusOr<GraphInstance> {
+    Arguments<MemrefDesc> args(fwd_args.size());
+    TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
 
-            TF_ASSIGN_OR_RETURN(auto e,
-                                se::gpu::InstantiateCudaGraph(std::move(g)));
-            return GraphInstance(ptrs_hash, std::move(e));
-          }));
+    TF_ASSIGN_OR_RETURN(
+        auto g, CaptureGraph(run_options, function_ref, args, user_data()));
+
+    TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+
+    return GraphInstance(ptrs_hash, std::move(e));
+  };
+
+  TF_ASSIGN_OR_RETURN(GraphInstance * instance,
+                      instances->GetOrCreate(capture.ordinal, instantiate));
 
   {
     // Lock graph instance for read only access. If we'll have to update the
@@ -318,6 +598,11 @@ static absl::Status LaunchGraph(
 
     // If pointers did not change we can run captured graph.
     if (ptrs_hash == instance->ptr_hash) {
+      TraceMe trace([&] {
+        return TraceMeEncode("cuda.graph.launch_cached",
+                             {{"ordinal", capture.ordinal}});
+      });
+
       VLOG(3) << "Execute cached graph instance";
       return instance->exec.Launch(run_options->stream());
     }
@@ -325,9 +610,13 @@ static absl::Status LaunchGraph(
 
   // Otherwise we have to re-capture the graph and update the graph instance.
   VLOG(3) << "Update cached graph instance";
+
+  Arguments<MemrefDesc> args(fwd_args.size());
+  TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
+
   // Capture CUDA graph by running capture function.
   TF_ASSIGN_OR_RETURN(
-      auto g, CaptureGraph(run_options, function_ref, fwd_args, user_data()));
+      auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
   // At this point we have to grab a writer lock, because we might potentially
   // have concurrent execution of the cached graph instance.
@@ -338,6 +627,11 @@ static absl::Status LaunchGraph(
 
   // Update captured graph pointers hash.
   instance->ptr_hash = ptrs_hash;
+
+  TraceMe trace([&] {
+    return TraceMeEncode("cuda.graph.launch_updated",
+                         {{"ordinal", capture.ordinal}});
+  });
 
   return instance->exec.Launch(run_options->stream());
 

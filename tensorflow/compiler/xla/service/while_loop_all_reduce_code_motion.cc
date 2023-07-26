@@ -1050,6 +1050,11 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
         TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
             all_reduce, all_reduce->mutable_operand(0)));
       }
+      // Needs to rebuild the call graph or we could access removed
+      // instructions.
+      if (run_next_pass) {
+        break;
+      }
     }
   }
   VLOG(2) << "Hoisted " << count_all_reduce << " all-reduce and "

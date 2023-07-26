@@ -23,6 +23,7 @@ from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -167,7 +168,7 @@ def is_dtensor(tensor) -> bool:
 def copy_to_mesh(
     tensor: Any,
     layout: layout_lib.Layout,
-    source_layout: Optional[layout_lib.Layout] = None) -> ops.Tensor:
+    source_layout: Optional[layout_lib.Layout] = None) -> tensor_lib.Tensor:
   """Copies a tf.Tensor onto the DTensor device with the given layout.
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
@@ -377,7 +378,7 @@ def unpack(tensor: Any) -> Sequence[Any]:
 
 
 @tf_export("experimental.dtensor.fetch_layout", v1=[])
-def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
+def fetch_layout(tensor: tensor_lib.Tensor) -> layout_lib.Layout:
   """Fetches the layout of a DTensor.
 
   Args:
@@ -393,7 +394,7 @@ def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
 
 
 @tf_export("experimental.dtensor.check_layout", v1=[])
-def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
+def check_layout(tensor: tensor_lib.Tensor, layout: layout_lib.Layout) -> None:
   """Asserts that the layout of the DTensor is `layout`.
 
   Args:
@@ -410,8 +411,10 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
 
 @tf_export("experimental.dtensor.relayout", v1=[])
 def relayout(
-    tensor: ops.Tensor, layout: layout_lib.Layout, name: Optional[str] = None
-) -> ops.Tensor:
+    tensor: tensor_lib.Tensor,
+    layout: layout_lib.Layout,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
   """Changes the layout of `tensor`.
 
   Changes the layout of `tensor` to `layout`. This is used to fine-tune the
@@ -449,8 +452,10 @@ def relayout(
 
 @tf_export("experimental.dtensor.relayout_like", v1=[])
 def relayout_like(
-    tensor: ops.Tensor, layout_tensor: ops.Tensor, name: Optional[str] = None
-) -> ops.Tensor:
+    tensor: tensor_lib.Tensor,
+    layout_tensor: tensor_lib.Tensor,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
   """Changes the layout of `tensor` to the same as `layout_tensor`.
 
   `relayout_like` is often used inside a `tf.function`, to ensure a tensor is

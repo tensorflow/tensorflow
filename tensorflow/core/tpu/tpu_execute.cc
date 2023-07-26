@@ -15,41 +15,62 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_execute.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
+#include "tensorflow/tsl/framework/cancellation.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -81,7 +102,7 @@ class HostTransferManager {
 
 xla::StatusOr<HostTransferManager::HostCommandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const string& rendezvous_key_base,
+                                const std::string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
   return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
@@ -102,18 +123,6 @@ void ExitCountdown(Env* env) {
                 "does not restart, modify the retries allowed. See "
                 "b/62262381 and b/65223927.";
   std::quick_exit(42);
-}
-
-xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
-  XLA_Shape c_host_shape;
-  XLA_Shape c_device_shape;
-  ApiConverter::ToC(host_shape, &c_host_shape);
-  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
-      &c_host_shape, &c_device_shape);
-  xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Destroy(&c_host_shape);
-  ApiConverter::Destroy(&c_device_shape);
-  return device_shape;
 }
 
 int64_t ShapeSizeCompact(const xla::Shape& shape) {
@@ -198,6 +207,9 @@ xla::Status UpdateDynamicInputs(
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
   TF_RET_CHECK(runtime_inputs->size() == compile_time_shapes.size());
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
   for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     // TODO(yunxing): Iterating over thousands of elements can be slow. One way
     // to optimize for fast path without dynamic shapes is add a field in
@@ -207,7 +219,7 @@ xla::Status UpdateDynamicInputs(
     }
     auto& runtime_input = (*runtime_inputs)[i];
     xla::Shape compile_time_shapes_on_device =
-        HostShapeToDeviceShape(compile_time_shapes[i]);
+        transfer_manager->HostShapeToDeviceShape(compile_time_shapes[i]);
     bool element_modified = false;
     TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
         compile_time_shapes_on_device,
@@ -285,9 +297,6 @@ xla::Status UpdateDynamicInputs(
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
       // point to the correct address.
-      TF_ASSIGN_OR_RETURN(
-          auto transfer_manager,
-          xla::TransferManager::GetForPlatform(stream->parent()->platform()));
       TF_RETURN_IF_ERROR(FixTupleTableAsync(stream,
                                             compile_time_shapes_on_device,
                                             &runtime_input, transfer_manager));
@@ -423,7 +432,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
     std::vector<xla::ExecutionInput> arguments,
-    const string& rendezvous_key_base, uint32 rng_seed,
+    const std::string& rendezvous_key_base, uint32_t rng_seed,
     TpuNodeContext* node_context, xla::DeviceAssignment* device_assignment,
     CancellationManager* cancellation_manager, OpKernelContext* ctx,
     stream_executor::Stream* stream,
@@ -439,12 +448,9 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
+  TF_ASSIGN_OR_RETURN(tpu::HostCommandHandler host_command_handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
-
-  VLOG(2) << "Cloud TPU: Executing computation on device "
-          << node_context->device_ordinal();
 
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
@@ -485,11 +491,55 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         prefetch.offset());
   }
 
+  VLOG(1) << "TPUExecute: Updating dynamic HLO inputs on "
+          << node_context->device_ordinal();
+
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
+  // Retrieve the TPU embedding memory addresses to be fed to the TPU. The
+  // memory addresses are communicated with a dynamically allocated C array
+  // (which needs to be free'd once the function terminates).
+  VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
+          << node_context->device_ordinal();
+
+  SE_DeviceMemoryBase* device_memory_addrs = nullptr;
+  size_t device_memory_addrs_count;
+  auto device_memory_cleanup =
+      absl::MakeCleanup([device_memory_addrs, node_context]() {
+        if (device_memory_addrs != nullptr) {
+          stream_executor::tpu::OpsApiFn()
+              ->TpuExecute_FreeTpuEmbeddingMemoryAllocationsFn(
+                  node_context->device_ordinal(), device_memory_addrs);
+        }
+      });
+
+  StatusHelper status;
+  stream_executor::tpu::OpsApiFn()
+      ->TpuExecute_GetTpuEmbeddingMemoryAllocationsFn(
+          node_context->device_ordinal(), &device_memory_addrs,
+          &device_memory_addrs_count, status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+
+  // Add the TPU embedding memory addresses as additional arguments for the TPU
+  // executable.
+  VLOG(1) << "TPUExecute: Adding " << device_memory_addrs_count
+          << " TPUEmbedding memory addresses to HLO parameters.";
+  for (int i = 0; i < device_memory_addrs_count; ++i) {
+    xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
+        xla::ShapeUtil::MakeOpaqueShape());
+    const SE_DeviceMemoryBase& addr = device_memory_addrs[i];
+    VLOG(2) << absl::StrFormat("Device memory addr[%i] = {%p, %llu, %llu}", i,
+                               addr.opaque, addr.size, addr.payload);
+    *tree.mutable_element({}) = ApiConverter::FromC(addr);
+    xla::ExecutionInput input(std::move(tree));
+    arguments.push_back(std::move(input));
+  }
+
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
-      tpu_program, std::move(module), /*host_command_handler=*/handler);
+      tpu_program, std::move(module), host_command_handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();
   CancellationToken token;

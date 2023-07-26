@@ -32,16 +32,16 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":memory_test_util",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradients",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
     ],
 )
 
@@ -56,12 +56,12 @@ cuda_py_strict_test(
     xla_enable_strict_auto_jit = False,  # b/140261762
     deps = [
         ":memory_test_util",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/training:server_lib",
     ],
 )

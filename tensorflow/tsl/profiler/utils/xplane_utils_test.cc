@@ -44,6 +44,7 @@ using ::testing::UnorderedElementsAre;
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EqualsProto;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
+using ::testing::proto::Partially;
 #endif
 
 XEvent CreateEvent(int64_t offset_ps, int64_t duration_ps) {
@@ -431,6 +432,7 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
 
 // Protobuf matchers are unavailable in OSS (b/169705709)
 #if defined(PLATFORM_GOOGLE)
+  // TODO(b/238349654): Proto matcher are ineffective for XPlanes.
   ASSERT_THAT(aggregated_xplane,
               IgnoringRepeatedFieldOrdering(EqualsProto(
                   R"pb(lines {
@@ -439,6 +441,7 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                          events {
                            metadata_id: 1
                            duration_ps: 9000
+                           stats { metadata_id: 4 int64_value: 0 }
                            stats { metadata_id: 2 int64_value: 4000 }
                            stats { metadata_id: 3 int64_value: 4000 }
                            num_occurrences: 2
@@ -446,20 +449,23 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                          events {
                            metadata_id: 3
                            duration_ps: 5000
+                           stats { metadata_id: 4 int64_value: 0 }
                            stats { metadata_id: 2 int64_value: 2000 }
-                           num_occurrences: 2
-                         }
-                         events {
-                           metadata_id: 2
-                           duration_ps: 10000
-                           stats { metadata_id: 2 int64_value: 5000 }
                            num_occurrences: 2
                          }
                          events {
                            metadata_id: 4
                            duration_ps: 6000
+                           stats { metadata_id: 4 int64_value: 0 }
                            stats { metadata_id: 3 int64_value: 2000 }
                            num_occurrences: 1
+                         }
+                         events {
+                           metadata_id: 2
+                           duration_ps: 10000
+                           stats { metadata_id: 4 int64_value: 0 }
+                           stats { metadata_id: 2 int64_value: 5000 }
+                           num_occurrences: 2
                          }
                        }
                        event_metadata {
@@ -489,6 +495,10 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                        stat_metadata {
                          key: 3
                          value { id: 3 name: "self_duration_ps" }
+                       }
+                       stat_metadata {
+                         key: 4
+                         value { id: 4 name: "group_id" }
                        }
                        stats { metadata_id: 1 uint64_value: 21000 }
                   )pb")));
@@ -637,6 +647,70 @@ TEST(XplaneutilsTest, TestIsDevicePlane) {
   EXPECT_TRUE(IsDevicePlane(*xplane_device_thread));
   EXPECT_TRUE(IsDevicePlane(*xplane_custom_prefix));
   EXPECT_TRUE(IsDevicePlane(*xplane_legacy_custom));
+}
+
+TEST(XplaneUtilsTest, XPlaneGroupingPropagatesStep) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+
+  XStatMetadata* kGroupId =
+      builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  XLineBuilder line = builder.GetOrCreateLine(1);
+  line.SetName(kStepLineName);
+  XEventMetadata* event_metadata = builder.GetOrCreateEventMetadata(1);
+  event_metadata->set_name("Step 1");
+  XEventBuilder event_builder = line.AddEvent(*event_metadata);
+  event_builder.AddStatValue(*kGroupId, 1);
+  event_builder.SetDurationNs(100);
+  event_builder.SetOffsetNs(100);
+
+  XEventMetadata* event_metadata2 = builder.GetOrCreateEventMetadata(2);
+  event_metadata2->set_name("Step 2");
+  XEventBuilder event_builder2 = line.AddEvent(*event_metadata2);
+  event_builder2.AddStatValue(*kGroupId, 2);
+  event_builder2.SetDurationNs(100);
+  event_builder2.SetOffsetNs(300);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+// Protobuf matchers are unavailable in OSS (b/169705709)
+#if defined(PLATFORM_GOOGLE)
+  EXPECT_THAT(aggregated_xplane, Partially(EqualsProto(xplane)));
+#endif
+}
+
+TEST(XplaneUtilsTest, XPlaneGroupingPropagatesGroupId) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  XEventMetadata* event_metadata1 = builder.GetOrCreateEventMetadata(1);
+  event_metadata1->set_name("EventMetadata1");
+
+  XStatMetadata* kGroupId =
+      builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  XLineBuilder line = builder.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  XEventBuilder event_builder = line.AddEvent(*event_metadata1);
+  event_builder.SetDurationNs(100);
+  event_builder.SetOffsetNs(100);
+  event_builder.AddStatValue(*kGroupId, 1);
+  XEventBuilder event_builder2 = line.AddEvent(*event_metadata1);
+  event_builder2.AddStatValue(*kGroupId, 2);
+  event_builder2.SetDurationNs(100);
+  event_builder2.SetOffsetNs(300);
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  EXPECT_THAT(aggregated_xplane.lines(),
+              UnorderedElementsAre(Property(&XLine::events, SizeIs(2))));
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+
+  visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
+    });
+  });
 }
 
 }  // namespace

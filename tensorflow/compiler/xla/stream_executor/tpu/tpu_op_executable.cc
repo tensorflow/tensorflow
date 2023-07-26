@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/casts.h"
 
 namespace tensorflow {
 
@@ -96,6 +99,7 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.rng_seed = rng_seed;
   params.device_assignment = &c_dev_assign;
   params.stream = stream;
+  params.host_command_handler = ApiConverter::ToC(host_command_handler_);
   params.status = status.c_status;
 
   stream_executor::tpu::OpsApiFn()
@@ -104,29 +108,8 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
   }
+  ApiConverter::Destroy(params.host_command_handler);
   return status.status();
-}
-
-xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
-    const xla::Shape& host_shape) {
-  XLA_Shape c_host_shape;
-  XLA_Shape c_device_shape;
-  ApiConverter::ToC(host_shape, &c_host_shape);
-  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
-      &c_host_shape, &c_device_shape);
-  xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Destroy(&c_host_shape);
-  ApiConverter::Destroy(&c_device_shape);
-  return device_shape;
-}
-
-int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
-  XLA_Shape c_shape;
-  ApiConverter::ToC(shape, &c_shape);
-  int64_t size =
-      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  ApiConverter::Destroy(&c_shape);
-  return size;
 }
 
 absl::string_view TpuOpExecutable::fingerprint() const {

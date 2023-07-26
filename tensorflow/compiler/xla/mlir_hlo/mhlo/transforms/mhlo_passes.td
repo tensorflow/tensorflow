@@ -93,6 +93,11 @@ def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-i
   let constructor = "createLegalizeGatherToTorchIndexSelectPass()";
 }
 
+def LegalizeTorchIndexSelectToGatherPass : Pass<"mhlo-legalize-torch-index-select-to-gather", "func::FuncOp"> {
+  let summary = "Legalizes torch index select to a gather.";
+  let constructor = "createLegalizeTorchIndexSelectToGatherPass()";
+}
+
 
 def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "func::FuncOp"> {
   let summary = "Legalize trigonometric operations from standard dialect to an approximation.";

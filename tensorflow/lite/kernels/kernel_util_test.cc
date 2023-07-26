@@ -271,19 +271,19 @@ TEST_F(BroadcastShapeTest, ZeroOnThreeTensorsBroadcastToLargerRank) {
 }
 
 TEST(GetShapeDebugStringTest, GetShapeDebugString) {
-  IntArrayUniquePtr dims0 = BuildTfLiteIntArray({});
+  IntArrayUniquePtr dims0 = BuildTfLiteArray({});
   EXPECT_EQ("[]", GetShapeDebugString(dims0.get()));
 
-  IntArrayUniquePtr dims1 = BuildTfLiteIntArray({1});
+  IntArrayUniquePtr dims1 = BuildTfLiteArray({1});
   dims1->data[0] = 1;
   EXPECT_EQ("[1]", GetShapeDebugString(dims1.get()));
 
-  IntArrayUniquePtr dims2 = BuildTfLiteIntArray({2, 3});
+  IntArrayUniquePtr dims2 = BuildTfLiteArray({2, 3});
   dims2->data[0] = 2;
   dims2->data[1] = 3;
   EXPECT_EQ("[2,3]", GetShapeDebugString(dims2.get()));
 
-  IntArrayUniquePtr dims3 = BuildTfLiteIntArray({4, 5, 6});
+  IntArrayUniquePtr dims3 = BuildTfLiteArray({4, 5, 6});
   dims3->data[0] = 4;
   dims3->data[1] = 5;
   dims3->data[2] = 6;
@@ -831,7 +831,7 @@ class SetTensorAllocationTypeTest : public testing::Test {
  protected:
   Interpreter interpreter_;
   TfLiteContext& context_ = *interpreter_.primary_subgraph().context();
-  IntArrayUniquePtr dims_ = BuildTfLiteIntArray({2, 3, 4});
+  IntArrayUniquePtr dims_ = BuildTfLiteArray({2, 3, 4});
   TensorUniquePtr tensor_ = BuildTfLiteTensor();
 };
 

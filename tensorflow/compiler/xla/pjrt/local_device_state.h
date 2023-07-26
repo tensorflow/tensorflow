@@ -102,13 +102,13 @@ class LocalDeviceState {
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
-                   bool use_callback_stream,
+                   bool use_callback_stream, int device_ordinal = -1,
                    std::optional<StreamOptions> stream_options = std::nullopt);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
-  // StreamExecutor (local) device ordinal.
-  int device_ordinal() const { return executor_->device_ordinal(); }
+
+  int device_ordinal() const { return device_ordinal_; }
 
   LocalClient* client() const { return client_; }
 
@@ -186,6 +186,7 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
+  int device_ordinal_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;

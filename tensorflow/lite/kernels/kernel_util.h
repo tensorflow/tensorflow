@@ -24,6 +24,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#ifndef NDEBUG
+#include "tensorflow/lite/kernels/op_macros.h"
+#endif
 
 namespace tflite {
 
@@ -165,24 +168,31 @@ inline int NumIntermediates(const TfLiteNode* node) {
 }
 #endif  // TF_LITE_STATIC_MEMORY
 
-inline int64_t NumElements(const TfLiteIntArray* dims) {
+inline int64_t NumElements(const int* dims, int num_dims) {
   int64_t count = 1;
-  for (int i = 0; i < dims->size; ++i) {
-    count *= dims->data[i];
+  for (int i = 0; i < num_dims; ++i) {
+#ifndef NDEBUG
+    if (count <= 0) {
+      break;
+    }
+    // Check that number of elements can fit in 32 bit int. Most of tflite
+    // assumes the result of `NumElements` is < MAX_INT and static or implicit
+    // casts to `int32_t` without any checks. It is more meaningful to check
+    // that the result fits into 32 bits than for standard overflow on 64 bit
+    // type.
+    TF_LITE_ASSERT(dims[i] < std::numeric_limits<int>::max() / count);
+#endif
+    count *= dims[i];
   }
   return count;
+}
+
+inline int64_t NumElements(const TfLiteIntArray* dims) {
+  return NumElements(dims->data, dims->size);
 }
 
 inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
-}
-
-inline int64_t NumElements(const int* dims, int num_dims) {
-  int64_t count = 1;
-  for (int i = 0; i < num_dims; ++i) {
-    count *= dims[i];
-  }
-  return count;
 }
 
 // Determines whether tensor is constant.

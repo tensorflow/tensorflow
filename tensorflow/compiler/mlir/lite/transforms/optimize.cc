@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -121,6 +122,38 @@ class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
 
   void runOnOperation() override;
 };
+
+// Return true if the product of dimension values of a subsection of the tensor
+// is equal to the non-contracting dimension after a reshape
+bool BroadcastDimsProductEqual(Value input, Value output,
+                               size_t agg_start_idx) {
+  ArrayRef<int64_t> input_shape = input.getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> output_shape =
+      output.getType().cast<ShapedType>().getShape();
+
+  int64_t agg_value = 1;
+  for (size_t i = agg_start_idx; i < input_shape.size() - 1; ++i) {
+    agg_value *= input_shape[i];
+  }
+
+  return (agg_value == output_shape[agg_start_idx]);
+}
+
+// Return true if the permutation value only swaps the last two dimensions
+bool AreLastTwoDimsTransposed(Value permutation) {
+  if (!permutation) return false;
+  DenseElementsAttr perm_values_attr;
+
+  if (!matchPattern(permutation, m_Constant(&perm_values_attr))) return false;
+  auto perm_values = perm_values_attr.getValues<APInt>();
+  size_t idx = 0;
+  for (; idx < perm_values_attr.size() - 2; ++idx) {
+    if (perm_values[idx].getSExtValue() != idx) return false;
+  }
+
+  return (perm_values[idx].getSExtValue() == perm_values_attr.size() - 1) &&
+         (perm_values[idx + 1].getSExtValue() == idx);
+}
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
@@ -347,14 +380,14 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 // Precondition: output_val's is ranked tensor.
 // Returns a truncated shape when `truncate` is set to true.
 DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
-  auto output_type = output_val.getType().cast<RankedTensorType>();
+  auto output_shape = output_val.getType().dyn_cast<ShapedType>().getShape();
 
   SmallVector<int32_t> shape;
-  shape.reserve(output_type.getRank());
+  shape.reserve(output_shape.size());
 
   bool needs_truncation = true;
-  for (size_t dim_idx = 0; dim_idx < output_type.getRank(); ++dim_idx) {
-    int64_t dim = output_type.getShape()[dim_idx];
+  for (size_t dim_idx = 0; dim_idx < output_shape.size(); ++dim_idx) {
+    int64_t dim = output_shape[dim_idx];
     if (truncate && needs_truncation && dim == 1) {
       continue;
     } else if (needs_truncation && dim != 1) {
@@ -646,6 +679,15 @@ bool AllValuesAreZero(mlir::Value value) {
   return true;
 }
 
+bool IsF32Splat(Attribute input_splat) {
+  if (!input_splat) return false;
+  auto val = dyn_cast_or_null<DenseElementsAttr>(input_splat);
+  if (val) {
+    return !val.empty() && val.getElementType().isF32() && val.isSplat();
+  }
+  return false;
+}
+
 // Converts an Attribute with a single value of float or integral type to an
 // Attribute holding a single value of float type. If attr has no elements, the
 // result is 0.0f.
@@ -750,6 +792,149 @@ struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   }
 };
 
+struct Convert2DUpscalingToResizeNearestNeighor
+    : public OpRewritePattern<TFL::GatherNdOp> {
+  using OpRewritePattern<TFL::GatherNdOp>::OpRewritePattern;
+
+  // Lowers 2D upscaling logic to a single TFL::ResizeNearestNeighor op.
+  //
+  // To optimize JAX resize implementation, especially for 2D upscaling, this
+  // pattern matching logic captures the following pattern to replace with the
+  // single TFL::resize_nearest_neighbor op instance as a fast fused op
+  // available in TFLite.
+  //
+  // - tfl.gather_nd -> tfl.transpose -> tfl.gather_nd -> tfl.transpose
+  //   where ...
+  //     - all tfl.gather_nd op instances take [0, 0, 1, 1, ..., n-1, n-1] as
+  //       the indices arugment,
+  //     - first tranpose op takes perm [2, 1, 0, 3], and
+  //     - second transpose op take perm [1, 2, 0, 3].
+  //
+  // Note the current pattern matching logic only handles when width == height.
+  LogicalResult matchAndRewrite(TFL::GatherNdOp gather_nd_first,
+                                PatternRewriter &rewriter) const override {
+    auto result_value = gather_nd_first.getResult();
+    auto params_value = gather_nd_first.getParams();
+    auto indices_value = gather_nd_first.getIndices();
+
+    auto result_type = dyn_cast<RankedTensorType>(result_value.getType());
+    auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
+    auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
+
+    // Handle static shape cases only.
+    if (!result_type || !params_type || !indices_type) return failure();
+
+    // Handle i32 indices and f32 input only.
+    if (indices_type.getElementType() != rewriter.getI32Type() ||
+        params_type.getElementType() != rewriter.getF32Type()) {
+      return failure();
+    }
+
+    // The pattern matching allows arbitary channel dimension but it handles
+    // only when height = width.
+    if (params_type.getShape().size() != 4 ||
+        indices_type.getShape().size() != 2)
+      return failure();
+    if (params_type.getShape()[1] != 1) return failure();
+    if (params_type.getShape()[0] != params_type.getShape()[2])
+      return failure();
+    if (result_type.getShape()[0] != params_type.getShape()[0] * 2)
+      return failure();
+
+    // Make sure that the current pattern contains the following pattern:
+    //  - gather_nd->transpose->gather_nd->transpose.
+    if (!gather_nd_first->hasOneUse()) return failure();
+    auto transpose_first =
+        dyn_cast_or_null<TFL::TransposeOp>(*(gather_nd_first->user_begin()));
+    if (!transpose_first || !transpose_first->hasOneUse()) return failure();
+    auto gather_nd_second =
+        dyn_cast_or_null<TFL::GatherNdOp>(*(transpose_first->user_begin()));
+    if (!gather_nd_second || !gather_nd_second->hasOneUse()) return failure();
+    auto transpose_second =
+        dyn_cast_or_null<TFL::TransposeOp>(*(gather_nd_second->user_begin()));
+    if (!transpose_second) return failure();
+
+    // Check whether both gather_nd ops implement dimenaion size doubling.
+    DenseIntElementsAttr indices;
+    if (!matchPattern(gather_nd_first.getIndices(), m_Constant(&indices)))
+      return failure();
+    int i = 0;
+    for (const auto &axis_int : indices.getValues<APInt>()) {
+      const int64_t axis = axis_int.getSExtValue();
+      if (axis != i / 2) return failure();
+      ++i;
+    }
+    if (!matchPattern(gather_nd_second.getIndices(), m_Constant(&indices)))
+      return failure();
+    i = 0;
+    for (const auto &axis_int : indices.getValues<APInt>()) {
+      const int64_t axis = axis_int.getSExtValue();
+      if (axis != i / 2) return failure();
+      ++i;
+    }
+
+    // Check whether first tranpose's perm has [2, 1, 0, 3].
+    DenseIntElementsAttr perm;
+    if (!matchPattern(transpose_first.getPerm(), m_Constant(&perm)))
+      return failure();
+    SmallVector<int64_t, 4> axes;
+    for (const auto &axis_int : perm.getValues<APInt>()) {
+      axes.push_back(axis_int.getSExtValue());
+    }
+    if (axes != SmallVector<int64_t>({2, 1, 0, 3})) return failure();
+
+    // Check whether second tranpose's perm has [1, 2, 0, 3].
+    if (!matchPattern(transpose_second.getPerm(), m_Constant(&perm)))
+      return failure();
+    axes.clear();
+    for (const auto &axis_int : perm.getValues<APInt>()) {
+      axes.push_back(axis_int.getSExtValue());
+    }
+    if (axes != SmallVector<int64_t>({1, 2, 0, 3})) return failure();
+
+    // Add reshape op to be aligned with the input restriction with
+    // TFL::resize_nearest_neighor op.
+    const int32_t image_size = static_cast<int32_t>(params_type.getShape()[0]);
+    const int32_t feature_size =
+        static_cast<int32_t>(params_type.getShape()[3]);
+    SmallVector<int32_t, 4> reshape_shape(
+        {1, image_size, image_size, feature_size});
+    SmallVector<int64_t, 4> reshape_shape_in_int64(
+        {1, image_size, image_size, feature_size});
+
+    auto reshape_shape_type =
+        RankedTensorType::get({static_cast<int32_t>(reshape_shape.size())},
+                              rewriter.getIntegerType(32));
+    auto reshape_shape_attr =
+        DenseIntElementsAttr::get(reshape_shape_type, reshape_shape);
+
+    auto reshape_shape_const_op = rewriter.create<TFL::ConstOp>(
+        gather_nd_first->getLoc(), reshape_shape_attr);
+
+    auto reshape_op = rewriter.create<TFL::ReshapeOp>(
+        gather_nd_first->getLoc(),
+        tensorflow::GetTypeFromTFTensorShape(reshape_shape_in_int64,
+                                             result_type.getElementType()),
+        params_value, reshape_shape_const_op.getResult());
+
+    // Add TFL::resize_nearest_neighor op for 2x upscaling.
+    SmallVector<int32_t, 2> size_vec = {image_size * 2, image_size * 2};
+    auto size_type = mlir::RankedTensorType::get(
+        {static_cast<int32_t>(size_vec.size())}, rewriter.getIntegerType(32));
+    auto size_attr = mlir::DenseIntElementsAttr::get(size_type, size_vec);
+
+    auto size_const_op =
+        rewriter.create<TFL::ConstOp>(gather_nd_first->getLoc(), size_attr);
+
+    auto resize = rewriter.create<TFL::ResizeNearestNeighborOp>(
+        gather_nd_first->getLoc(), transpose_second.getResult().getType(),
+        reshape_op.getResult(), size_const_op.getResult(), false, false);
+
+    rewriter.replaceOp(transpose_second, resize.getResult());
+    return success();
+  }
+};
+
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -770,6 +955,9 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     // Check if the constant RHS is either 0D (scalar), or a 1D with
     // `{num_channels}` shape.
     auto constant_val_type = constant_val.getType().cast<TensorType>();
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
 
     // In TFLite FullyConnect definition, bias must be a 1D tensor where
     // the number of elements is equal to the number of channels.
@@ -1892,11 +2080,12 @@ void OptimizePass::runOnOperation() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
-  patterns.add<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-               FuseFullyConnectedAndMul,
-               FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
-               FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-               FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
+  patterns
+      .add<Convert2DUpscalingToResizeNearestNeighor, FuseFullyConnectedAndAdd,
+           FuseAddAndFullyConnected, FuseFullyConnectedAndMul,
+           FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+           FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+           FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     patterns.add<FuseMulAndFullyConnected>(ctx);
   }

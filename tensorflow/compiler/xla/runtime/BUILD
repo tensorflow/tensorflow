@@ -1,5 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -16,18 +16,14 @@ cc_library(
     name = "arguments",
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":async_runtime",
-        ":errors",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -37,11 +33,8 @@ xla_cc_test(
     srcs = ["arguments_test.cc"],
     deps = [
         ":arguments",
-        ":types",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -49,12 +42,11 @@ cc_library(
     name = "async_runtime",
     srcs = ["async_runtime.cc"],
     hdrs = ["async_runtime.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
         "@tf_runtime//:ref_count",
     ],
@@ -67,7 +59,6 @@ xla_cc_test(
         ":async_runtime",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
     ],
 )
@@ -75,7 +66,7 @@ xla_cc_test(
 cc_library(
     name = "async_values_cache",
     hdrs = ["async_values_cache.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform",
     ] + tf_platform_deps(
@@ -88,9 +79,8 @@ cc_library(
     name = "constraints",
     srcs = ["constraints.cc"],
     hdrs = ["constraints.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -133,7 +123,7 @@ cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":async_runtime",
         ":diagnostics",
@@ -164,7 +154,6 @@ xla_cc_test(
         ":custom_call",
         ":custom_call_registry",
         ":diagnostics",
-        ":executable",
         ":jit_executable",
         ":module",
         ":state",
@@ -181,7 +170,7 @@ cc_library(
     name = "custom_call_registry",
     srcs = ["custom_call_registry.cc"],
     hdrs = ["custom_call_registry.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":custom_call",
         "@llvm-project//llvm:Support",
@@ -192,7 +181,7 @@ cc_library(
     name = "diagnostics",
     srcs = ["diagnostics.cc"],
     hdrs = ["diagnostics.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":logical_result",
         "//tensorflow/tsl/platform:logging",
@@ -215,11 +204,10 @@ xla_cc_test(
 cc_library(
     name = "errors",
     hdrs = ["errors.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -227,7 +215,7 @@ cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":arguments",
         ":async_runtime",
@@ -268,11 +256,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_options",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@llvm-project//mlir:Support",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -280,7 +269,7 @@ cc_library(
     name = "execution_engine",
     srcs = ["execution_engine.cc"],
     hdrs = ["execution_engine.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":errors",
         "@com_google_absl//absl/status",
@@ -333,10 +322,7 @@ xla_cc_test(
     deps = [
         ":arguments",
         ":async_runtime",
-        ":custom_call",
         ":custom_call_registry",
-        ":diagnostics",
-        ":executable",
         ":ffi",
         ":jit_executable",
         ":results",
@@ -344,7 +330,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -355,9 +340,8 @@ cc_library(
     name = "jit_executable",
     srcs = ["jit_executable.cc"],
     hdrs = ["jit_executable.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":arguments",
         ":async_values_cache",
         ":constraints",
         ":errors",
@@ -375,14 +359,14 @@ cc_library(
 cc_library(
     name = "logical_result",
     hdrs = ["logical_result.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = ["@llvm-project//mlir:Support"],
 )
 
 cc_library(
     name = "map_by_type",
     hdrs = ["map_by_type.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":type_id",
         "@llvm-project//llvm:Support",
@@ -404,7 +388,7 @@ cc_library(
     name = "memory_mapper",
     srcs = ["memory_mapper.cc"],
     hdrs = ["memory_mapper.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform",
         "@llvm-project//llvm:ExecutionEngine",
@@ -418,7 +402,7 @@ cc_library(
 cc_library(
     name = "memref_view",
     hdrs = ["memref_view.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/types:span",
@@ -428,9 +412,8 @@ cc_library(
 cc_library(
     name = "module",
     hdrs = ["module.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
-        ":custom_call",
         ":custom_call_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -441,7 +424,7 @@ cc_library(
     name = "module_registry",
     srcs = ["module_registry.cc"],
     hdrs = ["module_registry.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":module",
     ],
@@ -461,7 +444,7 @@ xla_cc_test(
 cc_library(
     name = "results",
     hdrs = ["results.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":logical_result",
         ":types",
@@ -484,13 +467,13 @@ xla_cc_test(
 cc_library(
     name = "runtime",
     hdrs = ["runtime.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
     name = "state",
     hdrs = ["state.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
@@ -512,7 +495,7 @@ cc_library(
     name = "symbolic_shape",
     srcs = ["symbolic_shape.cc"],
     hdrs = ["symbolic_shape.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":arguments",
         ":constraints",
@@ -543,7 +526,7 @@ cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -557,7 +540,7 @@ cc_library(
 cc_library(
     name = "tracing",
     hdrs = ["tracing.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":custom_call",
         ":type_id",
@@ -568,7 +551,7 @@ cc_library(
     name = "type_id",
     srcs = ["type_id.cc"],
     hdrs = ["type_id.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//mlir:Support",
@@ -578,10 +561,7 @@ cc_library(
 cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(

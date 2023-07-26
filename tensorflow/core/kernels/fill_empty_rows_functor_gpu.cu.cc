@@ -514,11 +514,13 @@ namespace {
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
     GpuLaunchConfig cfg, const Tindex* reverse_index_map, const T* grad_values,
-    T* d_values, bool* visited) {
+    T* d_values, bool* visited, Tindex N_full) {
   GPU_1D_KERNEL_LOOP(input_i, cfg.virtual_thread_count) {
     Tindex output_i = reverse_index_map[input_i];
-    d_values[input_i] = grad_values[output_i];
-    visited[output_i] = true;
+    if (output_i >= 0 && output_i < N_full) {
+      d_values[input_i] = grad_values[output_i];
+      visited[output_i] = true;
+    }
   }
 }
 
@@ -557,7 +559,8 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
     if (N > 0) {
       TF_RETURN_IF_ERROR(wrap_kernel_call(
           GatherOriginalGradValuesKernel<T, Tindex>, /*device=*/device,
-          /*size=*/N, reverse_index_map, grad_values, d_values, visited));
+          /*size=*/N, reverse_index_map, grad_values, d_values, visited,
+          N_full));
     }
 
     // Now we mask out the visited values and sum the remaining ones (which

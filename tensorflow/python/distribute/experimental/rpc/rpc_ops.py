@@ -443,7 +443,8 @@ class StatusOrResult(object):
     self._status_or = status_or
     self._output_specs = output_specs
     self._deleter = deleter
-    self._error_code, self._error_message = None, None
+    self._error_code: dtypes.int64 = None
+    self._error_message: dtypes.string = None
 
   def _check_status(self):
     if self._error_code is None:

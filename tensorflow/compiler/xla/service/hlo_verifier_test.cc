@@ -2364,6 +2364,33 @@ TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
               HasSubstr("Replica groups expected to be of uniform size"));
 }
 
+TEST_F(HloVerifierTest, ScatterInvalidScatterDim) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+  Arg_0 = s8[11,6]{1,0} parameter(0)
+  constant = s32[] constant(1)
+  broadcast = s32[1,7,9,2,16,2]{5,4,3,2,1,0} broadcast(constant), dimensions={}
+  Arg_1 = s8[1,7,9,2,9,4,16]{6,5,4,3,2,1,0} parameter(1)
+  scatter = s8[11,6]{1,0} scatter(Arg_0, broadcast, Arg_1), update_window_dims={4,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={1094795585,1}, index_vector_dim=5, to_apply=add
+  abs = s8[11,6]{1,0} abs(scatter)
+  ROOT tuple = (s8[11,6]{1,0}) tuple(abs)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid scatter_dims_to_operand_dims mapping"));
+}
+
 TEST_F(HloVerifierTest, VerifyBroadcastDimensionsOrder) {
   const char* const hlo = R"(
 HloModule module

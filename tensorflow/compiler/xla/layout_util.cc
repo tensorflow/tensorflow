@@ -493,6 +493,17 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return LayoutUtil::HasLayout(program_shape.result());
 }
 
+/* static */ bool LayoutUtil::HasCustomElementSizeInBits(const Shape& shape) {
+  if (shape.IsTuple()) {
+    return absl::c_any_of(shape.tuple_shapes(),
+                          LayoutUtil::HasCustomElementSizeInBits);
+  } else if (!shape.IsArray()) {
+    // Opaque or token types have no custom element size in bits.
+    return false;
+  }
+  return shape.has_layout() && shape.layout().element_size_in_bits() != 0;
+}
+
 /* static */ bool LayoutUtil::Equal(const Layout& lhs, const Layout& rhs) {
   return lhs == rhs;
 }

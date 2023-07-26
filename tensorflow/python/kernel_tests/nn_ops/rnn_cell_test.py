@@ -29,8 +29,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -650,7 +650,7 @@ class LSTMTest(test.TestCase):
       self.assertEqual(len(outputs_notuple), len(inputs))
       self.assertEqual(len(outputs_tuple), len(inputs))
       self.assertTrue(isinstance(state_tuple, tuple))
-      self.assertTrue(isinstance(state_notuple, ops.Tensor))
+      self.assertTrue(isinstance(state_notuple, tensor.Tensor))
 
       variables_lib.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
@@ -3211,7 +3211,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       root = autotrackable.AutoTrackable()
       root.cell = rnn_cell_impl.LSTMCell(8)
-      @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
+      @def_function.function(input_signature=[tensor.TensorSpec([3, 8])])
       def call(x):
         state = root.cell.zero_state(3, dtype=x.dtype)
         y, _ = root.cell(x, state)
