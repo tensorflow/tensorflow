@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
@@ -313,46 +312,13 @@ std::string DrawAllReduceDependencies(
 // clang-format on
 mlir::LogicalResult CombineAllReduceOps(
     mlir::tf_device::ClusterOp cluster,
-    const std::vector<mlir::TF::DTensorAllReduceOp>& all_reduces) {
-  // Drop within-slice all-reduces.
-  std::vector<mlir::TF::DTensorAllReduceOp> cross_slice_all_reduces;
-  for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduces) {
-    mlir::DenseIntElementsAttr group_assignment_attr;
-    if (!matchPattern(all_reduce.getGroupAssignment(),
-                      m_Constant(&group_assignment_attr))) {
-      return all_reduce.emitOpError("group_assignment should be a constant");
-    }
-    // LINT.IfChange
-    // TODO(ishark): Confirm the right check for GPUs.
-    int num_slices = NumClients();
-    int slice_size = kTpuDonutSize;
-    if (group_assignment_attr.getNumElements() < kTpuDonutSize) {
-      DCHECK_EQ(num_slices, 1) << "Num slices expected to be equal to 1.";
-      slice_size = group_assignment_attr.getNumElements();
-    }
-    StatusOr<GroupAssignment> group_assignment = GroupAssignment::FromMLIR(
-        group_assignment_attr,
-        GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
-            num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.cc)
-    if (!group_assignment.ok()) {
-      return all_reduce.emitOpError(
-          llvm::formatv("Failed to create a GroupAssignment due to {0}",
-                        group_assignment.status().message()));
-    }
-    // Unit tests have only one slice. Always combine all all-reduces in them.
-    if (group_assignment->num_slices() == 1 ||
-        !group_assignment->IsWithinSlices()) {
-      cross_slice_all_reduces.push_back(all_reduce);
-    }
-  }
-
+    std::vector<mlir::TF::DTensorAllReduceOp>& all_reduces) {
   // A single op has nothing to combine with.
-  int num_all_reduces = cross_slice_all_reduces.size();
+  int num_all_reduces = all_reduces.size();
   if (num_all_reduces <= 1) return mlir::success();
 
   // Move all-reduces in the same group together and combine them.
-  auto& all_reduce_group = cross_slice_all_reduces;
+  auto& all_reduce_group = all_reduces;
   mlir::TF::DTensorAllReduceOp final_all_reduce =
       all_reduce_group[num_all_reduces - 1];
 
@@ -771,7 +737,7 @@ struct DTensorAllReduceCombineOptimization
                     // Within the block, use the group's actual sorting.
                     return lhs[0]->isBeforeInBlock(rhs[0]);
                   });
-        for (const auto& reduce_group : all_reduce_groups) {
+        for (auto& reduce_group : all_reduce_groups) {
           if (reduce_group.size() > 1) {
             VLOG(4) << "Combining following reduce ops into one: ------------";
             for (auto reduce_op : reduce_group) {

@@ -55,7 +55,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -75,13 +74,6 @@ namespace {
 }  // namespace
 
 namespace internal {
-#ifdef PLATFORM_GOOGLE
-mlir::LogicalResult EmitAllReduceForXlaGoogle(
-    mlir::MLIRContext& context, mlir::OpBuilder& builder,
-    mlir::TF::DTensorAllReduceOp all_reduce,
-    mlir::DenseIntElementsAttr group_assignment_attr, int32 key_base,
-    mlir::Operation** final_op);
-#endif
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
@@ -117,10 +109,6 @@ mlir::LogicalResult EmitAllReduceForXla(
     mlir::TF::DTensorAllReduceOp all_reduce,
     mlir::DenseIntElementsAttr group_assignment_attr, int32 key_base,
     mlir::Operation** final_op) {
-#ifdef PLATFORM_GOOGLE
-  return EmitAllReduceForXlaGoogle(context, builder, all_reduce,
-                                   group_assignment_attr, key_base, final_op);
-#else
   constexpr char kCrossReplica[] = "CrossReplica";
 
   // For TPUs, lower to XlaAllReduce straightforwardly.
@@ -129,7 +117,6 @@ mlir::LogicalResult EmitAllReduceForXla(
       all_reduce.getInput(), all_reduce.getGroupAssignment(),
       all_reduce.getReduceOpAttr(), builder.getStringAttr(kCrossReplica));
   return mlir::success();
-#endif
 }
 
 llvm::SmallVector<int32_t, 4> GetGroupKeyOffsets(

@@ -221,7 +221,6 @@ cc_library(
         ":dtensor_location",
         ":dtensor_passes_inc_gen",
         ":dtensor_send_recv",
-        ":group_assignment",
         ":layout_parsing",
         ":op_utils",
         ":shape_utils",
@@ -294,34 +293,6 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "group_assignment",
-    srcs = ["group_assignment.cc"],
-    hdrs = ["group_assignment.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/dtensor/cc:dstatus",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-tf_cc_test(
-    name = "group_assignment_test",
-    srcs = ["group_assignment_test.cc"],
-    deps = [
-        ":group_assignment",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/dtensor/cc:dstatus",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
 )
 
 cc_library(
