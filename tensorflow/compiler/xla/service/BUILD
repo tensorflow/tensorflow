@@ -6773,6 +6773,7 @@ build_test(
 xla_cc_binary(
     name = "xla_compile",
     srcs = ["xla_compile_main.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
         ":compiler",

@@ -300,8 +300,8 @@ cc_library(
     name = "ir_emitter_unnested",
     srcs = ["ir_emitter_unnested.cc"],
     hdrs = ["ir_emitter_unnested.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_hipblaslt([
-        "-DTF_HIPBLASLT=1",
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]) + if_rocm_hipblaslt([
+        "TF_HIPBLASLT=1",
     ]),
     deps = [
         ":backend_configs_cc",
@@ -880,6 +880,9 @@ cc_library(
         "sequential_thunk.h",
         "while_thunk.h",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -987,7 +990,7 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":target_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -1120,7 +1123,7 @@ cc_library(
     name = "gemm_rewriter",
     srcs = ["gemm_rewriter.cc"],
     hdrs = ["gemm_rewriter.h"],
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -1247,6 +1250,9 @@ cc_library(
     hdrs = if_cuda_is_configured(["cublas_lt_matmul_thunk.h"]) + if_rocm_is_configured([
         "cublas_lt_matmul_thunk.h",
     ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = if_gpu_is_configured([
         ":matmul_utils",
         ":thunk",
@@ -1268,6 +1274,7 @@ cc_library(
     name = "gemm_algorithm_picker",
     srcs = if_cuda_is_configured(["gemm_algorithm_picker.cc"]),
     hdrs = if_cuda_is_configured(["gemm_algorithm_picker.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = if_cuda_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
@@ -1360,6 +1367,7 @@ xla_cc_test(
         "requires-gpu-sm70",
     ],
     deps = [
+        ":backend_configs_cc",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         "//tensorflow/compiler/xla/service:gpu_plugin",
@@ -1380,7 +1388,7 @@ cc_library(
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
@@ -1512,8 +1520,8 @@ cc_library(
     name = "conv_algorithm_picker",
     srcs = if_gpu_is_configured(["conv_algorithm_picker.cc"]),
     hdrs = if_gpu_is_configured(["conv_algorithm_picker.h"]),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "-DTENSORFLOW_USE_ROCM=1",
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = if_gpu_is_configured([
         ":backend_configs_cc",
@@ -2291,6 +2299,9 @@ cc_library(
     hdrs = if_gpu_is_configured([
         "gpu_compiler.h",
     ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = if_gpu_is_configured([
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
@@ -2736,7 +2747,7 @@ cc_library(
         "infeed_manager.h",
         "outfeed_manager.h",
     ],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:literal",
@@ -2946,7 +2957,7 @@ cc_library(
         "hlo_fusion_analysis.h",
         "kernel_mapping_scheme.h",
     ],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info",

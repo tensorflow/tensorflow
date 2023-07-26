@@ -27,6 +27,7 @@ cc_library(
     name = "cholesky",
     srcs = ["cholesky.cc"],
     hdrs = ["cholesky.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -65,6 +66,9 @@ cc_library(
     name = "conv",
     srcs = ["conv.cc"],
     hdrs = ["conv.h"],
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla:status",
@@ -113,6 +117,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     deps = [
         ":support",
         ":triangular_solve",
@@ -132,7 +137,7 @@ cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":cholesky",
         ":collectives",
@@ -311,6 +316,7 @@ cc_library(
     name = "gemm",
     srcs = ["gemm.cc"],
     hdrs = ["gemm.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla:status",
@@ -337,6 +343,7 @@ cc_library(
     name = "graph_launch",
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":concurrent_region",
         ":conv",
@@ -395,6 +402,7 @@ cc_library(
     name = "kernel_launch",
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     deps = [
         ":concurrent_region",
         ":support",
@@ -417,6 +425,7 @@ cc_library(
     name = "cublas_lt_matmul",
     srcs = ["cublas_lt_matmul.cc"],
     hdrs = ["cublas_lt_matmul.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -528,6 +537,7 @@ cc_library(
     name = "triangular_solve",
     srcs = ["triangular_solve.cc"],
     hdrs = ["triangular_solve.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     deps = [
         ":support",
         "//tensorflow/compiler/xla:xla_proto_cc",
