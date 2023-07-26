@@ -413,7 +413,12 @@ Status CompileModuleToLlvmIrImpl(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);
-  auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
+
+  // Disable MLIR multi-threading to prevent creating too many threads when
+  // compiling XLA executables concurrently (e.g. during auto-tuning).
+  auto mlir_context = std::make_unique<mlir::MLIRContext>(
+      registry, mlir::MLIRContext::Threading::DISABLED);
+
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
