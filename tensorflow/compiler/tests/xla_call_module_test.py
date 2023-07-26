@@ -249,7 +249,7 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     # x: f32[a, 2], return x
     module, version = serialize("""
 module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
-  func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<*xi32>) -> tensor<?x2xf32> {
+  func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<?x?xi32>) -> tensor<?x2xf32> {
     return %arg0 : tensor<?x2xf32>
   }
 }
@@ -279,7 +279,7 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Element type mismatch for argument 1 passed to XlaCallModule: '
-        r'expecting tensor<\*xi32>, got tensor<2x3xf32>',
+        r'expecting tensor<\?x\?xi32>, got tensor<2x3xf32>',
     ):
       self._assertOpOutputMatchesExpected(f, (x, y_bad_etype), (x,))
 
