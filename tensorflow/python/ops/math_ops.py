@@ -1428,6 +1428,8 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   Returns:
     The promoted list of tensors.
   """
+  if ops.is_auto_dtype_conversion_enabled():
+    return tensors
   if not tensors:
     return tensors
   if not ops.is_numpy_style_type_promotion():
@@ -1837,13 +1839,13 @@ def _add_dispatch(x, y, name=None):
   Returns:
     The result of the elementwise `+` operation.
   """
-  if not isinstance(y, tensor_lib.Tensor) and not isinstance(
-      y, sparse_tensor.SparseTensor):
+  if (
+      not ops.is_auto_dtype_conversion_enabled()
+      and not isinstance(y, tensor_lib.Tensor)
+      and not isinstance(y, sparse_tensor.SparseTensor)
+  ):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
-  if x.dtype == dtypes.string:
-    return gen_math_ops.add(x, y, name=name)
-  else:
-    return gen_math_ops.add_v2(x, y, name=name)
+  return add(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):

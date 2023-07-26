@@ -64,7 +64,7 @@ class AdjustBrightnessTest(test.TestCase):
 class AdjustGamma(test.TestCase):
 
   def test_adjust_gamma_less_zero_float32(self):
-    """White image should be returned for gamma equal to zero"""
+    """White image should be returned for gamma equal to zero."""
     with self.cached_session():
       x_data = np.random.uniform(0, 1.0, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
@@ -77,7 +77,7 @@ class AdjustGamma(test.TestCase):
         image_ops.adjust_gamma(x, gamma=-1)
 
   def test_adjust_gamma_less_zero_tensor(self):
-    """White image should be returned for gamma equal to zero"""
+    """White image should be returned for gamma equal to zero."""
     with self.cached_session():
       x_data = np.random.uniform(0, 1.0, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
@@ -92,10 +92,7 @@ class AdjustGamma(test.TestCase):
         self.evaluate(image)
 
   def _test_adjust_gamma_float32(self, gamma):
-    """Verifying the output with expected results for gamma
-
-    correction for float32 images
-    """
+    """Verifying the output with expected results for gamma correction for float32 images."""
     with self.cached_session():
       x_np = np.random.uniform(0, 1.0, (8, 8))
       x = _get_weak_tensor(x_np, shape=x_np.shape)
@@ -108,28 +105,19 @@ class AdjustGamma(test.TestCase):
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   def test_adjust_gamma_one_float32(self):
-    """Same image should be returned for gamma equal to one"""
+    """Same image should be returned for gamma equal to one."""
     self._test_adjust_gamma_float32(1.0)
 
   def test_adjust_gamma_less_one_float32(self):
-    """Verifying the output with expected results for gamma
-
-    correction with gamma equal to half for float32 images
-    """
+    """Verifying the output with expected results for gamma correction with gamma equal to half for float32 images."""
     self._test_adjust_gamma_float32(0.5)
 
   def test_adjust_gamma_greater_one_float32(self):
-    """Verifying the output with expected results for gamma
-
-    correction with gamma equal to two for float32 images
-    """
+    """Verifying the output with expected results for gamma correction with gamma equal to two for float32 images."""
     self._test_adjust_gamma_float32(1.0)
 
   def test_adjust_gamma_zero_float32(self):
-    """White image should be returned for gamma equal
-
-    to zero for float32 images
-    """
+    """White image should be returned for gamma equal to zero for float32 images."""
     self._test_adjust_gamma_float32(0.0)
 
 
