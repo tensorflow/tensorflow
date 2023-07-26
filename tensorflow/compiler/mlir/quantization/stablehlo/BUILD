@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 # TODO(b/264218457): Create stablehlo-quantization-opt and register passes to actually test.
 
@@ -31,6 +31,7 @@ cc_library(
     name = "passes",
     srcs = [
         "passes/prepare_srq_quantize.cc",
+        "passes/prepare_srq_quantize.inc",
         "passes/quantize_weight.cc",
     ],
     hdrs = [
@@ -59,6 +60,33 @@ cc_library(
     # Alwayslink is required for registering the MLIR passes.
     # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
     alwayslink = True,
+)
+
+td_library(
+    name = "quant_td_files",
+    srcs = [
+        "passes/prepare_srq_quantize.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:ArithOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@stablehlo//:stablehlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "prepare_srq_quantize_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/prepare_srq_quantize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/prepare_srq_quantize.td",
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
