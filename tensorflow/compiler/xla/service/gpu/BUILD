@@ -313,6 +313,7 @@ cc_library(
         ":gpu_device_info",
         ":gpu_executable",
         ":gpu_fused_mha_runner",
+        ":gpu_fusible",
         ":hlo_fusion_analysis",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
@@ -324,6 +325,7 @@ cc_library(
         ":matmul_utils",
         ":nccl_collective_thunks",
         ":parallel_loop_emitter",
+        ":reduction_utils",
         ":target_util",
         ":thunk",
         "//tensorflow/compiler/xla:autotuning_proto_cc",
@@ -990,7 +992,6 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":target_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -1008,10 +1009,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:ArithDialect",
-    ] + if_cuda_is_configured([
-        ":gpu_asm_opts_util",
-        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
-    ]),
+    ],
 )
 
 xla_cc_test(
@@ -1028,6 +1026,25 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
+)
+
+cc_library(
+    name = "reduction_utils",
+    srcs = ["reduction_utils.cc"],
+    hdrs = ["reduction_utils.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ] + if_cuda_is_configured([
+        ":gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+    ]),
 )
 
 cc_library(
@@ -2342,6 +2359,7 @@ cc_library(
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
         ":reduction_splitter",
+        ":reduction_utils",
         ":runtime_intrinsics",
         ":scatter_slice_simplifier",
         ":softmax_rewriter_triton",
@@ -2964,6 +2982,7 @@ cc_library(
         ":gpu_fusible",
         ":ir_emission_utils",
         ":launch_dimensions",
+        ":reduction_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:union_find",
@@ -3132,6 +3151,7 @@ cc_library(
     deps = [
         ":gpu_device_info",
         ":ir_emission_utils",
+        ":reduction_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
@@ -3483,7 +3503,7 @@ cc_library(
     srcs = ["reduction_splitter.cc"],
     hdrs = ["reduction_splitter.h"],
     deps = [
-        ":ir_emission_utils",
+        ":reduction_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -3529,7 +3549,7 @@ cc_library(
     hdrs = ["tree_reduction_rewriter.h"],
     deps = [
         ":gpu_types",
-        ":ir_emission_utils",
+        ":reduction_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -3934,6 +3954,7 @@ cc_library(
     hdrs = ["copy_fusion.h"],
     deps = [
         ":ir_emission_utils",
+        ":reduction_utils",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
