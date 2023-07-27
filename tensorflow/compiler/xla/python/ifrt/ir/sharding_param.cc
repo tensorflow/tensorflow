@@ -33,6 +33,10 @@ namespace {
 
 template <typename T>
 void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<T> dims) {
+  if (dims.empty()) {
+    // A scalar does not have dimensions.
+    return;
+  }
   os << dims[0];
   for (int i = 1; i < dims.size(); ++i) {
     os << "x" << dims[i];
@@ -120,9 +124,6 @@ mlir::LogicalResult ShardingParam::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
   if (mlir::failed(minor_to_major().verify(emit_error))) {
     return mlir::failure();
-  }
-  if (dim_shards().empty()) {
-    return emit_error() << "Dim shards is empty";
   }
 
   int dim_index = 0;
