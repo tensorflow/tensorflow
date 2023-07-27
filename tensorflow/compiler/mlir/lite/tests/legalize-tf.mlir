@@ -2328,7 +2328,7 @@ func.func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x
 }
 
 func.func @complex(%arg0: tensor<1xf64>,%arg1: tensor<1xf64>) -> tensor<1xcomplex<f64>> {
-  %0 = "tf.complex"(%arg0, %arg1) : (tensor<1xf64>, tensor<1xf64>) -> tensor<1xcomplex<f64>>
+  %0 = "tf.Complex"(%arg0, %arg1) : (tensor<1xf64>, tensor<1xf64>) -> tensor<1xcomplex<f64>>
   func.return %0: tensor<1xcomplex<f64>>
 
   // CHECK-LABEL: complex
