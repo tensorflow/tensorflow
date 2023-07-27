@@ -21,6 +21,7 @@ import functools
 import os
 import threading
 
+from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -424,7 +425,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   """
 
   # pyformat: disable
-  def __init__(self, cluster_resolver, variable_partitioner=None):
+  def __init__(self, cluster_resolver: cluster_resolver_lib.ClusterResolver, variable_partitioner: sharded_variable.Partitioner = None):
     """Initializes the TF2 parameter server strategy.
 
     This initializes the `tf.distribute.experimental.ParameterServerStrategy`
