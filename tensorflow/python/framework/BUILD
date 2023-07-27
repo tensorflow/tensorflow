@@ -1615,7 +1615,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "weak_tensor",
     srcs = ["weak_tensor.py"],
     srcs_version = "PY3",
@@ -1627,7 +1627,9 @@ py_strict_library(
         ":ops",
         ":tensor",
         ":tensor_conversion_registry",
+        ":tensor_spec",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )
@@ -1642,16 +1644,19 @@ tf_py_strict_test(
         ":constant_op",
         ":dtypes",
         ":errors",
+        ":extension_type",
         ":ops",
         ":tensor",
         ":test_lib",
         ":weak_tensor",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/types:core",
     ],
 )
 

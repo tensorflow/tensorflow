@@ -24,7 +24,7 @@ from tensorflow.python.framework.weak_tensor import WeakTensor
 
 def convert_to_input_type(base_input, input_type, dtype=None):
   if input_type == "WeakTensor":
-    return WeakTensor(constant_op.constant(base_input, dtype=dtype))
+    return WeakTensor.from_tensor(constant_op.constant(base_input, dtype=dtype))
   elif input_type == "Tensor":
     return constant_op.constant(base_input, dtype=dtype)
   elif input_type == "NumPy":
@@ -37,7 +37,7 @@ def convert_to_input_type(base_input, input_type, dtype=None):
 
 
 def get_weak_tensor(*args, **kwargs):
-  return WeakTensor(constant_op.constant(*args, **kwargs))
+  return WeakTensor.from_tensor(constant_op.constant(*args, **kwargs))
 
 
 class DtypeConversionTestEnv:

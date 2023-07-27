@@ -97,7 +97,9 @@ def weak_tensor_unary_op_wrapper(op, x_arg_name=None):
     # Only return WeakTensor when dtype is NOT specified.
     if bound_kwargs.get("dtype", None) is not None:
       is_weak = False
-    return weak_tensor.maybe_convert_to_weak_tensor(op(**bound_kwargs), is_weak)
+    return weak_tensor.convert_to_weak_tensor_or_tensor(
+        op(**bound_kwargs), is_weak
+    )
 
   wrapper = tf_decorator.make_decorator(op, wrapper)
 
@@ -144,7 +146,9 @@ def weak_tensor_binary_op_wrapper(op):
 
     bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
     bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
-    return weak_tensor.maybe_convert_to_weak_tensor(op(**bound_kwargs), is_weak)
+    return weak_tensor.convert_to_weak_tensor_or_tensor(
+        op(**bound_kwargs), is_weak
+    )
 
   wrapper = tf_decorator.make_decorator(op, wrapper)
 
