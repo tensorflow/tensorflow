@@ -771,7 +771,7 @@ struct ExtraBufferInfo {
       : buffer(std::move(buffer)),
         external_reference_hold(std::move(external_reference_hold)) {}
 
-  std::vector<Py_ssize_t> strides;
+  std::vector<int64_t> strides;
   // We keep an external reference hold to the PjRtBuffer. This prevents a
   // use-after-free in the event that Delete() is called on a buffer with an
   // live buffer protocol view. It does however mean that Delete() sometimes
@@ -877,7 +877,8 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
           extra->strides = ByteStridesForShape(
               buffer.element_type(), buffer.dimensions(), buffer.layout());
-          view->strides = extra->strides.data();
+          view->strides = reinterpret_cast<Py_ssize_t*>(
+              const_cast<int64_t*>(extra->strides.data()));
         }
       }
     }
