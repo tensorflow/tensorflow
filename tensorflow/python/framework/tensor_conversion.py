@@ -13,22 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Tensor conversion functions."""
-import typing
-
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_export
 
-if typing.TYPE_CHECKING:
-  # pylint: disable=g-bad-import-order
-  from tensorflow.python.framework import tensor as tensor_lib
-  # pylint: enable=g-bad-import-order
-
 
 def convert_to_tensor_v1(
     value, dtype=None, name=None, preferred_dtype=None, dtype_hint=None
-) -> "tensor_lib.Tensor":
+):
   """Converts the given `value` to a `Tensor` (with the TF1 API)."""
   preferred_dtype = deprecation.deprecated_argument_lookup(
       "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype
@@ -40,7 +33,7 @@ def convert_to_tensor_v1(
 @dispatch.add_dispatch_support
 def convert_to_tensor_v1_with_dispatch(
     value, dtype=None, name=None, preferred_dtype=None, dtype_hint=None
-) -> "tensor_lib.Tensor":
+):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -103,7 +96,7 @@ def convert_to_tensor_v1_with_dispatch(
 @dispatch.add_dispatch_support
 def convert_to_tensor_v2_with_dispatch(
     value, dtype=None, dtype_hint=None, name=None
-) -> "tensor_lib.Tensor":
+):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -169,9 +162,7 @@ def convert_to_tensor_v2_with_dispatch(
   )
 
 
-def convert_to_tensor_v2(
-    value, dtype=None, dtype_hint=None, name=None
-) -> "tensor_lib.Tensor":
+def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
   """Converts the given `value` to a `Tensor`."""
   # preferred_dtype = preferred_dtype or dtype_hint
   return tensor_conversion_registry.convert(
