@@ -20,19 +20,21 @@ the TensorFlow library. For that see tf.compat instead.
 
 from tensorflow.python.platform import _pywrap_tf2
 from tensorflow.python.util.tf_export import tf_export
+import tensorflow as tf
 
 
 def enable():
   # Enables v2 behaviors.
-  _pywrap_tf2.enable(True)
+  tf.compat.v1.enable_v2_behavior()
+
 
 
 def disable():
   # Disables v2 behaviors.
-  _pywrap_tf2.enable(False)
+  tf.compat.v1.disable_v2_behavior()
 
 
 @tf_export("__internal__.tf2.enabled", v1=[])
 def enabled():
   # Returns True iff TensorFlow 2.0 behavior should be enabled.
-  return _pywrap_tf2.is_enabled()
+  return tf.executing_eagerly()
