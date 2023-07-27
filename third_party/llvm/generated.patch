@@ -1,12 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
-@@ -152,6 +152,7 @@
-     deps = [
-         "//libc:__support_cpp_limits",
-         "//libc:__support_cpp_type_traits",
-+        "//libc:__support_macros_properties_architectures",
-         "//libc:errno.__internal__",
-         "//libc/test/UnitTest:LibcUnitTest",
-     ],
+diff -ruN --strip-trailing-cr a/mlir/tools/mlir-tblgen/OpFormatGen.cpp b/mlir/tools/mlir-tblgen/OpFormatGen.cpp
+--- a/mlir/tools/mlir-tblgen/OpFormatGen.cpp
++++ b/mlir/tools/mlir-tblgen/OpFormatGen.cpp
+@@ -1714,7 +1714,7 @@
+           ");\n",
+           op.getCppClassName());
+     } else {
+-      body << "  result.addAttribute(\"odsResultSegmentSizes\", "
++      body << "  result.addAttribute(\"result_segment_sizes\", "
+            << "parser.getBuilder().getDenseI32ArrayAttr({";
+       llvm::interleaveComma(op.getResults(), body, interleaveFn);
+       body << "}));\n";
