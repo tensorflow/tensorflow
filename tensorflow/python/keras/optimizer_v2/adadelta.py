@@ -21,10 +21,8 @@ from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training import gen_training_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adadelta')
 class Adadelta(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adadelta algorithm.
 
