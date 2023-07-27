@@ -32,6 +32,13 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
   const auto* xnnpack_settings = tflite_settings->xnnpack_settings();
   if (xnnpack_settings) {
     options.num_threads = xnnpack_settings->num_threads();
+    // If xnnpack_settings->flags is zero, then leave options.flags
+    // unmodified, i.e. use the default flags (not zero).
+    // If xnnpack_settings->flags is nonzero, then use exactly
+    // those flags (i.e. discard the default flags).
+    if (xnnpack_settings->flags()) {
+      options.flags = xnnpack_settings->flags();
+    }
   }
   return TfLiteXNNPackDelegateCreate(&options);
 }
