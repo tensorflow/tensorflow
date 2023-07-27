@@ -156,6 +156,21 @@ FusionDecision RequireTritonFusibleConvert(const HloInstruction* input,
 // Used to calculate cumulative index transformations done by non-elementwise
 // instructions between source and target.
 class DimensionOrder {
+  // Dimension order constructed for the output shape of `hlo`.
+  // `hlo` is currently supposed to be either an operand or the output of dot();
+  // properties describing the dimensions are stored for later analysis.
+  explicit DimensionOrder(
+      const HloInstruction* hlo, const int64_t splittable_dimension_index = -1,
+      const int64_t splittable_dimension_supported_major_size = 0)
+      : splittable_dimension_index_(splittable_dimension_index),
+        splittable_dimension_supported_major_part_size_(
+            splittable_dimension_supported_major_size) {
+    dim_order_.reserve(hlo->shape().rank());
+    for (const int64_t i : hlo->shape().layout().minor_to_major()) {
+      dim_order_.push_back({i, 0, hlo->shape().dimensions(i)});
+    }
+  }
+
  public:
   // Description of one dimension of HLO shape.
   struct DimDescription {
@@ -172,24 +187,9 @@ class DimensionOrder {
   };
   // Sequence describing all dimensions of HLO's output shape
   // in layout minor-to-major (physical) order.
-  using DimOrderVector = std::vector<DimDescription>;
+  using RawDimOrder = std::vector<DimDescription>;
 
   DimensionOrder(const DimensionOrder&) = default;
-  // Dimension order constructed for the output shape of `hlo`.
-  // `hlo` is currently supposed to be an operand of dot();
-  // dimension indices describing the operand
-  // are stored along with the dimension order for later analysis.
-  explicit DimensionOrder(
-      const HloInstruction* hlo, const int64_t splittable_dimension_index = -1,
-      const int64_t splittable_dimension_supported_major_size = 0)
-      : splittable_dimension_index_(splittable_dimension_index),
-        splittable_dimension_supported_major_part_size_(
-            splittable_dimension_supported_major_size) {
-    dim_order_.reserve(hlo->shape().rank());
-    for (const int64_t i : hlo->shape().layout().minor_to_major()) {
-      dim_order_.push_back({i, 0, hlo->shape().dimensions(i)});
-    }
-  }
 
   // Create dimension order describing a dot operand according to
   // the currently supported configurations.
@@ -236,7 +236,7 @@ class DimensionOrder {
   }
 
   // Get the raw data of the dimension order.
-  const DimOrderVector& GetDimOrderVector() const { return dim_order_; }
+  const RawDimOrder& GetRawDimOrder() const { return dim_order_; }
 
   // Index of dot dimension that can be split.
   // Currently typically LHS non-contracting one.
@@ -267,17 +267,18 @@ class DimensionOrder {
   FusionDecision HandleCopyOrTransposeOrBroadcast(const HloInstruction*,
                                                   TransformDirection);
 
-  DimOrderVector dim_order_;
+  RawDimOrder dim_order_;
   const int64_t splittable_dimension_index_;
   const int64_t splittable_dimension_supported_major_part_size_;
 };
 
 using DimIterationSpec = TensorIterationSpec::DimIterationSpec;
+using RawDimOrder = DimensionOrder::RawDimOrder;
+using DimOrderMap = absl::flat_hash_map<const HloInstruction*, DimensionOrder>;
 
 TensorIterationSpec DimensionOrderToTensorIterationSpec(
     const DimensionOrder& order) {
-  const DimensionOrder::DimOrderVector& dim_order_vector =
-      order.GetDimOrderVector();
+  const RawDimOrder& dim_order_vector = order.GetRawDimOrder();
   TensorIterationSpec tensor_spec;
   int64_t accumulated_stride = 1;
   for (int dim_order_index = 0; dim_order_index < dim_order_vector.size();
@@ -363,7 +364,7 @@ FusionDecision DimensionOrder::HandleBitcast(const HloInstruction* hlo,
   const Shape& target_shape = (direction == TransformDirection::kOutputToInput)
                                   ? hlo->operand(0)->shape()
                                   : hlo->shape();
-  DimOrderVector target_dim_order;
+  RawDimOrder target_dim_order;
   target_dim_order.reserve(dim_order_.size());
   // Size of not yet assigned part of current target dimension.
   int64_t target_remaining_size = 1;
@@ -455,13 +456,13 @@ FusionDecision DimensionOrder::HandleCopyOrTransposeOrBroadcast(
       (direction == TransformDirection::kOutputToInput) ? hlo : hlo->operand(0);
   const HloInstruction* dst =
       (direction == TransformDirection::kOutputToInput) ? hlo->operand(0) : hlo;
-  std::vector<DimOrderVector> src_physical;
+  std::vector<RawDimOrder> src_physical;
   src_physical.reserve(src->shape().rank());
   auto dim_order_it = dim_order_.cbegin();
   for (int64_t dim_index : src->shape().layout().minor_to_major()) {
     const int64_t dim_size = src->shape().dimensions(dim_index);
     int64_t subdim_size_accumulator = 1;
-    DimOrderVector subdim_group;
+    RawDimOrder subdim_group;
     do {
       subdim_size_accumulator *= dim_order_it->size;
       subdim_group.push_back(*dim_order_it);
@@ -471,13 +472,13 @@ FusionDecision DimensionOrder::HandleCopyOrTransposeOrBroadcast(
     src_physical.push_back(subdim_group);
   }
   // Source physical -> source logical.
-  std::vector<DimOrderVector> src_logical;
+  std::vector<RawDimOrder> src_logical;
   src_logical.resize(src_physical.size());
   for (int i = 0; i < src_physical.size(); ++i) {
     src_logical[src->shape().layout().minor_to_major(i)] = src_physical[i];
   }
   // Source logical -> destination logical.
-  std::vector<DimOrderVector> dst_logical;
+  std::vector<RawDimOrder> dst_logical;
   if (hlo->opcode() == HloOpcode::kTranspose) {
     const auto transpose = Cast<HloTransposeInstruction>(hlo);
     std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
@@ -520,8 +521,7 @@ FusionDecision RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
       -1, -1, -1, -1};
   std::array<int, TensorIterationSpec::kMaxDimsPerTensor> split_counters = {
       -1, -1, -1, -1};
-  const DimensionOrder::DimOrderVector& dim_order_vector =
-      order.GetDimOrderVector();
+  const RawDimOrder& dim_order_vector = order.GetRawDimOrder();
   VLOG(8) << order.ToString();
   for (int i = 0; i < dim_order_vector.size(); i++) {
     const auto [dim_number, subdim_number, size] = dim_order_vector[i];
@@ -740,15 +740,14 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
 void TryToFuseWithInputsRecursively(
     HloInstruction& root,
     // Dimension orders describing outputs of corresponding instructions.
-    absl::flat_hash_map<const HloInstruction*, DimensionOrder>& dim_orders,
-    const GpuVersion gpu_version,
+    DimOrderMap& dim_orders, const GpuVersion gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     std::vector<HloInstruction*>& fusion_inputs,
     HloComputation::Builder& builder) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::stack<HloInstruction*> to_fuse;
-  // Instructions at the edge 'to_fuse' that can either get fused too or
+  // Instructions at the edge of 'to_fuse' that can either get fused too or
   // become parameters of the fusion. Used to track the number of parameters
   // of the fusion.
   absl::flat_hash_set<const HloInstruction*> inputs;
@@ -831,10 +830,9 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // differently shaped tiles but may go through same HLO graph nodes.
   // Direct dot inputs have well defined dimension orders.
 
-  auto fuse_inputs = [&](int operand_number)
-      -> StatusOr<absl::flat_hash_map<const HloInstruction*, DimensionOrder>> {
+  auto fuse_inputs = [&](int operand_number) -> StatusOr<DimOrderMap> {
     const int operand_count_before = fusion_inputs.size();
-    absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
+    DimOrderMap dim_orders;
     // Direct dot inputs have well defined dimension orders.
     dim_orders.insert({dot.operand(operand_number),
                        DimensionOrder::FromDotOperand(dot, operand_number)});
@@ -880,7 +878,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // Fusion at dot's output.
 
   // These describe _outputs_ of corresponding HLOs.
-  absl::flat_hash_map<const HloInstruction*, DimensionOrder> out_dim_orders;
+  DimOrderMap out_dim_orders;
   out_dim_orders.insert(
       {&dot, DimensionOrder::FromDotOutput(dot, /*split_k=*/1,
                                            lhs_nc_split_major_part)});
@@ -1222,7 +1220,7 @@ Status PropagateDimensionOrdersToParameters(
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> to_process;
   // Dimension orders describing outputs of corresponding instructions.
-  absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
+  DimOrderMap dim_orders;
   TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(origin_dim_order));
   dim_orders.insert({&origin, origin_dim_order});
   visited.insert(&origin);
@@ -1420,15 +1418,15 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
 
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    const HloInstruction* operand = dot->operand(operand_number);
     TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
-        *operand, DimensionOrder::FromDotOperand(*dot, operand_number, split_k),
+        *dot->operand(operand_number),
+        DimensionOrder::FromDotOperand(*dot, operand_number, split_k),
         parameters_[scope], iter_specs_[scope]));
   }
 
   int64_t lhs_nc_split_major_part_size = -1;
   if (!ScopeParameters(Scope::LHS).empty()) {
-    const TensorIterationSpec::DimIterationSpec* lhs_nc_iter_spec =
+    const DimIterationSpec* lhs_nc_iter_spec =
         IterSpec(Scope::LHS, *ScopeParameters(Scope::LHS).cbegin(),
                  NonContractingDimensionIndex(*dot, 0));
     if (lhs_nc_iter_spec->size() > 1) {
