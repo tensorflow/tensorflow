@@ -223,11 +223,10 @@ cc_library(
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:versions_proto_cc",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

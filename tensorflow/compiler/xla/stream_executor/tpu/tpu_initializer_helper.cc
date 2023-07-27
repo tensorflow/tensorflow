@@ -25,7 +25,6 @@ limitations under the License.
 #include <unistd.h>
 
 #include <cstring>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
