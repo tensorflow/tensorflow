@@ -1751,6 +1751,9 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAsyncDone:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncStart:
