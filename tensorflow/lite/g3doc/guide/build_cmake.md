@@ -82,6 +82,7 @@ variables to point to your library installations.
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
   -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
   -DSYSTEM_FARMHASH=ON \
+  -DSYSTEM_PTHREADPOOL=ON \
   -Dabsl_DIR=<install path>/lib/cmake/absl \
   -DEigen3_DIR=<install path>/share/eigen3/cmake \
   -DFlatBuffers_DIR=<install path>/lib/cmake/flatbuffers \
