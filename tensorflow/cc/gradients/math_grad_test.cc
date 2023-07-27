@@ -1061,40 +1061,55 @@ TEST_F(NaryGradTest, Atan2Grad) {
   RunTest({x1}, {shape}, {y}, {shape});
 }
 
+// Deterministic test value for UnsortedSegmentMin/Max, since the numerical
+// gradient can be wrong if the compared inputs are nearly the same (which can
+// happen with random inputs).
+constexpr float kUnsortedSegmentMinMaxTestValue[] = {
+    0.5f,  0.7f, 0.2f, 1.0f, 1.5f, 10.5f, -0.7f, 1.2f,
+    -1.0f, 2.5f, 4.2f, 3.7f, 1.2f, -5.0f, -1.5f};
+
 TEST_F(NaryGradTest, UnsortedSegmentMaxGrad) {
-  TensorShape shape({3, 2, 5});
+  TensorShape shape({3, 1, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto segment_ids = Const(scope_, {0, 0, 1});
   auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
-  TensorShape y_shape({2, 2, 5});
-  RunTest({x}, {shape}, {y}, {y_shape});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  TensorShape y_shape({2, 1, 5});
+  RunTest({x}, x_init_value, {y}, {y_shape});
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
-  TensorShape shape({3, 2, 5});
+  TensorShape shape({3, 1, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto segment_ids = Const(scope_, {0ll, 0ll, 1ll});
   auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
-  TensorShape y_shape({2, 2, 5});
-  RunTest({x}, {shape}, {y}, {y_shape});
+  TensorShape y_shape({2, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest({x}, x_init_value, {y}, {y_shape});
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
-  TensorShape shape({3, 2, 5});
+  TensorShape shape({3, 1, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto segment_ids = Const(scope_, {0, 0, -1});
   auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/1);
-  TensorShape y_shape({1, 2, 5});
-  RunTest({x}, {shape}, {y}, {y_shape});
+  TensorShape y_shape({1, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest({x}, x_init_value, {y}, {y_shape});
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
-  TensorShape shape({3, 2, 5});
+  TensorShape shape({3, 1, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto segment_ids = Const(scope_, {0, 0, 1});
   auto y = UnsortedSegmentMin(scope_, x, segment_ids, /*num_segments=*/2);
-  TensorShape y_shape({2, 2, 5});
-  RunTest({x}, {shape}, {y}, {y_shape});
+  TensorShape y_shape({2, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest({x}, x_init_value, {y}, {y_shape});
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
