@@ -388,19 +388,8 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  #         #  block boundary
     //  -         =
     //            =
-#ifdef _MSC_VER
-#if _MSC_VER >= 1930
     const int numRowsThisBlock =
         min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
-#else
-    const int numRowsThisBlock =
-        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
-#endif
-
-#else
-    const int numRowsThisBlock =
-        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
-#endif
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];
