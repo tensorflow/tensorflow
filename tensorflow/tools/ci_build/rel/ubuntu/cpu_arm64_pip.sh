@@ -172,7 +172,7 @@ bazel test ${TF_TEST_FLAGS} \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
-    --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \
+    --jobs=32 \
     --build_tests_only \
     -- ${TF_TEST_TARGETS}
 
