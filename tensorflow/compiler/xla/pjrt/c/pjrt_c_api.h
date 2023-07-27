@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 12
+#define PJRT_API_MINOR 13
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -167,6 +167,15 @@ struct PJRT_NamedValue {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
 
 // ---------------------------------- Plugin -----------------------------------
+
+struct PJRT_Plugin_Initialize_Args {
+  size_t struct_size;
+  void* priv;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Initialize_Args, priv);
+
+// One-time plugin setup. Must be called before any other functions are called.
+typedef PJRT_Error* PJRT_Plugin_Initialize(PJRT_Plugin_Initialize_Args* args);
 
 struct PJRT_Plugin_Attributes_Args {
   size_t struct_size;
@@ -1724,6 +1733,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Initialize);
   _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
