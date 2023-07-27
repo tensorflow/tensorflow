@@ -122,6 +122,15 @@ from tensorflow.python.ops.ragged import ragged_ops
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.ops.structured import structured_ops as _structured_ops
 
+# Platform
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import sysconfig as sysconfig_lib
+from tensorflow.python.platform import test
+
 # Update the RaggedTensor package docs w/ a list of ops that support dispatch.
 ragged.__doc__ += ragged_ops.ragged_dispatch.ragged_op_list()
 

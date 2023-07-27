@@ -2864,8 +2864,17 @@ py_strict_library(
         "//tensorflow/python/ops/linalg:matmul_registrations",
         "//tensorflow/python/ops/linalg:solve_registrations",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/ops/ragged:ragged_batch_gather_ops",
+        "//tensorflow/python/ops/ragged:ragged_batch_gather_with_default_op",
+        "//tensorflow/python/ops/ragged:ragged_bincount_ops",
+        "//tensorflow/python/ops/ragged:ragged_check_ops",
+        "//tensorflow/python/ops/ragged:ragged_conversion_ops",
         "//tensorflow/python/ops/ragged:ragged_dispatch",
+        "//tensorflow/python/ops/ragged:ragged_embedding_ops",
+        "//tensorflow/python/ops/ragged:ragged_image_ops",
         "//tensorflow/python/ops/ragged:ragged_operators",
+        "//tensorflow/python/ops/ragged:ragged_squeeze_op",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
     ],
 )
 
