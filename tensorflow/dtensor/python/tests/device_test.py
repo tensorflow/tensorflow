@@ -197,7 +197,7 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     self.skipForDeviceType(
         ["GPU", "TPU"], "Variable implicit copy is only allowed for CPU mesh.")
 
-    variable = d_variable.DVariable(array_ops.ones(shape=shape, dtype=dtype))
+    variable = variables.Variable(array_ops.ones(shape=shape, dtype=dtype))
     new_value = array_ops.zeros(shape=shape, dtype=dtype)
 
     @polymorphic_function.function
@@ -561,8 +561,8 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     ):
       api._dtensor_device().pack(
           [
-              d_variable.DVariable(array_ops.ones([2, 3])),
-              d_variable.DVariable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
           ],
           Layout.replicated(self.mesh, rank=2),
       )
