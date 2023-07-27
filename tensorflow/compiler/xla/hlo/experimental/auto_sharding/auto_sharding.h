@@ -299,13 +299,6 @@ struct AutoShardingOption {
               << absl::StrJoin(device_mesh_beta, ",");
     }
 
-    // If device_mesh_shape has only one value, append 1 to it
-    if (device_mesh_shape.size() == 1) {
-      device_mesh_shape.push_back(1);
-      device_mesh_alpha.push_back(1.0);
-      device_mesh_beta.push_back(1.0);
-    }
-
     if (device_mesh_shape.size() != device_mesh_alpha.size() ||
         device_mesh_shape.size() != device_mesh_beta.size()) {
       return absl::OutOfRangeError(absl::StrCat(
@@ -318,23 +311,28 @@ struct AutoShardingOption {
           "please leave them empty and default values will be used."));
     }
 
-    if (device_mesh_shape.size() > 3) {
-      std::vector<int64_t> compressed_device_mesh_shape;
-      std::vector<double> compressed_device_mesh_alpha;
-      std::vector<double> compressed_device_mesh_beta;
-      int non_zero_counter = 0;
-      for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
-        if (non_zero_counter < mesh_dims_greater_than_one_indices.size() &&
-            i == mesh_dims_greater_than_one_indices[non_zero_counter]) {
-          non_zero_counter++;
-          compressed_device_mesh_shape.push_back(device_mesh_shape[i]);
-          compressed_device_mesh_alpha.push_back(device_mesh_alpha[i]);
-          compressed_device_mesh_beta.push_back(device_mesh_beta[i]);
-        }
+    std::vector<int64_t> compressed_device_mesh_shape;
+    std::vector<double> compressed_device_mesh_alpha;
+    std::vector<double> compressed_device_mesh_beta;
+    int non_zero_counter = 0;
+    for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
+      if (non_zero_counter < mesh_dims_greater_than_one_indices.size() &&
+          i == mesh_dims_greater_than_one_indices[non_zero_counter]) {
+        non_zero_counter++;
+        compressed_device_mesh_shape.push_back(device_mesh_shape[i]);
+        compressed_device_mesh_alpha.push_back(device_mesh_alpha[i]);
+        compressed_device_mesh_beta.push_back(device_mesh_beta[i]);
       }
-      this->device_mesh_shape = compressed_device_mesh_shape;
-      this->device_mesh_alpha = compressed_device_mesh_alpha;
-      this->device_mesh_beta = compressed_device_mesh_beta;
+    }
+    this->device_mesh_shape = compressed_device_mesh_shape;
+    this->device_mesh_alpha = compressed_device_mesh_alpha;
+    this->device_mesh_beta = compressed_device_mesh_beta;
+
+    // If device_mesh_shape has only one value, append 1 to it
+    if (device_mesh_shape.size() == 1) {
+      device_mesh_shape.push_back(1);
+      device_mesh_alpha.push_back(1.0);
+      device_mesh_beta.push_back(1.0);
     }
 
     int64_t total_devices = 1;

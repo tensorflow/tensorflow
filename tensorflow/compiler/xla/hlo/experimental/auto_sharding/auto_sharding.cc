@@ -624,8 +624,6 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
                              const InstructionBatchDimMap& batch_dim_map,
                              bool only_allow_divisible,
                              const CallGraph& call_graph) {
-  std::vector<int64_t> shardable_mesh_dims =
-      VectorGreaterThanOneElementIndices(device_mesh.dimensions());
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
   int64_t batch_dim = -1;
   if (iter != batch_dim_map.end()) {
@@ -637,23 +635,19 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
       if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
-      if (shape.dimensions(i) < device_mesh.dim(shardable_mesh_dims[0]) ||
-          shape.dimensions(j) < device_mesh.dim(shardable_mesh_dims[1])) {
+      if (shape.dimensions(i) < device_mesh.dim(0) ||
+          shape.dimensions(j) < device_mesh.dim(1)) {
         continue;
       }
 
       if (only_allow_divisible &&
-          (!IsDivisible(shape.dimensions(i),
-                        device_mesh.dim(shardable_mesh_dims[0])) ||
-           !IsDivisible(shape.dimensions(j),
-                        device_mesh.dim(shardable_mesh_dims[1])))) {
+          (!IsDivisible(shape.dimensions(i), device_mesh.dim(0)) ||
+           !IsDivisible(shape.dimensions(j), device_mesh.dim(1)))) {
         continue;
       }
 
       std::string name = absl::StrFormat("S{%d,%d} @ {0,1}", i, j);
-      HloSharding output_spec =
-          Tile(shape, {i, j}, {shardable_mesh_dims[0], shardable_mesh_dims[1]},
-               device_mesh);
+      HloSharding output_spec = Tile(shape, {i, j}, {0, 1}, device_mesh);
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(shape) / output_spec.NumTiles();
       std::vector<HloSharding> input_shardings;
@@ -757,8 +751,6 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
                                  const InstructionBatchDimMap& batch_dim_map,
                                  std::unique_ptr<StrategyVector>& strategies,
                                  bool only_allow_divisible) {
-  std::vector<int64_t> shardable_mesh_dims =
-      VectorGreaterThanOneElementIndices(device_mesh.dimensions());
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
   int64_t batch_dim = -1;
   if (iter != batch_dim_map.end()) {
@@ -773,23 +765,17 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
       if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
-      if (ins->shape().dimensions(i) <
-              device_mesh.dim(shardable_mesh_dims[0]) ||
-          ins->shape().dimensions(j) <
-              device_mesh.dim(shardable_mesh_dims[1])) {
+      if (ins->shape().dimensions(i) < device_mesh.dim(0) ||
+          ins->shape().dimensions(j) < device_mesh.dim(1)) {
         continue;
       }
       if (only_allow_divisible &&
-          (!IsDivisible(ins->shape().dimensions(i),
-                        device_mesh.dim(shardable_mesh_dims[0])) ||
-           !IsDivisible(ins->shape().dimensions(j),
-                        device_mesh.dim(shardable_mesh_dims[1])))) {
+          (!IsDivisible(ins->shape().dimensions(i), device_mesh.dim(0)) ||
+           !IsDivisible(ins->shape().dimensions(j), device_mesh.dim(1)))) {
         continue;
       }
 
-      HloSharding output_spec =
-          Tile(ins->shape(), {i, j},
-               {shardable_mesh_dims[0], shardable_mesh_dims[1]}, device_mesh);
+      HloSharding output_spec = Tile(ins->shape(), {i, j}, {0, 1}, device_mesh);
       std::optional<HloSharding> input_spec =
           hlo_sharding_util::ReshapeSharding(ins->shape(), operand->shape(),
                                              output_spec);
@@ -797,9 +783,7 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
         continue;
       }
 
-      std::string name =
-          absl::StrFormat("S%d%d @ {%d,%d}", i, j, shardable_mesh_dims[0],
-                          shardable_mesh_dims[1]);
+      std::string name = absl::StrFormat("S%d%d @ {%d,%d}", i, j, 0, 1);
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
 
